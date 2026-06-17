@@ -125,13 +125,23 @@ export default function Dashboard() {
               <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.t}</div>
             </button>)}
           </div>
-          {script && <div className="card">
-            <div className="between"><span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>วันที่ {script.d} · {script.g}</span></div>
-            <h3 style={{ margin: "10px 0" }}>{(bp.calendar.find(c => c.d === script.d) || {}).t}</h3>
-            {(script.beats || []).map((b, i) => <div key={i} style={{ borderTop: i ? "1px solid var(--border)" : "none", paddingTop: 10, marginTop: 10 }}><div className="row" style={{ gap: 8 }}><b style={{ color: "var(--blue)", fontSize: 12 }}>{b.s}</b><span className="muted" style={{ fontSize: 12 }}>{b.ts}</span></div><p style={{ margin: "4px 0" }}>{b.say}</p><p className="muted" style={{ fontSize: 12 }}>คำบนจอ: {b.ost} · มุมกล้อง: {b.vis}</p></div>)}
-            <div className="msg" style={{ background: "var(--soft)", marginTop: 12 }}><b>แคปชั่น:</b> {script.cap}</div>
-            <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 8 }}>💡 ทิปครูพี่คิม: {script.tip}</div>
-          </div>}
+          {script && (() => {
+            const BEAT = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
+            const copy = (t) => navigator.clipboard?.writeText(t);
+            const title = (bp.calendar.find(c => c.d === script.d) || {}).t;
+            return <div className="card">
+              <span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>วันที่ {script.d} · {script.g}</span>
+              <h3 style={{ margin: "10px 0 4px" }}>{title}</h3>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>🎬 บทพูดอัดคลิป — กดคัดลอกแล้วใช้ได้เลย</p>
+              {(script.beats || []).map((b, i) => <div key={i} style={{ borderLeft: `4px solid ${BEAT[b.s] || "var(--blue)"}`, background: "var(--soft)", borderRadius: "0 12px 12px 0", padding: "12px 14px", marginBottom: 10 }}>
+                <div className="row" style={{ gap: 8, marginBottom: 6 }}><span style={{ background: BEAT[b.s] || "var(--blue)", color: "#fff", fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 20 }}>{b.s}</span><span className="muted" style={{ fontSize: 12 }}>{b.ts}</span></div>
+                <p style={{ margin: "0 0 6px", fontSize: 15 }}>{b.say}</p>
+                <div className="row" style={{ gap: 6 }}>{b.ost && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>📺 {b.ost}</span>}{b.vis && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>🎥 {b.vis}</span>}</div>
+              </div>)}
+              <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 4 }}><div className="between"><b style={{ fontSize: 13 }}>แคปชั่น & แฮชแท็ก</b><button className="link" onClick={() => copy(script.cap)} style={{ background: "none", border: 0, fontSize: 13 }}>คัดลอก 📋</button></div><p style={{ fontSize: 14, marginTop: 6 }}>{script.cap}</p></div>
+              <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 8 }}>💡 ทิปครูพี่คิม: {script.tip}</div>
+            </div>;
+          })()}
         </>}
 
         {tab === "marathon" && <>

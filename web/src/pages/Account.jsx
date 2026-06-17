@@ -66,7 +66,7 @@ export default function Account() {
             <div style={{ color: "var(--blue)", fontSize: 20 }}>›</div>
           </Link>)}
         <Link className="card center" to={`/form?renew=1&email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block" }}>+ เพิ่มแผนเดือนใหม่ (490฿)</Link>
-        {data.months.length >= 2 && <Link className="btn full" to="/compare" style={{ marginBottom: 16 }}>📈 เทียบความคืบหน้าทุกเดือน</Link>}
+        {data.months.length >= 1 && <Link className="btn full" to="/compare" style={{ marginBottom: 16 }}>📈 {data.months.length >= 2 ? "เทียบความคืบหน้าทุกเดือน" : "ดูสถิติ & เส้นทางการเติบโต"}</Link>}
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa" }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🎁 ชวนเพื่อน รับส่วนลด</div>
           <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>เพื่อนสมัครผ่านลิงก์คุณ — ได้ลด {ref.percent}% และคุณได้โค้ดลดเดือนถัดไป</div>

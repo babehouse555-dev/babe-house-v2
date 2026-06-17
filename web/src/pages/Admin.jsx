@@ -13,6 +13,7 @@ export default function Admin() {
   const [insight, setInsight] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
+  const [remind, setRemind] = useState("");
 
   useEffect(() => { if (key) tryLogin(key); }, []);
   async function tryLogin(k) { try { await api("/api/admin/overview", { adminKey: k }); localStorage.setItem("babe_admin_key", k); setAuthed(true); loadAll(k); } catch { setLoginErr("ADMIN_KEY ไม่ถูกต้อง"); } }
@@ -42,7 +43,10 @@ export default function Admin() {
     <div className="wrap page-pad">
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
 
-      {ov && <div className="card"><h3>ภาพรวม</h3><div className="row" style={{ marginTop: 12 }}>{[["ลูกค้า", ov.customers], ["เล่ม", ov.blueprints], ["จ่ายแล้ว", ov.paid_orders]].map(([l, n]) => <div key={l} style={{ flex: 1, minWidth: 120, background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", borderRadius: 14, padding: 16 }}><div style={{ fontSize: 28, fontWeight: 800, color: "var(--blue)" }}>{n}</div><div className="muted" style={{ fontSize: 13 }}>{l}</div></div>)}</div></div>}
+      {ov && <div className="card"><h3>ภาพรวม</h3><div className="row" style={{ marginTop: 12 }}>{[["ลูกค้า", ov.customers], ["เล่ม", ov.blueprints], ["จ่ายแล้ว", ov.paid_orders]].map(([l, n]) => <div key={l} style={{ flex: 1, minWidth: 120, background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", borderRadius: 14, padding: 16 }}><div style={{ fontSize: 28, fontWeight: 800, color: "var(--blue)" }}>{n}</div><div className="muted" style={{ fontSize: 13 }}>{l}</div></div>)}</div>
+        <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`ส่งเตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} ราย`); } catch (e) { setRemind(e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือนต่อเดือน (เดี๋ยวนี้)</button><span className="muted" style={{ fontSize: 13 }}>{remind}</span></div>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ระบบส่งอัตโนมัติทุก 12 ชม. อยู่แล้ว — ปุ่มนี้สำหรับสั่งส่งทันที</p>
+      </div>}
 
       {rev && <div className="card"><h3>💰 รายได้</h3><div className="row" style={{ alignItems: "baseline", margin: "12px 0 14px" }}><div style={{ fontSize: 34, fontWeight: 800, color: "var(--blue)" }}>{baht(rev.total_satang)}</div><div className="muted">รวม · {rev.paid_count} ออเดอร์</div></div>
         {rev.by_month.map(m => { const max = Math.max(...rev.by_month.map(x => x.revenue), 1); return <div key={m.billing_cycle} style={{ margin: "9px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{m.billing_cycle.replace("_", " ")}</span><span className="muted">{baht(m.revenue)} · {m.c}</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(m.revenue / max * 100)}%` }} /></div></div>; })}</div>}

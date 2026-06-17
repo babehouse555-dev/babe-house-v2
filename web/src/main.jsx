@@ -3,6 +3,22 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./styles.css";
 import { captureRef } from "./api.js";
+
+class ErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (this.state.err) return (
+      <div className="wrap narrow page-pad center" style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div className="serif" style={{ fontSize: 56, color: "var(--blue)" }}>🩵</div>
+        <h1 style={{ fontSize: 22, margin: "10px 0 6px" }}>ระบบขัดข้องชั่วคราว</h1>
+        <p className="muted" style={{ marginBottom: 20 }}>ขออภัยค่ะ ลองโหลดหน้าใหม่อีกครั้งนะคะ</p>
+        <div><a className="btn" href="/">กลับหน้าแรก</a></div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 import Landing from "./pages/Landing.jsx";
 import Form from "./pages/Form.jsx";
 import Checkout from "./pages/Checkout.jsx";
@@ -17,6 +33,7 @@ import NotFound from "./pages/NotFound.jsx";
 captureRef();
 
 createRoot(document.getElementById("root")).render(
+  <ErrorBoundary>
   <BrowserRouter>
     <Routes>
       <Route path="/" element={<Landing />} />
@@ -31,4 +48,5 @@ createRoot(document.getElementById("root")).render(
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>
+  </ErrorBoundary>
 );

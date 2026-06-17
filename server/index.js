@@ -219,12 +219,15 @@ app.post("/api/create-payment-session", async (req, res) => {
     const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
     if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, redirect_url: `/processing?order_id=${encodeURIComponent(o.order_id)}` });
     const amount = o.final_amount_satang || PRICE_SATANG;
-    if (o.provider === "stripe" && process.env.STRIPE_SECRET_KEY) {
+    if (o.provider === "stripe") {
+      // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงานค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
       const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [s.provider_session_id, o.order_id]);
       return res.json({ ok: true, redirect_url: s.checkout_url, external: true });
     }
+    // โหมด mock เท่านั้นที่ mark paid โดยไม่ตัดเงิน
     await markOrderPaid(o.order_id, "mock", "mock_paid");
     res.json({ ok: true, redirect_url: `/processing?order_id=${encodeURIComponent(o.order_id)}` });
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "PAYMENT_SESSION_FAILED", message: err.message }); }

@@ -7,6 +7,19 @@ export const AI_ENABLED = !!process.env.GEMINI_API_KEY;
 const ai = AI_ENABLED ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 export const aiModelName = () => (AI_ENABLED ? MODEL : "fallback-local");
 
+// ===== ต้นทุน token (ไว้โชว์ในหลังบ้าน) — USD ต่อ 1M tokens [input, output] =====
+const USD_THB = Number(process.env.USD_THB || 36);
+const AI_RATES = {
+  "gemini-2.5-flash": [0.30, 2.50],
+  "gemini-2.5-flash-lite": [0.10, 0.40],
+  "gemini-2.5-pro": [1.25, 10.0],
+};
+export function aiCostTHB(model, inputTokens = 0, outputTokens = 0) {
+  const r = AI_RATES[model] || AI_RATES["gemini-2.5-flash"];
+  const usd = (inputTokens / 1e6) * r[0] + (outputTokens / 1e6) * r[1];
+  return usd * USD_THB;
+}
+
 // โมเดลสำรอง (ต้องรองรับ output ใหญ่ ~30k tok เพราะเล่มมี 30 สคริปต์) — ใช้เมื่อโมเดลหลัก 503/overload
 const FALLBACK_MODELS = (process.env.GEMINI_FALLBACK_MODELS || "gemini-2.5-flash-lite,gemini-2.5-pro")
   .split(",").map(s => s.trim()).filter(Boolean);
@@ -88,7 +101,7 @@ export function extractImages(payload) {
 
 // ===== Blueprint =====
 export async function generateBlueprint(parsed) {
-  if (!ai) return { blueprint: buildFallbackBlueprint(parsed), model: "fallback-local" };
+  if (!ai) return { blueprint: buildFallbackBlueprint(parsed), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
   const images = extractImages(parsed);
   const fr = parsed.form_responses;
   const userText = `ข้อมูลผู้ใช้:\ninstagram_account: ${parsed.instagram_account}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\nคำตอบจากฟอร์ม:\nbusiness_type: ${fr.business_type}\nstarting_point: ${fr.starting_point}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}\n\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง Blueprint JSON ครบทุก key ตามสเปก`;
@@ -101,7 +114,9 @@ export async function generateBlueprint(parsed) {
     retries: 2,
   });
   const blueprint = JSON.parse(resp.text);
-  return { blueprint, model };
+  const u = resp.usageMetadata || {};
+  const usage = { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) };
+  return { blueprint, model, usage };
 }
 
 export function buildFallbackBlueprint(parsed) {

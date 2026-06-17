@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { api, baht } from "../api.js";
 
+const fmtTok = (n) => { n = Number(n || 0); return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n); };
+
 export default function Admin() {
   const [key, setKey] = useState(localStorage.getItem("babe_admin_key") || "");
   const [authed, setAuthed] = useState(false);
@@ -11,6 +13,7 @@ export default function Admin() {
   const [students, setStudents] = useState([]);
   const [filter, setFilter] = useState(null);
   const [insight, setInsight] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -20,6 +23,7 @@ export default function Admin() {
   async function loadAll(k = key) {
     setOv(await api("/api/admin/overview", { adminKey: k }));
     setRev(await api("/api/admin/revenue", { adminKey: k }));
+    setUsage(await api("/api/admin/ai-usage", { adminKey: k }));
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
     loadIndustries(k); loadStudents(null, k);
   }
@@ -46,6 +50,14 @@ export default function Admin() {
       {ov && <div className="card"><h3>ภาพรวม</h3><div className="row" style={{ marginTop: 12 }}>{[["ลูกค้า", ov.customers], ["เล่ม", ov.blueprints], ["จ่ายแล้ว", ov.paid_orders]].map(([l, n]) => <div key={l} style={{ flex: 1, minWidth: 120, background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", borderRadius: 14, padding: 16 }}><div style={{ fontSize: 28, fontWeight: 800, color: "var(--blue)" }}>{n}</div><div className="muted" style={{ fontSize: 13 }}>{l}</div></div>)}</div>
         <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`ส่งเตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} ราย`); } catch (e) { setRemind(e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือนต่อเดือน (เดี๋ยวนี้)</button><span className="muted" style={{ fontSize: 13 }}>{remind}</span></div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ระบบส่งอัตโนมัติทุก 12 ชม. อยู่แล้ว — ปุ่มนี้สำหรับสั่งส่งทันที</p>
+        {(ov.error_gen > 0 || ov.pending_gen > 0) && <div className="msg" style={{ background: ov.error_gen > 0 ? "#fdeaea" : "#fff7e6", color: ov.error_gen > 0 ? "#b3261e" : "#8a6d1f", marginTop: 10 }}>{ov.error_gen > 0 ? `⚠️ มี ${ov.error_gen} เล่มที่จ่ายแล้วแต่ AI สร้างยังไม่สำเร็จ (เช่น Gemini แน่น/token หมด) — ระบบลองใหม่ให้อัตโนมัติทุก 5 นาที ถ้าค้างนานควรเช็ก quota หรือเติม credit ที่ Google` : `⏳ มี ${ov.pending_gen} เล่มกำลังสร้าง...`}</div>}
+      </div>}
+
+      {usage && <div className="card"><h3>🤖 ต้นทุน AI (Gemini) เดือนนี้</h3>
+        <div className="row" style={{ alignItems: "baseline", margin: "12px 0 6px" }}><div style={{ fontSize: 34, fontWeight: 800, color: "var(--blue)" }}>฿{Number(usage.month.cost_thb).toLocaleString()}</div><div className="muted">{usage.month.count} เล่ม · เฉลี่ย ฿{usage.month.avg_thb}/เล่ม</div></div>
+        <p className="muted" style={{ fontSize: 13 }}>โทเค็นเดือนนี้ {fmtTok(usage.month.total)} (เข้า {fmtTok(usage.month.input)} · ออก {fmtTok(usage.month.output)}) · รวมทั้งหมด {fmtTok(usage.all_time.total_tokens)} จาก {usage.all_time.count} เล่ม</p>
+        {usage.month.by_model.length > 0 && <div className="scroll" style={{ marginTop: 10 }}><table><thead><tr><th>โมเดล</th><th>เล่ม</th><th>โทเค็น</th><th>฿</th></tr></thead><tbody>{usage.month.by_model.map(m => <tr key={m.model}><td>{m.model}</td><td>{m.count}</td><td>{fmtTok(m.input + m.output)}</td><td>฿{m.cost_thb}</td></tr>)}</tbody></table></div>}
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ราคาประมาณ (แปลง USD→฿ ~36) · ยอดจริงดูที่ Google AI Studio / Cloud Billing</p>
       </div>}
 
       {rev && <div className="card"><h3>💰 รายได้</h3><div className="row" style={{ alignItems: "baseline", margin: "12px 0 14px" }}><div style={{ fontSize: 34, fontWeight: 800, color: "var(--blue)" }}>{baht(rev.total_satang)}</div><div className="muted">รวม · {rev.paid_count} ออเดอร์</div></div>

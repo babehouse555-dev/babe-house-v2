@@ -145,6 +145,16 @@ export async function initDb() {
       email TEXT NOT NULL, cycle TEXT NOT NULL, sent_at TIMESTAMPTZ DEFAULT now(),
       PRIMARY KEY (email, cycle)
     );
+    CREATE TABLE IF NOT EXISTS ai_usage (
+      id TEXT PRIMARY KEY,
+      kind TEXT,
+      model TEXT,
+      input_tokens INTEGER DEFAULT 0,
+      output_tokens INTEGER DEFAULT 0,
+      total_tokens INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at);
     CREATE INDEX IF NOT EXISTS idx_req_email ON blueprint_requests(email);
     CREATE INDEX IF NOT EXISTS idx_req_cycle ON blueprint_requests(billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_bp_user_cycle ON blueprints(user_id, billing_cycle);

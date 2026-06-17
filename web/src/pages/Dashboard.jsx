@@ -43,7 +43,7 @@ export default function Dashboard() {
       {demo && <div className="center" style={{ position: "sticky", top: 0, zIndex: 99, background: "linear-gradient(135deg,var(--blue),var(--blue-d))", color: "#fff", padding: "12px 16px", fontSize: 14 }}>
         🎬 <b>นี่คือตัวอย่าง Blueprint</b> — เล่มจริงวิเคราะห์จากช่องคุณโดยเฉพาะ &nbsp; <Link to="/form" style={{ background: "#fff", color: "var(--blue)", fontWeight: 700, padding: "6px 14px", borderRadius: 10 }}>สร้างเล่มของฉัน · 490฿</Link>
       </div>}
-      <div className="wrap narrow page-pad">
+      <div className="wrap page-pad" style={{ maxWidth: 820 }}>
         <Link className="link" to={demo ? "/" : "/account"}>← {demo ? "กลับหน้าแรก" : "บัญชีของฉัน"}</Link>
         <div className="brand" style={{ marginTop: 12 }}>BABE HOUSE · CREATOR PLATFORM</div>
         <h1 className="page">AI Creator Blueprint</h1>
@@ -55,12 +55,20 @@ export default function Dashboard() {
         </div>
 
         {tab === "strategy" && <>
-          <div className="card" style={{ background: "var(--soft)" }}>{bp.greeting}</div>
-          <div className="row" style={{ marginBottom: 16 }}>
-            {[["เป้าหมายเดือนนี้", bp.theme], ["ตลาด", bp.market_tier], ["กลุ่มเป้าหมาย", bp.audience_summary]].map(([l, v]) => <div key={l} className="card" style={{ flex: 1, minWidth: 160, margin: 0 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>{l}</div><div style={{ marginTop: 4 }}>{v}</div></div>)}
+          <div className="card" style={{ background: "var(--soft)", lineHeight: 1.7 }}>{bp.greeting}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 16 }}>
+            {[["🎯 เป้าหมายเดือนนี้", bp.theme], ["💎 ตลาด", bp.market_tier], ["👥 กลุ่มเป้าหมาย", bp.audience_summary], ["💡 อินไซต์", bp.follower_insight]].map(([l, v]) => v && <div key={l} className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ marginTop: 6, fontSize: 14.5 }}>{v}</div></div>)}
           </div>
           <div className="card"><h3>สิ่งที่ครูพี่คิมเห็น</h3><ul style={{ paddingLeft: 18, marginTop: 8 }}>{(bp.what_we_see || []).map((x, i) => <li key={i} style={{ margin: "4px 0" }}>{x}</li>)}</ul><p style={{ marginTop: 12, fontStyle: "italic", color: "var(--blue-d)" }}>💡 {bp.kim_insight}</p></div>
-          <div className="card"><h3>SWOT</h3><div className="row" style={{ marginTop: 8 }}>{[["จุดแข็ง", bp.swot?.strengths], ["จุดอ่อน", bp.swot?.weaknesses], ["โอกาส", bp.swot?.opportunities], ["ความเสี่ยง", bp.swot?.threats]].map(([l, arr]) => <div key={l} style={{ flex: 1, minWidth: 150 }}><b style={{ fontSize: 13 }}>{l}</b><ul style={{ paddingLeft: 16, fontSize: 13 }}>{(arr || []).map((x, i) => <li key={i}>{x}</li>)}</ul></div>)}</div></div>
+          <div className="card"><h3 style={{ marginBottom: 14 }}>SWOT</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
+              {[["จุดแข็ง", bp.swot?.strengths, "💪", "#e8f5ee", "#1a7f43"], ["จุดอ่อน", bp.swot?.weaknesses, "⚠️", "#fdeaea", "#b3261e"], ["โอกาส", bp.swot?.opportunities, "🚀", "#eaf3fd", "#1B6FC4"], ["ความเสี่ยง", bp.swot?.threats, "🛡️", "#fff7e6", "#8a6d1f"]].map(([l, arr, ic, bg, fg]) =>
+                <div key={l} style={{ background: bg, borderRadius: 14, padding: "14px 16px" }}>
+                  <div style={{ fontWeight: 700, color: fg, marginBottom: 8 }}>{ic} {l}</div>
+                  <ul style={{ paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6, margin: 0 }}>{(arr || []).map((x, i) => <li key={i} style={{ marginBottom: 4 }}>{x}</li>)}</ul>
+                </div>)}
+            </div>
+          </div>
           {m.archetype && <div className="card"><h3>🎯 ตัวตนแบรนด์ (Archetype)</h3><p style={{ marginTop: 6 }}><b>{m.archetype.name}</b> — {m.archetype.body}</p><p className="muted" style={{ fontSize: 13 }}>โทน: {m.archetype.tone} · ลุค: {m.archetype.look}</p></div>}
           {m.avatar && <div className="card"><h3>👤 ลูกค้าในฝัน</h3><p style={{ marginTop: 6 }}><b>{m.avatar.name}</b></p><p className="muted" style={{ fontSize: 14 }}>คิด: {m.avatar.think} · เห็น: {m.avatar.see} · กลัว: {m.avatar.fear}</p>{m.avatar.hookbank && <div style={{ marginTop: 8 }}><b style={{ fontSize: 13 }}>คลังฮุก:</b><ul style={{ paddingLeft: 16, fontSize: 13 }}>{m.avatar.hookbank.map((h, i) => <li key={i}>{h}</li>)}</ul></div>}</div>}
           {m.competitor && <div className="card"><h3>⚔️ คู่แข่ง</h3><p className="muted" style={{ fontSize: 14, marginTop: 6 }}>{m.competitor.intro}</p>{(m.competitor.rows || []).map((r, i) => <p key={i} style={{ fontSize: 14, marginTop: 6 }}><b>{r.name}:</b> {r.they} → <span style={{ color: "var(--up)" }}>{r.gap}</span></p>)}<p style={{ marginTop: 8, color: "var(--blue-d)" }}>🌊 {m.competitor.blueocean}</p></div>}

@@ -2,7 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const MAX_TOK = Number(process.env.GEMINI_MAX_TOKENS || 30000);
+const MAX_TOK = Number(process.env.GEMINI_MAX_TOKENS) || 64000; // เผื่อสคริปต์ยาว 30 วัน + thinking (โมเดล 2.5 รองรับ ~64k)
+const THINK_BUDGET = Number(process.env.GEMINI_THINKING_BUDGET ?? 4096); // จำกัด thinking ไม่ให้กิน budget จน JSON ถูกตัด
 export const AI_ENABLED = !!process.env.GEMINI_API_KEY;
 const ai = AI_ENABLED ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 export const aiModelName = () => (AI_ENABLED ? MODEL : "fallback-local");
@@ -116,7 +117,7 @@ export async function generateBlueprint(parsed) {
   parts.push({ text: userText });
   const { resp, model } = await genContent({
     contents: [{ role: "user", parts }],
-    config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK },
+    config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } },
     retries: 2,
   });
   const blueprint = JSON.parse(resp.text);

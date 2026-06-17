@@ -6,6 +6,16 @@ import { sampleBlueprint } from "../sample.js";
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
 const modH = { display: "flex", alignItems: "center", margin: 0 };
+const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+// 🔧 แก้ลิงก์ LINE Official Account ของ Babe House ตรงนี้
+const LINE_URL = "https://line.me/R/ti/p/@babehouse";
+// ไอเท็มเสริม = บริการอื่นของ Babe House (แก้/เพิ่มได้)
+const SERVICES = [
+  { emoji: "📱", name: "คอร์ส All in Your Phone", desc: "ตัดต่อ/วาด/อนิเมชั่นในมือถือ", price: "3,745฿" },
+  { emoji: "🎬", name: "คอร์สตัดต่อ Advance", desc: "สายเล่าเรื่อง ใส่ insert", price: "5,990฿" },
+  { emoji: "👑", name: "Workshop ตัวต่อตัว", desc: "เรียนสดกับทีม Babe House", price: "9,990฿" },
+  { emoji: "🤝", name: "1:1 Consult ครูพี่คิม", desc: "วางกลยุทธ์ช่องแบบเจาะลึก", price: "ทักสอบถาม" },
+];
 
 export default function Dashboard() {
   const [sp] = useSearchParams();
@@ -144,12 +154,55 @@ export default function Dashboard() {
           })()}
         </>}
 
-        {tab === "marathon" && <>
-          <div className="card center"><h3>🏃‍♀️ Babe Content Marathon</h3><p className="muted" style={{ marginTop: 6 }}>ติ๊กวันที่ส่งคลิปแล้ว — ทำต่อเนื่องให้ครบ 30 วัน</p><div style={{ fontSize: 34, fontWeight: 800, color: "var(--blue)", marginTop: 10 }}>{uploaded.size} / 30</div><div className="muted">{uploaded.size >= 15 ? "💎 Diamond" : uploaded.size >= 5 ? "🥇 Gold" : "🥈 Silver"}</div></div>
-          <div className="card"><div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 8 }}>
-            {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
-          </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>(โหมดตัวอย่าง — ติ๊กได้เมื่อเป็นเล่มจริง)</p>}</div>
-        </>}
+        {tab === "marathon" && (() => {
+          const done = uploaded.size;
+          const day = Math.min(new Date().getDate(), 30);
+          const youPct = Math.min(100, Math.round(done / 30 * 100));
+          const ghostPct = Math.min(100, Math.round(day / 30 * 100));
+          const lead = done - day;
+          const rank = done >= 15 ? "💎 Diamond" : done >= 5 ? "🥇 Gold" : "🥈 Silver";
+          const next = done >= 15 ? "🏆 คุณคือ Diamond แล้ว!" : done >= 5 ? `อีก ${15 - done} คลิป สู่ 💎 Diamond` : `อีก ${5 - done} คลิป สู่ 🥇 Gold`;
+          return <>
+            <div className="card">
+              <div className="between"><h3 style={modH}>🏃‍♀️ Babe Content Marathon</h3><span style={{ background: "#fff7e6", color: "#8a6d1f", fontWeight: 700, fontSize: 12, padding: "4px 12px", borderRadius: 20 }}>ซีซั่น: {MONTHS_TH[new Date().getMonth()]}</span></div>
+              <p className="muted" style={{ fontSize: 13, margin: "6px 0 18px" }}>แข่งกับเวลาจริง — วันที่ {day}/30 ของเดือน · อัปคลิปให้ทันก่อนปีศาจเวลาจะถึงเส้นชัย 👻🏁</p>
+              {[["🐰", "ตัวคุณ", done, youPct, "46,134,222"], ["👻", "ปีศาจเวลา", day, ghostPct, "138,109,31"]].map(([emo, label, n, pct, rgb]) =>
+                <div key={label} style={{ marginBottom: 14 }}>
+                  <div className="between" style={{ fontSize: 13, marginBottom: 6 }}><span style={{ fontWeight: 700 }}>{emo} {label}</span><span className="muted">{n} / 30 วัน</span></div>
+                  <div style={{ position: "relative", height: 36, background: "var(--soft)", borderRadius: 18 }}>
+                    <div style={{ position: "absolute", inset: "0 0 0 0", width: `${pct}%`, background: `rgba(${rgb},.18)`, borderRadius: 18 }} />
+                    <div style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 18 }}>🏁</div>
+                    <div style={{ position: "absolute", top: "50%", left: `calc(${pct}% - 13px)`, transform: "translateY(-50%)", fontSize: 24, transition: "left .5s ease", filter: "drop-shadow(0 1px 2px rgba(0,0,0,.2))" }}>{emo}</div>
+                  </div>
+                </div>)}
+              <div style={{ borderRadius: 12, padding: "14px 16px", background: lead >= 0 ? "#e8f5ee" : "#fff7e6", color: lead >= 0 ? "#1a7f43" : "#8a6d1f", fontSize: 14.5, marginTop: 4 }}>
+                💬 <b>ครูพี่คิม:</b> {lead >= 0 ? `เยี่ยมมาก! คุณนำปีศาจเวลาอยู่ ${lead} วัน 🎉 รักษาจังหวะนี้ไว้นะคะ` : `ปีศาจเวลาแซงไป ${-lead} วันแล้ว ⏰ รีบอัปคลิปไล่ตามกันค่ะ — ความสม่ำเสมอคือกุญแจของการเติบโต`}
+              </div>
+            </div>
+            <div className="card between"><div><div className="muted" style={{ fontSize: 12 }}>ระดับแรงก์สะสมผลงาน</div><div style={{ fontSize: 22, fontWeight: 800 }}>{rank}</div></div><div style={{ color: "var(--blue)", fontWeight: 700, fontSize: 14 }}>{next}</div></div>
+            <div className="card"><h3 style={{ marginBottom: 4 }}>📅 ติ๊กวันที่ส่งคลิปแล้ว</h3><p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>ติ๊กแล้ว 🐰 ของคุณจะวิ่งเข้าใกล้เส้นชัยขึ้น</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 8 }}>
+                {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
+              </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>(โหมดตัวอย่าง — ติ๊กได้เมื่อเป็นเล่มจริง)</p>}
+            </div>
+            <div className="card"><h3 style={modH}>🎁 ปลดล็อกสกิลเพิ่ม</h3><p className="muted" style={{ fontSize: 13, margin: "6px 0 14px" }}>ไอเท็มเสริมจาก Babe House — อัปสกิลให้คอนเทนต์ปังขึ้นอีกขั้น</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
+                {SERVICES.map(s => <div key={s.name} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 14 }}>
+                  <div style={{ fontSize: 28 }}>{s.emoji}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, margin: "6px 0 2px" }}>{s.name}</div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{s.desc}</div>
+                  <div className="between" style={{ marginTop: 10 }}><span style={{ fontWeight: 800, color: "var(--blue)" }}>{s.price}</span><a href={LINE_URL} target="_blank" rel="noreferrer" className="link" style={{ fontSize: 13 }}>ทัก LINE →</a></div>
+                </div>)}
+              </div>
+            </div>
+            <div className="card center" style={{ background: "linear-gradient(135deg,#06C755,#04a847)", color: "#fff" }}>
+              <div style={{ fontSize: 28 }}>💚</div>
+              <div style={{ fontWeight: 700, fontSize: 17, margin: "4px 0 4px" }}>มีคำถาม? ทักครูพี่คิมได้เลย</div>
+              <p style={{ opacity: .92, fontSize: 14, marginBottom: 14 }}>ปรึกษาเรื่องคอนเทนต์ / คอร์ส / เวิร์กช็อป ฟรี</p>
+              <a href={LINE_URL} target="_blank" rel="noreferrer" className="btn" style={{ background: "#fff", color: "#06C755" }}>เพิ่มเพื่อนทาง LINE</a>
+            </div>
+          </>;
+        })()}
 
         {!demo && <div className="card center" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa" }}>
           <div style={{ fontWeight: 700, fontSize: 17 }}>ทำครบ 30 วันแล้วใช่ไหมคะ? 🩵</div>

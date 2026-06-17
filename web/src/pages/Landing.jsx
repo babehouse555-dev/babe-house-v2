@@ -9,10 +9,10 @@ const feats = [
   ["📈", "ติดตามการเติบโตทุกเดือน", "เห็นกราฟโต % + บทวิเคราะห์ว่าควรโฟกัสอะไรต่อ"],
 ];
 const probs = [
-  ["😮‍💨", "ลงคลิปทุกวันแต่ยอดนิ่ง", "ทำเยอะแต่ไม่รู้อันไหนได้ผล"],
-  ["🤔", "คิดคอนเทนต์ไม่ออก", "นั่งคิดทุกเช้าว่าวันนี้ลงอะไรดี"],
-  ["💸", "คนดูเยอะแต่ไม่ซื้อ", "ยอดวิวดีแต่เปลี่ยนเป็นเงินไม่ได้"],
-  ["🧭", "ไม่มีระบบ ไม่มีทิศทาง", "อยากโตแต่ไม่รู้ควรโฟกัสอะไร"],
+  ["😮‍💨", "ลงคลิปทุกวันแต่ยอดวิวนิ่ง", "ทำมานานแต่ยอดไม่ขึ้น ไม่รู้อันไหนเวิร์ก"],
+  ["📉", "คนติดตามไม่เพิ่ม reach ตก", "อัลกอริทึมไม่ดัน คนใหม่ไม่เข้ามา"],
+  ["🤔", "คิดคอนเทนต์ไม่ออก", "นั่งคิดทุกวันว่าวันนี้ลงอะไรดี เสียเวลา"],
+  ["💸", "มีคนดูแต่ไม่ซื้อ/ไม่มีงานเข้า", "ยอดวิวดีแต่เปลี่ยนเป็นรายได้ไม่ได้"],
 ];
 const faqs = [
   ["ต้องมีผู้ติดตามเยอะไหม?", "ไม่จำเป็นค่ะ ครูพี่คิมวิเคราะห์จากจุดที่คุณอยู่ตอนนี้ ปรับแผนให้เหมาะกับคุณ"],
@@ -34,8 +34,8 @@ export default function Landing() {
       <header className="center" style={{ background: "linear-gradient(180deg,var(--soft),#fff)", padding: "64px 0 50px" }}>
         <div className="wrap">
           <span style={{ display: "inline-block", background: "#fff", border: "1px solid var(--border)", color: "var(--blue)", fontWeight: 700, fontSize: 13, padding: "7px 16px", borderRadius: 30, marginBottom: 22 }}>🩵 ขับเคลื่อนด้วย AI "ครูพี่คิม"</span>
-          <h1 className="serif" style={{ fontSize: "clamp(30px,5.5vw,52px)", lineHeight: 1.18, fontWeight: 800 }}>ทำคอนเทนต์มาเยอะ<br />แต่ <span style={{ color: "var(--blue)" }}>ยอดขายไม่ขยับ?</span></h1>
-          <p className="muted" style={{ fontSize: "clamp(16px,2.4vw,20px)", maxWidth: 620, margin: "18px auto 30px" }}>ให้ครูพี่คิม (AI) วิเคราะห์ช่องและสถิติหลังบ้านของคุณ แล้วสร้าง <b>แผนคอนเทนต์ 30 วัน + สคริปต์เต็มทุกวัน</b> ที่เปลี่ยนคนดูให้เป็นลูกค้าจริง</p>
+          <h1 className="serif" style={{ fontSize: "clamp(30px,5.5vw,52px)", lineHeight: 1.18, fontWeight: 800 }}>ทำคอนเทนต์มานาน<br />แต่ <span style={{ color: "var(--blue)" }}>ช่องไม่โตสักที?</span></h1>
+          <p className="muted" style={{ fontSize: "clamp(16px,2.4vw,20px)", maxWidth: 640, margin: "18px auto 30px" }}>ยอดวิวนิ่ง · คนตามไม่เพิ่ม · หรือมีคนดูแต่ไม่ซื้อ? ให้ครูพี่คิม (AI) วิเคราะห์ช่องและสถิติหลังบ้านของคุณ แล้ววาง <b>แผนคอนเทนต์ 30 วัน + สคริปต์เต็มทุกวัน</b> ที่ทำให้ช่องโตและเปลี่ยนคนดูเป็นรายได้จริง</p>
           <div className="row" style={{ justifyContent: "center" }}>
             <Link className="btn" to="/form">สร้างแผนของฉัน · 490฿</Link>
             <Link className="btn ghost" to="/dashboard?demo=1">🎬 ดูตัวอย่างเล่มฟรี</Link>
@@ -97,8 +97,8 @@ export default function Landing() {
       </div></section>
 
       <div className="wrap"><div className="center" style={{ background: "linear-gradient(135deg,var(--blue),var(--blue-d))", color: "#fff", borderRadius: 28, padding: "54px 26px" }}>
-        <h2 className="serif" style={{ fontSize: "clamp(24px,4vw,34px)", color: "#fff" }}>พร้อมเปลี่ยนคอนเทนต์ให้เป็นยอดขายแล้วหรือยัง?</h2>
-        <p style={{ opacity: .92, maxWidth: 520, margin: "14px auto 26px", fontSize: 17 }}>ให้ครูพี่คิมช่วยวางแผน 30 วันแรกของคุณวันนี้</p>
+        <h2 className="serif" style={{ fontSize: "clamp(24px,4vw,34px)", color: "#fff" }}>พร้อมทำให้ช่องโตอย่างมีระบบแล้วหรือยัง?</h2>
+        <p style={{ opacity: .92, maxWidth: 520, margin: "14px auto 26px", fontSize: 17 }}>ให้ครูพี่คิมช่วยวางแผน 30 วันแรก — ดันยอดวิว เพิ่มคนตาม เปลี่ยนคนดูเป็นรายได้</p>
         <Link className="btn" to="/form" style={{ background: "#fff", color: "var(--blue)" }}>สร้างแผนของฉัน · 490฿</Link>
       </div></div>
 

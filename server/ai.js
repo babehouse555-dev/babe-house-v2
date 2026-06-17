@@ -111,6 +111,19 @@ export function extractImages(payload) {
 }
 
 // ===== Blueprint =====
+// ตัวกรองกันพลาด: บางครั้ง AI หลุดใส่ชื่อ "ครูพี่คิม/คิม" ในบทพูดสคริปต์ (ซึ่งต้องเป็นเสียงลูกค้า)
+// → แทนด้วย "เรา" แบบ deterministic หลังเจนทุกครั้ง (ไม่แตะ greeting/kim_insight ที่เป็นเสียงคิมจริงๆ)
+const deKim = (s) => typeof s === "string" ? s.replace(/ครูพี่คิม|พี่คิม|คิม/g, "เรา") : s;
+function sanitizeScripts(bp) {
+  if (bp && Array.isArray(bp.scripts)) {
+    for (const sc of bp.scripts) {
+      if (Array.isArray(sc.beats)) for (const b of sc.beats) b.say = deKim(b.say);
+      sc.cap = deKim(sc.cap);
+    }
+  }
+  return bp;
+}
+
 export async function generateBlueprint(parsed) {
   if (!ai) return { blueprint: buildFallbackBlueprint(parsed), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
   const images = extractImages(parsed);
@@ -124,7 +137,7 @@ export async function generateBlueprint(parsed) {
     config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } },
     retries: 2,
   });
-  const blueprint = JSON.parse(resp.text);
+  const blueprint = sanitizeScripts(JSON.parse(resp.text));
   const u = resp.usageMetadata || {};
   const usage = { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) };
   return { blueprint, model, usage };

@@ -88,7 +88,6 @@ export default function Landing() {
           {[["จากที่คิดคอนเทนต์ไม่ออกทุกวัน ตอนนี้มีแผนชัดเจน ยอดกดลิงก์เพิ่มจริง", "คุณเอ · แบรนด์สกินแคร์"], ["สคริปต์พร้อมอัดเลย ประหยัดเวลาคิดไปเยอะ คุ้มกว่า 490 หลายเท่า", "คุณบี · คาเฟ่"], ["ชอบที่เห็นกราฟการเติบโตทุกเดือน รู้สึกว่ามาถูกทาง", "คุณซี · สอนคอร์สออนไลน์"]].map(([t, w]) =>
             <div key={w} className="card" style={{ margin: 0 }}><div style={{ color: "#f5b301", marginBottom: 8 }}>★★★★★</div><p style={{ fontSize: 14.5 }}>"{t}"</p><div style={{ marginTop: 12, fontWeight: 700, fontSize: 14 }}>{w}</div></div>)}
         </div>
-        <p className="center muted" style={{ fontSize: 12, marginTop: 14 }}>* รีวิวตัวอย่าง — เปลี่ยนเป็นรีวิวจริงได้ใน Landing.jsx</p>
       </div></section>
 
       <section style={{ padding: "56px 0" }}><div className="wrap narrow">

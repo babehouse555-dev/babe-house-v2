@@ -1,7 +1,7 @@
 :root{--blue:#2E86DE;--blue-d:#1B6FC4;--ink:#16202b;--muted:#6b7787;--bg:#fff;--soft:#F4F8FD;--border:#e7eef6;--cream:#FBF9F4;--up:#1a7f43;--down:#b3261e}
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{font-family:"Noto Sans Thai",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+body{font-family:"Noto Sans Thai",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;overflow-x:hidden;overflow-wrap:break-word}
 a{text-decoration:none;color:inherit}
 .serif{font-family:"Playfair Display",serif}
 .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
@@ -40,3 +40,8 @@ th{font-weight:700;font-size:12px;color:var(--muted)}
 .tag.on{background:#e8f5ee;color:#1a7f43}.tag.off{background:#fdeaea;color:#b3261e}
 .bar-track{height:22px;background:#eef3f9;border-radius:8px;overflow:hidden}
 .bar-fill{height:100%;background:linear-gradient(90deg,#5AA7F0,#2E86DE);border-radius:8px;min-width:3px}
+@media (max-width:600px){
+  .wrap{padding:0 18px}
+  h1.page{font-size:22px;line-height:1.25}
+  .card{padding:18px}
+}

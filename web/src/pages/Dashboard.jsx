@@ -65,6 +65,16 @@ export default function Dashboard() {
 
         {tab === "strategy" && <>
           <div className="card" style={{ background: "var(--soft)", lineHeight: 1.7 }}>{bp.greeting}</div>
+          {demo && <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>🔍 เล่มจริงของคุณจะละเอียดและตรงกว่านี้อีก เพราะ...</div>
+            <ul style={{ paddingLeft: 18, fontSize: 14, lineHeight: 1.8, margin: 0 }}>
+              <li>ครูพี่คิม (AI) <b>อ่านรูปสถิติหลังบ้านจริง</b>ของช่องคุณ — ทุกตัวเลขคือของคุณเอง</li>
+              <li>วิเคราะห์จาก <b>ธุรกิจ เป้าหมาย และปัญหาจริง</b>ที่คุณกรอก ไม่ใช่เทมเพลตกลางๆ</li>
+              <li><b>30 สคริปต์เขียนใหม่ทั้งหมด</b>ให้ตรงกับสินค้า/บริการของคุณ พร้อมอัดได้ทันที</li>
+              <li>ได้ <b>บทวิเคราะห์การเติบโตรายเดือน</b> + แผนอัปเลเวลต่อเนื่อง</li>
+            </ul>
+            <Link className="btn full" to="/form" style={{ marginTop: 12 }}>สร้างเล่มจริงของฉัน · 490฿</Link>
+          </div>}
           {bp.metrics && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 16 }}>
             {[["👁️ ยอดเข้าถึง (Reach)", bp.metrics.reach], ["💙 ผู้ติดตาม", bp.metrics.followers], ["👤 เข้าชมโปรไฟล์", bp.metrics.profile_visits], ["🔗 กดลิงก์ไบโอ", bp.metrics.link_taps], ["⚡ Engagement", bp.metrics.engagement_rate, "%"]].filter(([, v]) => v != null).map(([l, v, suf]) =>
               <div key={l} className="card" style={{ margin: 0, padding: "16px 14px" }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ fontSize: 24, fontWeight: 800, color: "var(--blue)", marginTop: 4 }}>{Number(v).toLocaleString("en-US")}{suf || ""}</div></div>)}

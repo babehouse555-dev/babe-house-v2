@@ -89,8 +89,8 @@ export default function Landing() {
       <header className="center" style={{ background: "linear-gradient(180deg,var(--soft),#fff)", padding: "52px 0 46px" }}>
         <div className="wrap narrow">
           <span style={{ display: "inline-block", background: "#fff", border: "1px solid var(--border)", color: "var(--blue)", fontWeight: 700, fontSize: 13, padding: "7px 16px", borderRadius: 30, marginBottom: 20 }}>🩵 โปรเปิดตัว — กลุ่มแรกเท่านั้น</span>
-          <h1 className="serif" style={{ fontSize: "clamp(26px,5vw,44px)", lineHeight: 1.22, fontWeight: 800 }}>กรอกข้อมูล + แนบ Insight หลังบ้าน<br />รับ<span style={{ color: "var(--blue)" }}>แผนคอนเทนต์ 30 วัน</span> พร้อมสคริปต์และแคปชัน</h1>
-          <p className="muted" style={{ fontSize: "clamp(15px,2.2vw,18px)", maxWidth: 600, margin: "16px auto 22px" }}>ให้ครูพี่คิมวิเคราะห์ช่องของคุณจากข้อมูลจริง แล้วสร้าง Blueprint ที่บอกว่าเดือนนี้ควรพูดเรื่องอะไร ลงคลิปแบบไหน และพาคนดูไปสู่การติดตามหรือซื้อได้ยังไง</p>
+          <h1 className="serif" style={{ fontSize: "clamp(28px,5.4vw,46px)", lineHeight: 1.2, fontWeight: 800 }}>ทำคอนเทนต์มานาน<br />แต่ <span style={{ color: "var(--blue)" }}>ช่องไม่โตสักที?</span></h1>
+          <p className="muted" style={{ fontSize: "clamp(15px,2.2vw,18px)", maxWidth: 600, margin: "16px auto 22px" }}>ให้ครูพี่คิมอ่าน <b>Insight หลังบ้าน</b> ของคุณ แล้ววาง <b>แผนคอนเทนต์ 30 วัน + สคริปต์และแคปชันพร้อมใช้</b> — เปลี่ยนคนดูให้กลายเป็นยอดติดตามและยอดขาย</p>
           <PriceTag big={52} />
           <p className="muted" style={{ fontSize: 13, margin: "8px 0 24px" }}>สำหรับช่วงเปิดตัวเท่านั้น</p>
           <div className="row" style={{ justifyContent: "center" }}>

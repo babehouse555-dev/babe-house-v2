@@ -1,8 +1,27 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import "./styles.css";
 import { captureRef } from "./api.js";
+
+function TopBar() {
+  return (
+    <div style={{ position: "sticky", top: 0, zIndex: 60, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)" }}>
+      <div className="wrap between" style={{ height: 56 }}>
+        <Link to="/" style={{ fontWeight: 800, fontSize: 17 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></Link>
+        <div className="row" style={{ gap: 18 }}>
+          <Link to="/" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>หน้าแรก</Link>
+          <Link to="/account" className="link" style={{ fontSize: 14 }}>บัญชีของฉัน</Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+function Shell({ children }) {
+  const loc = useLocation();
+  // แสดงแถบบนทุกหน้า ยกเว้นหน้า Landing (ซึ่งมี nav ของตัวเอง)
+  return <>{loc.pathname !== "/" && <TopBar />}{children}</>;
+}
 
 class ErrorBoundary extends React.Component {
   constructor(p) { super(p); this.state = { err: null }; }
@@ -35,6 +54,7 @@ captureRef();
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
   <BrowserRouter>
+    <Shell>
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/form" element={<Form />} />
@@ -47,6 +67,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/privacy" element={<Privacy />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Shell>
   </BrowserRouter>
   </ErrorBoundary>
 );

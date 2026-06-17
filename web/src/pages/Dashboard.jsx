@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
@@ -20,6 +20,10 @@ export default function Dashboard() {
   const userId = sp.get("user_id"), cycle = sp.get("billing_cycle"), bpId = sp.get("blueprint_id");
   const [bp, setBp] = useState(demo ? sampleBlueprint() : null);
   const [err, setErr] = useState("");
+  const scriptRef = useRef(null), calRef = useRef(null);
+  // กดวันในปฏิทิน → เลือกวัน + เลื่อนไปที่สคริปต์ทันที (ไม่ต้องเลื่อนยาวเอง)
+  const selectDay = (d) => { setSel(d); setTimeout(() => scriptRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60); };
+  const scrollToCal = () => calRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const [tab, setTab] = useState("strategy");
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
@@ -138,8 +142,8 @@ export default function Dashboard() {
         </>}
 
         {tab === "calendar" && <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
-            {(bp.calendar || []).map(c => <button key={c.d} onClick={() => setSel(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
+          <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
+            {(bp.calendar || []).map(c => <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14 }}>วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
               <div style={{ fontSize: 10, color: G_COLORS[c.g] || "var(--muted)", fontWeight: 700, margin: "2px 0 5px" }}>{c.g}</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.t}</div>
@@ -149,8 +153,8 @@ export default function Dashboard() {
             const BEAT = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
             const copy = (t) => navigator.clipboard?.writeText(t);
             const title = (bp.calendar.find(c => c.d === script.d) || {}).t;
-            return <div className="card">
-              <span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>วันที่ {script.d} · {script.g}</span>
+            return <div ref={scriptRef} className="card" style={{ scrollMarginTop: 70 }}>
+              <div className="between" style={{ marginBottom: 8 }}><span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>วันที่ {script.d} · {script.g}</span><button className="link" onClick={scrollToCal} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer" }}>↑ เลือกวันอื่น</button></div>
               <h3 style={{ margin: "10px 0 4px" }}>{title}</h3>
               <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>🎬 บทพูดอัดคลิป — กดคัดลอกแล้วใช้ได้เลย</p>
               {(script.beats || []).map((b, i) => <div key={i} style={{ borderLeft: `4px solid ${BEAT[b.s] || "var(--blue)"}`, background: "var(--soft)", borderRadius: "0 12px 12px 0", padding: "12px 14px", marginBottom: 10 }}>

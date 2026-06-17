@@ -7,10 +7,10 @@ const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b886
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
 const modH = { display: "flex", alignItems: "center", margin: 0 };
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-// 🔧 LINE Official Account (2 บริการ)
-const LINE_ACADEMY = "@babehouse_academy"; // เรียนคอร์ส
-const LINE_WORK = "@babehouse_work";       // จ้างทำ/Production
-const lineUrl = (id) => `https://line.me/R/ti/p/${encodeURIComponent(id)}`;
+// 🔧 LINE Official Account (2 บริการ) — แนะนำใส่ลิงก์ทางการ "https://lin.ee/xxxx"
+//    จาก LINE OA Manager (โฮม → เพิ่มเพื่อน → คัดลอกลิงก์) จะสแกน/กดได้ชัวร์ที่สุด
+const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%40babehouse_academy" };
+const LINE_WORK = { id: "@babehouse_work", url: "https://line.me/R/ti/p/%40babehouse_work" };
 const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
 const ACADEMY_COURSES = ["📱 All in Your Phone — ตัดต่อในมือถือ (3,745฿)", "🎬 ตัดต่อ Advance — สายเล่าเรื่อง (5,990฿)", "👑 Workshop ตัวต่อตัว"];
 
@@ -190,16 +190,16 @@ export default function Dashboard() {
                 <h3 style={{ margin: "6px 0 4px" }}>เรียนตัดต่อเอง</h3>
                 <p className="muted" style={{ fontSize: 13 }}>มีคอนเทนต์อยู่แล้ว แต่ยังตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม — ทำเองได้ทุกคลิป</p>
                 <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(lineUrl(LINE_ACADEMY))} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY}</div></div>
-                <a href={lineUrl(LINE_ACADEMY)} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
+                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
+                <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
               </div>
               <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755" }}>
                 <div style={{ fontSize: 30 }}>🎬</div>
                 <h3 style={{ margin: "6px 0 4px" }}>ให้เราทำให้ (Production)</h3>
                 <p className="muted" style={{ fontSize: 13 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House Production ตัดต่อ/ทำคอนเทนต์ให้ครบวงจร</p>
                 <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
-                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(lineUrl(LINE_WORK))} alt="LINE Work QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK}</div></div>
-                <a href={lineUrl(LINE_WORK)} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>เพิ่มเพื่อน · จ้างทำให้</a>
+                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_WORK.url)} alt="LINE Work QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK.id}</div></div>
+                <a href={LINE_WORK.url} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>เพิ่มเพื่อน · จ้างทำให้</a>
               </div>
             </div>
           </>;

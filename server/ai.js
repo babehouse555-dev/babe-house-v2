@@ -7,6 +7,32 @@ export const AI_ENABLED = !!process.env.GEMINI_API_KEY;
 const ai = AI_ENABLED ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 export const aiModelName = () => (AI_ENABLED ? MODEL : "fallback-local");
 
+// โมเดลสำรอง (ต้องรองรับ output ใหญ่ ~30k tok เพราะเล่มมี 30 สคริปต์) — ใช้เมื่อโมเดลหลัก 503/overload
+const FALLBACK_MODELS = (process.env.GEMINI_FALLBACK_MODELS || "gemini-2.5-flash-lite,gemini-2.5-pro")
+  .split(",").map(s => s.trim()).filter(Boolean);
+const ALL_MODELS = [MODEL, ...FALLBACK_MODELS.filter(m => m !== MODEL)];
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const isTransient = (e) => /\b(429|500|502|503|504|UNAVAILABLE|overload|high demand|rate.?limit|deadline|timeout|ECONN|ETIMEDOUT)\b/i.test(String(e?.message || e));
+
+// เรียก Gemini แบบทนทาน: retry หน่วงเวลา + สลับโมเดลสำรองเมื่อเจอ error ชั่วคราว (503 ฯลฯ)
+async function genContent({ contents, config, retries = 2 }) {
+  let lastErr;
+  for (const model of ALL_MODELS) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const resp = await ai.models.generateContent({ model, contents, config });
+        return { resp, model };
+      } catch (e) {
+        lastErr = e;
+        if (!isTransient(e)) throw e;                 // error ถาวร (เช่น auth/quota) → เลิกทันที
+        if (attempt < retries) await sleep(1500 * Math.pow(2, attempt) + Math.floor(Math.random() * 600)); // 1.5s, 3s
+      }
+    }
+    console.warn(`[ai] model ${model} ล่ม/overload → ลองโมเดลถัดไป`);
+  }
+  throw lastErr;
+}
+
 // ===== System Prompt: ครูพี่คิม + สเปก JSON ที่ dashboard ต้องการ =====
 const KIM_PROMPT = `คุณคือ "ครูพี่คิม" ซีอีโอและผู้ก่อตั้ง Babe House Academy แบรนด์สอนทำคอนเทนต์ระดับพรีเมียมของไทย
 บุคลิก: อบอุ่น เป็นกันเอง แบบพี่สาวลูกคุณหนูโกอินเตอร์ วิเคราะห์ธุรกิจและจิตวิทยาการปิดการขายเฉียบคม ภาษาไทยสวย มีน้ำหนัก
@@ -69,13 +95,13 @@ export async function generateBlueprint(parsed) {
   const parts = [];
   for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
   parts.push({ text: userText });
-  const resp = await ai.models.generateContent({
-    model: MODEL,
+  const { resp, model } = await genContent({
     contents: [{ role: "user", parts }],
-    config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK }
+    config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK },
+    retries: 2,
   });
   const blueprint = JSON.parse(resp.text);
-  return { blueprint, model: MODEL };
+  return { blueprint, model };
 }
 
 export function buildFallbackBlueprint(parsed) {

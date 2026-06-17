@@ -489,9 +489,34 @@ app.get("*", (req, res) => {
 });
 app.use((err, req, res, next) => { console.error("Unhandled:", err?.message); if (res.headersSent) return next(err); res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "ระบบขัดข้อง" }); });
 
+// ตาข่ายกันพลาด: ลองสร้างเล่มซ้ำให้ order ที่จ่ายแล้วแต่ generation ค้าง error (เช่น Gemini 503 ชั่วคราว)
+// ลูกค้าที่จ่ายเงินต้องได้เล่มเสมอ — จำกัดเฉพาะที่จ่ายภายใน 24 ชม. กันลูปไม่รู้จบ
+async function retryStuckGenerations() {
+  try {
+    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND generation_status='error' AND paid_at > now() - interval '24 hours' LIMIT 5`);
+    for (const o of rows) {
+      const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND generation_status='error'`, [o.order_id]);
+      if (claim.rowCount !== 1) continue;
+      try {
+        const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
+        await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, o.order_id]);
+        console.log(`[retry-gen] order ${o.order_id} สำเร็จ`);
+        if (o.email) {
+          const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`;
+          await sendEmail(o.email, `เล่ม Blueprint เดือน ${o.billing_cycle} พร้อมแล้ว 🩵`, wrap(`ครูพี่คิมวิเคราะห์เสร็จแล้ว เล่มแผน 30 วันพร้อมเปิดดูค่ะ<br><br>${btn(url, "เปิด Dashboard ของฉัน")}`)).catch(() => {});
+        }
+      } catch (e) {
+        console.error(`[retry-gen] order ${o.order_id} ยังไม่สำเร็จ:`, e.message);
+        await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), o.order_id]);
+      }
+    }
+  } catch (e) { console.error("retryStuckGenerations", e.message); }
+}
+
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); }, 30000);
   setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 12 * 3600 * 1000);
+  setInterval(retryStuckGenerations, 5 * 60 * 1000); // ทุก 5 นาที กู้เล่มที่ค้าง error
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

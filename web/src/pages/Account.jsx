@@ -34,7 +34,9 @@ export default function Account() {
     catch (e) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
   function logout() { session.clear(); setData(null); setStep("email"); }
-  function copyRef() { if (ref) navigator.clipboard.writeText(ref.link); }
+  // สร้างลิงก์จาก origin จริงของเบราว์เซอร์ — ถูกเสมอแม้ APP_BASE_URL บนเซิร์ฟเวอร์จะไม่ถูกตั้ง
+  const refLink = ref ? `${window.location.origin}/?ref=${encodeURIComponent(ref.code)}` : "";
+  function copyRef() { if (refLink) navigator.clipboard.writeText(refLink); }
 
   return (
     <div className="wrap narrow page-pad">
@@ -70,7 +72,7 @@ export default function Account() {
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa" }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🎁 ชวนเพื่อน รับส่วนลด</div>
           <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>เพื่อนสมัครผ่านลิงก์คุณ — ได้ลด {ref.percent}% และคุณได้โค้ดลดเดือนถัดไป</div>
-          <div className="row"><input readOnly value={ref.link} style={{ flex: 1, fontSize: 13 }} /><button className="btn" onClick={copyRef} style={{ padding: "11px 16px" }}>คัดลอก</button></div>
+          <div className="row"><input readOnly value={refLink} style={{ flex: 1, fontSize: 13 }} /><button className="btn" onClick={copyRef} style={{ padding: "11px 16px" }}>คัดลอก</button></div>
           <div className="muted" style={{ fontSize: 13, marginTop: 10 }}>แนะนำสำเร็จแล้ว: <b>{ref.count}</b> คน</div>
         </div>}
       </>}

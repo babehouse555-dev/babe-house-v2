@@ -409,6 +409,26 @@ app.get("/api/admin/ai-usage", async (req, res) => {
     all_time: { count: Number(allTime.n), total_tokens: Number(allTime.tot) }
   });
 });
+// สร้างเล่มใหม่ให้ลูกค้า (รีเจนด้วย prompt ล่าสุด) — ระบุ order_id หรือ user_id+billing_cycle
+app.post("/api/admin/regenerate", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  let orderId = String(req.body?.order_id || "");
+  if (!orderId) {
+    const row = await one(`SELECT order_id FROM blueprint_orders WHERE user_id=$1 AND billing_cycle=$2 AND payment_status IN ('paid','mock_paid') ORDER BY created_at DESC LIMIT 1`, [String(req.body?.user_id || ""), String(req.body?.billing_cycle || "")]);
+    orderId = row?.order_id || "";
+  }
+  const o = await getOrder(orderId); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+  if (!["paid", "mock_paid"].includes(o.payment_status)) return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED" });
+  await run(`UPDATE blueprint_orders SET blueprint_id=NULL, generation_status='generating', generation_error=NULL WHERE order_id=$1`, [orderId]);
+  res.json({ ok: true, order_id: orderId, status: "generating" });
+  (async () => {
+    try {
+      const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
+      await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
+      console.log(`[regenerate] order ${orderId} → ${result.blueprintId}`);
+    } catch (e) { console.error("regenerate", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), orderId]); }
+  })();
+});
 async function getStudents(industry) {
   const base = `SELECT r.created_at,r.email,r.instagram_account,r.business_type,r.industry,r.starting_point,r.monthly_goal,r.competitor_1,r.competitor_2,r.billing_cycle,r.user_id,b.blueprint_id FROM blueprint_requests r LEFT JOIN blueprints b ON b.request_id=r.request_id`;
   if (industry) return q(base + ` WHERE r.industry=$1 ORDER BY r.created_at DESC LIMIT 1000`, [industry]);

@@ -7,15 +7,12 @@ const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b886
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
 const modH = { display: "flex", alignItems: "center", margin: 0 };
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-// 🔧 แก้ลิงก์ LINE Official Account ของ Babe House ตรงนี้
-const LINE_URL = "https://line.me/R/ti/p/@babehouse";
-// ไอเท็มเสริม = บริการอื่นของ Babe House (แก้/เพิ่มได้)
-const SERVICES = [
-  { emoji: "📱", name: "คอร์ส All in Your Phone", desc: "ตัดต่อ/วาด/อนิเมชั่นในมือถือ", price: "3,745฿" },
-  { emoji: "🎬", name: "คอร์สตัดต่อ Advance", desc: "สายเล่าเรื่อง ใส่ insert", price: "5,990฿" },
-  { emoji: "👑", name: "Workshop ตัวต่อตัว", desc: "เรียนสดกับทีม Babe House", price: "9,990฿" },
-  { emoji: "🤝", name: "1:1 Consult ครูพี่คิม", desc: "วางกลยุทธ์ช่องแบบเจาะลึก", price: "ทักสอบถาม" },
-];
+// 🔧 LINE Official Account (2 บริการ)
+const LINE_ACADEMY = "@babehouse_academy"; // เรียนคอร์ส
+const LINE_WORK = "@babehouse_work";       // จ้างทำ/Production
+const lineUrl = (id) => `https://line.me/R/ti/p/${encodeURIComponent(id)}`;
+const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
+const ACADEMY_COURSES = ["📱 All in Your Phone — ตัดต่อในมือถือ (3,745฿)", "🎬 ตัดต่อ Advance — สายเล่าเรื่อง (5,990฿)", "👑 Workshop ตัวต่อตัว"];
 
 export default function Dashboard() {
   const [sp] = useSearchParams();
@@ -185,21 +182,25 @@ export default function Dashboard() {
                 {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
               </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>(โหมดตัวอย่าง — ติ๊กได้เมื่อเป็นเล่มจริง)</p>}
             </div>
-            <div className="card"><h3 style={modH}>🎁 ปลดล็อกสกิลเพิ่ม</h3><p className="muted" style={{ fontSize: 13, margin: "6px 0 14px" }}>ไอเท็มเสริมจาก Babe House — อัปสกิลให้คอนเทนต์ปังขึ้นอีกขั้น</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
-                {SERVICES.map(s => <div key={s.name} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 14 }}>
-                  <div style={{ fontSize: 28 }}>{s.emoji}</div>
-                  <div style={{ fontWeight: 700, fontSize: 14, margin: "6px 0 2px" }}>{s.name}</div>
-                  <div className="muted" style={{ fontSize: 12.5 }}>{s.desc}</div>
-                  <div className="between" style={{ marginTop: 10 }}><span style={{ fontWeight: 800, color: "var(--blue)" }}>{s.price}</span><a href={LINE_URL} target="_blank" rel="noreferrer" className="link" style={{ fontSize: 13 }}>ทัก LINE →</a></div>
-                </div>)}
+            <h2 className="serif" style={{ fontSize: 20, margin: "26px 0 4px" }}>🎁 บริการของ Babe House</h2>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>เลือกเส้นทางที่ใช่สำหรับคุณ — อยากเก่งขึ้นเอง หรืออยากให้เราทำให้</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 14 }}>
+              <div className="card" style={{ margin: 0, borderTop: "4px solid var(--blue)" }}>
+                <div style={{ fontSize: 30 }}>🎓</div>
+                <h3 style={{ margin: "6px 0 4px" }}>เรียนตัดต่อเอง</h3>
+                <p className="muted" style={{ fontSize: 13 }}>มีคอนเทนต์อยู่แล้ว แต่ยังตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม — ทำเองได้ทุกคลิป</p>
+                <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
+                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(lineUrl(LINE_ACADEMY))} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY}</div></div>
+                <a href={lineUrl(LINE_ACADEMY)} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
               </div>
-            </div>
-            <div className="card center" style={{ background: "linear-gradient(135deg,#06C755,#04a847)", color: "#fff" }}>
-              <div style={{ fontSize: 28 }}>💚</div>
-              <div style={{ fontWeight: 700, fontSize: 17, margin: "4px 0 4px" }}>มีคำถาม? ทักครูพี่คิมได้เลย</div>
-              <p style={{ opacity: .92, fontSize: 14, marginBottom: 14 }}>ปรึกษาเรื่องคอนเทนต์ / คอร์ส / เวิร์กช็อป ฟรี</p>
-              <a href={LINE_URL} target="_blank" rel="noreferrer" className="btn" style={{ background: "#fff", color: "#06C755" }}>เพิ่มเพื่อนทาง LINE</a>
+              <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755" }}>
+                <div style={{ fontSize: 30 }}>🎬</div>
+                <h3 style={{ margin: "6px 0 4px" }}>ให้เราทำให้ (Production)</h3>
+                <p className="muted" style={{ fontSize: 13 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House Production ตัดต่อ/ทำคอนเทนต์ให้ครบวงจร</p>
+                <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
+                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(lineUrl(LINE_WORK))} alt="LINE Work QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK}</div></div>
+                <a href={lineUrl(LINE_WORK)} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>เพิ่มเพื่อน · จ้างทำให้</a>
+              </div>
             </div>
           </>;
         })()}

@@ -49,8 +49,11 @@ export default function Dashboard() {
 
   return (
     <div>
-      {demo && <div className="center" style={{ position: "sticky", top: 0, zIndex: 99, background: "linear-gradient(135deg,var(--blue),var(--blue-d))", color: "#fff", padding: "12px 16px", fontSize: 14 }}>
-        🎬 <b>นี่คือตัวอย่าง Blueprint</b> — เล่มจริงวิเคราะห์จากช่องคุณโดยเฉพาะ &nbsp; <Link to="/form" style={{ background: "#fff", color: "var(--blue)", fontWeight: 700, padding: "6px 14px", borderRadius: 10 }}>สร้างเล่มของฉัน · 490฿</Link>
+      {demo && <div style={{ position: "sticky", top: 56, zIndex: 50, background: "linear-gradient(135deg,var(--blue),var(--blue-d))", color: "#fff", padding: "10px 14px" }}>
+        <div className="wrap" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 10, maxWidth: 820 }}>
+          <span style={{ fontSize: 13.5, textAlign: "center" }}>🎬 <b>นี่คือตัวอย่าง Blueprint</b> — เล่มจริงวิเคราะห์จากช่องคุณโดยเฉพาะ</span>
+          <Link to="/form" style={{ flexShrink: 0, background: "#fff", color: "var(--blue)", fontWeight: 700, padding: "7px 16px", borderRadius: 10, fontSize: 13.5, whiteSpace: "nowrap" }}>สร้างเล่มของฉัน · 490฿</Link>
+        </div>
       </div>}
       <div className="wrap page-pad" style={{ maxWidth: 820 }}>
         <Link className="link" to={demo ? "/" : "/account"}>← {demo ? "กลับหน้าแรก" : "บัญชีของฉัน"}</Link>

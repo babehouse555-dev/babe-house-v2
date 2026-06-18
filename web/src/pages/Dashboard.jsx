@@ -221,11 +221,11 @@ export default function Dashboard() {
 
         {tab === "calendar" && <>
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
-            {(bp.calendar || []).map(c => <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
-              <div className="between"><span style={{ fontWeight: 800, fontSize: 14 }}>วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
+            {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
+              <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
               <div style={{ fontSize: 10, color: G_COLORS[c.g] || "var(--muted)", fontWeight: 700, margin: "2px 0 5px" }}>{c.g}</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.t}</div>
-            </button>)}
+              <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", color: done ? "#1a7f43" : "inherit" }}>{c.t}</div>
+            </button>; })}
           </div>
           {script && (() => {
             const BEAT = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
@@ -242,8 +242,26 @@ export default function Dashboard() {
               </div>)}
               <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 4 }}><div className="between"><b style={{ fontSize: 13 }}>แคปชั่น & แฮชแท็ก</b><button className="link" onClick={() => copy(script.cap)} style={{ background: "none", border: 0, fontSize: 13 }}>คัดลอก 📋</button></div><p style={{ fontSize: 14, marginTop: 6 }}>{script.cap}</p></div>
               <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 8 }}>💡 ทิปครูพี่คิม: {script.tip}</div>
+              {!demo && <button type="button" onClick={() => toggleDay(script.d)} style={{ width: "100%", marginTop: 14, padding: "14px", borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: uploaded.has(script.d) ? "#1a7f43" : "var(--blue)", boxShadow: uploaded.has(script.d) ? "0 6px 18px rgba(26,127,67,.28)" : "0 6px 18px rgba(46,134,222,.28)" }}>
+                {uploaded.has(script.d) ? "✓ ทำคลิปวันนี้แล้ว! เก่งมากค่ะ 🎉 (กดเพื่อยกเลิก)" : "☐ ทำคลิปนี้เสร็จแล้ว — กดติ๊กเลย!"}
+              </button>}
             </div>;
           })()}
+
+          {!demo && <div className="card" style={{ marginTop: 8, background: "#F4F8FD", border: "1px dashed #c5dcf3" }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>✨ ทำเองเริ่มล้า? ให้ Babe House ช่วยได้</div>
+            <p className="muted" style={{ fontSize: 13.5, margin: "6px 0 14px" }}>มีสคริปต์แล้วแต่ไม่อยากถ่าย/ตัดเอง — เลือกตัวช่วยได้เลยค่ะ</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+              <Link to="/video-audit" style={{ display: "block", textDecoration: "none", color: "inherit", background: "#faf3fc", border: "1px solid #e3cdec", borderRadius: 14, padding: "14px 16px" }}>
+                <div style={{ fontWeight: 800, color: "#6b3fa0" }}>🎬 ให้ AI ตรวจคลิป · 199฿</div>
+                <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>อัปคลิป → บอกจุดต้องแก้ Hook/ภาพ/เสียง/ตัดต่อ →</div>
+              </Link>
+              <a href={LINE_WORK.url} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: "inherit", background: "#eafaf0", border: "1px solid #b6e6c8", borderRadius: 14, padding: "14px 16px" }}>
+                <div style={{ fontWeight: 800, color: "#1a7f43" }}>💬 จ้างทีมตัดต่อ/ทำคลิป</div>
+                <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>ทักไลน์ Babe House Production {LINE_WORK.id} →</div>
+              </a>
+            </div>
+          </div>}
         </>}
 
         {tab === "marathon" && (() => {

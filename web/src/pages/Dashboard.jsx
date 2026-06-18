@@ -128,7 +128,7 @@ export default function Dashboard() {
             <h3 style={{ margin: "0 0 12px" }}>🎴 ช่องของคุณใน 3 วินาที</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
               {bp.snapshot.map((s, i) => {
-                const c = [["#EAF3FD", "#1B6FC4"], ["#e8f5ee", "#1a7f43"], ["#fff7e6", "#8a6d1f"], ["#fdeaea", "#b3261e"], ["#f3edfb", "#6b3fa0"], ["#e6f7f7", "#0a7d77"]][i % 6];
+                const c = [["#ECEAF6", "#6E63A6"], ["#E7EDF8", "#3F6BAE"], ["#E4F4F3", "#2C8E8C"], ["#F3F0F5", "#7E7392"], ["#F7F4EA", "#9A8458"], ["#E9EEF6", "#5573A0"]][i % 6];
                 return <div key={i} style={{ background: c[0], borderRadius: 16, padding: "16px 14px", textAlign: "center" }}>
                   <div style={{ fontSize: 34, lineHeight: 1 }}>{s.emoji}</div>
                   <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, margin: "8px 0 4px", letterSpacing: .2 }}>{s.label}</div>
@@ -176,7 +176,7 @@ export default function Dashboard() {
           </div>
           <div className="card"><h3 style={{ marginBottom: 14 }}>SWOT</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 }}>
-              {[["จุดแข็ง", bp.swot?.strengths, "💪", "#e8f5ee", "#1a7f43"], ["จุดอ่อน", bp.swot?.weaknesses, "⚠️", "#fdeaea", "#b3261e"], ["โอกาส", bp.swot?.opportunities, "🚀", "#eaf3fd", "#1B6FC4"], ["ความเสี่ยง", bp.swot?.threats, "🛡️", "#fff7e6", "#8a6d1f"]].map(([l, arr, ic, bg, fg]) =>
+              {[["จุดแข็ง", bp.swot?.strengths, "💪", "#E4F4F3", "#2C8E8C"], ["จุดอ่อน", bp.swot?.weaknesses, "⚠️", "#F3F0F5", "#7E7392"], ["โอกาส", bp.swot?.opportunities, "🚀", "#E7EDF8", "#3F6BAE"], ["ความเสี่ยง", bp.swot?.threats, "🛡️", "#F7F4EA", "#9A8458"]].map(([l, arr, ic, bg, fg]) =>
                 <div key={l} style={{ background: bg, borderRadius: 14, padding: "14px 16px" }}>
                   <div style={{ fontWeight: 700, color: fg, marginBottom: 8 }}>{ic} {l}</div>
                   <ul style={{ paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6, margin: 0 }}>{(arr || []).map((x, i) => <li key={i} style={{ marginBottom: 4 }}>{x}</li>)}</ul>

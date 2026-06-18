@@ -146,7 +146,7 @@ const CheckoutSchema = z.object({
   payload: z.object({
     user_id: z.string().min(1), instagram_account: z.string().min(1), email: z.string().email().optional(), referred_by: z.string().optional(),
     meta_purchase: z.object({ tier: z.literal("Premium_490"), billing_cycle: z.string().min(1) }),
-    form_responses: z.object({ business_type: z.string().min(1), starting_point: z.string().min(1), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default("") }),
+    form_responses: z.object({ business_type: z.string().min(1), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default("") }),
     insight_screenshot_base64: z.string().nullable().optional(), insight_images: z.array(z.string()).max(8).optional()
   })
 }).passthrough();

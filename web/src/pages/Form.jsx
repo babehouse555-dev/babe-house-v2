@@ -97,11 +97,26 @@ function GuideContent({ k, onFill }) {
   );
 }
 
+// กดเลือกเป็นหลัก (ไม่ต้องพิมพ์) แต่ให้ context ลึกกับ AI
+const WORK_STYLES = ["ฟรีแลนซ์ / ทำคนเดียว", "มีร้าน / หน้าร้าน", "ทำที่บ้าน", "มีทีมงาน", "ขายออนไลน์เป็นหลัก"];
+const AUDIENCES = ["ผู้หญิงวัยทำงาน", "นักเรียน/นักศึกษา", "เจ้าของธุรกิจ/แม่ค้า", "คุณแม่", "วัยรุ่น", "ผู้ชาย", "สายสุขภาพ/ความงาม"];
+const EXPERIENCES = ["เพิ่งเริ่มทำ", "ไม่ถึง 1 ปี", "1–3 ปี", "มากกว่า 3 ปี"];
+const GOALS = ["ยอดขาย / ลูกค้าเพิ่ม", "คนติดตามเพิ่ม", "คนรู้จักมากขึ้น", "สร้างความน่าเชื่อถือ/ตัวตน"];
+
+function ChipGroup({ options, value, onChange, multi }) {
+  const sel = multi ? (Array.isArray(value) ? value : []) : value;
+  const on = (o) => multi ? sel.includes(o) : sel === o;
+  const toggle = (o) => multi ? onChange(sel.includes(o) ? sel.filter(x => x !== o) : [...sel, o]) : onChange(sel === o ? "" : o);
+  return <div className="row" style={{ gap: 8 }}>
+    {options.map(o => <button type="button" key={o} onClick={() => toggle(o)} style={{ border: on(o) ? "1.5px solid var(--blue)" : "1px solid var(--border)", background: on(o) ? "#EAF3FD" : "#fff", color: on(o) ? "var(--blue-d)" : "var(--ink)", fontWeight: on(o) ? 700 : 500, fontSize: 14, padding: "8px 14px", borderRadius: 20, cursor: "pointer" }}>{on(o) ? "✓ " : ""}{o}</button>)}
+  </div>;
+}
+
 export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", starting_point: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", work_style: "", audience: [], experience: "", goal_primary: "", starting_point: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -115,12 +130,14 @@ export default function Form() {
   }, []);
 
   const upd = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
+  const setVal = (k, val) => setF(v => ({ ...v, [k]: val }));
   const fillExample = (k) => { setF(v => ({ ...v, [k]: GUIDE[k].example })); };
   // props ช่วยใส่ onFocus + render guide ใต้ช่อง (มือถือ)
   const fieldProps = (k) => ({ onFocus: () => setFocus(k) });
 
   async function submit(e) {
     e.preventDefault();
+    if (!f.business_type.trim() || !f.work_style || !(f.audience || []).length || !f.experience || !f.goal_primary) { setErr("ช่วยกรอก/เลือกข้อที่มี ⭐ ให้ครบนะคะ (แค่กดเลือกก็พอ)"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
     setBusy(true); setErr("");
     try {
@@ -130,7 +147,11 @@ export default function Form() {
         user_id: userId, email: f.email.trim().toLowerCase(), referred_by: getRef(),
         meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
         instagram_account: f.instagram_account,
-        form_responses: { business_type: f.business_type, starting_point: f.starting_point, monthly_goal: f.monthly_goal, competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name },
+        form_responses: {
+          business_type: f.business_type, work_style: f.work_style, audience: (f.audience || []).join(", "), experience: f.experience, goal_primary: f.goal_primary,
+          monthly_goal: `${f.goal_primary}${f.monthly_goal ? " — " + f.monthly_goal : ""}`.trim(),
+          starting_point: f.starting_point, competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name
+        },
         insight_images: images, insight_screenshot_base64: images[0] || null
       };
       const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
@@ -163,11 +184,17 @@ export default function Form() {
 
               <div className="field"><label>Instagram / TikTok Account</label><input required value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}</div>
 
-              <div className="field"><label>ประเภทธุรกิจ</label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น สถาบันสอน / เจ้าของแบรนด์ / คลินิก" />{inlineGuide("business_type")}</div>
+              <div className="field"><label>คุณทำอะไร / ขายอะไร? <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น ช่างทำผมฟรีแลนซ์ / ร้านเสื้อผ้าวินเทจ / สอนทำขนม" />{inlineGuide("business_type")}</div>
 
-              <div className="field"><label>จุดตั้งต้น / ปัญหาหลังบ้านเดือนนี้</label><textarea required value={f.starting_point} onChange={upd("starting_point")} {...fieldProps("starting_point")} style={{ minHeight: 100 }} placeholder="เช่น คนส่องโปรไฟล์เยอะ แต่กดลิงก์น้อย" />{inlineGuide("starting_point")}</div>
+              <div className="field"><label>ทำงานแบบไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} /></div>
 
-              <div className="field"><label>เป้าหมายประจำเดือน</label><textarea required value={f.monthly_goal} onChange={upd("monthly_goal")} {...fieldProps("monthly_goal")} style={{ minHeight: 90 }} placeholder="เช่น เพิ่มยอดสมัครคอร์ส / อุดรอยรั่ว Link-in-bio" />{inlineGuide("monthly_goal")}</div>
+              <div className="field"><label>ลูกค้า/คนดูหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi /></div>
+
+              <div className="field"><label>ทำมานานแค่ไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={EXPERIENCES} value={f.experience} onChange={v => setVal("experience", v)} /></div>
+
+              <div className="field"><label>เดือนนี้อยากได้อะไรมากที่สุด? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} /></div>
+
+              <div className="field"><label>อยากให้ครูพี่คิมรู้อะไรเพิ่ม? <span className="muted">(ไม่บังคับ — ยิ่งเล่า ยิ่งตรงใจ)</span></label><textarea value={f.starting_point} onChange={upd("starting_point")} {...fieldProps("starting_point")} style={{ minHeight: 90 }} placeholder="เช่น จุดเริ่มต้นที่ทำ · ปัญหาตอนนี้ · อยากโตไปทางไหน (เล่าสั้นๆ ก็ได้)" />{inlineGuide("starting_point")}</div>
 
               <div className="field"><label>คู่แข่งช่องที่ 1 <span className="muted">(Optional)</span></label><input value={f.competitor_1} onChange={upd("competitor_1")} {...fieldProps("competitor_1")} placeholder="เว้นว่างได้ เดี๋ยว AI วิเคราะห์ให้" />{inlineGuide("competitor_1")}</div>
 

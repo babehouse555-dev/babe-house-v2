@@ -159,6 +159,7 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_req_cycle ON blueprint_requests(billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_bp_user_cycle ON blueprints(user_id, billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_orders_email ON blueprint_orders(email);
+    ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
   `);
   console.log("[db] schema ready");
 }

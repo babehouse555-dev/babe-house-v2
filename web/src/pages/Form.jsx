@@ -98,7 +98,7 @@ function GuideContent({ k, onFill }) {
 }
 
 // กดเลือกเป็นหลัก (ไม่ต้องพิมพ์) แต่ให้ context ลึกกับ AI
-const WORK_STYLES = ["ฟรีแลนซ์ / ทำคนเดียว", "มีร้าน / หน้าร้าน", "ทำที่บ้าน", "มีทีมงาน", "ขายออนไลน์เป็นหลัก"];
+const WORK_STYLES = ["ฟรีแลนซ์ / ทำคนเดียว", "มีร้าน / หน้าร้าน", "ทำที่บ้าน", "มีทีมงาน", "ขายออนไลน์เป็นหลัก", "พนักงานประจำ", "รับราชการ / หน่วยงาน"];
 const AUDIENCES = ["ผู้หญิงวัยทำงาน", "นักเรียน/นักศึกษา", "เจ้าของธุรกิจ/แม่ค้า", "คุณแม่", "วัยรุ่น", "ผู้ชาย", "สายสุขภาพ/ความงาม"];
 const EXPERIENCES = ["เพิ่งเริ่มทำ", "ไม่ถึง 1 ปี", "1–3 ปี", "มากกว่า 3 ปี"];
 const GOALS = ["ยอดขาย / ลูกค้าเพิ่ม", "คนติดตามเพิ่ม", "คนรู้จักมากขึ้น", "สร้างความน่าเชื่อถือ/ตัวตน"];
@@ -116,7 +116,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", work_style: "", audience: [], experience: "", goal_primary: "", starting_point: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -137,7 +137,9 @@ export default function Form() {
 
   async function submit(e) {
     e.preventDefault();
-    if (!f.business_type.trim() || !f.work_style || !(f.audience || []).length || !f.experience || !f.goal_primary) { setErr("ช่วยกรอก/เลือกข้อที่มี ⭐ ให้ครบนะคะ (แค่กดเลือกก็พอ)"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    const wsOk = f.work_style || f.work_style_other.trim();
+    const audOk = (f.audience || []).length || f.audience_other.trim();
+    if (!f.business_type.trim() || !wsOk || !audOk || !f.experience || !f.goal_primary) { setErr("ช่วยกรอก/เลือกข้อที่มี ⭐ ให้ครบนะคะ (แค่กดเลือกก็พอ)"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
     setBusy(true); setErr("");
     try {
@@ -148,9 +150,13 @@ export default function Form() {
         meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
         instagram_account: f.instagram_account,
         form_responses: {
-          business_type: f.business_type, work_style: f.work_style, audience: (f.audience || []).join(", "), experience: f.experience, goal_primary: f.goal_primary,
-          monthly_goal: `${f.goal_primary}${f.monthly_goal ? " — " + f.monthly_goal : ""}`.trim(),
-          starting_point: f.starting_point, competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name
+          business_type: f.business_type,
+          work_style: [f.work_style, f.work_style_other.trim()].filter(Boolean).join(" / "),
+          audience: [...(f.audience || []), f.audience_other.trim()].filter(Boolean).join(", "),
+          experience: f.experience, goal_primary: f.goal_primary,
+          monthly_goal: `${f.goal_primary}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
+          starting_point: [f.q_origin && `จุดเริ่มต้น/ทำไมถึงทำ: ${f.q_origin}`, f.q_diff && `จุดที่ต่างจากคนอื่น: ${f.q_diff}`, f.q_vision && `อยากโต/เป้าหมายระยะยาว: ${f.q_vision}`].filter(Boolean).join("\n"),
+          competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name
         },
         insight_images: images, insight_screenshot_base64: images[0] || null
       };
@@ -186,15 +192,23 @@ export default function Form() {
 
               <div className="field"><label>คุณทำอะไร / ขายอะไร? <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น ช่างทำผมฟรีแลนซ์ / ร้านเสื้อผ้าวินเทจ / สอนทำขนม" />{inlineGuide("business_type")}</div>
 
-              <div className="field"><label>ทำงานแบบไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} /></div>
+              <div className="field"><label>ทำงานแบบไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} /><input value={f.work_style_other} onChange={upd("work_style_other")} onFocus={() => setFocus(null)} placeholder="ไม่มีที่ตรง? พิมพ์เองได้เลย เช่น พนักงานบริษัท + ทำขายของข้างๆ" style={{ marginTop: 10 }} /></div>
 
-              <div className="field"><label>ลูกค้า/คนดูหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi /></div>
+              <div className="field"><label>ลูกค้า/คนดูหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi /><input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} placeholder="ลูกค้าเฉพาะของคุณ? พิมพ์เองได้ เช่น เจ้าของร้านกาแฟ / สายมูเตลู / คนเลี้ยงแมว" style={{ marginTop: 10 }} /></div>
 
               <div className="field"><label>ทำมานานแค่ไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={EXPERIENCES} value={f.experience} onChange={v => setVal("experience", v)} /></div>
 
               <div className="field"><label>เดือนนี้อยากได้อะไรมากที่สุด? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} /></div>
 
-              <div className="field"><label>อยากให้ครูพี่คิมรู้อะไรเพิ่ม? <span className="muted">(ไม่บังคับ — ยิ่งเล่า ยิ่งตรงใจ)</span></label><textarea value={f.starting_point} onChange={upd("starting_point")} {...fieldProps("starting_point")} style={{ minHeight: 90 }} placeholder="เช่น จุดเริ่มต้นที่ทำ · ปัญหาตอนนี้ · อยากโตไปทางไหน (เล่าสั้นๆ ก็ได้)" />{inlineGuide("starting_point")}</div>
+              <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", border: "1px dashed #e0b85b", margin: "4px 0 14px" }}>
+                💛 <b>3 ข้อนี้ไม่บังคับ แต่คือหัวใจที่ทำให้เล่ม "เป็นคุณคนเดียว"</b> — ปุ่มข้างบนบอกว่าคุณ "ทำอะไร" ส่วน 3 ข้อนี้บอกว่าคุณ "เป็นใคร" เล่าสั้นๆ เหมือนคุยกับเพื่อนก็พอค่ะ
+              </div>
+
+              <div className="field"><label>1. อะไรทำให้คุณเริ่มทำสิ่งนี้? <span className="muted">(จุดเริ่มต้น/แรงบันดาลใจ)</span></label><textarea value={f.q_origin} onChange={upd("q_origin")} onFocus={() => setFocus(null)} style={{ minHeight: 70 }} placeholder="เช่น เริ่มจากชอบแต่งหน้าให้เพื่อน เลยลองรับงานจริง / เคยเป็นคนไม่มั่นใจ อยากช่วยให้คนอื่นกล้าเป็นตัวเอง" /></div>
+
+              <div className="field"><label>2. อะไรที่ทำให้คุณต่างจากคนอื่นในสายเดียวกัน? <span className="muted">(จุดเด่น/ของดี)</span></label><textarea value={f.q_diff} onChange={upd("q_diff")} onFocus={() => setFocus(null)} style={{ minHeight: 70 }} placeholder="เช่น สอนแบบจับมือทำจริงไม่ทิ้งกลางทาง / ใช้ของออร์แกนิกล้วน / ราคาเข้าถึงง่ายกว่าเจ้าอื่น" /></div>
+
+              <div className="field"><label>3. อยากให้ช่อง/ธุรกิจโตไปถึงไหน? <span className="muted">(ความฝัน/เป้าหมายระยะยาว)</span></label><textarea value={f.q_vision} onChange={upd("q_vision")} onFocus={() => setFocus(null)} style={{ minHeight: 70 }} placeholder="เช่น อยากมีคอร์สเป็นของตัวเอง / เปิดร้านสาขา 2 / เป็นที่รู้จักทั่วประเทศ" /></div>
 
               <div className="field"><label>คู่แข่งช่องที่ 1 <span className="muted">(Optional)</span></label><input value={f.competitor_1} onChange={upd("competitor_1")} {...fieldProps("competitor_1")} placeholder="เว้นว่างได้ เดี๋ยว AI วิเคราะห์ให้" />{inlineGuide("competitor_1")}</div>
 

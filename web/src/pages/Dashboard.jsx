@@ -231,17 +231,17 @@ export default function Dashboard() {
           {(improveCount >= 1
             ? <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc" }}><div style={{ fontWeight: 700, color: "#1a7f43" }}>✓ เพิ่มข้อมูลแล้ว — ครูพี่คิมอัปเดตเล่มให้ใหม่เรียบร้อยค่ะ 🩵</div></div>
             : <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
-                {!improveOpen ? <>
+                {!improveOpen ? <div className="center">
                   <div style={{ fontWeight: 800, fontSize: 17, color: "var(--blue-d)" }}>💎 อยากให้ครูพี่คิมเข้าใจคุณมากขึ้น?</div>
-                  <p className="muted" style={{ fontSize: 14, margin: "6px 0 12px" }}>เล่าเรื่องตัวเอง สินค้า หรือสิ่งที่อยากขายเพิ่ม แล้วครูพี่คิมจะ<b>เจนเล่มใหม่ให้แม่นและเป็นคุณมากขึ้น</b> — <b style={{ color: "var(--up)" }}>ฟรี 1 ครั้ง</b> 🎁</p>
+                  <p className="muted" style={{ fontSize: 14, margin: "6px auto 12px", maxWidth: 520 }}>เล่าเรื่องตัวเอง สินค้า หรือสิ่งที่อยากขายเพิ่ม แล้วครูพี่คิมจะ<b>เจนเล่มใหม่ให้แม่นและเป็นคุณมากขึ้น</b> — <b style={{ color: "var(--up)" }}>ฟรี 1 ครั้ง</b> 🎁</p>
                   <button className="btn" onClick={() => setImproveOpen(true)}>เพิ่มข้อมูลให้แม่นขึ้น (ฟรี) →</button>
-                </> : <>
+                </div> : <>
                   <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>💎 เล่าเพิ่มให้ครูพี่คิมฟัง</div>
                   <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) แล้วกดเจนใหม่ — ใช้สิทธิ์ฟรีนี้ได้ครั้งเดียว</p>
                   {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "คอนเทนต์แนวที่ชอบ/อยากได้", "เช่น สายเล่าเรื่องจริงจากชีวิต ไม่เอาสายตลก"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
                     <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 64 }} placeholder={ph} /></div>)}
                   {improveErr && <div className="msg err">{improveErr}</div>}
-                  <div className="row" style={{ gap: 10 }}>
+                  <div className="row" style={{ gap: 10, justifyContent: "center" }}>
                     <button className="btn" disabled={improving} onClick={submitImprove}>{improving ? "ครูพี่คิมกำลังเจนใหม่... (~1 นาที)" : "เจนเล่มใหม่ให้แม่นขึ้น 🩵"}</button>
                     {!improving && <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>ยกเลิก</button>}
                   </div>

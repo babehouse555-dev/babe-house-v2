@@ -134,6 +134,7 @@ export default function Form() {
         insight_images: images, insight_screenshot_base64: images[0] || null
       };
       const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
+      if (r.existing) alert(r.message || "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ — เปิดเล่มเดิมให้นะคะ (1 อีเมล สร้างได้ 1 เล่ม/เดือน)");
       nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);
     } catch (e2) { setErr(e2.message); setBusy(false); }
   }

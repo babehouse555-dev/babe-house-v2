@@ -97,6 +97,12 @@ async function upsertCustomer(email, ig) {
     ON CONFLICT (email) DO UPDATE SET instagram_account=COALESCE(NULLIF(EXCLUDED.instagram_account,''),customers.instagram_account), updated_at=now()`, [e, ig || ""]);
 }
 async function getOrder(id) { return one(`SELECT * FROM blueprint_orders WHERE order_id=$1`, [id]); }
+// กันซ้ำ: 1 อีเมล = 1 เล่ม/รอบเดือน — คืนเล่มที่มีอยู่แล้ว (ถ้ามี) จะได้ไม่เจนซ้ำ/ไม่กินโค้ดซ้ำ
+async function existingBlueprintForEmail(email, cycle) {
+  const e = normEmail(email); if (!e || !cycle) return null;
+  return one(`SELECT order_id, user_id, billing_cycle, blueprint_id FROM blueprint_orders WHERE email=$1 AND billing_cycle=$2 AND blueprint_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [e, cycle]);
+}
+const dashUrlOf = (o) => `/dashboard?user_id=${encodeURIComponent(o.user_id)}&billing_cycle=${encodeURIComponent(o.billing_cycle)}&blueprint_id=${encodeURIComponent(o.blueprint_id)}`;
 
 // ---------- email (Resend) ----------
 async function sendEmail(to, subject, html) {
@@ -152,6 +158,9 @@ app.post("/api/checkout", async (req, res) => {
   try {
     const parsed = CheckoutSchema.parse(req.body);
     const payload = normalizePayload(parsed.payload);
+    // กันซ้ำ: ถ้าอีเมลนี้มีเล่มของรอบเดือนนี้แล้ว → เด้งไปเล่มเดิม ไม่สร้าง order/เจนใหม่
+    const dup = await existingBlueprintForEmail(payload.email, payload.meta_purchase.billing_cycle);
+    if (dup) return res.json({ ok: true, existing: true, order_id: dup.order_id, checkout_url: dashUrlOf(dup), redirect_url: dashUrlOf(dup), message: "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ" });
     const orderId = uid("ord");
     await upsertUser({ user_id: payload.user_id, instagram_account: payload.instagram_account, business_type: payload.form_responses.business_type });
     await upsertCustomer(payload.email, payload.instagram_account);
@@ -189,6 +198,8 @@ async function applyCode(req, res) {
   const orderId = String(req.body?.order_id || ""), code = String(req.body?.code || "").trim().toUpperCase();
   const o = await getOrder(orderId); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, already: true, free: true, redirect_url: `/processing?order_id=${encodeURIComponent(orderId)}` });
+  const dupCode = await existingBlueprintForEmail(o.email, o.billing_cycle);
+  if (dupCode) return res.json({ ok: true, existing: true, free: true, redirect_url: dashUrlOf(dupCode), message: "อีเมลนี้มีเล่มของเดือนนี้แล้ว ใช้โค้ดซ้ำไม่ได้ค่ะ" });
   const row = await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]);
   if (!row || !row.active) return res.status(400).json({ ok: false, error: "INVALID_CODE", message: "โค้ดไม่ถูกต้องหรือถูกปิด" });
   const upd = await run(`UPDATE promo_codes SET used_count=used_count+1 WHERE code=$1 AND active=1 AND (max_uses IS NULL OR used_count<max_uses)`, [code]);
@@ -219,6 +230,8 @@ app.post("/api/create-payment-session", async (req, res) => {
   try {
     const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
     if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, redirect_url: `/processing?order_id=${encodeURIComponent(o.order_id)}` });
+    const dupPay = await existingBlueprintForEmail(o.email, o.billing_cycle);
+    if (dupPay) return res.json({ ok: true, existing: true, redirect_url: dashUrlOf(dupPay), message: "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ" });
     const amount = o.final_amount_satang || PRICE_SATANG;
     if (o.provider === "stripe") {
       // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ

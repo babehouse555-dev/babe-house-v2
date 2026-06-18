@@ -547,9 +547,10 @@ app.use((err, req, res, next) => { console.error("Unhandled:", err?.message); if
 // ลูกค้าที่จ่ายเงินต้องได้เล่มเสมอ — จำกัดเฉพาะที่จ่ายภายใน 24 ชม. กันลูปไม่รู้จบ
 async function retryStuckGenerations() {
   try {
-    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND generation_status='error' AND paid_at > now() - interval '24 hours' LIMIT 5`);
+    // กู้ทั้ง: (ก) error  (ข) ค้าง 'generating' นานเกิน 8 นาที (เช่น โดน deploy/รีสตาร์ทตัดกลางคัน)
+    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND (generation_status='error' OR (generation_status='generating' AND paid_at < now() - interval '8 minutes')) AND paid_at > now() - interval '24 hours' LIMIT 5`);
     for (const o of rows) {
-      const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND generation_status='error'`, [o.order_id]);
+      const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND generation_status IN ('error','generating')`, [o.order_id]);
       if (claim.rowCount !== 1) continue;
       try {
         const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
@@ -571,6 +572,7 @@ const PORT = Number(process.env.PORT || 3000);
 initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); }, 30000);
+  setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
   setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 12 * 3600 * 1000);
-  setInterval(retryStuckGenerations, 5 * 60 * 1000); // ทุก 5 นาที กู้เล่มที่ค้าง error
+  setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

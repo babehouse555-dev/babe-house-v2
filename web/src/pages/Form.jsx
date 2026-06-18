@@ -140,9 +140,7 @@ export default function Form() {
 
   async function submit(e) {
     e.preventDefault();
-    const wsOk = f.work_style || f.work_style_other.trim();
-    const audOk = (f.audience || []).length || f.audience_other.trim();
-    if (!f.business_type.trim() || !wsOk || !audOk || !f.experience || !f.goal_primary) { setErr("ช่วยกรอก/เลือกข้อที่มี ⭐ ให้ครบนะคะ (แค่กดเลือกก็พอ)"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (!f.business_type.trim() || !f.instagram_account.trim()) { setErr("ช่วยกรอกช่อง ⭐ ให้ครบนะคะ (แฮนเดิล + ช่องเกี่ยวกับอะไร) — ที่เหลือไม่บังคับค่ะ"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
     setBusy(true); setErr("");
     try {
@@ -157,7 +155,7 @@ export default function Form() {
           work_style: [f.work_style, f.work_style_other.trim()].filter(Boolean).join(" / "),
           audience: [...(f.audience || []), f.audience_other.trim()].filter(Boolean).join(", "),
           experience: f.experience, goal_primary: f.goal_primary,
-          monthly_goal: `${f.goal_primary}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
+          monthly_goal: `${f.goal_primary || "(ไม่ได้ระบุ — ให้ครูพี่คิมวิเคราะห์เป้าหมายที่เหมาะสมจากช่อง/รูป Insight)"}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
           starting_point: [f.q_origin && `จุดเริ่มต้น/ทำไมถึงทำ: ${f.q_origin}`, f.q_diff && `จุดที่ต่างจากคนอื่น: ${f.q_diff}`, f.q_vision && `อยากโต/เป้าหมายระยะยาว: ${f.q_vision}`].filter(Boolean).join("\n"),
           competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name
         },
@@ -181,8 +179,8 @@ export default function Form() {
           <div className="brand">BABE HOUSE · AI CREATOR BLUEPRINT</div>
           <h1 className="page">{renew ? `เพิ่มแผนเดือนใหม่ (${currentCycle().replace("_", " ")})` : "สร้างเล่มแผนคอนเทนต์ส่วนตัว"}</h1>
           <p className="sub">{renew ? "ต่อแผนเดือนนี้เพื่อปลดล็อกตารางคอนเทนต์ 30 วันใหม่ และเทียบความคืบหน้า 🩵" : "กรอกข้อมูล + แนบ Insight หลังบ้าน → ชำระเงิน → AI วิเคราะห์เป็น Dashboard ส่วนตัว"}</p>
-          <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", border: "1px dashed #e0b85b", marginBottom: 16 }}>
-            ✍️ <b>กรอกยิ่งละเอียด ผลลัพธ์ยิ่งแม่น</b> — คลิกที่แต่ละช่อง จะมีตัวอย่าง + ไกด์ช่วยกรอกให้ค่ะ
+          <div className="msg" style={{ background: "#eef7f0", color: "#1a7f43", border: "1px dashed #9ed3b0", marginBottom: 16 }}>
+            ⚡ <b>กรอกแค่ 3 ช่อง + แนบรูป Insight ก็เริ่มได้เลย!</b> (ใช้เวลาแป๊บเดียว) — ส่วนที่เหลือ <b>ไม่บังคับสักข้อ</b> อยากให้แม่นขึ้นค่อยเล่าเพิ่ม 🩵
           </div>
           <Link className="btn full" to="/account" style={{ marginBottom: 18 }}>นักเรียนเก่า Log in →</Link>
           <form onSubmit={submit}>
@@ -191,24 +189,29 @@ export default function Form() {
 
               <div className="field"><label>ชื่อที่อยากให้ครูพี่คิมเรียก <span className="muted">(ไม่บังคับ)</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="เช่น พี่มะปราง / Namo" /><div className="hint">ครูพี่คิมจะทักด้วยชื่อนี้ในเล่ม — เว้นว่างได้ จะเรียก "คุณ" แทน</div></div>
 
-              <div className="field"><label>Instagram / TikTok Account</label><input required value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}</div>
+              <div className="field"><label>Instagram / TikTok Account <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}</div>
 
               <div className="field"><label>ช่องของคุณเกี่ยวกับอะไร? <span className="muted">(ทำคอนเทนต์แนวไหน)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่" />{inlineGuide("business_type")}</div>
 
-              <div className="field"><label>ตอนนี้คุณเป็น...? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} />
+              <div style={{ borderTop: "1px dashed var(--border)", margin: "20px 0 16px", paddingTop: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>✨ เล่าเพิ่มให้ครูพี่คิมแม่นขึ้น</div>
+                <div className="muted" style={{ fontSize: 13.5, marginTop: 4 }}>ทั้งหมดข้างล่างนี้ <b>ไม่บังคับสักข้อ</b> — กดข้ามไปจ่ายเลยก็ได้ แต่ยิ่งใส่ AI ยิ่งวิเคราะห์ตรงคุณ (ปุ่มแค่กด ไม่ต้องพิมพ์)</div>
+              </div>
+
+              <div className="field"><label>ตอนนี้คุณเป็น...?</label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} />
                 {(showWSOther || f.work_style_other) ? <input value={f.work_style_other} onChange={upd("work_style_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น พนักงานบริษัท + ขายของออนไลน์ข้างๆ" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowWSOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}
               </div>
 
-              <div className="field"><label>คนดู/ผู้ติดตามหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi />
+              <div className="field"><label>คนดู/ผู้ติดตามหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi />
                 {(showAudOther || f.audience_other) ? <input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น สายมูเตลู / คนเลี้ยงแมว / เด็กมหาลัยปี 1" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowAudOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}
               </div>
 
-              <div className="field"><label>ทำมานานแค่ไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={EXPERIENCES} value={f.experience} onChange={v => setVal("experience", v)} /></div>
+              <div className="field"><label>ทำมานานแค่ไหน?</label><ChipGroup options={EXPERIENCES} value={f.experience} onChange={v => setVal("experience", v)} /></div>
 
-              <div className="field"><label>เดือนนี้อยากได้อะไรมากที่สุด? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} /></div>
+              <div className="field"><label>เดือนนี้อยากได้อะไรมากที่สุด?</label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} /></div>
 
               <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", border: "1px dashed #e0b85b", margin: "4px 0 14px" }}>
-                💛 <b>3 ข้อนี้ไม่บังคับ แต่คือหัวใจที่ทำให้เล่ม "เป็นคุณคนเดียว"</b> — ปุ่มข้างบนบอกว่าคุณ "ทำอะไร" ส่วน 3 ข้อนี้บอกว่าคุณ "เป็นใคร" เล่าสั้นๆ เหมือนคุยกับเพื่อนก็พอค่ะ
+                💛 <b>3 ข้อนี้คือหัวใจที่ทำให้เล่ม "เป็นคุณคนเดียว"</b> (ไม่บังคับ) — ปุ่มข้างบนบอกว่าคุณ "ทำอะไร" ส่วน 3 ข้อนี้บอกว่าคุณ "เป็นใคร" เล่าสั้นๆ เหมือนคุยกับเพื่อนก็พอค่ะ
               </div>
 
               <div className="field"><label>1. อะไรทำให้คุณเริ่มทำสิ่งนี้? <span className="muted">(จุดเริ่มต้น/แรงบันดาลใจ)</span></label><textarea value={f.q_origin} onChange={upd("q_origin")} onFocus={() => setFocus(null)} style={{ minHeight: 70 }} placeholder="เช่น เริ่มจากชอบแต่งหน้าให้เพื่อน เลยลองรับงานจริง / เคยเป็นคนไม่มั่นใจ อยากช่วยให้คนอื่นกล้าเป็นตัวเอง" /></div>

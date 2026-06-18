@@ -624,7 +624,11 @@ async function runHomeworkReminders() {
 }
 app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(); const homework = await runHomeworkReminders(); res.json({ ok: true, sent, homework, cycle: currentBillingCycle() }); });
 
-app.get("/api/health", (req, res) => res.json({ ok: true, service: "babe-house-v2", ai: aiModelName(), payment_provider: PROVIDER, email: EMAIL_ENABLED ? "resend" : "dev", time: new Date().toISOString() }));
+app.get("/api/health", (req, res) => {
+  const sk = String(process.env.STRIPE_SECRET_KEY || "");
+  const stripe_mode = sk.startsWith("sk_live_") ? "live" : sk.startsWith("sk_test_") ? "test" : "none";
+  res.json({ ok: true, service: "babe-house-v2", ai: aiModelName(), payment_provider: PROVIDER, stripe_mode, stripe_webhook: process.env.STRIPE_WEBHOOK_SECRET ? "set" : "missing", email: EMAIL_ENABLED ? "resend" : "dev", time: new Date().toISOString() });
+});
 
 // ---------- serve React build (SPA fallback) ----------
 app.use(express.static(WEB_DIST));

@@ -305,7 +305,7 @@ app.get("/api/blueprints/latest", async (req, res) => {
   const row = await one(`SELECT * FROM blueprints WHERE user_id=$1 AND billing_cycle=$2 ORDER BY created_at DESC LIMIT 1`, [userId, cycle]);
   if (!row) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
-  res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, blueprint: safeJson(row.blueprint_json), marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
+  res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, blueprint: safeJson(row.blueprint_json), marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
 });
 
 // ---------- marathon ----------
@@ -492,13 +492,35 @@ app.get("/api/admin/students.csv", async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="babe-students.csv"`);
   res.send(csv);
 });
+// ภาพรวมกลุ่มลูกค้า (ลูกค้าของเราคือใคร) — รวมจากฟิลด์ฟอร์มจริง: สถานะ/คนดู/ประสบการณ์/เป้าหมาย/อุตสาหกรรม
+app.get("/api/admin/customer-overview", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const rows = await q(`SELECT DISTINCT ON (email) email, raw_payload_json, industry FROM blueprint_requests WHERE email IS NOT NULL ORDER BY email, created_at DESC`);
+  const t = {};
+  const add = (k, v) => { v = String(v || "").trim(); if (!v) return; (t[k] ||= {}); t[k][v] = (t[k][v] || 0) + 1; };
+  for (const r of rows) {
+    const fr = (safeJson(r.raw_payload_json) || {}).form_responses || {};
+    String(fr.work_style || "").split(" / ").forEach(v => add("status", v));
+    String(fr.audience || "").split(",").forEach(v => add("audience", v));
+    add("experience", fr.experience);
+    add("goal", fr.goal_primary);
+    add("industry", r.industry || "อื่นๆ");
+  }
+  const total = rows.length;
+  const fmt = (o) => Object.entries(o || {}).map(([label, count]) => ({ label, count, pct: Math.round(count / Math.max(total, 1) * 100) })).sort((a, b) => b.count - a.count);
+  res.json({ ok: true, total_customers: total, by_status: fmt(t.status), by_audience: fmt(t.audience), by_experience: fmt(t.experience), by_goal: fmt(t.goal), by_industry: fmt(t.industry) });
+});
+
 app.get("/api/admin/revenue", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const paidWhere = "payment_status IN ('paid','mock_paid')";
-  const total = await one(`SELECT COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) s, COUNT(*) c FROM blueprint_orders WHERE ${paidWhere}`, [PRICE_SATANG]);
-  const byMonth = await q(`SELECT billing_cycle, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue, COUNT(*) c FROM blueprint_orders WHERE ${paidWhere} GROUP BY billing_cycle ORDER BY MIN(created_at)`, [PRICE_SATANG]);
-  const byProvider = await q(`SELECT provider, COUNT(*) c, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue FROM blueprint_orders WHERE ${paidWhere} GROUP BY provider`, [PRICE_SATANG]);
-  res.json({ ok: true, total_satang: Number(total.s), paid_count: Number(total.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })) });
+  // เงินเข้าจริง = จ่ายด้วย Stripe (บัตร/PromptPay) สำเร็จ + จำนวนเงิน > 0 (ไม่นับ mock/โค้ดฟรี/ส่วนลด 100%)
+  const realWhere = `payment_status='paid' AND COALESCE(provider,'') NOT IN ('mock','code') AND COALESCE(final_amount_satang,$1) > 0`;
+  const real = await one(`SELECT COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) s, COUNT(*) c FROM blueprint_orders WHERE ${realWhere}`, [PRICE_SATANG]);
+  const free = await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND (COALESCE(provider,'')='code' OR COALESCE(final_amount_satang,$1)=0)`, [PRICE_SATANG]);
+  const test = await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status='mock_paid' OR COALESCE(provider,'')='mock'`);
+  const byMonth = await q(`SELECT billing_cycle, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue, COUNT(*) c FROM blueprint_orders WHERE ${realWhere} GROUP BY billing_cycle ORDER BY MIN(created_at)`, [PRICE_SATANG]);
+  const byProvider = await q(`SELECT provider, COUNT(*) c, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue FROM blueprint_orders WHERE ${realWhere} GROUP BY provider`, [PRICE_SATANG]);
+  res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
 app.post("/api/admin/codes", async (req, res) => {

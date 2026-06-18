@@ -14,6 +14,7 @@ export default function Admin() {
   const [filter, setFilter] = useState(null);
   const [insight, setInsight] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [custOv, setCustOv] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -24,6 +25,7 @@ export default function Admin() {
     setOv(await api("/api/admin/overview", { adminKey: k }));
     setRev(await api("/api/admin/revenue", { adminKey: k }));
     setUsage(await api("/api/admin/ai-usage", { adminKey: k }));
+    setCustOv(await api("/api/admin/customer-overview", { adminKey: k }));
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
     loadIndustries(k); loadStudents(null, k);
   }
@@ -61,8 +63,23 @@ export default function Admin() {
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ราคาประมาณ (แปลง USD→฿ ~36) · ยอดจริงดูที่ Google AI Studio / Cloud Billing</p>
       </div>}
 
-      {rev && <div className="card"><h3>💰 รายได้</h3><div className="row" style={{ alignItems: "baseline", margin: "12px 0 14px" }}><div style={{ fontSize: 34, fontWeight: 800, color: "var(--blue)" }}>{baht(rev.total_satang)}</div><div className="muted">รวม · {rev.paid_count} ออเดอร์</div></div>
+      {rev && <div className="card"><h3>💰 รายได้จริง (เงินเข้าจริง)</h3><div className="row" style={{ alignItems: "baseline", margin: "12px 0 6px" }}><div style={{ fontSize: 34, fontWeight: 800, color: "var(--up)" }}>{baht(rev.total_satang)}</div><div className="muted">จ่ายจริง · {rev.paid_count} ออเดอร์</div></div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "0 0 14px" }}>
+          <span style={{ background: "#fff7e6", color: "#8a6d1f", fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>🎁 โค้ดฟรี/ส่วนลด 100%: {rev.free_count ?? 0}</span>
+          <span style={{ background: "#f3edfb", color: "#6b3fa0", fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>🧪 ทดสอบ (mock): {rev.test_count ?? 0}</span>
+        </div>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>* นับเฉพาะที่จ่ายผ่าน Stripe จริง (บัตร/PromptPay) มากกว่า 0฿ — ไม่รวมโค้ดฟรีและออเดอร์ทดสอบ</div>
         {rev.by_month.map(m => { const max = Math.max(...rev.by_month.map(x => x.revenue), 1); return <div key={m.billing_cycle} style={{ margin: "9px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{m.billing_cycle.replace("_", " ")}</span><span className="muted">{baht(m.revenue)} · {m.c}</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(m.revenue / max * 100)}%` }} /></div></div>; })}</div>}
+
+      {custOv && <div className="card"><h3>👥 กลุ่มลูกค้าของเรา (ภาพรวม)</h3>
+        <p className="muted" style={{ fontSize: 13, margin: "4px 0 16px" }}>ลูกค้าของเราคือใคร — รวมจากข้อมูลจริงที่ลูกค้ากรอก {custOv.total_customers} คน เอาไปวางแผนการตลาด/ยิงแอดได้เลย</p>
+        {[["🧑‍💼 สถานะ / อาชีพ", custOv.by_status, "46,134,222"], ["🎯 กลุ่มคนดูของพวกเขา", custOv.by_audience, "26,127,67"], ["⏳ ประสบการณ์", custOv.by_experience, "138,109,31"], ["🚀 เป้าหมายหลัก", custOv.by_goal, "107,63,160"]].map(([title, data, rgb]) =>
+          (data && data.length) ? <div key={title} style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{title}</div>
+            {data.slice(0, 8).map(d => { const max = Math.max(...data.map(x => x.count), 1); return <div key={d.label} style={{ margin: "7px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 3 }}><span>{d.label}</span><span className="muted">{d.count} คน · {d.pct}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(d.count / max * 100)}%`, background: `rgb(${rgb})` }} /></div></div>; })}
+          </div> : null)}
+        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>* รวมเฉพาะลูกค้าที่กรอกข้อมูลส่วนนี้ (บางคนอาจข้าม) · ข้อมูลเก่าก่อนมีฟอร์มใหม่จะไม่มีบางหัวข้อ</div>
+      </div>}
 
       <div className="card"><div className="between"><h3>📊 ลูกค้าแยกตามอุตสาหกรรม</h3><button className="btn" onClick={classify} style={{ padding: "9px 14px" }}>จำแนกด้วย AI</button></div>
         {industries && (industries.breakdown.length ? <div style={{ marginTop: 12 }}><p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>คลิกแถบเพื่อดูรายชื่อในกลุ่มนั้น</p>{industries.breakdown.map(b => { const max = Math.max(...industries.breakdown.map(x => x.customers), 1); return <div key={b.industry} style={{ margin: "9px 0", cursor: "pointer" }} onClick={() => loadStudents(b.industry)}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{b.industry} ›</span><span className="muted">{b.customers} คน · {Math.round(b.customers / industries.total_classified * 100)}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(b.customers / max * 100)}%` }} /></div></div>; })}{industries.untagged > 0 && <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>⚠️ ยังมี {industries.untagged} รายการที่ยังไม่จำแนก</p>}</div> : <p className="muted" style={{ marginTop: 12 }}>ยังไม่มีข้อมูลที่จำแนก{industries.untagged ? ` — มี ${industries.untagged} รายการรอจำแนก` : ""}</p>)}

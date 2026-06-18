@@ -28,12 +28,13 @@ export default function Dashboard() {
   const [view, setView] = useState("info");
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
+  const [startedAt, setStartedAt] = useState(null);
 
   useEffect(() => {
     if (demo) return;
     if (!userId || !cycle) { setErr("ไม่พบข้อมูลเล่ม"); return; }
     api(`/api/blueprints/latest?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}`)
-      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); })
+      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); })
       .catch(() => setErr("โหลดเล่มไม่สำเร็จ — อาจกำลังสร้างอยู่ หรือลิงก์ไม่ถูกต้อง"));
   }, [userId, cycle]);
 
@@ -207,7 +208,9 @@ export default function Dashboard() {
 
         {tab === "marathon" && (() => {
           const done = uploaded.size;
-          const day = Math.min(new Date().getDate(), 30);
+          // ปีศาจเวลานับจาก "วันที่เริ่มเล่ม" เริ่ม 0 แล้วเพิ่มตามเวลาจริง (ไม่ใช่วันที่ของเดือน)
+          const startMs = startedAt ? new Date(startedAt).getTime() : Date.now();
+          const day = Math.max(0, Math.min(30, Math.floor((Date.now() - startMs) / 86400000)));
           const youPct = Math.min(100, Math.round(done / 30 * 100));
           const ghostPct = Math.min(100, Math.round(day / 30 * 100));
           const lead = done - day;
@@ -216,7 +219,7 @@ export default function Dashboard() {
           return <>
             <div className="card">
               <div className="between"><h3 style={modH}>🏃‍♀️ Babe Content Marathon</h3><span style={{ background: "#fff7e6", color: "#8a6d1f", fontWeight: 700, fontSize: 12, padding: "4px 12px", borderRadius: 20 }}>ซีซั่น: {MONTHS_TH[new Date().getMonth()]}</span></div>
-              <p className="muted" style={{ fontSize: 13, margin: "6px 0 18px" }}>แข่งกับเวลาจริง — วันที่ {day}/30 ของเดือน · อัปคลิปให้ทันก่อนปีศาจเวลาจะถึงเส้นชัย 👻🏁</p>
+              <p className="muted" style={{ fontSize: 13, margin: "6px 0 18px" }}>แข่งกับเวลาจริง — ผ่านมา {day}/30 วันของแผน · อัปคลิปให้ทันก่อนปีศาจเวลาจะถึงเส้นชัย 👻🏁</p>
               {[["🐰", "ตัวคุณ", done, youPct, "46,134,222"], ["👻", "ปีศาจเวลา", day, ghostPct, "138,109,31"]].map(([emo, label, n, pct, rgb]) =>
                 <div key={label} style={{ marginBottom: 14 }}>
                   <div className="between" style={{ fontSize: 13, marginBottom: 6 }}><span style={{ fontWeight: 700 }}>{emo} {label}</span><span className="muted">{n} / 30 วัน</span></div>

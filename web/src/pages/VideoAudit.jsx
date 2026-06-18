@@ -74,6 +74,7 @@ export default function VideoAudit() {
 
   async function analyze() {
     if (!file) { setErr("เลือกคลิปก่อนนะคะ"); return; }
+    if (file.size > 24 * 1024 * 1024) { setErr("คลิปใหญ่เกินไป (เกิน 24MB) — ลองอัปคลิปสั้นกว่า ~1 นาที หรือลดความละเอียดลงนะคะ"); return; }
     setBusy(true); setErr("");
     try {
       const video = await fileToBase64(file);

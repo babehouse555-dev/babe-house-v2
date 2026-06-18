@@ -651,8 +651,11 @@ app.get("/api/admin/industries", async (req, res) => {
 });
 
 // ---------- reminders ----------
-async function runMonthlyReminders() {
+async function runMonthlyReminders(force = false) {
   try {
+    // ส่งอัตโนมัติเฉพาะปลายเดือน (กระตุ้นต่อแผนเดือนหน้า) — ปุ่ม admin ใช้ force=true ส่งได้ทุกเมื่อ
+    const day = new Date().getDate(), startDay = Number(process.env.REMINDER_START_DAY) || 25;
+    if (!force && day < startDay) return 0;
     const cycle = currentBillingCycle();
     const rows = await q(`SELECT DISTINCT email FROM blueprint_requests WHERE email IS NOT NULL AND email NOT IN (SELECT email FROM blueprint_requests WHERE billing_cycle=$1 AND email IS NOT NULL) AND email NOT IN (SELECT email FROM month_reminders WHERE cycle=$1) LIMIT 200`, [cycle]);
     let sent = 0;
@@ -670,7 +673,7 @@ async function runHomeworkReminders() {
     if (sent) console.log(`[homework] ${cycle}: ${sent}`); return sent;
   } catch (e) { console.error("homework", e.message); return 0; }
 }
-app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(); const homework = await runHomeworkReminders(); res.json({ ok: true, sent, homework, cycle: currentBillingCycle() }); });
+app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); res.json({ ok: true, sent, homework, cycle: currentBillingCycle() }); });
 
 app.get("/api/health", (req, res) => {
   const sk = String(process.env.STRIPE_SECRET_KEY || "");
@@ -717,6 +720,6 @@ initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
-  setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 12 * 3600 * 1000);
+  setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

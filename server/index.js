@@ -306,6 +306,8 @@ async function generateBlueprintForPayload(payload) {
     [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry]);
   const { blueprint, model, usage } = await generateBlueprint(parsed);
   await run(`INSERT INTO blueprints (blueprint_id,request_id,user_id,billing_cycle,blueprint_json,model) VALUES ($1,$2,$3,$4,$5,$6)`, [blueprintId, requestId, parsed.user_id, parsed.meta_purchase.billing_cycle, JSON.stringify(blueprint), model]);
+  // ประหยัดดิสก์: รูป base64 ใช้แค่ตอนเจน — ลบทิ้งหลังเจนสำเร็จ (กัน DB เต็มเหมือนที่เคยล่ม) คงไว้แค่ form_responses
+  try { const lean = { ...parsed, insight_images: [], insight_screenshot_base64: null }; await run(`UPDATE blueprint_requests SET insight_screenshot_base64=NULL, insight_images_json='[]', raw_payload_json=$1 WHERE request_id=$2`, [JSON.stringify(lean), requestId]); } catch (e) { console.warn("strip imgs", e.message); }
   if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'blueprint',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
   await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,billing_cycle) DO NOTHING`, [uid("marathon"), parsed.user_id, parsed.instagram_account, parsed.meta_purchase.billing_cycle]);
   return { blueprintId, requestId, parsed, blueprint };
@@ -570,11 +572,12 @@ app.get("/api/admin/students.csv", async (req, res) => {
 // ภาพรวมกลุ่มลูกค้า (ลูกค้าของเราคือใคร) — รวมจากฟิลด์ฟอร์มจริง: สถานะ/คนดู/ประสบการณ์/เป้าหมาย/อุตสาหกรรม
 app.get("/api/admin/customer-overview", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const rows = await q(`SELECT DISTINCT ON (email) email, raw_payload_json, industry FROM blueprint_requests WHERE email IS NOT NULL ORDER BY email, created_at DESC`);
+  // ดึงเฉพาะ form_responses (ไม่โหลดรูป base64 ทั้งก้อน) กัน RAM แตก
+  const rows = await q(`SELECT DISTINCT ON (email) email, (NULLIF(raw_payload_json,'')::jsonb -> 'form_responses') AS fr, industry FROM blueprint_requests WHERE email IS NOT NULL ORDER BY email, created_at DESC`);
   const t = {};
   const add = (k, v) => { v = String(v || "").trim(); if (!v) return; (t[k] ||= {}); t[k][v] = (t[k][v] || 0) + 1; };
   for (const r of rows) {
-    const fr = (safeJson(r.raw_payload_json) || {}).form_responses || {};
+    const fr = (typeof r.fr === "string" ? safeJson(r.fr) : r.fr) || {};
     add("gender", fr.gender);
     add("age", fr.age_range);
     String(fr.work_style || "").split(" / ").forEach(v => add("status", v));

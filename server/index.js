@@ -112,6 +112,9 @@ async function sendEmail(to, subject, html) {
 }
 const wrap = (body) => `<div style="font-family:sans-serif;font-size:16px;line-height:1.8">${body}</div>`;
 const btn = (href, label) => `<a href="${href}" style="display:inline-block;background:#2E86DE;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
+const btnG = (href, label) => `<a href="${href}" style="display:inline-block;background:#06C755;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
+const LINE_ACADEMY_URL = process.env.LINE_ACADEMY_URL || "https://line.me/R/ti/p/%40babehouse_academy";
+const LINE_WORK_URL = process.env.LINE_WORK_URL || "https://line.me/ti/p/0yBlh9zXFl";
 
 // ---------- payment / referral ----------
 async function markOrderPaid(orderId, provider = "mock", sid = "") {
@@ -669,7 +672,7 @@ async function runHomeworkReminders() {
     const cycle = currentBillingCycle();
     const rows = await q(`SELECT DISTINCT r.email, COALESCE(mp.uploaded_count,0) uploaded FROM blueprint_requests r JOIN marathon_progress mp ON mp.user_id=r.user_id AND mp.billing_cycle=r.billing_cycle WHERE r.billing_cycle=$1 AND r.email IS NOT NULL AND COALESCE(mp.uploaded_count,0)<$2 AND r.email NOT IN (SELECT email FROM homework_reminders WHERE cycle=$1) LIMIT 200`, [cycle, HOMEWORK_MIN_UPLOADS]);
     let sent = 0;
-    for (const r of rows) { try { await sendEmail(r.email, "อย่าลืมทำคอนเทนต์ตามแผนนะคะ 🩵", wrap(`เดือนนี้ทำไปแล้ว ${r.uploaded} วัน สู้ๆ นะคะ! ความสม่ำเสมอคือกุญแจ<br><br>${btn(`${appBaseUrl()}/account`, "เปิดแผนของฉัน")}`)); } catch { continue; } await run(`INSERT INTO homework_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
+    for (const r of rows) { try { await sendEmail(r.email, "อย่าลืมทำคอนเทนต์ตามแผนนะคะ 🩵", wrap(`เดือนนี้ทำไปแล้ว <b>${r.uploaded} วัน</b> สู้ๆ นะคะ! ความสม่ำเสมอคือกุญแจของการเติบโตค่ะ<br><br>${btn(`${appBaseUrl()}/account`, "เปิดแผนของฉัน ทำต่อ")}<br><br><b>ถ้าทำเองแล้วเริ่มเหนื่อย/ตัดต่อไม่ทัน — ครูพี่คิมมีตัวช่วยให้เป้าหมายคุณเป็นจริงค่ะ 🩵</b><br><br>🎓 อยากตัดต่อเองให้คล่อง เก่งขึ้นทุกคลิป:<br>${btn(LINE_ACADEMY_URL, "เรียนตัดต่อกับครูพี่คิม")}<br><br>🎬 ไม่มีเวลาทำเอง อยากให้มืออาชีพทำให้:<br>${btnG(LINE_WORK_URL, "ให้ทีม Babe House ทำให้")}`)); } catch { continue; } await run(`INSERT INTO homework_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
     if (sent) console.log(`[homework] ${cycle}: ${sent}`); return sent;
   } catch (e) { console.error("homework", e.message); return 0; }
 }

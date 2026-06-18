@@ -54,12 +54,12 @@ export default function Dashboard() {
   }, [userId, cycle]);
 
   async function toggleDay(d) {
-    if (demo) return;
+    const has = uploaded.has(d);
     const next = new Set(uploaded);
-    const action = next.has(d) ? "remove" : "upload";
-    if (next.has(d)) next.delete(d); else next.add(d);
+    if (has) next.delete(d); else next.add(d);
     setUploaded(next);
-    try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, uploaded_days: [...next], day: d, action } }); } catch {}
+    if (demo) return; // เดโม: โชว์ติ๊กเขียวได้ แต่ไม่บันทึก
+    try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
   }
 
   if (err) return <div className="wrap narrow page-pad center"><div className="card"><h2>{err}</h2><Link className="btn" to="/account" style={{ marginTop: 16 }}>ไปบัญชีของฉัน</Link></div></div>;
@@ -242,13 +242,13 @@ export default function Dashboard() {
               </div>)}
               <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 4 }}><div className="between"><b style={{ fontSize: 13 }}>แคปชั่น & แฮชแท็ก</b><button className="link" onClick={() => copy(script.cap)} style={{ background: "none", border: 0, fontSize: 13 }}>คัดลอก 📋</button></div><p style={{ fontSize: 14, marginTop: 6 }}>{script.cap}</p></div>
               <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 8 }}>💡 ทิปครูพี่คิม: {script.tip}</div>
-              {!demo && <button type="button" onClick={() => toggleDay(script.d)} style={{ width: "100%", marginTop: 14, padding: "14px", borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: uploaded.has(script.d) ? "#1a7f43" : "var(--blue)", boxShadow: uploaded.has(script.d) ? "0 6px 18px rgba(26,127,67,.28)" : "0 6px 18px rgba(46,134,222,.28)" }}>
+              <button type="button" onClick={() => toggleDay(script.d)} style={{ width: "100%", marginTop: 14, padding: "14px", borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: uploaded.has(script.d) ? "#1a7f43" : "var(--blue)", boxShadow: uploaded.has(script.d) ? "0 6px 18px rgba(26,127,67,.28)" : "0 6px 18px rgba(46,134,222,.28)" }}>
                 {uploaded.has(script.d) ? "✓ ทำคลิปวันนี้แล้ว! เก่งมากค่ะ 🎉 (กดเพื่อยกเลิก)" : "☐ ทำคลิปนี้เสร็จแล้ว — กดติ๊กเลย!"}
-              </button>}
+              </button>
             </div>;
           })()}
 
-          {!demo && <div className="card" style={{ marginTop: 8, background: "#F4F8FD", border: "1px dashed #c5dcf3" }}>
+          <div className="card" style={{ marginTop: 8, background: "#F4F8FD", border: "1px dashed #c5dcf3" }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>✨ ทำเองเริ่มล้า? ให้ Babe House ช่วยได้</div>
             <p className="muted" style={{ fontSize: 13.5, margin: "6px 0 14px" }}>มีสคริปต์แล้วแต่ไม่อยากถ่าย/ตัดเอง — เลือกตัวช่วยได้เลยค่ะ</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
@@ -261,7 +261,7 @@ export default function Dashboard() {
                 <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>ทักไลน์ Babe House Production {LINE_WORK.id} →</div>
               </a>
             </div>
-          </div>}
+          </div>
         </>}
 
         {tab === "marathon" && (() => {

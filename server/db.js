@@ -161,6 +161,7 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_orders_email ON blueprint_orders(email);
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS improve_count INTEGER DEFAULT 0;
+    ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS quality_flags_json TEXT;
     CREATE TABLE IF NOT EXISTS video_audits (
       audit_id TEXT PRIMARY KEY,
       order_id TEXT,

@@ -16,6 +16,7 @@ export default function Admin() {
   const [usage, setUsage] = useState(null);
   const [custOv, setCustOv] = useState(null);
   const [showCustDetail, setShowCustDetail] = useState(false);
+  const [qual, setQual] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -27,8 +28,14 @@ export default function Admin() {
     setRev(await api("/api/admin/revenue", { adminKey: k }));
     setUsage(await api("/api/admin/ai-usage", { adminKey: k }));
     setCustOv(await api("/api/admin/customer-overview", { adminKey: k }));
+    setQual(await api("/api/admin/quality", { adminKey: k }));
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
     loadIndustries(k); loadStudents(null, k);
+  }
+  async function regen(user_id, billing_cycle) {
+    if (!window.confirm("รีเจนเล่มนี้ใหม่ด้วย prompt ล่าสุด? (ใช้เวลา ~1-2 นาที)")) return;
+    try { await api("/api/admin/regenerate", { method: "POST", adminKey: key, body: { user_id, billing_cycle } }); alert("เริ่มรีเจนแล้ว — รอ ~1-2 นาที แล้วกดรีเฟรชหน้าเช็คอีกที"); }
+    catch (e) { alert(e.message); }
   }
   async function loadIndustries(k = key) { setIndustries(await api("/api/admin/industries", { adminKey: k })); }
   async function loadStudents(ind = null, k = key) { const d = await api("/api/admin/students" + (ind ? "?industry=" + encodeURIComponent(ind) : ""), { adminKey: k }); setStudents(d.students); setFilter(ind); }
@@ -93,6 +100,21 @@ export default function Admin() {
           <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>* รวมเฉพาะลูกค้าที่กรอกข้อมูลส่วนนี้ · ข้อมูลเก่าก่อนฟอร์มใหม่จะไม่มีบางหัวข้อ</div>
         </div>;
       })()}
+
+      {qual && (qual.flagged.length > 0
+        ? <div className="card" style={{ border: "1px solid #e0b85b", background: "#fffdf5" }}>
+            <h3 style={{ color: "#8a6d1f" }}>🔎 เล่มที่ควรเช็ค ({qual.flagged.length})</h3>
+            <p className="muted" style={{ fontSize: 13, margin: "4px 0 12px" }}>ตัวตรวจคุณภาพอัตโนมัติพบจุดที่อาจไม่แม่น — กดรีเจนแก้ก่อนลูกค้าเห็นได้เลย (จากทั้งหมด {qual.total} เล่ม)</p>
+            {qual.flagged.map(f => <div key={f.blueprint_id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+              <div className="between" style={{ marginBottom: 6 }}><b style={{ fontSize: 14 }}>{f.email || f.business_type || f.user_id}</b><span className="muted" style={{ fontSize: 12 }}>{String(f.created_at || "").slice(0, 10)}</span></div>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>{f.flags.map((fl, i) => <span key={i} style={{ background: "#fff3d6", color: "#8a6d1f", fontSize: 12, fontWeight: 600, padding: "3px 9px", borderRadius: 12 }}>⚠️ {fl}</span>)}</div>
+              <div className="row" style={{ gap: 14 }}>
+                <a className="link" target="_blank" rel="noreferrer" href={`/dashboard?user_id=${encodeURIComponent(f.user_id)}&billing_cycle=${encodeURIComponent(f.billing_cycle)}&blueprint_id=${encodeURIComponent(f.blueprint_id)}`} style={{ fontSize: 13.5 }}>เปิดเล่ม ›</a>
+                <button className="link" onClick={() => regen(f.user_id, f.billing_cycle)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "var(--blue)", fontWeight: 700 }}>🔄 รีเจนใหม่</button>
+              </div>
+            </div>)}
+          </div>
+        : <div className="card"><h3>🔎 ตรวจคุณภาพเล่ม</h3><p className="muted" style={{ marginTop: 8 }}>✓ ทุกเล่มผ่านการตรวจอัตโนมัติ ไม่พบจุดที่ต้องแก้ ({qual.total} เล่ม)</p></div>)}
 
       <div className="card"><div className="between"><h3>📊 ลูกค้าแยกตามอุตสาหกรรม</h3><button className="btn" onClick={classify} style={{ padding: "9px 14px" }}>จำแนกด้วย AI</button></div>
         {industries && (industries.breakdown.length ? <div style={{ marginTop: 12 }}><p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>คลิกป้ายเพื่อดูรายชื่อในกลุ่มนั้น</p>

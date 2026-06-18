@@ -329,3 +329,34 @@ export async function analyzeVideo({ dataUrl, mimeType, contextText }) {
     if (uploaded?.name) ai.files.delete({ name: uploaded.name }).catch(() => {});
   }
 }
+
+// ===== ตัวตรวจคุณภาพเล่มอัตโนมัติ — สแกนหา red flag (กันเล่มออกมากลางๆ/พลาด) =====
+export function checkBlueprintQuality(bp, hasImage) {
+  const flags = [];
+  if (!bp || typeof bp !== "object") return ["เล่มว่าง/ไม่ใช่ JSON"];
+  const scripts = Array.isArray(bp.scripts) ? bp.scripts : [];
+  const calendar = Array.isArray(bp.calendar) ? bp.calendar : [];
+  if (scripts.length < 30) flags.push(`สคริปต์ไม่ครบ 30 (มี ${scripts.length})`);
+  if (calendar.length < 30) flags.push(`ปฏิทินไม่ครบ 30 (มี ${calendar.length})`);
+  // สคริปต์สั้นเกินไป (รวมทุก beat ควร > ~150 ตัวอักษร)
+  const shortN = scripts.filter(s => (s.beats || []).reduce((a, b) => a + String(b.say || "").length, 0) < 150).length;
+  if (shortN > 0) flags.push(`${shortN} สคริปต์สั้นเกินไป`);
+  // ศัพท์เทคนิค/อังกฤษที่ห้ามหลุดถึงลูกค้า (ไม่นับ label beat CTA)
+  const prose = [bp.greeting, bp.kim_insight, bp.positioning, ...(bp.what_we_see || []), ...((bp.story || []).map(s => s && s.body)), ...scripts.flatMap(s => [...(s.beats || []).map(b => b && b.say), s && s.cap])].filter(Boolean).join(" ").toLowerCase();
+  const jargon = ["funnel", "conversion", "micro-influencer", "micro influencer", "engagement", "positioning", "retention", "call to action", "awareness", "branding"];
+  const found = jargon.filter(w => prose.includes(w));
+  if (found.length) flags.push(`ศัพท์เทคนิคหลุด: ${[...new Set(found)].join(", ")}`);
+  // "คิม" หลุดในบทพูดสคริปต์ (ควรถูก sanitize แล้ว)
+  if (scripts.some(s => (s.beats || []).some(b => /คิม/.test(String(b.say || ""))))) flags.push('มี "คิม" หลุดในสคริปต์');
+  // ตัวเลข metrics ทั้งที่ไม่มีรูป = เสี่ยงแต่งตัวเลข
+  const m = bp.metrics || {};
+  const hasNums = m && Object.values(m).some(v => typeof v === "number" && v > 0);
+  if (!hasImage && hasNums) flags.push("มีตัวเลขสถิติทั้งที่ไม่มีรูป (เสี่ยงแต่งตัวเลข)");
+  // สคริปต์ซ้ำกัน
+  const says = scripts.map(s => (s.beats || []).map(b => String(b.say || "")).join("|"));
+  const dup = says.filter(Boolean).length - new Set(says.filter(Boolean)).size;
+  if (dup > 0) flags.push(`${dup} สคริปต์ซ้ำกัน`);
+  // ชิ้นส่วนหลักหาย
+  for (const [k, label] of [["greeting", "คำทักทาย"], ["kim_insight", "อินไซต์ครูพี่คิม"], ["swot", "SWOT"], ["modules", "5 โมดูล"]]) if (!bp[k]) flags.push(`ขาด ${label}`);
+  return flags;
+}

@@ -49,6 +49,8 @@ export default function VideoAudit() {
   const [file, setFile] = useState(null);
   const [context, setContext] = useState("");
   const [audit, setAudit] = useState(null);
+  const [code, setCode] = useState("");
+  const [showCode, setShowCode] = useState(false);
 
   useEffect(() => { if (orderId) refresh(); }, [orderId]);
 
@@ -70,6 +72,20 @@ export default function VideoAudit() {
       const pay = await api("/api/create-payment-session", { method: "POST", body: { order_id: c.order_id } });
       window.location.href = pay.redirect_url;
     } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  async function redeemCode() {
+    if (!email.trim()) { setErr("ใส่อีเมลก่อนนะคะ (ไว้ส่งผลวิเคราะห์)"); return; }
+    if (!code.trim()) { setErr("ใส่โค้ดก่อนนะคะ"); return; }
+    setBusy(true); setErr("");
+    try {
+      const c = await api("/api/video-audit/create", { method: "POST", body: { email: email.trim().toLowerCase() } });
+      const r = await api("/api/apply-code", { method: "POST", body: { order_id: c.order_id, code: code.trim() } });
+      if (r.free) { window.location.href = `/video-audit?order_id=${encodeURIComponent(c.order_id)}`; return; }
+      // โค้ดลด% (ไม่ฟรี) → ไปจ่ายส่วนต่าง
+      const pay = await api("/api/create-payment-session", { method: "POST", body: { order_id: c.order_id } });
+      window.location.href = pay.redirect_url;
+    } catch (e) { setErr(e.message || "โค้ดไม่ถูกต้องค่ะ"); setBusy(false); }
   }
 
   async function analyze() {
@@ -105,17 +121,23 @@ export default function VideoAudit() {
 
       {(phase === "intro" || phase === "needpay") && <>
         <p className="sub">ลงคลิปแล้วแต่ <b>คนไม่ดู / ไม่ซื้อ / ไม่กดติดตาม</b>? ส่งคลิปให้ครูพี่คิม (AI) ดูทุกวินาที แล้วบอกตรงๆ ว่าต้องแก้อะไร — Hook 3 วิแรก · ภาพ/แต่งตัว/แสง · น้ำเสียง/จังหวะ · การตัดต่อ · แคปชัน/CTA</p>
-        <div className="card" style={{ background: "#fff7e6", border: "1px dashed #e0b85b", color: "#8a6d1f" }}>
-          👇 <b>นี่คือตัวอย่างผลวิเคราะห์ที่คุณจะได้</b> (เบลอไว้บางส่วน) — ของจริงคือคลิป<b>ของคุณเอง</b> วิเคราะห์ทีละวินาที
+        <div className="card" style={{ background: "#eef7f0", border: "1px dashed #9ed3b0", color: "#1a7f43" }}>
+          👇 <b>นี่คือตัวอย่างผลวิเคราะห์จริงที่คุณจะได้</b> — ของจริงครูพี่คิม (AI) จะดู<b>คลิปของคุณเอง</b> แล้ววิเคราะห์ทีละวินาทีแบบนี้เลย
         </div>
-        <AuditView a={SAMPLE} blurred />
+        <AuditView a={SAMPLE} />
         <div className="card" style={{ border: "1px solid var(--blue)", marginTop: 8 }}>
           <h3 style={{ margin: "0 0 6px" }}>ปลดล็อกตรวจคลิปของคุณ</h3>
           <div className="row" style={{ alignItems: "baseline", gap: 8, marginBottom: 12 }}><div style={{ fontSize: 30, fontWeight: 800, color: "var(--blue)" }}>{baht(19900)}</div><span className="muted">/ คลิป</span></div>
           <div className="field"><label>อีเมล (ไว้ส่งผลวิเคราะห์)</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></div>
           {err && <div className="msg err">{err}</div>}
-          <button className="btn full" disabled={busy} onClick={unlock}>{busy ? "กำลังไปหน้าชำระเงิน..." : "🔓 ปลดล็อกตรวจคลิป · 199฿"}</button>
-          <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>จ่ายครั้งเดียวต่อ 1 คลิป · ชำระผ่านบัตร/PromptPay</p>
+          <button className="btn full" disabled={busy} onClick={unlock}>{busy ? "กำลังดำเนินการ..." : "🔓 ปลดล็อกตรวจคลิป · 199฿"}</button>
+          <p className="center muted" style={{ fontSize: 13, margin: "10px 0" }}>จ่ายครั้งเดียวต่อ 1 คลิป · ชำระผ่านบัตร/PromptPay</p>
+          {!showCode
+            ? <div className="center"><button type="button" onClick={() => { setShowCode(true); setErr(""); }} style={{ background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>มีโค้ดเข้าใช้ฟรี/ส่วนลด? กดที่นี่</button></div>
+            : <div style={{ borderTop: "1px dashed var(--border)", marginTop: 6, paddingTop: 14 }}>
+                <div className="field"><label>โค้ดส่วนลด / โค้ดฟรี</label><input value={code} onChange={e => setCode(e.target.value)} placeholder="เช่น BABETEAM" style={{ textTransform: "uppercase" }} /></div>
+                <button className="btn full" disabled={busy} onClick={redeemCode} style={{ background: "#1a7f43", boxShadow: "0 6px 18px rgba(26,127,67,.28)" }}>{busy ? "กำลังตรวจโค้ด..." : "ใช้โค้ด →"}</button>
+              </div>}
         </div>
       </>}
 

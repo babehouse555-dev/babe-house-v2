@@ -73,6 +73,19 @@ export default function Dashboard() {
 
         {tab === "strategy" && <>
           <div className="card" style={{ background: "var(--soft)", lineHeight: 1.7 }}>{bp.greeting}</div>
+          {bp.snapshot?.length > 0 && <div style={{ marginBottom: 16 }}>
+            <h3 style={{ margin: "0 0 12px" }}>🎴 ช่องของคุณใน 3 วินาที</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+              {bp.snapshot.map((s, i) => {
+                const c = [["#EAF3FD", "#1B6FC4"], ["#e8f5ee", "#1a7f43"], ["#fff7e6", "#8a6d1f"], ["#fdeaea", "#b3261e"], ["#f3edfb", "#6b3fa0"], ["#e6f7f7", "#0a7d77"]][i % 6];
+                return <div key={i} style={{ background: c[0], borderRadius: 16, padding: "16px 14px", textAlign: "center" }}>
+                  <div style={{ fontSize: 34, lineHeight: 1 }}>{s.emoji}</div>
+                  <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, margin: "8px 0 4px", letterSpacing: .2 }}>{s.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: c[1], lineHeight: 1.3 }}>{s.value}</div>
+                </div>;
+              })}
+            </div>
+          </div>}
           {demo && <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>🔍 เล่มจริงของคุณจะละเอียดและตรงกว่านี้อีก เพราะ...</div>
             <ul style={{ paddingLeft: 18, fontSize: 14, lineHeight: 1.8, margin: 0 }}>

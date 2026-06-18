@@ -61,13 +61,14 @@ function rateLimit(max, win) {
 }
 setInterval(() => { const now = Date.now(); for (const [k, v] of rl) if (!v.some(t => now - t < 600000)) rl.delete(k); }, 600000);
 const M10 = 600000;
-app.use("/api/auth/request-otp", rateLimit(5, M10));
-app.use("/api/auth/verify-otp", rateLimit(15, M10));
-app.use("/api/checkout", rateLimit(20, M10));
-app.use("/api/apply-code", rateLimit(15, M10));
-app.use("/api/redeem-code", rateLimit(15, M10));
-app.use("/api/generate-blueprint", rateLimit(10, M10));
-app.use("/api/start-generation", rateLimit(30, M10));
+// ลิมิตเผื่อทีมทดสอบหลายคนจาก IP เดียวกัน (เช่น WiFi ออฟฟิศ) — ยังกันสแปม/abuse จริงอยู่
+app.use("/api/auth/request-otp", rateLimit(30, M10));
+app.use("/api/auth/verify-otp", rateLimit(40, M10));
+app.use("/api/checkout", rateLimit(60, M10));
+app.use("/api/apply-code", rateLimit(60, M10));
+app.use("/api/redeem-code", rateLimit(60, M10));
+app.use("/api/generate-blueprint", rateLimit(30, M10));
+app.use("/api/start-generation", rateLimit(60, M10));
 
 // ---------- helpers ----------
 const uid = (p) => `${p}_${crypto.randomUUID()}`;

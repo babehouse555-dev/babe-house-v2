@@ -11,14 +11,17 @@ export default function Processing() {
 
   useEffect(() => {
     let alive = true;
-    async function poll() {
+    async function poll(attempt = 0) {
       try {
         const { order: o } = await api(`/api/orders/${orderId}`);
         if (!alive) return;
         if (o.blueprint_id && o.generation_status === "ready") { nav(`/dashboard?user_id=${encodeURIComponent(o.user_id)}&billing_cycle=${encodeURIComponent(o.billing_cycle)}&blueprint_id=${encodeURIComponent(o.blueprint_id)}`); return; }
-        if (o.generation_status === "error") { setState({ phase: "error", msg: o.generation_error || "วิเคราะห์ไม่สำเร็จ ทีมงานจะติดต่อกลับค่ะ" }); return; }
-        setTimeout(poll, 4000);
-      } catch { setTimeout(poll, 5000); }
+        // ถ้า generation พลาดชั่วคราว (เช่น AI แน่น) ระบบจะลองสร้างใหม่ให้เองทุก 5 นาที → ไม่โชว์ error ดิบ
+        // คงหน้า "กำลังวิเคราะห์ + ส่งลิงก์ทางอีเมล" ไว้ แล้ว poll ต่อ (ช้าลงตอน error) จนได้เล่มหรือผู้ใช้ปิดหน้าไปเอง
+        setState({ phase: "working" });
+        const slow = o.generation_status === "error";
+        if (attempt < 90) setTimeout(() => poll(attempt + 1), slow ? 15000 : 4000);
+      } catch { if (attempt < 90) setTimeout(() => poll(attempt + 1), 6000); }
     }
     async function run() {
       try {

@@ -75,7 +75,7 @@ export default function Dashboard() {
           <div className="card" style={{ background: "var(--soft)", lineHeight: 1.7 }}>{bp.greeting}</div>
           {bp.snapshot?.length > 0 && <div style={{ marginBottom: 16 }}>
             <h3 style={{ margin: "0 0 12px" }}>🎴 ช่องของคุณใน 3 วินาที</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
               {bp.snapshot.map((s, i) => {
                 const c = [["#EAF3FD", "#1B6FC4"], ["#e8f5ee", "#1a7f43"], ["#fff7e6", "#8a6d1f"], ["#fdeaea", "#b3261e"], ["#f3edfb", "#6b3fa0"], ["#e6f7f7", "#0a7d77"]][i % 6];
                 return <div key={i} style={{ background: c[0], borderRadius: 16, padding: "16px 14px", textAlign: "center" }}>

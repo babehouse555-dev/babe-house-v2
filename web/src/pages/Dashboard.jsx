@@ -20,20 +20,20 @@ function ServicesBlock() {
     <h2 className="serif" style={{ fontSize: 20, margin: "26px 0 4px" }}>🎁 บริการของ Babe House</h2>
     <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>เลือกเส้นทางที่ใช่สำหรับคุณ — อยากเก่งขึ้นเอง · ให้เราทำให้ · หรือให้ AI ช่วยตรวจคลิป</p>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
-      <div className="card" style={{ margin: 0, borderTop: "4px solid var(--blue)" }}>
+      <div className="card" style={{ margin: 0, borderTop: "4px solid var(--blue)", display: "flex", flexDirection: "column" }}>
         <div style={{ fontSize: 30 }}>🎓</div>
         <h3 style={{ margin: "6px 0 4px" }}>เรียนตัดต่อเอง</h3>
         <p className="muted" style={{ fontSize: 13 }}>มีคอนเทนต์อยู่แล้ว แต่ยังตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม — ทำเองได้ทุกคลิป</p>
         <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-        <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
+        <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
         <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
       </div>
-      <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755" }}>
+      <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755", display: "flex", flexDirection: "column" }}>
         <div style={{ fontSize: 30 }}>🎬</div>
         <h3 style={{ margin: "6px 0 4px" }}>ให้เราทำให้ (Production)</h3>
         <p className="muted" style={{ fontSize: 13 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House Production ตัดต่อ/ทำคอนเทนต์ให้ครบวงจร</p>
         <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
-        <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_WORK.url)} alt="LINE Work QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK.id}</div></div>
+        <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_WORK.url)} alt="LINE Work QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK.id}</div></div>
         <a href={LINE_WORK.url} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>เพิ่มเพื่อน · จ้างทำให้</a>
       </div>
       <div className="card" style={{ margin: 0, borderTop: "4px solid #6b3fa0", display: "flex", flexDirection: "column" }}>

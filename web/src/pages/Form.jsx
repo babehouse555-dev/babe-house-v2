@@ -124,6 +124,7 @@ export default function Form() {
   const [focus, setFocus] = useState(null);
   const [showWSOther, setShowWSOther] = useState(false);
   const [showAudOther, setShowAudOther] = useState(false);
+  const [showExtra, setShowExtra] = useState(false);
   const linkBtn = { background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: "8px 0 0", display: "inline-block" };
 
   useEffect(() => {
@@ -193,10 +194,24 @@ export default function Form() {
 
               <div className="field"><label>ช่องของคุณเกี่ยวกับอะไร? <span className="muted">(ทำคอนเทนต์แนวไหน)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่" />{inlineGuide("business_type")}</div>
 
-              <div style={{ borderTop: "1px dashed var(--border)", margin: "20px 0 16px", paddingTop: 16 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>✨ เล่าเพิ่มให้ครูพี่คิมแม่นขึ้น</div>
-                <div className="muted" style={{ fontSize: 13.5, marginTop: 4 }}>ทั้งหมดข้างล่างนี้ <b>ไม่บังคับสักข้อ</b> — กดข้ามไปจ่ายเลยก็ได้ แต่ยิ่งใส่ AI ยิ่งวิเคราะห์ตรงคุณ (ปุ่มแค่กด ไม่ต้องพิมพ์)</div>
+              <div className="field" onClick={() => setFocus("images")}><label>📊 แนบภาพสถิติหลังบ้าน <span className="muted">(สูงสุด 8 รูป)</span></label>
+                <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} />
+                <div className="hint">💡 <b>นี่คือตัวช่วยวิเคราะห์ที่สำคัญที่สุด</b> — AI อ่านตัวเลขจริงจากรูป (Reach, Profile Visits, Link Taps, Audience) ยิ่งครบยิ่งแม่น</div>
+                {files.length > 0 && <div className="hint">เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}
+                {inlineGuide("images")}
               </div>
+            </div>
+
+            <div className="card" style={{ background: "#F4F8FD", border: "1px dashed #c5dcf3" }}>
+              <button type="button" onClick={() => setShowExtra(s => !s)} style={{ width: "100%", background: "none", border: 0, cursor: "pointer", textAlign: "left", padding: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span>
+                  <span style={{ display: "inline-block", background: "#e8f5ee", color: "#1a7f43", fontWeight: 800, fontSize: 11.5, padding: "3px 10px", borderRadius: 20, marginBottom: 7 }}>ไม่บังคับ · ข้ามได้</span>
+                  <div style={{ fontWeight: 800, fontSize: 16.5, color: "var(--blue-d)" }}>✨ อยากให้เล่มแม่นขึ้น? เล่าเพิ่มอีกนิด</div>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>กดเปิดเพื่อเล่าเรื่องตัวเอง (ส่วนใหญ่แค่กดปุ่ม) — ไม่อยากเล่าก็กดจ่ายได้เลยค่ะ</div>
+                </span>
+                <span style={{ fontSize: 16, color: "var(--blue)", fontWeight: 800, flexShrink: 0 }}>{showExtra ? "▲ ปิด" : "▼ เปิด"}</span>
+              </button>
+              {showExtra && <div style={{ marginTop: 18 }}>
 
               <div className="field"><label>ตอนนี้คุณเป็น...?</label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} />
                 {(showWSOther || f.work_style_other) ? <input value={f.work_style_other} onChange={upd("work_style_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น พนักงานบริษัท + ขายของออนไลน์ข้างๆ" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowWSOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}
@@ -224,12 +239,7 @@ export default function Form() {
 
               <div className="field"><label>คู่แข่งช่องที่ 2 <span className="muted">(Optional)</span></label><input value={f.competitor_2} onChange={upd("competitor_2")} {...fieldProps("competitor_2")} placeholder="เว้นว่างได้ค่ะ" />{inlineGuide("competitor_2")}</div>
 
-              <div className="field" onClick={() => setFocus("images")}><label>แนบภาพสถิติหลังบ้าน (สูงสุด 8 รูป)</label>
-                <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} />
-                <div className="hint">แนบได้หลายรูป (Reach, Profile Visits, Link Taps, Audience) — ยิ่งครบ AI ยิ่งแม่น</div>
-                {files.length > 0 && <div className="hint">เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}
-                {inlineGuide("images")}
-              </div>
+              </div>}
             </div>
             <label className="row" style={{ alignItems: "flex-start", fontSize: 13, color: "var(--muted)", margin: "4px 2px 14px" }}>
               <input type="checkbox" style={{ width: 18, height: 18, marginTop: 3 }} checked={consent} onChange={(e) => setConsent(e.target.checked)} />

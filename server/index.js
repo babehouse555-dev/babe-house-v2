@@ -444,9 +444,36 @@ app.post("/api/admin/regenerate", async (req, res) => {
   })();
 });
 async function getStudents(industry) {
-  const base = `SELECT r.created_at,r.email,r.instagram_account,r.business_type,r.industry,r.starting_point,r.monthly_goal,r.competitor_1,r.competitor_2,r.billing_cycle,r.user_id,b.blueprint_id FROM blueprint_requests r LEFT JOIN blueprints b ON b.request_id=r.request_id`;
-  if (industry) return q(base + ` WHERE r.industry=$1 ORDER BY r.created_at DESC LIMIT 1000`, [industry]);
-  return q(base + ` ORDER BY r.created_at DESC LIMIT 1000`);
+  // 1 อีเมล/รอบเดือน = 1 แถว (เอาออเดอร์ที่จ่ายแล้วล่าสุด) + สถานะการสร้างเล่ม + ข้อมูลฟอร์มจาก request ล่าสุด
+  const rows = await q(`
+    SELECT DISTINCT ON (o.email, o.billing_cycle)
+      o.created_at, o.email, o.user_id, o.billing_cycle, o.instagram_account, o.blueprint_id, o.generation_status, o.order_payload_json,
+      r.industry, r.business_type, r.starting_point, r.monthly_goal, r.competitor_1, r.competitor_2
+    FROM blueprint_orders o
+    LEFT JOIN LATERAL (
+      SELECT industry, business_type, starting_point, monthly_goal, competitor_1, competitor_2
+      FROM blueprint_requests rr WHERE rr.user_id = o.user_id AND rr.billing_cycle = o.billing_cycle
+      ORDER BY rr.created_at DESC LIMIT 1
+    ) r ON true
+    WHERE o.payment_status IN ('paid','mock_paid') AND o.email IS NOT NULL
+    ORDER BY o.email, o.billing_cycle, o.created_at DESC
+  `);
+  let students = rows.map(o => {
+    const p = safeJson(o.order_payload_json) || {}, fr = p.form_responses || {};
+    return {
+      created_at: o.created_at, email: o.email, user_id: o.user_id, billing_cycle: o.billing_cycle,
+      instagram_account: o.instagram_account || p.instagram_account || "",
+      business_type: o.business_type || fr.business_type || "",
+      starting_point: o.starting_point || fr.starting_point || "",
+      monthly_goal: o.monthly_goal || fr.monthly_goal || "",
+      competitor_1: o.competitor_1 || fr.competitor_1 || "", competitor_2: o.competitor_2 || fr.competitor_2 || "",
+      industry: o.industry || null, blueprint_id: o.blueprint_id,
+      status: o.blueprint_id ? "ready" : (o.generation_status || "pending"),
+    };
+  });
+  students.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (industry) students = students.filter(s => s.industry === industry);
+  return students;
 }
 app.get("/api/admin/students", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -458,7 +485,7 @@ app.get("/api/admin/students.csv", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).send("unauthorized");
   const industry = req.query.industry ? String(req.query.industry) : null;
   const rows = await getStudents(industry);
-  const cols = ["created_at", "email", "instagram_account", "business_type", "industry", "monthly_goal", "starting_point", "competitor_1", "competitor_2", "billing_cycle"];
+  const cols = ["created_at", "email", "instagram_account", "business_type", "industry", "monthly_goal", "starting_point", "competitor_1", "competitor_2", "billing_cycle", "status"];
   const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
   const csv = "﻿" + [cols.join(",")].concat(rows.map(r => cols.map(c => esc(r[c])).join(","))).join("\r\n");
   res.setHeader("Content-Type", "text/csv; charset=utf-8");

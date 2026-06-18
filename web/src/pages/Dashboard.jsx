@@ -14,6 +14,40 @@ const LINE_WORK = { id: "@babehouse_work", url: "https://line.me/ti/p/0yBlh9zXFl
 const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
 const ACADEMY_COURSES = ["📱 All in Your Phone — ตัดต่อในมือถือ (3,745฿)", "🎬 ตัดต่อ Advance — สายเล่าเรื่อง (5,990฿)", "👑 Workshop ตัวต่อตัว"];
 
+// บล็อกบริการ Babe House (ใช้ทั้งหน้าปฏิทินและมาราธอน)
+function ServicesBlock() {
+  return <>
+    <h2 className="serif" style={{ fontSize: 20, margin: "26px 0 4px" }}>🎁 บริการของ Babe House</h2>
+    <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>เลือกเส้นทางที่ใช่สำหรับคุณ — อยากเก่งขึ้นเอง · ให้เราทำให้ · หรือให้ AI ช่วยตรวจคลิป</p>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
+      <div className="card" style={{ margin: 0, borderTop: "4px solid var(--blue)" }}>
+        <div style={{ fontSize: 30 }}>🎓</div>
+        <h3 style={{ margin: "6px 0 4px" }}>เรียนตัดต่อเอง</h3>
+        <p className="muted" style={{ fontSize: 13 }}>มีคอนเทนต์อยู่แล้ว แต่ยังตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม — ทำเองได้ทุกคลิป</p>
+        <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
+        <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
+        <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
+      </div>
+      <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755" }}>
+        <div style={{ fontSize: 30 }}>🎬</div>
+        <h3 style={{ margin: "6px 0 4px" }}>ให้เราทำให้ (Production)</h3>
+        <p className="muted" style={{ fontSize: 13 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House Production ตัดต่อ/ทำคอนเทนต์ให้ครบวงจร</p>
+        <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
+        <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_WORK.url)} alt="LINE Work QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK.id}</div></div>
+        <a href={LINE_WORK.url} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>เพิ่มเพื่อน · จ้างทำให้</a>
+      </div>
+      <div className="card" style={{ margin: 0, borderTop: "4px solid #6b3fa0", display: "flex", flexDirection: "column" }}>
+        <div style={{ fontSize: 30 }}>🤖</div>
+        <h3 style={{ margin: "6px 0 4px" }}>ให้ AI ตรวจคลิป</h3>
+        <p className="muted" style={{ fontSize: 13 }}>ลงคลิปแล้วคนไม่ดู? อัปคลิปให้ครูพี่คิม AI ดูทุกวินาที บอกตรงๆ ว่าต้องแก้อะไร</p>
+        <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎣 Hook 3 วิแรก</li><li style={{ marginBottom: 3 }}>🎨 ภาพ/แสง/การตัดต่อ</li><li>🎙️ น้ำเสียง/จังหวะพูด</li></ul>
+        <div style={{ textAlign: "center", margin: "auto 0 12px" }}><span style={{ fontSize: 26, fontWeight: 800, color: "#6b3fa0" }}>199฿</span> <span className="muted" style={{ fontSize: 13 }}>/ คลิป</span></div>
+        <Link to="/video-audit" className="btn full" style={{ background: "#6b3fa0", boxShadow: "0 8px 22px rgba(107,63,160,.28)" }}>ตรวจคลิปเลย →</Link>
+      </div>
+    </div>
+  </>;
+}
+
 export default function Dashboard() {
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
@@ -248,20 +282,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
-          <div className="card" style={{ marginTop: 8, background: "#F4F8FD", border: "1px dashed #c5dcf3" }}>
-            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>✨ ทำเองเริ่มล้า? ให้ Babe House ช่วยได้</div>
-            <p className="muted" style={{ fontSize: 13.5, margin: "6px 0 14px" }}>มีสคริปต์แล้วแต่ไม่อยากถ่าย/ตัดเอง — เลือกตัวช่วยได้เลยค่ะ</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
-              <Link to="/video-audit" style={{ display: "block", textDecoration: "none", color: "inherit", background: "#faf3fc", border: "1px solid #e3cdec", borderRadius: 14, padding: "14px 16px" }}>
-                <div style={{ fontWeight: 800, color: "#6b3fa0" }}>🎬 ให้ AI ตรวจคลิป · 199฿</div>
-                <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>อัปคลิป → บอกจุดต้องแก้ Hook/ภาพ/เสียง/ตัดต่อ →</div>
-              </Link>
-              <a href={LINE_WORK.url} target="_blank" rel="noreferrer" style={{ display: "block", textDecoration: "none", color: "inherit", background: "#eafaf0", border: "1px solid #b6e6c8", borderRadius: 14, padding: "14px 16px" }}>
-                <div style={{ fontWeight: 800, color: "#1a7f43" }}>💬 จ้างทีมตัดต่อ/ทำคลิป</div>
-                <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>ทักไลน์ Babe House Production {LINE_WORK.id} →</div>
-              </a>
-            </div>
-          </div>
+          <ServicesBlock />
         </>}
 
         {tab === "marathon" && (() => {
@@ -297,26 +318,7 @@ export default function Dashboard() {
                 {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
               </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>(โหมดตัวอย่าง — ติ๊กได้เมื่อเป็นเล่มจริง)</p>}
             </div>
-            <h2 className="serif" style={{ fontSize: 20, margin: "26px 0 4px" }}>🎁 บริการของ Babe House</h2>
-            <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>เลือกเส้นทางที่ใช่สำหรับคุณ — อยากเก่งขึ้นเอง หรืออยากให้เราทำให้</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 14 }}>
-              <div className="card" style={{ margin: 0, borderTop: "4px solid var(--blue)" }}>
-                <div style={{ fontSize: 30 }}>🎓</div>
-                <h3 style={{ margin: "6px 0 4px" }}>เรียนตัดต่อเอง</h3>
-                <p className="muted" style={{ fontSize: 13 }}>มีคอนเทนต์อยู่แล้ว แต่ยังตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม — ทำเองได้ทุกคลิป</p>
-                <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
-                <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
-              </div>
-              <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755" }}>
-                <div style={{ fontSize: 30 }}>🎬</div>
-                <h3 style={{ margin: "6px 0 4px" }}>ให้เราทำให้ (Production)</h3>
-                <p className="muted" style={{ fontSize: 13 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House Production ตัดต่อ/ทำคอนเทนต์ให้ครบวงจร</p>
-                <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
-                <div className="center" style={{ margin: "12px 0" }}><img src={qrImg(LINE_WORK.url)} alt="LINE Work QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_WORK.id}</div></div>
-                <a href={LINE_WORK.url} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>เพิ่มเพื่อน · จ้างทำให้</a>
-              </div>
-            </div>
+            <ServicesBlock />
           </>;
         })()}
 

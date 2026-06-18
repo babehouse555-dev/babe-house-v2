@@ -98,7 +98,7 @@ function GuideContent({ k, onFill }) {
 }
 
 // กดเลือกเป็นหลัก (ไม่ต้องพิมพ์) แต่ให้ context ลึกกับ AI
-const WORK_STYLES = ["ฟรีแลนซ์ / ทำคนเดียว", "มีร้าน / หน้าร้าน", "ทำที่บ้าน", "มีทีมงาน", "ขายออนไลน์เป็นหลัก", "พนักงานประจำ", "รับราชการ / หน่วยงาน"];
+const WORK_STYLES = ["นักเรียน / นักศึกษา", "พนักงานประจำ", "ฟรีแลนซ์ / ทำคนเดียว", "เจ้าของร้าน / มีหน้าร้าน", "ขายของออนไลน์", "มีทีมงาน / แบรนด์", "แม่บ้าน / ดูแลครอบครัว", "กำลังหางาน / ยังไม่ได้ทำงาน", "รับราชการ / หน่วยงาน"];
 const AUDIENCES = ["ผู้หญิงวัยทำงาน", "นักเรียน/นักศึกษา", "เจ้าของธุรกิจ/แม่ค้า", "คุณแม่", "วัยรุ่น", "ผู้ชาย", "สายสุขภาพ/ความงาม"];
 const EXPERIENCES = ["เพิ่งเริ่มทำ", "ไม่ถึง 1 ปี", "1–3 ปี", "มากกว่า 3 ปี"];
 const GOALS = ["ยอดขาย / ลูกค้าเพิ่ม", "คนติดตามเพิ่ม", "คนรู้จักมากขึ้น", "สร้างความน่าเชื่อถือ/ตัวตน"];
@@ -122,6 +122,9 @@ export default function Form() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [focus, setFocus] = useState(null);
+  const [showWSOther, setShowWSOther] = useState(false);
+  const [showAudOther, setShowAudOther] = useState(false);
+  const linkBtn = { background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: "8px 0 0", display: "inline-block" };
 
   useEffect(() => {
     const email = sp.get("email") || session.email || "";
@@ -190,11 +193,15 @@ export default function Form() {
 
               <div className="field"><label>Instagram / TikTok Account</label><input required value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}</div>
 
-              <div className="field"><label>คุณทำอะไร / ขายอะไร? <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น ช่างทำผมฟรีแลนซ์ / ร้านเสื้อผ้าวินเทจ / สอนทำขนม" />{inlineGuide("business_type")}</div>
+              <div className="field"><label>ช่องของคุณเกี่ยวกับอะไร? <span className="muted">(ทำคอนเทนต์แนวไหน)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่" />{inlineGuide("business_type")}</div>
 
-              <div className="field"><label>ทำงานแบบไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} /><input value={f.work_style_other} onChange={upd("work_style_other")} onFocus={() => setFocus(null)} placeholder="ไม่มีที่ตรง? พิมพ์เองได้เลย เช่น พนักงานบริษัท + ทำขายของข้างๆ" style={{ marginTop: 10 }} /></div>
+              <div className="field"><label>ตอนนี้คุณเป็น...? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} />
+                {(showWSOther || f.work_style_other) ? <input value={f.work_style_other} onChange={upd("work_style_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น พนักงานบริษัท + ขายของออนไลน์ข้างๆ" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowWSOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}
+              </div>
 
-              <div className="field"><label>ลูกค้า/คนดูหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi /><input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} placeholder="ลูกค้าเฉพาะของคุณ? พิมพ์เองได้ เช่น เจ้าของร้านกาแฟ / สายมูเตลู / คนเลี้ยงแมว" style={{ marginTop: 10 }} /></div>
+              <div className="field"><label>คนดู/ผู้ติดตามหลักเป็นใคร? <span className="muted">(เลือกได้หลายข้อ)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi />
+                {(showAudOther || f.audience_other) ? <input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น สายมูเตลู / คนเลี้ยงแมว / เด็กมหาลัยปี 1" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowAudOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}
+              </div>
 
               <div className="field"><label>ทำมานานแค่ไหน? <span style={{ color: "var(--blue)" }}>⭐</span></label><ChipGroup options={EXPERIENCES} value={f.experience} onChange={v => setVal("experience", v)} /></div>
 

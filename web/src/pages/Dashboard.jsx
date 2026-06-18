@@ -29,12 +29,27 @@ export default function Dashboard() {
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
   const [startedAt, setStartedAt] = useState(null);
+  const [improveCount, setImproveCount] = useState(0);
+  const [improveOpen, setImproveOpen] = useState(false);
+  const [improving, setImproving] = useState(false);
+  const [improveErr, setImproveErr] = useState("");
+  const [ix, setIx] = useState({ products: "", pain_points: "", content_likes: "", brand_info: "", more: "" });
+
+  async function submitImprove() {
+    setImproving(true); setImproveErr("");
+    try {
+      const d = await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, extra: ix } });
+      setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setView("info");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) { setImproveErr(e.message || "เจนใหม่ไม่สำเร็จ ลองอีกครั้งนะคะ"); }
+    setImproving(false);
+  }
 
   useEffect(() => {
     if (demo) return;
     if (!userId || !cycle) { setErr("ไม่พบข้อมูลเล่ม"); return; }
     api(`/api/blueprints/latest?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}`)
-      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); })
+      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); })
       .catch(() => setErr("โหลดเล่มไม่สำเร็จ — อาจกำลังสร้างอยู่ หรือลิงก์ไม่ถูกต้อง"));
   }, [userId, cycle]);
 
@@ -177,6 +192,26 @@ export default function Dashboard() {
             <p className="muted" style={{ fontSize: 14.5, marginBottom: 16, maxWidth: 540, marginInline: "auto" }}>ครูพี่คิมเขียน <b>สคริปต์พร้อมอัดครบทั้ง 30 วัน</b> (Hook–เล่าเรื่อง–CTA) + แคปชันพร้อมโพสต์ + เกม Marathon ให้แล้วค่ะ มาเริ่มลงมือทำกันเลย!</p>
             <button className="btn" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
           </div>
+
+          {!demo && (improveCount >= 1
+            ? <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc" }}><div style={{ fontWeight: 700, color: "#1a7f43" }}>✓ เพิ่มข้อมูลแล้ว — ครูพี่คิมอัปเดตเล่มให้ใหม่เรียบร้อยค่ะ 🩵</div></div>
+            : <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
+                {!improveOpen ? <>
+                  <div style={{ fontWeight: 800, fontSize: 17, color: "var(--blue-d)" }}>💎 อยากให้ครูพี่คิมเข้าใจคุณมากขึ้น?</div>
+                  <p className="muted" style={{ fontSize: 14, margin: "6px 0 12px" }}>เล่าเรื่องตัวเอง สินค้า หรือสิ่งที่อยากขายเพิ่ม แล้วครูพี่คิมจะ<b>เจนเล่มใหม่ให้แม่นและเป็นคุณมากขึ้น</b> — <b style={{ color: "var(--up)" }}>ฟรี 1 ครั้ง</b> 🎁</p>
+                  <button className="btn" onClick={() => setImproveOpen(true)}>เพิ่มข้อมูลให้แม่นขึ้น (ฟรี) →</button>
+                </> : <>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>💎 เล่าเพิ่มให้ครูพี่คิมฟัง</div>
+                  <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) แล้วกดเจนใหม่ — ใช้สิทธิ์ฟรีนี้ได้ครั้งเดียว</p>
+                  {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "คอนเทนต์แนวที่ชอบ/อยากได้", "เช่น สายเล่าเรื่องจริงจากชีวิต ไม่เอาสายตลก"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
+                    <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 64 }} placeholder={ph} /></div>)}
+                  {improveErr && <div className="msg err">{improveErr}</div>}
+                  <div className="row" style={{ gap: 10 }}>
+                    <button className="btn" disabled={improving} onClick={submitImprove}>{improving ? "ครูพี่คิมกำลังเจนใหม่... (~1 นาที)" : "เจนเล่มใหม่ให้แม่นขึ้น 🩵"}</button>
+                    {!improving && <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>ยกเลิก</button>}
+                  </div>
+                </>}
+              </div>)}
         </>}
 
         {tab === "calendar" && <>

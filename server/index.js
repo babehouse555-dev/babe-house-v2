@@ -296,6 +296,34 @@ app.post("/api/generate-blueprint-by-order", async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GENERATE_FAILED", message: err.message }); }
 });
 
+// เพิ่มข้อมูลให้ครูพี่คิมเข้าใจมากขึ้น → เจนเล่มเดิมใหม่ (ฟรี 1 ครั้ง/เล่ม) ทับ blueprint เดิม URL เดิมใช้ได้
+app.post("/api/improve-blueprint", async (req, res) => {
+  try {
+    const userId = String(req.body?.user_id || ""), cycle = String(req.body?.billing_cycle || ""), extra = req.body?.extra || {};
+    if (!userId || !cycle) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
+    const bp = await one(`SELECT * FROM blueprints WHERE user_id=$1 AND billing_cycle=$2 ORDER BY created_at DESC LIMIT 1`, [userId, cycle]);
+    if (!bp) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
+    if ((bp.improve_count || 0) >= 1) return res.status(409).json({ ok: false, error: "IMPROVE_USED", message: "คุณใช้สิทธิ์เพิ่มข้อมูลฟรีของเล่มนี้ไปแล้วค่ะ 🩵" });
+    const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
+    const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+    const fr = parsed.form_responses;
+    fr.starting_point = [fr.starting_point,
+      extra.brand_info && `ข้อมูลแบรนด์เพิ่มเติม: ${extra.brand_info}`,
+      extra.products && `สินค้า/บริการที่อยากขาย: ${extra.products}`,
+      extra.pain_points && `ปัญหา/อุปสรรคตอนนี้: ${extra.pain_points}`,
+      extra.content_likes && `คอนเทนต์ที่ชอบ/อยากได้แนวนี้: ${extra.content_likes}`,
+      extra.content_dislikes && `แนวที่ไม่ชอบ: ${extra.content_dislikes}`,
+      extra.more && `เล่าเพิ่มเติม: ${extra.more}`].filter(Boolean).join("\n");
+    if (extra.competitor_1) fr.competitor_1 = extra.competitor_1;
+    if (extra.competitor_2) fr.competitor_2 = extra.competitor_2;
+    const { blueprint, model, usage } = await generateBlueprint(parsed);
+    await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1 WHERE blueprint_id=$3`, [JSON.stringify(blueprint), model, bp.blueprint_id]);
+    await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(parsed), fr.starting_point, bp.request_id]).catch(() => {});
+    if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+    res.json({ ok: true, blueprint, improve_count: (bp.improve_count || 0) + 1 });
+  } catch (err) { console.error("improve", err); res.status(500).json({ ok: false, error: "IMPROVE_FAILED", message: err.message }); }
+});
+
 app.post("/api/generate-blueprint", async (req, res) => {
   try { const r = await generateBlueprintForPayload(req.body); res.json({ ok: true, blueprint_id: r.blueprintId, user_id: r.parsed.user_id, billing_cycle: r.parsed.meta_purchase.billing_cycle, blueprint: r.blueprint }); }
   catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GENERATE_FAILED", message: err.message }); }
@@ -307,7 +335,7 @@ app.get("/api/blueprints/latest", async (req, res) => {
   const row = await one(`SELECT * FROM blueprints WHERE user_id=$1 AND billing_cycle=$2 ORDER BY created_at DESC LIMIT 1`, [userId, cycle]);
   if (!row) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
-  res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, blueprint: safeJson(row.blueprint_json), marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
+  res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, improve_count: row.improve_count || 0, blueprint: safeJson(row.blueprint_json), marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
 });
 
 // ---------- marathon ----------

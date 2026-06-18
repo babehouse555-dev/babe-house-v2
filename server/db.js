@@ -161,6 +161,16 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_orders_email ON blueprint_orders(email);
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS improve_count INTEGER DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS video_audits (
+      audit_id TEXT PRIMARY KEY,
+      order_id TEXT,
+      email TEXT,
+      status TEXT DEFAULT 'pending',
+      result_json TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_video_audits_order ON video_audits(order_id);
   `);
   console.log("[db] schema ready");
 }

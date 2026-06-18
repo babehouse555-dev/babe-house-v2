@@ -1,5 +1,8 @@
 // AI provider = Gemini (Google GenAI). มี fallback (เทมเพลต) เมื่อไม่มีคีย์
 import { GoogleGenAI, Type } from "@google/genai";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MAX_TOK = Number(process.env.GEMINI_MAX_TOKENS) || 64000; // เผื่อสคริปต์ยาว 30 วัน + thinking (โมเดล 2.5 รองรับ ~64k)
@@ -262,4 +265,67 @@ export async function classifyIndustries(items) {
     for (const it of chunk) if (!map[it.i]) map[it.i] = classifyKeyword(it.text);
   }
   return map;
+}
+
+// ===== Video Audit: ครูพี่คิม AI ตรวจคลิป (Gemini วิเคราะห์วิดีโอจริงผ่าน Files API) =====
+const VIDEO_AUDIT_PROMPT = `คุณคือ "ครูพี่คิม" โค้ชคอนเทนต์ของ Babe House ที่กำลังนั่งดูคลิปของลูกค้าแล้วให้ feedback แบบจับมือสอน
+หน้าที่: ดูวิดีโอที่แนบมา "จริงๆ" แล้ววิเคราะห์ละเอียดเพื่อให้เจ้าของคลิปเอาไปแก้คลิปต่อไปได้ทันที
+กฎ:
+1. ตอบเป็น JSON object ล้วนตามสเปก (ไม่มีข้อความอื่น)
+2. ⛔ ห้ามแต่งตัวเลข/เปอร์เซ็นต์ที่วัดจริงไม่ได้ (เช่น "ลดพรีเมียม 40%", "retention ดิ่ง 60%") — ให้บรรยายสิ่งที่ "เห็น/ได้ยินจริง" ในคลิป + อ้างช่วงวินาทีจริงเท่าที่สังเกตได้ (เช่น "ช่วง 0:00–0:03 นั่งเงียบก่อนเริ่มพูด")
+3. observation = สิ่งที่เห็นจริงในคลิปนี้ (เจาะจง ไม่กลางๆ), fix = วิธีแก้ที่ทำตามได้จริงในคลิปหน้า (รูปธรรม)
+4. 🗣️ ภาษาบ้านๆ เหมือนพี่สาวสอนน้อง ห้ามศัพท์เทคนิค/อังกฤษที่คนทั่วไปไม่เข้าใจ (ถ้าจำเป็นให้วงเล็บอธิบาย)
+5. top_fixes = 3 สิ่งสำคัญที่สุดที่ต้องแก้ก่อน เรียงตามผลกระทบ
+6. ถ้าคลิปไม่มีเสียงพูด/เป็นภาพนิ่ง ให้บอกตามจริงในหัวข้อนั้น ไม่เดา
+หัวข้อที่ต้องวิเคราะห์: hook (3 วิแรกดึงคนหยุดดูไหม), visual (เสื้อผ้า/หน้า/ผม/ฉากหลัง/แสง/การจัดเฟรม), voice (น้ำเสียง จังหวะพูด เร็ว-ช้า การเว้นจังหวะ), editing (จังหวะตัดต่อ การซูม ตัวอักษรบนจอ ความน่าติดตาม), caption_cta (แคปชัน/คำลงท้าย/ชวนคอมเมนต์-กดติดตาม)`;
+const VA_SEC = { type: Type.OBJECT, properties: { observation: { type: Type.STRING }, fix: { type: Type.STRING } }, required: ["observation", "fix"] };
+const VIDEO_SCHEMA = { type: Type.OBJECT, properties: {
+  first_impression: { type: Type.STRING },
+  hook: VA_SEC, visual: VA_SEC, voice: VA_SEC, editing: VA_SEC, caption_cta: VA_SEC,
+  top_fixes: { type: Type.ARRAY, items: { type: Type.STRING } },
+  encouragement: { type: Type.STRING }
+}, required: ["first_impression", "hook", "visual", "voice", "editing", "caption_cta", "top_fixes", "encouragement"] };
+
+function fallbackVideoAudit() {
+  const s = (o, f) => ({ observation: o, fix: f });
+  return {
+    first_impression: "(โหมดทดสอบ — ใส่ GEMINI_API_KEY เพื่อให้ครูพี่คิมดูคลิปจริง) ภาพรวมคลิปโอเค มีของให้เล่า แต่ยังดึงคนใน 3 วิแรกได้ไม่สุด",
+    hook: s("3 วิแรกเปิดด้วยการทักทายก่อนเข้าเรื่อง คนเลื่อนผ่านง่าย", "เปิดมาพูดประโยคเด็ด/ปมจริงทันทีตั้งแต่วิแรก ไม่ต้องทักทาย"),
+    visual: s("แสงและฉากหลังโอเค แต่ยังไม่มีจุดเด่นที่ทำให้จำได้", "เพิ่มแสงเข้าหน้าให้สว่างขึ้น จัดฉากหลังให้สะอาดตา"),
+    voice: s("น้ำเสียงชัดเจน แต่จังหวะค่อนข้างเรียบ", "เน้นเสียงคำสำคัญ + เว้นจังหวะ 1 วิหลังประโยคฮุก"),
+    editing: s("ตัดต่อเรียบ ภาพแช่นานในบางช่วง", "ตัดคัต/ซูมเล็กๆ ทุก 2-3 วิ + ใส่ตัวอักษรสรุปประเด็นบนจอ"),
+    caption_cta: s("แคปชันบอกเนื้อหาแต่ยังไม่ชวนมีส่วนร่วม", "ปิดท้ายด้วยคำถามให้คนคอมเมนต์ + บอกให้กดติดตาม"),
+    top_fixes: ["เปลี่ยน 3 วิแรกให้เข้าเรื่องทันที", "เพิ่มจังหวะตัดต่อ/ตัวอักษรบนจอ", "ปิดท้ายด้วยคำถามชวนคอมเมนต์"],
+    encouragement: "คลิปมีของอยู่แล้ว แก้ไม่กี่จุดก็ปังขึ้นเยอะเลยค่ะ ลองคลิปหน้าแล้วส่งมาให้ครูพี่คิมดูอีกนะคะ 🩵"
+  };
+}
+
+export async function analyzeVideo({ dataUrl, mimeType, contextText }) {
+  if (!ai) return { audit: fallbackVideoAudit(), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
+  const m = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/s);
+  const mt = (m && m[1]) || mimeType || "video/mp4";
+  const b64 = m ? m[2] : dataUrl;
+  if (!b64) throw new Error("no video data");
+  const ext = mt.includes("quicktime") || mt.includes("mov") ? "mov" : mt.includes("webm") ? "webm" : "mp4";
+  const tmp = path.join(os.tmpdir(), `va_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+  fs.writeFileSync(tmp, Buffer.from(b64, "base64"));
+  let uploaded;
+  try {
+    uploaded = await ai.files.upload({ file: tmp, config: { mimeType: mt } });
+    let f = uploaded, tries = 0;
+    while (f.state !== "ACTIVE" && tries++ < 60) {
+      if (f.state === "FAILED") throw new Error("video processing failed");
+      await sleep(2000);
+      f = await ai.files.get({ name: uploaded.name });
+    }
+    if (f.state !== "ACTIVE") throw new Error("video processing timeout");
+    const parts = [{ fileData: { fileUri: f.uri, mimeType: mt } }, { text: contextText || "ช่วยตรวจคลิปนี้ละเอียดตามสเปก JSON" }];
+    const resp = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts }], config: { systemInstruction: VIDEO_AUDIT_PROMPT, responseMimeType: "application/json", responseSchema: VIDEO_SCHEMA, maxOutputTokens: 8000, thinkingConfig: { thinkingBudget: 2048 } } });
+    const audit = JSON.parse(resp.text);
+    const u = resp.usageMetadata || {};
+    return { audit, model: MODEL, usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+    if (uploaded?.name) ai.files.delete({ name: uploaded.name }).catch(() => {});
+  }
 }

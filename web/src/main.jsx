@@ -47,6 +47,7 @@ import Account from "./pages/Account.jsx";
 import Compare from "./pages/Compare.jsx";
 import Admin from "./pages/Admin.jsx";
 import Privacy from "./pages/Privacy.jsx";
+import VideoAudit from "./pages/VideoAudit.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 captureRef();
@@ -65,6 +66,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/compare" element={<Compare />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/video-audit" element={<VideoAudit />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
     </Shell>

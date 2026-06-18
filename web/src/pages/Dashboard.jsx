@@ -212,6 +212,11 @@ export default function Dashboard() {
                   </div>
                 </>}
               </div>)}
+
+          {!demo && <Link to="/video-audit" className="card" style={{ display: "block", textDecoration: "none", color: "inherit", border: "1px dashed #d6a0e0", background: "#faf3fc" }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#6b3fa0" }}>🎬 ลงคลิปแล้วคนไม่ดู? ให้ครูพี่คิมตรวจคลิปให้</div>
+            <p className="muted" style={{ fontSize: 14, margin: "6px 0 0" }}>อัปคลิป → AI ดูทุกวินาที บอกตรงๆ ว่า Hook/ภาพ/เสียง/ตัดต่อ ต้องแก้อะไร · 199฿/คลิป →</p>
+          </Link>}
         </>}
 
         {tab === "calendar" && <>

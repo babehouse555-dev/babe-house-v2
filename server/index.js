@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB } from "./ai.js";
+import { generateBlueprint, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -217,37 +217,81 @@ async function applyCode(req, res) {
 app.post("/api/apply-code", applyCode);
 app.post("/api/redeem-code", applyCode);
 
-async function createStripeCheckout({ orderId, payload, origin, amountSatang }) {
+async function createStripeCheckout({ orderId, payload, origin, amountSatang, productName, successPath }) {
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const s = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: (process.env.STRIPE_PAYMENT_METHODS || "card,promptpay").split(",").map(x => x.trim()).filter(Boolean),
-    line_items: [{ price_data: { currency: "thb", product_data: { name: "Babe House AI Creator Blueprint Premium" }, unit_amount: amountSatang || PRICE_SATANG }, quantity: 1 }],
-    success_url: `${origin}/processing?order_id=${encodeURIComponent(orderId)}`,
+    line_items: [{ price_data: { currency: "thb", product_data: { name: productName || "Babe House AI Creator Blueprint Premium" }, unit_amount: amountSatang || PRICE_SATANG }, quantity: 1 }],
+    success_url: `${origin}${successPath || `/processing?order_id=${encodeURIComponent(orderId)}`}`,
     cancel_url: `${origin}/checkout?order_id=${encodeURIComponent(orderId)}&payment=cancelled`,
-    metadata: { order_id: orderId, user_id: payload.user_id, billing_cycle: payload.meta_purchase.billing_cycle }
+    metadata: { order_id: orderId, user_id: payload?.user_id || "", billing_cycle: payload?.meta_purchase?.billing_cycle || "" }
   });
   return { checkout_url: s.url, provider_session_id: s.id };
 }
 app.post("/api/create-payment-session", async (req, res) => {
   try {
     const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
-    if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, redirect_url: `/processing?order_id=${encodeURIComponent(o.order_id)}` });
+    const isVideo = String(o.tier || "").startsWith("Video");
+    const donePath = isVideo ? `/video-audit?order_id=${encodeURIComponent(o.order_id)}` : `/processing?order_id=${encodeURIComponent(o.order_id)}`;
+    if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, redirect_url: donePath });
     // จ่ายเงินจริง: ซื้อได้หลายเล่ม ไม่บล็อกซ้ำ
     const amount = o.final_amount_satang || PRICE_SATANG;
     if (o.provider === "stripe") {
       // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงานค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-      const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount });
+      const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount, productName: isVideo ? "Babe House Video Audit (ตรวจคลิป)" : undefined, successPath: isVideo ? donePath : undefined });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [s.provider_session_id, o.order_id]);
       return res.json({ ok: true, redirect_url: s.checkout_url, external: true });
     }
     // โหมด mock เท่านั้นที่ mark paid โดยไม่ตัดเงิน
     await markOrderPaid(o.order_id, "mock", "mock_paid");
-    res.json({ ok: true, redirect_url: `/processing?order_id=${encodeURIComponent(o.order_id)}` });
+    res.json({ ok: true, redirect_url: donePath });
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "PAYMENT_SESSION_FAILED", message: err.message }); }
+});
+
+// ---------- Video Audit (ครูพี่คิม AI ตรวจคลิป 199฿) ----------
+const VIDEO_PRICE_SATANG = Number(process.env.VIDEO_PRICE_SATANG) || 19900;
+app.post("/api/video-audit/create", async (req, res) => {
+  try {
+    const email = normEmail(req.body?.email) || null;
+    const orderId = uid("vord"), uId = `video_${Date.now()}`;
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10)`,
+      [orderId, uId, "", email, "Video_199", currentBillingCycle(), JSON.stringify({ video_audit: true, email }), PROVIDER, VIDEO_PRICE_SATANG, `/video-audit?order_id=${encodeURIComponent(orderId)}`]);
+    res.json({ ok: true, order_id: orderId, provider: PROVIDER, amount_satang: VIDEO_PRICE_SATANG });
+  } catch (err) { console.error("video create", err); res.status(500).json({ ok: false, error: "VIDEO_CREATE_FAILED", message: err.message }); }
+});
+
+app.get("/api/video-audit/:orderId", async (req, res) => {
+  const o = await getOrder(req.params.orderId);
+  if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+  const va = await one(`SELECT * FROM video_audits WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.order_id]);
+  res.json({ ok: true, order_id: o.order_id, payment_status: o.payment_status, paid: ["paid", "mock_paid"].includes(o.payment_status), audit_status: va?.status || null, audit: va?.result_json ? safeJson(va.result_json) : null, error: va?.error || null });
+});
+
+app.post("/api/video-audit/analyze", async (req, res) => {
+  try {
+    const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+    if (!["paid", "mock_paid"].includes(o.payment_status)) return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED", message: "ต้องชำระเงินก่อนค่ะ" });
+    const existing = await one(`SELECT * FROM video_audits WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.order_id]);
+    if (existing && existing.status === "ready") return res.json({ ok: true, status: "ready", audit: safeJson(existing.result_json), cached: true });
+    if (existing && existing.status === "analyzing") return res.json({ ok: true, status: "analyzing" });
+    const video = String(req.body?.video || ""); const mime = req.body?.mime;
+    if (!video) return res.status(400).json({ ok: false, error: "NO_VIDEO", message: "ยังไม่ได้แนบวิดีโอค่ะ" });
+    const auditId = uid("va");
+    await run(`INSERT INTO video_audits (audit_id,order_id,email,status) VALUES ($1,$2,$3,'analyzing')`, [auditId, o.order_id, o.email || null]);
+    res.json({ ok: true, status: "analyzing" });
+    const ctx = `บริบทจากเจ้าของคลิป (ถ้ามี): ${String(req.body?.context || "(ไม่ระบุ)").slice(0, 800)}\nช่วยตรวจคลิปนี้ละเอียดตามสเปก JSON`;
+    (async () => {
+      try {
+        const { audit, model, usage } = await analyzeVideo({ dataUrl: video, mimeType: mime, contextText: ctx });
+        await run(`UPDATE video_audits SET status='ready', result_json=$1 WHERE audit_id=$2`, [JSON.stringify(audit), auditId]);
+        if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'video_audit',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+      } catch (e) { console.error("video analyze bg", e.message); await run(`UPDATE video_audits SET status='error', error=$1 WHERE audit_id=$2`, [String(e.message).slice(0, 300), auditId]); }
+    })();
+  } catch (err) { console.error("video analyze", err); res.status(500).json({ ok: false, error: "VIDEO_ANALYZE_FAILED", message: err.message }); }
 });
 
 // ---------- blueprint generation ----------

@@ -185,8 +185,8 @@ export default function Form() {
               <span>ฉันยินยอมให้ Babe House เก็บและใช้ข้อมูลที่กรอก (รวมถึงรูปสถิติ) เพื่อวิเคราะห์และสร้างแผนคอนเทนต์เฉพาะตัว ตาม <Link to="/privacy" target="_blank" className="link">นโยบายความเป็นส่วนตัว</Link></span>
             </label>
             {err && <div className="msg err">{err}</div>}
-            <button className="btn full" type="submit" disabled={busy}>{busy ? "กำลังเปิดหน้าชำระเงิน..." : "จ่าย 490฿ เพื่อปลดล็อก Blueprint ของฉัน"}</button>
-            <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>ราคาเต็ม <span style={{ textDecoration: "line-through" }}>1,590฿</span> · โปรเปิดตัว <b style={{ color: "var(--blue)" }}>490฿</b></p>
+            <button className="btn full" type="submit" disabled={busy}>{busy ? "กำลังไปหน้าสรุป..." : "ดูสรุป & ดำเนินการต่อ →"}</button>
+            <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>ราคาเต็ม <span style={{ textDecoration: "line-through" }}>1,590฿</span> · โปรเปิดตัว <b style={{ color: "var(--blue)" }}>490฿</b> · มีหน้าสรุป/ใส่โค้ดก่อนจ่าย กดแล้วยังไม่ตัดเงิน</p>
           </form>
         </div>
 

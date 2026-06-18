@@ -94,10 +94,11 @@ export default function Landing() {
           <PriceTag big={52} />
           <p className="muted" style={{ fontSize: 13, margin: "8px 0 24px" }}>สำหรับช่วงเปิดตัวเท่านั้น</p>
           <div className="row" style={{ justifyContent: "center" }}>
-            <Link className="btn" to="/form">จ่าย {PROMO} เพื่อสร้าง Blueprint ของฉัน</Link>
+            <Link className="btn" to="/form">เริ่มสร้าง Blueprint ของฉัน →</Link>
             <Link className="btn ghost" to="/dashboard?demo=1">ดูตัวอย่างผลลัพธ์ก่อน</Link>
           </div>
-          <p style={{ marginTop: 14, fontSize: 13 }}><Link to="/account" className="link">นักเรียนเก่า? เข้าสู่ระบบที่นี่ →</Link></p>
+          <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>🔒 กรอกข้อมูลช่องก่อน · ดูสรุปแล้วค่อยจ่าย — <b>กดแล้วยังไม่ตัดเงิน</b></p>
+          <p style={{ marginTop: 8, fontSize: 13 }}><Link to="/account" className="link">นักเรียนเก่า? เข้าสู่ระบบที่นี่ →</Link></p>
         </div>
       </header>
 
@@ -143,8 +144,8 @@ export default function Landing() {
           <ul style={{ listStyle: "none", textAlign: "left", margin: "6px 0 22px" }}>
             {cardIncludes.map((x) => <li key={x} style={{ padding: "9px 0 9px 28px", position: "relative", fontSize: 15, borderBottom: "1px solid var(--border)" }}><span style={{ position: "absolute", left: 0, color: "var(--blue)", fontWeight: 800 }}>✓</span>{x}</li>)}
           </ul>
-          <Link className="btn full" to="/form">จ่าย {PROMO} เพื่อปลดล็อก Blueprint</Link>
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>โปรเปิดตัวสำหรับผู้ใช้กลุ่มแรกเท่านั้น</p>
+          <Link className="btn full" to="/form">เริ่มสร้าง Blueprint ของฉัน →</Link>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>กรอกข้อมูลก่อน · ดูสรุปแล้วค่อยจ่าย — กดแล้วยังไม่ตัดเงิน</p>
         </div>
       </div></section>
 
@@ -217,7 +218,7 @@ export default function Landing() {
           <span style={{ textDecoration: "line-through", opacity: .75, fontSize: 18, fontWeight: 700, marginRight: 10 }}>{FULL}</span>
           <span style={{ fontSize: 40, fontWeight: 800 }}>{PROMO}</span>
         </div>
-        <Link className="btn" to="/form" style={{ background: "#fff", color: "var(--blue)" }}>จ่าย {PROMO} เพื่อสร้าง Blueprint ของฉัน</Link>
+        <Link className="btn" to="/form" style={{ background: "#fff", color: "var(--blue)" }}>เริ่มสร้าง Blueprint ของฉัน →</Link>
         <p style={{ opacity: .88, fontSize: 12.5, marginTop: 16, maxWidth: 460, marginInline: "auto", lineHeight: 1.6 }}>ข้อมูลของคุณใช้เพื่อสร้าง Blueprint ส่วนตัวเท่านั้น · หากระบบประมวลผลไม่สำเร็จ ทีม Babe House จะช่วยตรวจสอบและออก Blueprint ให้ใหม่ค่ะ</p>
       </div></div></section>
 

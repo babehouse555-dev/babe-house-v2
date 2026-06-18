@@ -102,6 +102,8 @@ const WORK_STYLES = ["นักเรียน / นักศึกษา", "พ
 const AUDIENCES = ["ผู้หญิงวัยทำงาน", "นักเรียน/นักศึกษา", "เจ้าของธุรกิจ/แม่ค้า", "คุณแม่", "วัยรุ่น", "ผู้ชาย", "สายสุขภาพ/ความงาม"];
 const EXPERIENCES = ["เพิ่งเริ่มทำ", "ไม่ถึง 1 ปี", "1–3 ปี", "มากกว่า 3 ปี"];
 const GOALS = ["ยอดขาย / ลูกค้าเพิ่ม", "คนติดตามเพิ่ม", "คนรู้จักมากขึ้น", "สร้างความน่าเชื่อถือ/ตัวตน"];
+const GENDERS = ["หญิง", "ชาย", "LGBTQ+", "ไม่ระบุ"];
+const AGES = ["ต่ำกว่า 18", "18–24", "25–34", "35–44", "45 ขึ้นไป"];
 
 function ChipGroup({ options, value, onChange, multi }) {
   const sel = multi ? (Array.isArray(value) ? value : []) : value;
@@ -116,7 +118,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -154,7 +156,7 @@ export default function Form() {
         meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
         instagram_account: f.instagram_account,
         form_responses: {
-          business_type: f.business_type,
+          business_type: f.business_type, gender: f.gender, age_range: f.age_range,
           work_style: [f.work_style, f.work_style_other.trim()].filter(Boolean).join(" / "),
           audience: [...(f.audience || []), f.audience_other.trim()].filter(Boolean).join(", "),
           experience: f.experience, goal_primary: f.goal_primary,
@@ -214,6 +216,10 @@ export default function Form() {
                 <span style={{ fontSize: 16, color: "var(--blue)", fontWeight: 800, flexShrink: 0 }}>{showExtra ? "▲ ปิด" : "▼ เปิด"}</span>
               </button>
               {showExtra && <div style={{ marginTop: 18 }}>
+
+              <div className="field"><label>เพศ</label><ChipGroup options={GENDERS} value={f.gender} onChange={v => setVal("gender", v)} /></div>
+
+              <div className="field"><label>อายุ</label><ChipGroup options={AGES} value={f.age_range} onChange={v => setVal("age_range", v)} /></div>
 
               <div className="field"><label>ตอนนี้คุณเป็น...?</label><ChipGroup options={WORK_STYLES} value={f.work_style} onChange={v => setVal("work_style", v)} />
                 {(showWSOther || f.work_style_other) ? <input value={f.work_style_other} onChange={upd("work_style_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น พนักงานบริษัท + ขายของออนไลน์ข้างๆ" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowWSOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}

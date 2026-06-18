@@ -148,7 +148,7 @@ const CheckoutSchema = z.object({
   payload: z.object({
     user_id: z.string().min(1), instagram_account: z.string().min(1), email: z.string().email().optional(), referred_by: z.string().optional(),
     meta_purchase: z.object({ tier: z.literal("Premium_490"), billing_cycle: z.string().min(1) }),
-    form_responses: z.object({ business_type: z.string().min(1), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default("") }),
+    form_responses: z.object({ business_type: z.string().min(1), gender: z.string().optional().default(""), age_range: z.string().optional().default(""), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default("") }),
     insight_screenshot_base64: z.string().nullable().optional(), insight_images: z.array(z.string()).max(8).optional()
   })
 }).passthrough();
@@ -502,6 +502,8 @@ app.get("/api/admin/customer-overview", async (req, res) => {
   const add = (k, v) => { v = String(v || "").trim(); if (!v) return; (t[k] ||= {}); t[k][v] = (t[k][v] || 0) + 1; };
   for (const r of rows) {
     const fr = (safeJson(r.raw_payload_json) || {}).form_responses || {};
+    add("gender", fr.gender);
+    add("age", fr.age_range);
     String(fr.work_style || "").split(" / ").forEach(v => add("status", v));
     String(fr.audience || "").split(",").forEach(v => add("audience", v));
     add("experience", fr.experience);
@@ -510,7 +512,17 @@ app.get("/api/admin/customer-overview", async (req, res) => {
   }
   const total = rows.length;
   const fmt = (o) => Object.entries(o || {}).map(([label, count]) => ({ label, count, pct: Math.round(count / Math.max(total, 1) * 100) })).sort((a, b) => b.count - a.count);
-  res.json({ ok: true, total_customers: total, by_status: fmt(t.status), by_audience: fmt(t.audience), by_experience: fmt(t.experience), by_goal: fmt(t.goal), by_industry: fmt(t.industry) });
+  const by_gender = fmt(t.gender), by_age = fmt(t.age), by_status = fmt(t.status), by_goal = fmt(t.goal), by_industry = fmt(t.industry);
+  // ประโยคสรุปภาพรวม (เอาไปทำการตลาดได้เลย)
+  const top = (a) => a[0]?.label, topPct = (a) => a[0]?.pct;
+  const seg = [];
+  if (top(by_gender)) seg.push(`ส่วนใหญ่เป็น${top(by_gender)} (${topPct(by_gender)}%)`);
+  if (top(by_age)) seg.push(`อายุ ${top(by_age)}`);
+  if (top(by_status)) seg.push(`เป็น${top(by_status)}`);
+  if (top(by_industry) && top(by_industry) !== "อื่นๆ") seg.push(`สาย${top(by_industry)}`);
+  if (top(by_goal)) seg.push(`อยากได้ "${top(by_goal)}"`);
+  const summary = seg.length ? `ลูกค้าของคุณ${seg.join(" · ")}` : null;
+  res.json({ ok: true, total_customers: total, summary, by_gender, by_age, by_status, by_audience: fmt(t.audience), by_experience: fmt(t.experience), by_goal, by_industry });
 });
 
 app.get("/api/admin/revenue", async (req, res) => {

@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [ix, setIx] = useState({ products: "", pain_points: "", content_likes: "", brand_info: "", more: "" });
 
   async function submitImprove() {
+    if (demo) { setImproveErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเจนใหม่ให้แม่นขึ้นทันที 🩵"); return; }
     setImproving(true); setImproveErr("");
     try {
       const d = await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, extra: ix } });
@@ -227,7 +228,7 @@ export default function Dashboard() {
             <button className="btn" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
           </div>
 
-          {!demo && (improveCount >= 1
+          {(improveCount >= 1
             ? <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc" }}><div style={{ fontWeight: 700, color: "#1a7f43" }}>✓ เพิ่มข้อมูลแล้ว — ครูพี่คิมอัปเดตเล่มให้ใหม่เรียบร้อยค่ะ 🩵</div></div>
             : <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
                 {!improveOpen ? <>

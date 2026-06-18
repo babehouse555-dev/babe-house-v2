@@ -15,6 +15,7 @@ export default function Admin() {
   const [insight, setInsight] = useState(null);
   const [usage, setUsage] = useState(null);
   const [custOv, setCustOv] = useState(null);
+  const [showCustDetail, setShowCustDetail] = useState(false);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -71,16 +72,27 @@ export default function Admin() {
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>* นับเฉพาะที่จ่ายผ่าน Stripe จริง (บัตร/PromptPay) มากกว่า 0฿ — ไม่รวมโค้ดฟรีและออเดอร์ทดสอบ</div>
         {rev.by_month.map(m => { const max = Math.max(...rev.by_month.map(x => x.revenue), 1); return <div key={m.billing_cycle} style={{ margin: "9px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{m.billing_cycle.replace("_", " ")}</span><span className="muted">{baht(m.revenue)} · {m.c}</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(m.revenue / max * 100)}%` }} /></div></div>; })}</div>}
 
-      {custOv && <div className="card"><h3>👥 กลุ่มลูกค้าของเรา (ภาพรวม)</h3>
-        <p className="muted" style={{ fontSize: 13, margin: "4px 0 14px" }}>ลูกค้าของเราคือใคร — รวมจากข้อมูลจริงที่ลูกค้ากรอก {custOv.total_customers} คน เอาไปวางแผนการตลาด/ยิงแอดได้เลย</p>
-        {custOv.summary && <div style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa", borderRadius: 14, padding: "14px 16px", marginBottom: 18, fontSize: 14.5, lineHeight: 1.6 }}>📌 <b>{custOv.summary}</b></div>}
-        {[["🚺 เพศ", custOv.by_gender, "214,80,118"], ["🎂 อายุ", custOv.by_age, "230,150,40"], ["🧑‍💼 สถานะ / อาชีพ", custOv.by_status, "46,134,222"], ["🎯 กลุ่มคนดูของพวกเขา", custOv.by_audience, "26,127,67"], ["⏳ ประสบการณ์", custOv.by_experience, "138,109,31"], ["🚀 เป้าหมายหลัก", custOv.by_goal, "107,63,160"]].map(([title, data, rgb]) =>
-          (data && data.length) ? <div key={title} style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{title}</div>
+      {custOv && (() => {
+        const cats = [["🚺", "เพศ", custOv.by_gender, "214,80,118"], ["🎂", "อายุ", custOv.by_age, "230,150,40"], ["🧑‍💼", "อาชีพ/สถานะ", custOv.by_status, "46,134,222"], ["🎯", "กลุ่มคนดู", custOv.by_audience, "26,127,67"], ["⏳", "ประสบการณ์", custOv.by_experience, "138,109,31"], ["🚀", "เป้าหมาย", custOv.by_goal, "107,63,160"]];
+        const has = cats.filter(([, , d]) => d && d.length);
+        return <div className="card"><h3>👥 กลุ่มลูกค้าของเรา</h3>
+          <p className="muted" style={{ fontSize: 13, margin: "4px 0 14px" }}>สรุปจากลูกค้า {custOv.total_customers} คน{custOv.total_customers < 15 ? " (ข้อมูลยังน้อย จะแม่นขึ้นเมื่อลูกค้ามากขึ้น)" : ""}</p>
+          {custOv.summary && <div style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa", borderRadius: 14, padding: "16px 18px", marginBottom: 18, fontSize: 15.5, lineHeight: 1.7 }}>📌 <b>{custOv.summary}</b></div>}
+          {has.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+            {has.map(([emoji, label, data]) => <div key={label} style={{ background: "var(--soft)", borderRadius: 14, padding: "14px 14px" }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{emoji} {label}</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: "var(--blue-d)", margin: "5px 0 2px", lineHeight: 1.3 }}>{data[0].label}</div>
+              <div className="muted" style={{ fontSize: 12 }}>{data[0].count} คน{data.length > 1 ? ` · +${data.length - 1} แบบ` : ""}</div>
+            </div>)}
+          </div>}
+          {has.length > 0 && <button type="button" onClick={() => setShowCustDetail(s => !s)} style={{ background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: "12px 0 4px" }}>{showCustDetail ? "▲ ซ่อนรายละเอียด" : "▼ ดูรายละเอียดทั้งหมด (กราฟแยกหัวข้อ)"}</button>}
+          {showCustDetail && has.map(([emoji, label, data, rgb]) => <div key={label} style={{ marginTop: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{emoji} {label}</div>
             {data.slice(0, 8).map(d => { const max = Math.max(...data.map(x => x.count), 1); return <div key={d.label} style={{ margin: "7px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 3 }}><span>{d.label}</span><span className="muted">{d.count} คน · {d.pct}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(d.count / max * 100)}%`, background: `rgb(${rgb})` }} /></div></div>; })}
-          </div> : null)}
-        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>* รวมเฉพาะลูกค้าที่กรอกข้อมูลส่วนนี้ (บางคนอาจข้าม) · ข้อมูลเก่าก่อนมีฟอร์มใหม่จะไม่มีบางหัวข้อ</div>
-      </div>}
+          </div>)}
+          <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>* รวมเฉพาะลูกค้าที่กรอกข้อมูลส่วนนี้ · ข้อมูลเก่าก่อนฟอร์มใหม่จะไม่มีบางหัวข้อ</div>
+        </div>;
+      })()}
 
       <div className="card"><div className="between"><h3>📊 ลูกค้าแยกตามอุตสาหกรรม</h3><button className="btn" onClick={classify} style={{ padding: "9px 14px" }}>จำแนกด้วย AI</button></div>
         {industries && (industries.breakdown.length ? <div style={{ marginTop: 12 }}><p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>คลิกแถบเพื่อดูรายชื่อในกลุ่มนั้น</p>{industries.breakdown.map(b => { const max = Math.max(...industries.breakdown.map(x => x.customers), 1); return <div key={b.industry} style={{ margin: "9px 0", cursor: "pointer" }} onClick={() => loadStudents(b.industry)}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{b.industry} ›</span><span className="muted">{b.customers} คน · {Math.round(b.customers / industries.total_classified * 100)}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(b.customers / max * 100)}%` }} /></div></div>; })}{industries.untagged > 0 && <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>⚠️ ยังมี {industries.untagged} รายการที่ยังไม่จำแนก</p>}</div> : <p className="muted" style={{ marginTop: 12 }}>ยังไม่มีข้อมูลที่จำแนก{industries.untagged ? ` — มี ${industries.untagged} รายการรอจำแนก` : ""}</p>)}

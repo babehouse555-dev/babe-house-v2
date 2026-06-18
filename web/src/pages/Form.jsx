@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, filesToBase64, getRef, currentCycle, session } from "../api.js";
 
@@ -125,6 +125,7 @@ export default function Form() {
   const [showWSOther, setShowWSOther] = useState(false);
   const [showAudOther, setShowAudOther] = useState(false);
   const [showExtra, setShowExtra] = useState(false);
+  const imgRef = useRef(null);
   const linkBtn = { background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: "8px 0 0", display: "inline-block" };
 
   useEffect(() => {
@@ -142,6 +143,7 @@ export default function Form() {
   async function submit(e) {
     e.preventDefault();
     if (!f.business_type.trim() || !f.instagram_account.trim()) { setErr("ช่วยกรอกช่อง ⭐ ให้ครบนะคะ (แฮนเดิล + ช่องเกี่ยวกับอะไร) — ที่เหลือไม่บังคับค่ะ"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (![...files].length && !window.confirm("ยังไม่ได้แนบรูปสถิติหลังบ้านเลยค่ะ 📊\n\nรูป Insight คือตัวช่วยที่ทำให้ครูพี่คิมวิเคราะห์ตัวเลขจริงของคุณได้ — แนบก่อนเล่มจะแม่นขึ้นเยอะเลยค่ะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบรูป\nกด \"ยกเลิก\" = กลับไปแนบรูปก่อน")) { setErr(""); imgRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
     setBusy(true); setErr("");
     try {
@@ -194,7 +196,7 @@ export default function Form() {
 
               <div className="field"><label>ช่องของคุณเกี่ยวกับอะไร? <span className="muted">(ทำคอนเทนต์แนวไหน)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่" />{inlineGuide("business_type")}</div>
 
-              <div className="field" onClick={() => setFocus("images")}><label>📊 แนบภาพสถิติหลังบ้าน <span className="muted">(สูงสุด 8 รูป)</span></label>
+              <div className="field" ref={imgRef} onClick={() => setFocus("images")}><label>📊 แนบภาพสถิติหลังบ้าน <span className="muted">(สูงสุด 8 รูป)</span></label>
                 <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} />
                 <div className="hint">💡 <b>นี่คือตัวช่วยวิเคราะห์ที่สำคัญที่สุด</b> — AI อ่านตัวเลขจริงจากรูป (Reach, Profile Visits, Link Taps, Audience) ยิ่งครบยิ่งแม่น</div>
                 {files.length > 0 && <div className="hint">เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}

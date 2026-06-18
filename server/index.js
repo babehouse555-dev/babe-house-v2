@@ -627,7 +627,8 @@ app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) re
 app.get("/api/health", (req, res) => {
   const sk = String(process.env.STRIPE_SECRET_KEY || "");
   const stripe_mode = sk.startsWith("sk_live_") ? "live" : sk.startsWith("sk_test_") ? "test" : "none";
-  res.json({ ok: true, service: "babe-house-v2", ai: aiModelName(), payment_provider: PROVIDER, stripe_mode, stripe_webhook: process.env.STRIPE_WEBHOOK_SECRET ? "set" : "missing", email: EMAIL_ENABLED ? "resend" : "dev", time: new Date().toISOString() });
+  const key_dbg = { present: sk.length > 0, len: sk.length, prefix: sk.slice(0, 8), leading_space: sk !== sk.trimStart(), trailing_space: sk !== sk.trimEnd() };
+  res.json({ ok: true, service: "babe-house-v2", ai: aiModelName(), payment_provider: PROVIDER, stripe_mode, key_dbg, stripe_webhook: process.env.STRIPE_WEBHOOK_SECRET ? "set" : "missing", email: EMAIL_ENABLED ? "resend" : "dev", time: new Date().toISOString() });
 });
 
 // ---------- serve React build (SPA fallback) ----------

@@ -4,6 +4,9 @@ import { api, session } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
+// แปลงคำศัพท์เทคนิคเป็นไทยบ้านๆ ก่อนโชว์ลูกค้า (ลูกค้างงคำอังกฤษ)
+const G_LABEL = { Awareness: "เรียกคนรู้จัก", Conversion: "พาไปซื้อ/ทักเรา", Branding: "สร้างตัวตน" };
+const BEAT_LABEL = { HOOK: "เปิดให้สะดุด", BODY: "เนื้อหา", CTA: "ปิดท้าย · ชวนคนดูทำต่อ" };
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
 const modH = { display: "flex", alignItems: "center", margin: 0 };
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -292,7 +295,7 @@ export default function Dashboard() {
           <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "26px 22px", marginTop: 12, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
             <div style={{ fontSize: 32 }}>📅</div>
             <h3 style={{ margin: "6px 0 6px", color: "#fff", fontSize: 21 }}>นี่เพิ่งแค่ "กลยุทธ์" นะคะ — ของจริงอยู่ที่แผน 30 วัน!</h3>
-            <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ครูพี่คิมเขียน <b>สคริปต์พร้อมอัดครบทั้ง 30 วัน</b> (Hook–เล่าเรื่อง–CTA) + แคปชันพร้อมโพสต์ + เกม Marathon ให้แล้วค่ะ มาเริ่มลงมือทำกันเลย!</p>
+            <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ครูพี่คิมเขียน <b>สคริปต์พร้อมอัดครบทั้ง 30 วัน</b> (เปิดให้สะดุด–เล่าเรื่อง–ปิดท้ายชวนทำต่อ) + แคปชันพร้อมโพสต์ + เกม Marathon ให้แล้วค่ะ มาเริ่มลงมือทำกันเลย!</p>
             <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
           </div>
           </>}
@@ -330,7 +333,7 @@ export default function Dashboard() {
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
-              <div style={{ fontSize: 10, color: G_COLORS[c.g] || "var(--muted)", fontWeight: 700, margin: "2px 0 5px" }}>{c.g}</div>
+              <div style={{ fontSize: 10, color: G_COLORS[c.g] || "var(--muted)", fontWeight: 700, margin: "2px 0 5px" }}>{G_LABEL[c.g] || c.g}</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", color: done ? "#1a7f43" : "inherit" }}>{c.t}</div>
             </button>; })}
           </div>
@@ -339,11 +342,11 @@ export default function Dashboard() {
             const copy = (t) => navigator.clipboard?.writeText(t);
             const title = (bp.calendar.find(c => c.d === script.d) || {}).t;
             return <div ref={scriptRef} className="card" style={{ scrollMarginTop: 70 }}>
-              <div className="between" style={{ marginBottom: 8 }}><span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>วันที่ {script.d} · {script.g}</span><button className="link" onClick={scrollToCal} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer" }}>↑ เลือกวันอื่น</button></div>
+              <div className="between" style={{ marginBottom: 8 }}><span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>วันที่ {script.d} · {G_LABEL[script.g] || script.g}</span><button className="link" onClick={scrollToCal} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer" }}>↑ เลือกวันอื่น</button></div>
               <h3 style={{ margin: "10px 0 4px" }}>{title}</h3>
               <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>🎬 บทพูดอัดคลิป — กดคัดลอกแล้วใช้ได้เลย</p>
               {(script.beats || []).map((b, i) => <div key={i} style={{ borderLeft: `4px solid ${BEAT[b.s] || "var(--blue)"}`, background: "var(--soft)", borderRadius: "0 12px 12px 0", padding: "12px 14px", marginBottom: 10 }}>
-                <div className="row" style={{ gap: 8, marginBottom: 6 }}><span style={{ background: BEAT[b.s] || "var(--blue)", color: "#fff", fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 20 }}>{b.s}</span><span className="muted" style={{ fontSize: 12 }}>{b.ts}</span></div>
+                <div className="row" style={{ gap: 8, marginBottom: 6 }}><span style={{ background: BEAT[b.s] || "var(--blue)", color: "#fff", fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 20 }}>{BEAT_LABEL[b.s] || b.s}</span><span className="muted" style={{ fontSize: 12 }}>{b.ts}</span></div>
                 <p style={{ margin: "0 0 6px", fontSize: 15 }}>{b.say}</p>
                 <div className="row" style={{ gap: 6 }}>{b.ost && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>📺 {b.ost}</span>}{b.vis && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>🎥 {b.vis}</span>}</div>
               </div>)}

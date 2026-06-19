@@ -118,7 +118,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -145,7 +145,7 @@ export default function Form() {
 
   async function submit(e) {
     e.preventDefault();
-    if (!f.business_type.trim() || !f.instagram_account.trim()) { setErr("ช่วยกรอกช่อง ⭐ ให้ครบนะคะ (แฮนเดิล + ช่องเกี่ยวกับอะไร) — ที่เหลือไม่บังคับค่ะ"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (!f.instagram_account.trim()) { setErr("ช่วยกรอกชื่อช่อง/แฮนเดิล (⭐) ให้หน่อยนะคะ — ที่เหลือไม่บังคับค่ะ"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (![...files].length && !window.confirm("ยังไม่ได้แนบรูปสถิติหลังบ้านเลยค่ะ 📊\n\nรูป Insight คือตัวช่วยที่ทำให้ครูพี่คิมวิเคราะห์ตัวเลขจริงของคุณได้ — แนบก่อนเล่มจะแม่นขึ้นเยอะเลยค่ะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบรูป\nกด \"ยกเลิก\" = กลับไปแนบรูปก่อน")) { setErr(""); imgRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
     setBusy(true); setErr("");
@@ -160,8 +160,8 @@ export default function Form() {
           business_type: f.business_type, gender: f.gender, age_range: f.age_range,
           work_style: [f.work_style, f.work_style_other.trim()].filter(Boolean).join(" / "),
           audience: [...(f.audience || []), f.audience_other.trim()].filter(Boolean).join(", "),
-          experience: f.experience, goal_primary: f.goal_primary,
-          monthly_goal: `${f.goal_primary || "(ไม่ได้ระบุ — ให้ครูพี่คิมวิเคราะห์เป้าหมายที่เหมาะสมจากช่อง/รูป Insight)"}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
+          experience: f.experience, goal_primary: (f.goal_primary || []).join(", "),
+          monthly_goal: `${(f.goal_primary || []).join(" + ") || "(ไม่ได้ระบุ — ให้ครูพี่คิมวิเคราะห์เป้าหมายที่เหมาะสมจากช่อง/รูป Insight)"}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
           starting_point: [f.q_origin && `จุดเริ่มต้น/ทำไมถึงทำ: ${f.q_origin}`, f.q_diff && `จุดที่ต่างจากคนอื่น: ${f.q_diff}`, f.q_vision && `อยากโต/เป้าหมายระยะยาว: ${f.q_vision}`].filter(Boolean).join("\n"),
           competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name
         },
@@ -198,7 +198,7 @@ export default function Form() {
 
               <div className="field"><label>Instagram / TikTok Account <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}</div>
 
-              <div className="field"><label>ช่องของคุณเกี่ยวกับอะไร? <span className="muted">(ทำคอนเทนต์แนวไหน)</span> <span style={{ color: "var(--blue)" }}>⭐</span></label><input required value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่" />{inlineGuide("business_type")}</div>
+              <div className="field"><label>ช่องของคุณเกี่ยวกับอะไร? <span className="muted">(ทำคอนเทนต์แนวไหน)</span></label><input value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่" /><div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>💡 ถ้ายังไม่มีช่อง หรือยังไม่รู้ว่าจะทำแนวไหน — เว้นว่างไว้ก่อนได้เลยค่ะ เดี๋ยวครูพี่คิมช่วยดูจากรูป Insight + ข้อมูลที่เหลือให้</div>{inlineGuide("business_type")}</div>
 
               <div className="field" ref={imgRef} onClick={() => setFocus("images")}><label>📊 แนบภาพสถิติหลังบ้าน <span className="muted">(สูงสุด 8 รูป)</span></label>
                 <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} />
@@ -233,7 +233,7 @@ export default function Form() {
 
               <div className="field"><label>ทำมานานแค่ไหน?</label><ChipGroup options={EXPERIENCES} value={f.experience} onChange={v => setVal("experience", v)} /></div>
 
-              <div className="field"><label>เดือนนี้อยากได้อะไรมากที่สุด?</label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} /></div>
+              <div className="field"><label>เดือนนี้อยากได้อะไร? <span className="muted">(เลือกได้หลายข้อ — อยากได้หลายเป้าหมายก็ติ๊กได้เลย)</span></label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} multi /></div>
 
               <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", border: "1px dashed #e0b85b", margin: "4px 0 14px" }}>
                 💛 <b>3 ข้อนี้คือหัวใจที่ทำให้เล่ม "เป็นคุณคนเดียว"</b> (ไม่บังคับ) — ปุ่มข้างบนบอกว่าคุณ "ทำอะไร" ส่วน 3 ข้อนี้บอกว่าคุณ "เป็นใคร" เล่าสั้นๆ เหมือนคุยกับเพื่อนก็พอค่ะ

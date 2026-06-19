@@ -166,10 +166,7 @@ function ShootingGuide() {
     <div style={{ background: f.color[0], borderRadius: 16, padding: "16px 18px" }}>
       <div style={{ fontWeight: 800, fontSize: 16, color: f.color[1] }}>{f.emoji} {f.name}</div>
       <div className="muted" style={{ fontSize: 13, margin: "2px 0 12px" }}>เหมาะกับ: {f.who}</div>
-      {f.clip ? <div style={{ marginBottom: 14 }}>
-        <div style={{ maxWidth: 340, margin: "0 auto", borderRadius: 12, overflow: "hidden", background: "#fff" }}><iframe src={`https://www.instagram.com/reel/${f.clip}/embed`} title={f.name} scrolling="no" allowtransparency="true" style={{ width: "100%", height: 560, border: 0, display: "block" }} /></div>
-        <div className="center" style={{ marginTop: 8 }}><a href={`https://www.instagram.com/reel/${f.clip}/`} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 700, color: f.color[1] }}>▶️ เปิดดูเต็มๆ บน Instagram</a></div>
-      </div>
+      {f.clip ? <a href={`https://www.instagram.com/reel/${f.clip}/`} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#fff", border: `1.5px solid ${f.color[1]}`, color: f.color[1], borderRadius: 12, padding: "13px 14px", fontWeight: 800, fontSize: 14.5, textDecoration: "none", marginBottom: 14 }}>▶️ ดูคลิปตัวอย่างแบบนี้ (เปิดใน Instagram)</a>
         : <div style={{ background: "#fff", border: "1px dashed " + f.color[1], borderRadius: 12, padding: "12px 14px", marginBottom: 14, fontSize: 13, color: f.color[1], textAlign: "center" }}>🎬 คลิปตัวอย่างแบบนี้ กำลังจะมาเร็วๆ นี้ค่ะ</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {f.steps.map(([k, v], i) => <div key={i} style={{ background: "#fff", borderRadius: 10, padding: "10px 13px" }}><div style={{ fontWeight: 700, fontSize: 13, color: f.color[1], marginBottom: 2 }}>{k}</div><div style={{ fontSize: 13.5, lineHeight: 1.55 }}>{v}</div></div>)}
@@ -439,7 +436,6 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← ไปยืนยันบทวิเคราะห์</button>
         </div>}
         {tab === "calendar" && contentReady && <>
-          <ShootingGuide />
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
@@ -468,6 +464,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
+          {script && <ShootingGuide />}
           <ServicesBlock />
         </>}
 

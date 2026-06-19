@@ -381,12 +381,12 @@ export default function Dashboard() {
           </div>}
           {m.funnel && <div className="card"><h3 style={modH}><Num n={5} />🫧 Funnel</h3><div style={{ marginTop: 12 }}>{["top", "middle", "bottom"].map(k => m.funnel[k] && <div key={k} style={{ margin: "8px 0" }}><div className="between" style={{ fontSize: 13 }}><span><b>{m.funnel[k].label}</b> · {m.funnel[k].body}</span><span className="muted">{m.funnel[k].pct}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${m.funnel[k].pct}%` }} /></div></div>)}</div><p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{m.funnel.note}</p></div>}
 
-          {contentReady ? <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "26px 22px", marginTop: 12, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
+          {contentReady ? <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "26px 22px", marginTop: 12, marginBottom: 28, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
             <div style={{ fontSize: 32 }}>📅</div>
             <h3 style={{ margin: "6px 0 6px", color: "#fff", fontSize: 21 }}>นี่เพิ่งแค่ "กลยุทธ์" นะคะ — ของจริงอยู่ที่แผน 30 วัน!</h3>
             <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ครูพี่คิมเขียน <b>สคริปต์พร้อมอัดครบทั้ง 30 วัน</b> (เปิดให้สะดุด–เล่าเรื่อง–ปิดท้ายชวนทำต่อ) + แคปชันพร้อมโพสต์ + เกม Marathon ให้แล้วค่ะ มาเริ่มลงมือทำกันเลย!</p>
             <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
-          </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
+          </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, marginBottom: 28, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
             {genState === "generating" ? <>
               <div className="spinner" style={{ borderTopColor: "#fff", margin: "0 auto 14px" }} />
               <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 6px" }}>ครูพี่คิมกำลังสร้างแผน 30 วัน + สคริปต์ให้... 🩵</h3>

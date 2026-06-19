@@ -503,7 +503,7 @@ export default function Dashboard() {
           </>;
         })()}
 
-        {!demo && <div className="card center" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa" }}>
+        {!demo && <div className="card center" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa", marginTop: 24 }}>
           <div style={{ fontWeight: 700, fontSize: 17 }}>ทำครบ 30 วันแล้วใช่ไหมคะ? 🩵</div>
           <p className="muted" style={{ margin: "6px 0 14px" }}>ปลดล็อกแผนเดือนใหม่ เพื่อต่อยอดการเติบโต</p>
           <Link className="btn" to={`/form?renew=1&email=${encodeURIComponent(session.email || "")}`}>+ เพิ่มแผนเดือนใหม่ (490฿)</Link>

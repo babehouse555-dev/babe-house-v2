@@ -382,7 +382,7 @@ export default function Dashboard() {
             {genState === "generating" ? <>
               <div className="spinner" style={{ border: "4px solid rgba(255,255,255,.35)", borderTopColor: "#fff", margin: "0 auto 14px" }} />
               <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 6px" }}>ครูพี่คิมกำลังสร้างแผน 30 วัน + สคริปต์ให้... 🩵</h3>
-              <p style={{ opacity: .95, fontSize: 14.5 }}>ใช้เวลาประมาณ 1–2 นาที ไม่ต้องปิดหน้านะคะ พอเสร็จจะเด้งไปที่ตารางเองเลย</p>
+              <p style={{ opacity: .95, fontSize: 14.5 }}>ใช้เวลาประมาณ 1–2 นาที · อยู่หน้านี้รอได้เลย พอเสร็จเด้งเข้าตารางเอง — หรือปิดหน้าไปก่อนก็ได้ค่ะ เดี๋ยวส่งเมลแจ้งเมื่อพร้อม 📧</p>
             </> : genState === "error" ? <>
               <div style={{ fontSize: 30 }}>🥺</div>
               <h3 style={{ color: "#fff", fontSize: 19, margin: "4px 0 6px" }}>เอ๊ะ สะดุดนิดหน่อย</h3>

@@ -74,7 +74,7 @@ export default function Dashboard() {
     if (demo) { setImproveErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเจนใหม่ให้แม่นขึ้นทันที 🩵"); return; }
     setImproving(true); setImproveErr("");
     try {
-      const d = await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, extra: ix } });
+      const d = await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix } });
       setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setView("info");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) { setImproveErr(e.message || "เจนใหม่ไม่สำเร็จ ลองอีกครั้งนะคะ"); }
@@ -84,7 +84,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (demo) return;
     if (!userId || !cycle) { setErr("ไม่พบข้อมูลเล่ม"); return; }
-    api(`/api/blueprints/latest?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}`)
+    api(`/api/blueprints/latest?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId || "")}`)
       .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); })
       .catch(() => setErr("โหลดเล่มไม่สำเร็จ — อาจกำลังสร้างอยู่ หรือลิงก์ไม่ถูกต้อง"));
   }, [userId, cycle]);
@@ -95,7 +95,7 @@ export default function Dashboard() {
     if (has) next.delete(d); else next.add(d);
     setUploaded(next);
     if (demo) return; // เดโม: โชว์ติ๊กเขียวได้ แต่ไม่บันทึก
-    try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
+    try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
   }
 
   if (err) return <div className="wrap narrow page-pad center"><div className="card"><h2>{err}</h2><Link className="btn" to="/account" style={{ marginTop: 16 }}>ไปบัญชีของฉัน</Link></div></div>;

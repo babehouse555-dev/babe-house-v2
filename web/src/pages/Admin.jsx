@@ -43,7 +43,14 @@ export default function Admin() {
   async function aiInsight() { setInsight("loading"); try { const d = await api("/api/admin/ai-insight", { adminKey: key }); setInsight(d.insight); } catch { setInsight(null); } }
   async function addCode() { try { await api("/api/admin/codes", { method: "POST", adminKey: key, body: nc }); setNc({ code: "", note: "", discount_percent: "", max_uses: "" }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); } catch (e) { alert(e.message); } }
   async function toggleCode(c) { await api("/api/admin/codes/toggle", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
-  function csv() { window.open(`/api/admin/students.csv?admin_key=${encodeURIComponent(key)}` + (filter ? "&industry=" + encodeURIComponent(filter) : ""), "_blank"); }
+  async function csv() {
+    try {
+      const res = await fetch("/api/admin/students.csv" + (filter ? "?industry=" + encodeURIComponent(filter) : ""), { headers: { "x-admin-key": key } });
+      if (!res.ok) { alert("ดาวน์โหลดไม่สำเร็จ"); return; }
+      const blob = await res.blob(), url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "babe-house-students.csv"; a.click(); URL.revokeObjectURL(url);
+    } catch (e) { alert(e.message); }
+  }
 
   if (!authed) return (
     <div className="wrap narrow page-pad">
@@ -67,6 +74,11 @@ export default function Admin() {
       {usage && <div className="card"><h3>🤖 ต้นทุน AI (Gemini) เดือนนี้</h3>
         <div className="row" style={{ alignItems: "baseline", margin: "12px 0 6px" }}><div style={{ fontSize: 34, fontWeight: 800, color: "var(--blue)" }}>฿{Number(usage.month.cost_thb).toLocaleString()}</div><div className="muted">{usage.month.count} เล่ม · เฉลี่ย ฿{usage.month.avg_thb}/เล่ม</div></div>
         <p className="muted" style={{ fontSize: 13 }}>โทเค็นเดือนนี้ {fmtTok(usage.month.total)} (เข้า {fmtTok(usage.month.input)} · ออก {fmtTok(usage.month.output)}) · รวมทั้งหมด {fmtTok(usage.all_time.total_tokens)} จาก {usage.all_time.count} เล่ม</p>
+        {usage.today && <div style={{ marginTop: 10, background: usage.today.over ? "#fdeaea" : "var(--soft)", border: usage.today.over ? "1px solid #e0a0a0" : "1px solid var(--border)", borderRadius: 12, padding: "10px 14px" }}>
+          <div className="between" style={{ fontSize: 13.5 }}><span style={{ fontWeight: 700 }}>{usage.today.over ? "🔴" : "📅"} วันนี้: {fmtTok(usage.today.tokens)} โทเค็น · {usage.today.count} ครั้ง</span><span className="muted">{usage.today.pct}% ของเพดาน</span></div>
+          <div className="bar-track" style={{ marginTop: 6 }}><div className="bar-fill" style={{ width: `${Math.min(100, usage.today.pct)}%`, background: usage.today.over ? "#c0392b" : usage.today.pct > 70 ? "#e0b85b" : undefined }} /></div>
+          {usage.today.over && <div style={{ fontSize: 12.5, color: "#b3261e", fontWeight: 700, marginTop: 6 }}>⚠️ วันนี้ใช้ทะลุเพดาน {fmtTok(usage.today.cap)} แล้ว — เช็กว่ามีการใช้ผิดปกติไหม</div>}
+        </div>}
         {usage.month.by_model.length > 0 && <div className="scroll" style={{ marginTop: 10 }}><table><thead><tr><th>โมเดล</th><th>เล่ม</th><th>โทเค็น</th><th>฿</th></tr></thead><tbody>{usage.month.by_model.map(m => <tr key={m.model}><td>{m.model}</td><td>{m.count}</td><td>{fmtTok(m.input + m.output)}</td><td>฿{m.cost_thb}</td></tr>)}</tbody></table></div>}
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ราคาประมาณ (แปลง USD→฿ ~36) · ยอดจริงดูที่ Google AI Studio / Cloud Billing</p>
       </div>}

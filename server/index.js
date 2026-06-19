@@ -351,9 +351,10 @@ app.post("/api/generate-blueprint-by-order", async (req, res) => {
 // เพิ่มข้อมูลให้ครูพี่คิมเข้าใจมากขึ้น → เจนเล่มเดิมใหม่ (ฟรี 1 ครั้ง/เล่ม) ทับ blueprint เดิม URL เดิมใช้ได้
 app.post("/api/improve-blueprint", async (req, res) => {
   try {
-    const userId = String(req.body?.user_id || ""), cycle = String(req.body?.billing_cycle || ""), extra = req.body?.extra || {};
-    if (!userId || !cycle) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
-    const bp = await one(`SELECT * FROM blueprints WHERE user_id=$1 AND billing_cycle=$2 ORDER BY created_at DESC LIMIT 1`, [userId, cycle]);
+    const userId = String(req.body?.user_id || ""), cycle = String(req.body?.billing_cycle || ""), bpId = String(req.body?.blueprint_id || ""), extra = req.body?.extra || {};
+    if (!userId || !cycle || !bpId) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
+    // ต้องมี blueprint_id ที่ตรง (เดาไม่ได้) ถึงรีเจนได้ — กันคนอื่นกดรีเจนเล่มเรา
+    const bp = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
     if (!bp) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
     if ((bp.improve_count || 0) >= 1) return res.status(409).json({ ok: false, error: "IMPROVE_USED", message: "คุณใช้สิทธิ์เพิ่มข้อมูลฟรีของเล่มนี้ไปแล้วค่ะ 🩵" });
     const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
@@ -383,9 +384,10 @@ app.post("/api/generate-blueprint", async (req, res) => {
 });
 
 app.get("/api/blueprints/latest", async (req, res) => {
-  const userId = String(req.query.user_id || ""), cycle = String(req.query.billing_cycle || "");
-  if (!userId || !cycle) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
-  const row = await one(`SELECT * FROM blueprints WHERE user_id=$1 AND billing_cycle=$2 ORDER BY created_at DESC LIMIT 1`, [userId, cycle]);
+  const userId = String(req.query.user_id || ""), cycle = String(req.query.billing_cycle || ""), bpId = String(req.query.blueprint_id || "");
+  if (!userId || !cycle || !bpId) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
+  // ต้องรู้ blueprint_id (สุ่ม เดาไม่ได้) ถึงเปิดได้ — กันเดา user_id แล้วอ่านเล่มคนอื่น
+  const row = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
   if (!row) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
   res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, improve_count: row.improve_count || 0, blueprint: safeJson(row.blueprint_json), marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
@@ -404,6 +406,10 @@ app.get("/api/marathon/progress", async (req, res) => {
 app.post("/api/marathon/progress", async (req, res) => {
   try {
     const p = MarathonSchema.parse(req.body);
+    // ต้องมี blueprint_id ที่ตรงกับเล่มจริง ถึงติ๊กได้ — กันคนอื่นแก้ความคืบหน้าเรา
+    const bpId = String(req.body?.blueprint_id || "");
+    const owns = bpId && await one(`SELECT 1 FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, p.user_id, p.billing_cycle]);
+    if (!owns) return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "ไม่มีสิทธิ์แก้ไข" });
     const days = normDays(p.uploaded_days), count = days.length, tier = tierOf(count);
     await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle,uploaded_days_json,uploaded_count,star_count,tier,last_action_day,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
       ON CONFLICT (user_id,billing_cycle) DO UPDATE SET instagram_account=EXCLUDED.instagram_account,uploaded_days_json=EXCLUDED.uploaded_days_json,uploaded_count=EXCLUDED.uploaded_count,star_count=EXCLUDED.star_count,tier=EXCLUDED.tier,last_action_day=EXCLUDED.last_action_day,updated_at=now()`,
@@ -497,6 +503,8 @@ app.get("/api/admin/ai-usage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const rows = await q(`SELECT model, COUNT(*) n, COALESCE(SUM(input_tokens),0) inp, COALESCE(SUM(output_tokens),0) outp FROM ai_usage WHERE created_at >= date_trunc('month', now()) GROUP BY model`);
   const allTime = await one(`SELECT COUNT(*) n, COALESCE(SUM(total_tokens),0) tot FROM ai_usage`);
+  const todayRow = await one(`SELECT COALESCE(SUM(total_tokens),0) tot, COUNT(*) n FROM ai_usage WHERE created_at >= date_trunc('day', now())`);
+  const todayTokens = Number(todayRow.tot), dailyCap = Number(process.env.GEMINI_DAILY_TOKEN_CAP) || 2000000;
   let cost = 0, inp = 0, outp = 0, n = 0;
   const byModel = rows.map(r => {
     const ri = Number(r.inp), ro = Number(r.outp), rn = Number(r.n), c = aiCostTHB(r.model, ri, ro);
@@ -506,6 +514,7 @@ app.get("/api/admin/ai-usage", async (req, res) => {
   res.json({
     ok: true,
     month: { count: n, input: inp, output: outp, total: inp + outp, cost_thb: Math.round(cost * 100) / 100, avg_thb: n ? Math.round((cost / n) * 100) / 100 : 0, by_model: byModel },
+    today: { tokens: todayTokens, count: Number(todayRow.n), cap: dailyCap, pct: Math.round(todayTokens / dailyCap * 100), over: todayTokens > dailyCap },
     all_time: { count: Number(allTime.n), total_tokens: Number(allTime.tot) }
   });
 });

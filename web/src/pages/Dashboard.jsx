@@ -157,13 +157,14 @@ export default function Dashboard() {
             </ul>
             <Link className="btn full" to="/form" style={{ marginTop: 12 }}>สร้างเล่มจริงของฉัน · 490฿</Link>
           </div>}
-          {bp.story?.length > 0 && !showDeep && <div className="card center" style={{ background: "linear-gradient(135deg,#E7EDF8,#F4F9FF)", border: "1px solid #cdd9f0" }}>
-            <div style={{ fontSize: 28 }}>✨</div>
-            <h3 style={{ margin: "4px 0 6px" }}>พร้อมลุยคอนเทนต์แล้วใช่ไหมคะ? 🩵</h3>
-            <p className="muted" style={{ fontSize: 14.5, marginBottom: 16, maxWidth: 500, marginInline: "auto" }}>งั้นไปดู <b>บทวิเคราะห์เจาะลึก</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · 5 โมดูลปั้นแบรนด์) แล้วลุย <b>ตารางคอนเทนต์ 30 วัน</b> กันเลยค่ะ!</p>
-            <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-              <button className="btn" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }}>🔍 ดูบทวิเคราะห์เจาะลึก</button>
-              <button className="btn" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "var(--blue)", border: "1.5px solid var(--blue)" }}>📅 ไปตาราง 30 วัน →</button>
+          {bp.story?.length > 0 && !showDeep && <div className="center" style={{ background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 18, padding: "26px 22px", margin: "8px 0", boxShadow: "0 14px 34px rgba(63,107,174,.34)" }}>
+            <div style={{ display: "inline-block", background: "rgba(255,255,255,.22)", color: "#fff", fontWeight: 800, fontSize: 12, padding: "4px 14px", borderRadius: 20, marginBottom: 10 }}>👇 ยังมีบทวิเคราะห์เต็มๆ + 30 สคริปต์ รออยู่</div>
+            <div style={{ fontSize: 30 }}>✨</div>
+            <h3 style={{ margin: "4px 0 6px", color: "#fff", fontSize: 21 }}>พร้อมลุยคอนเทนต์แล้วใช่ไหมคะ? 🩵</h3>
+            <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 520, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ที่อ่านไปเมื่อกี้เป็นแค่ <b>น้ำจิ้ม</b> ค่ะ — ของจริงคือ <b>บทวิเคราะห์เจาะลึก</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · 5 โมดูลปั้นแบรนด์) + <b>ตารางคอนเทนต์ 30 วัน</b> กดดูเลยค่ะ!</p>
+            <div className="row" style={{ gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+              <button className="btn-pulse" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>🔍 ดูบทวิเคราะห์เจาะลึก →</button>
+              <button onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "15px 22px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>📅 ไปตาราง 30 วัน</button>
             </div>
           </div>}
           {(showDeep || !(bp.story?.length > 0)) && <>
@@ -226,14 +227,13 @@ export default function Dashboard() {
           </div>}
           {m.funnel && <div className="card"><h3 style={modH}><Num n={5} />🫧 Funnel</h3><div style={{ marginTop: 12 }}>{["top", "middle", "bottom"].map(k => m.funnel[k] && <div key={k} style={{ margin: "8px 0" }}><div className="between" style={{ fontSize: 13 }}><span><b>{m.funnel[k].label}</b> · {m.funnel[k].body}</span><span className="muted">{m.funnel[k].pct}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${m.funnel[k].pct}%` }} /></div></div>)}</div><p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{m.funnel.note}</p></div>}
 
-          </>}
-
           <div className="card center" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa", marginTop: 10 }}>
             <div style={{ fontSize: 30 }}>📅</div>
             <h3 style={{ margin: "6px 0 6px" }}>นี่เพิ่งแค่ "กลยุทธ์" นะคะ — ของจริงอยู่ที่แผน 30 วัน!</h3>
             <p className="muted" style={{ fontSize: 14.5, marginBottom: 16, maxWidth: 540, marginInline: "auto" }}>ครูพี่คิมเขียน <b>สคริปต์พร้อมอัดครบทั้ง 30 วัน</b> (Hook–เล่าเรื่อง–CTA) + แคปชันพร้อมโพสต์ + เกม Marathon ให้แล้วค่ะ มาเริ่มลงมือทำกันเลย!</p>
             <button className="btn" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
           </div>
+          </>}
 
           {(improveCount >= 1
             ? <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc" }}><div style={{ fontWeight: 700, color: "#1a7f43" }}>✓ เพิ่มข้อมูลแล้ว — ครูพี่คิมอัปเดตเล่มให้ใหม่เรียบร้อยค่ะ 🩵</div></div>

@@ -218,7 +218,7 @@ export default function Dashboard() {
         </div>
 
         {tab === "strategy" && <>
-          <div className="card" style={{ background: "var(--soft)", lineHeight: 1.7 }}>{bp.greeting}</div>
+          <div style={{ background: "linear-gradient(135deg,#ECEAF6,#E4F4F3)", border: "1px solid #d9d3ec", borderRadius: 18, padding: "18px 20px", lineHeight: 1.65, marginBottom: 16, fontSize: 15 }}><span style={{ fontSize: 22, marginRight: 6 }}>🩵</span>{bp.greeting}</div>
           {demo && <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
             <div style={{ fontWeight: 800, marginBottom: 8, color: "var(--blue-d)" }}>🔍 นี่คือ <u>เล่มตัวอย่าง</u> — บทวิเคราะห์ยังไม่เจาะลึกเท่าเล่มจริงของคุณนะคะ เพราะ...</div>
             <ul style={{ paddingLeft: 18, fontSize: 14, lineHeight: 1.8, margin: 0 }}>
@@ -242,27 +242,24 @@ export default function Dashboard() {
               })}
             </div>
           </div>}
-          {bp.story?.length > 0 && <div style={{ marginBottom: 8 }}>
-            <p className="muted" style={{ fontSize: 14, marginBottom: 14 }}>นั่งจิบกาแฟอ่านสบายๆ นะคะ — ครูพี่คิมเล่าให้ฟังว่าช่องคุณอยู่ตรงไหน แล้วเราจะไปต่อยังไง 🩵</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {bp.story.map((c, i) => <div key={i} className="card" style={{ margin: 0, borderLeft: "4px solid var(--blue)" }}>
-                <div className="row" style={{ gap: 10, marginBottom: 8 }}><span style={{ fontSize: 26 }}>{c.emoji}</span><h3 style={{ margin: 0, fontSize: 17 }}>{c.title}</h3></div>
-                <p style={{ fontSize: 15.5, lineHeight: 1.85, margin: 0 }}>{c.body}</p>
-              </div>)}
-            </div>
-          </div>}
-          {bp.story?.length > 0 && !showDeep && <div className="center" style={{ background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 18, padding: "26px 22px", margin: "8px 0", boxShadow: "0 14px 34px rgba(63,107,174,.34)" }}>
-            <div style={{ display: "inline-block", background: "rgba(255,255,255,.22)", color: "#fff", fontWeight: 800, fontSize: 12, padding: "4px 14px", borderRadius: 20, marginBottom: 10 }}>👇 ยังมีบทวิเคราะห์เต็มๆ + 30 สคริปต์ รออยู่</div>
-            <div style={{ fontSize: 30 }}>✨</div>
-            <h3 style={{ margin: "4px 0 6px", color: "#fff", fontSize: 21 }}>พร้อมลุยคอนเทนต์แล้วใช่ไหมคะ? 🩵</h3>
-            <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 520, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ที่อ่านไปเมื่อกี้เป็นแค่ <b>น้ำจิ้ม</b> ค่ะ — ของจริงคือ <b>บทวิเคราะห์เจาะลึก</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · 5 โมดูลปั้นแบรนด์) + <b>ตารางคอนเทนต์ 30 วัน</b> กดดูเลยค่ะ!</p>
-            <div className="row" style={{ gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-              <button className="btn-pulse" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>🔍 ดูบทวิเคราะห์เจาะลึก →</button>
-              {contentReady && <button onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "15px 22px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>📅 ไปตาราง 30 วัน</button>}
-            </div>
+          {!showDeep && <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 20, padding: "26px 22px", margin: "4px 0", boxShadow: "0 16px 38px rgba(63,107,174,.36)" }}>
+            <div style={{ fontSize: 38, lineHeight: 1 }}>🔮</div>
+            <h3 style={{ margin: "10px 0 6px", color: "#fff", fontSize: 22, lineHeight: 1.35 }}>ครูพี่คิมอ่านช่องคุณจบแล้วค่ะ...</h3>
+            <p style={{ fontSize: 15.5, margin: "0 auto 18px", maxWidth: 440, opacity: .96, lineHeight: 1.6 }}>เห็นทั้ง <b>ของดีที่ซ่อนอยู่</b> และ <b>จุดที่ทำให้ยังไม่โต</b> เลย — อยากรู้ไหมคะว่าช่องคุณเป็นยังไง? 👀</p>
+            <button className="btn-pulse" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "16px 30px", fontWeight: 800, fontSize: 17, cursor: "pointer" }}>เปิดอ่านบทวิเคราะห์ของฉัน →</button>
+            <div style={{ fontSize: 12.5, opacity: .85, marginTop: 12 }}>ใช้เวลาอ่านแค่ 2 นาที · {contentReady ? "มีแผน 30 วันพร้อมแล้ว" : "แล้วค่อยสร้างแผน 30 วันต่อ"} 🩵</div>
           </div>}
           {(showDeep || !(bp.story?.length > 0)) && <>
           <div ref={deepRef} style={{ scrollMarginTop: 70 }} />
+          {bp.story?.length > 0 && <div style={{ marginBottom: 18 }}>
+            <p className="muted" style={{ fontSize: 14, marginBottom: 14 }}>📖 ครูพี่คิมเล่าให้ฟังก่อนนะคะ ว่าช่องคุณอยู่ตรงไหน แล้วเราจะไปต่อยังไง 🩵</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {bp.story.map((c, i) => { const sc = [["#ECEAF6", "#6E63A6"], ["#E7EDF8", "#3F6BAE"], ["#E4F4F3", "#2C8E8C"], ["#F3F0F5", "#7E7392"], ["#F7F4EA", "#9A8458"], ["#E9EEF6", "#5573A0"]][i % 6]; return <div key={i} style={{ background: sc[0], borderRadius: 16, padding: "16px 18px" }}>
+                <div className="row" style={{ gap: 10, marginBottom: 6 }}><span style={{ fontSize: 26 }}>{c.emoji}</span><h3 style={{ margin: 0, fontSize: 16.5, color: sc[1] }}>{c.title}</h3></div>
+                <p style={{ fontSize: 15, lineHeight: 1.8, margin: 0 }}>{c.body}</p>
+              </div>; })}
+            </div>
+          </div>}
           {bp.metrics && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 16 }}>
             {[["👁️ ยอดเข้าถึง (Reach)", bp.metrics.reach], ["💙 ผู้ติดตาม", bp.metrics.followers], ["👤 เข้าชมโปรไฟล์", bp.metrics.profile_visits], ["🔗 กดลิงก์ไบโอ", bp.metrics.link_taps], ["⚡ Engagement", bp.metrics.engagement_rate, "%"]].filter(([, v]) => v != null).map(([l, v, suf]) =>
               <div key={l} className="card" style={{ margin: 0, padding: "16px 14px" }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ fontSize: 24, fontWeight: 800, color: "var(--blue)", marginTop: 4 }}>{Number(v).toLocaleString("en-US")}{suf || ""}</div></div>)}

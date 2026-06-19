@@ -487,8 +487,58 @@ app.get("/api/me/growth-analysis", async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GROWTH_FAILED", message: err.message }); }
 });
 
+// ---------- รีวิว/เคสจริง (social proof) ----------
+// ลูกค้าดูรีวิวของตัวเองในเล่ม (prefill ถ้าเคยเขียน)
+app.get("/api/me/review", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.query.blueprint_id || "");
+  if (!bpId) return res.json({ ok: true, review: null });
+  const r = await one(`SELECT rating, text, display_name, role, allow_public, status FROM reviews WHERE email=$1 AND blueprint_id=$2`, [normEmail(email), bpId]);
+  res.json({ ok: true, review: r || null });
+});
+// ลูกค้าส่ง/แก้รีวิว — ต้องเป็นเจ้าของเล่มนั้นจริง, แก้แล้วกลับไปสถานะ pending ให้แอดมินรีวิวใหม่
+app.post("/api/me/review", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const bpId = String(b.blueprint_id || "");
+  const own = await one(`SELECT b.blueprint_id, b.billing_cycle FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.blueprint_id=$1 AND r.email=$2`, [bpId, normEmail(email)]);
+  if (!own) return res.status(403).json({ ok: false, error: "NOT_OWNER", message: "ไม่พบเล่มนี้ในบัญชีของคุณ" });
+  const rating = Math.max(1, Math.min(5, parseInt(b.rating, 10) || 0));
+  if (!rating) return res.status(400).json({ ok: false, error: "NO_RATING", message: "ให้ดาวก่อนนะคะ" });
+  const text = String(b.text || "").slice(0, 1000);
+  const displayName = String(b.display_name || "").slice(0, 60);
+  const role = String(b.role || "").slice(0, 80);
+  const allowPublic = b.allow_public === false ? 0 : 1;
+  await run(`INSERT INTO reviews (review_id,email,blueprint_id,billing_cycle,rating,text,display_name,role,allow_public,status,created_at,updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',now(),now())
+    ON CONFLICT (email,blueprint_id) DO UPDATE SET rating=EXCLUDED.rating,text=EXCLUDED.text,display_name=EXCLUDED.display_name,role=EXCLUDED.role,allow_public=EXCLUDED.allow_public,status='pending',updated_at=now()`,
+    [uid("rev"), normEmail(email), bpId, own.billing_cycle, rating, text, displayName, role, allowPublic]);
+  res.json({ ok: true });
+});
+// รีวิวสาธารณะสำหรับหน้าแรก (เฉพาะที่อนุมัติ + ยอมให้โชว์)
+app.get("/api/reviews/public", async (req, res) => {
+  const rows = await q(`SELECT display_name, role, rating, text, created_at FROM reviews WHERE status='approved' AND allow_public=1 AND text <> '' ORDER BY updated_at DESC LIMIT 24`);
+  const count = Number((await one(`SELECT COUNT(*) c FROM reviews WHERE status='approved' AND allow_public=1`)).c);
+  const avgRow = await one(`SELECT COALESCE(AVG(rating),0) a, COUNT(*) c FROM reviews WHERE status='approved'`);
+  res.json({ ok: true, reviews: rows, count, avg: Math.round(Number(avgRow.a) * 10) / 10, total: Number(avgRow.c) });
+});
+
 // ---------- admin ----------
 const isAdmin = (req) => !!process.env.ADMIN_KEY && (req.headers["x-admin-key"] || req.query.admin_key) === process.env.ADMIN_KEY;
+// รีวิวทั้งหมดสำหรับแอดมินอนุมัติ/ซ่อน
+app.get("/api/admin/reviews", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const reviews = await q(`SELECT review_id, email, blueprint_id, billing_cycle, rating, text, display_name, role, allow_public, status, updated_at FROM reviews ORDER BY updated_at DESC`);
+  const counts = await one(`SELECT COUNT(*) FILTER (WHERE status='pending') pending, COUNT(*) FILTER (WHERE status='approved') approved, COALESCE(AVG(rating),0) avg FROM reviews`);
+  res.json({ ok: true, reviews, pending: Number(counts.pending), approved: Number(counts.approved), avg: Math.round(Number(counts.avg) * 10) / 10 });
+});
+app.post("/api/admin/reviews/status", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.review_id || ""), status = String(req.body?.status || "");
+  if (!["pending", "approved", "hidden"].includes(status)) return res.status(400).json({ ok: false, error: "BAD_STATUS" });
+  await run(`UPDATE reviews SET status=$1, updated_at=now() WHERE review_id=$2`, [status, id]);
+  res.json({ ok: true });
+});
 app.get("/api/admin/overview", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const customers = Number((await one(`SELECT COUNT(*) c FROM customers`)).c);

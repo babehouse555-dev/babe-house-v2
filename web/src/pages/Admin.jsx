@@ -17,6 +17,7 @@ export default function Admin() {
   const [custOv, setCustOv] = useState(null);
   const [showCustDetail, setShowCustDetail] = useState(false);
   const [qual, setQual] = useState(null);
+  const [reviews, setReviews] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -29,6 +30,7 @@ export default function Admin() {
     setUsage(await api("/api/admin/ai-usage", { adminKey: k }));
     setCustOv(await api("/api/admin/customer-overview", { adminKey: k }));
     setQual(await api("/api/admin/quality", { adminKey: k }));
+    setReviews(await api("/api/admin/reviews", { adminKey: k }));
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
     loadIndustries(k); loadStudents(null, k);
   }
@@ -37,6 +39,7 @@ export default function Admin() {
     try { await api("/api/admin/regenerate", { method: "POST", adminKey: key, body: { user_id, billing_cycle } }); alert("เริ่มรีเจนแล้ว — รอ ~1-2 นาที แล้วกดรีเฟรชหน้าเช็คอีกที"); }
     catch (e) { alert(e.message); }
   }
+  async function setRvStatus(review_id, status) { await api("/api/admin/reviews/status", { method: "POST", adminKey: key, body: { review_id, status } }); setReviews(await api("/api/admin/reviews", { adminKey: key })); }
   async function loadIndustries(k = key) { setIndustries(await api("/api/admin/industries", { adminKey: k })); }
   async function loadStudents(ind = null, k = key) { const d = await api("/api/admin/students" + (ind ? "?industry=" + encodeURIComponent(ind) : ""), { adminKey: k }); setStudents(d.students); setFilter(ind); }
   async function classify() { await api("/api/admin/classify", { method: "POST", adminKey: key, body: {} }); loadIndustries(); loadStudents(filter); }
@@ -127,6 +130,24 @@ export default function Admin() {
             </div>)}
           </div>
         : <div className="card"><h3>🔎 ตรวจคุณภาพเล่ม</h3><p className="muted" style={{ marginTop: 8 }}>✓ ทุกเล่มผ่านการตรวจอัตโนมัติ ไม่พบจุดที่ต้องแก้ ({qual.total} เล่ม)</p></div>)}
+
+      {reviews && <div className="card"><div className="between"><h3>⭐ รีวิวจากลูกค้า</h3>{reviews.avg > 0 && <span className="muted" style={{ fontSize: 13 }}>เฉลี่ย {reviews.avg}/5 · อนุมัติแล้ว {reviews.approved} · รอ {reviews.pending}</span>}</div>
+        <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 12px" }}>กด "อนุมัติ" เพื่อนำไปโชว์ที่หน้าแรกเป็น social proof · รีวิวที่ลูกค้าแก้ไขจะกลับมารอตรวจใหม่</p>
+        {reviews.reviews.length === 0 ? <p className="muted">ยังไม่มีรีวิว — ชวนลูกค้า/ทีม 20 คนกดรีวิวในเล่มก่อนนะคะ</p> :
+          reviews.reviews.map(r => <div key={r.review_id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+            <div className="between" style={{ marginBottom: 4 }}>
+              <span style={{ color: "#f5b301", fontSize: 14 }}>{"★".repeat(r.rating)}<span style={{ color: "#dcdce3" }}>{"★".repeat(5 - r.rating)}</span></span>
+              <span className={`tag ${r.status === "approved" ? "on" : r.status === "hidden" ? "off" : ""}`} style={r.status === "pending" ? { background: "#fff7e6", color: "#8a6d1f" } : {}}>{r.status === "approved" ? "✅ โชว์อยู่" : r.status === "hidden" ? "🚫 ซ่อน" : "⏳ รอตรวจ"}</span>
+            </div>
+            {r.text && <p style={{ fontSize: 14, margin: "4px 0", lineHeight: 1.55 }}>“{r.text}”</p>}
+            <div className="muted" style={{ fontSize: 12.5 }}>{r.display_name || "(ไม่ระบุชื่อ)"}{r.role ? ` · ${r.role}` : ""} · {r.email} · {r.allow_public ? "ยินยอมโชว์" : "⚠️ ไม่ยอมให้โชว์"}</div>
+            <div className="row" style={{ gap: 14, marginTop: 8 }}>
+              {r.status !== "approved" && r.allow_public === 1 && <button className="link" onClick={() => setRvStatus(r.review_id, "approved")} style={{ background: "none", border: 0, cursor: "pointer", color: "var(--up)", fontWeight: 700, fontSize: 13.5 }}>✅ อนุมัติ (โชว์หน้าแรก)</button>}
+              {r.status === "approved" && <button className="link" onClick={() => setRvStatus(r.review_id, "hidden")} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5 }}>ซ่อน</button>}
+              {r.status !== "hidden" && r.status !== "approved" && <button className="link" onClick={() => setRvStatus(r.review_id, "hidden")} style={{ background: "none", border: 0, cursor: "pointer", color: "var(--muted)", fontSize: 13.5 }}>ซ่อน</button>}
+            </div>
+          </div>)}
+      </div>}
 
       <div className="card"><div className="between"><h3>📊 ลูกค้าแยกตามอุตสาหกรรม</h3><button className="btn" onClick={classify} style={{ padding: "9px 14px" }}>จำแนกด้วย AI</button></div>
         {industries && (industries.breakdown.length ? <div style={{ marginTop: 12 }}><p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>คลิกป้ายเพื่อดูรายชื่อในกลุ่มนั้น</p>

@@ -48,6 +48,46 @@ function ServicesBlock() {
   </>;
 }
 
+// การ์ดให้ลูกค้ารีวิวเล่มของตัวเอง → เก็บไว้โชว์เป็น social proof ตอนเปิดขาย
+function ReviewCard({ demo, bpId }) {
+  const [done, setDone] = useState(false), [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(0), [hover, setHover] = useState(0);
+  const [text, setText] = useState(""), [name, setName] = useState(""), [role, setRole] = useState("");
+  const [pub, setPub] = useState(true), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  useEffect(() => {
+    if (demo || !bpId) return;
+    api(`/api/me/review?blueprint_id=${encodeURIComponent(bpId)}`, { token: session.token })
+      .then(d => { if (d.review) { setRating(d.review.rating || 0); setText(d.review.text || ""); setName(d.review.display_name || ""); setRole(d.review.role || ""); setPub(d.review.allow_public !== 0); setDone(true); } }).catch(() => {});
+  }, [bpId]);
+  const submit = async () => {
+    setErr(""); if (!rating) { setErr("ให้ดาวก่อนนะคะ ⭐"); return; }
+    if (demo) { setDone(true); setOpen(false); return; }
+    setBusy(true);
+    try { await api("/api/me/review", { method: "POST", token: session.token, body: { blueprint_id: bpId, rating, text, display_name: name, role, allow_public: pub } }); setDone(true); setOpen(false); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const stars = (sz, on) => <div className="row" style={{ gap: 4 }}>{[1, 2, 3, 4, 5].map(n => <span key={n} onClick={on ? () => setRating(n) : undefined} onMouseEnter={on ? () => setHover(n) : undefined} onMouseLeave={on ? () => setHover(0) : undefined} style={{ fontSize: sz, color: n <= (hover || rating) ? "#f5b301" : "#dcdce3", cursor: on ? "pointer" : "default", lineHeight: 1 }}>★</span>)}</div>;
+  if (done && !open) return <div className="card" style={{ background: "#fff8ef", border: "1px solid #f0d9a8", textAlign: "center" }}>
+    <div style={{ fontSize: 15.5, fontWeight: 800, color: "#9a6b1f" }}>⭐ ขอบคุณสำหรับรีวิวค่ะ! 🩵</div>
+    <div style={{ display: "inline-flex", margin: "8px 0" }}>{stars(26, false)}</div>
+    <p className="muted" style={{ fontSize: 13, maxWidth: 460, margin: "0 auto" }}>รีวิวของคุณอาจถูกนำไปเป็นกำลังใจให้คนที่กำลังตัดสินใจ — แก้ไขได้ตลอดค่ะ</p>
+    <button className="link" style={{ background: "none", border: 0, cursor: "pointer", marginTop: 6 }} onClick={() => setOpen(true)}>แก้ไขรีวิว</button>
+  </div>;
+  return <div className="card" style={{ border: "1px solid #f0d9a8", background: "#fffdf8" }}>
+    <div style={{ fontWeight: 800, fontSize: 17, color: "#9a6b1f", textAlign: "center" }}>⭐ เล่มนี้ช่วยคุณได้แค่ไหน?</div>
+    <p className="muted" style={{ fontSize: 14, textAlign: "center", margin: "6px auto 14px", maxWidth: 480 }}>ให้ดาว + เล่าสั้นๆ เป็นกำลังใจให้ครูพี่คิม และช่วยคนที่กำลังลังเลให้กล้าเริ่ม 🩵</p>
+    <div className="center" style={{ marginBottom: 14 }}>{stars(38, true)}</div>
+    <div className="field"><textarea value={text} onChange={e => setText(e.target.value)} style={{ minHeight: 80 }} placeholder="เล่าหน่อยว่าเล่มนี้ช่วยอะไรคุณบ้าง เช่น 'ได้ไอเดียคอนเทนต์ครบเดือน ไม่ต้องนั่งคิดเองแล้ว'" /></div>
+    <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+      <div className="field" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}><label style={{ fontSize: 13 }}>ชื่อที่อยากให้แสดง</label><input value={name} onChange={e => setName(e.target.value)} placeholder="เช่น คุณเอ / ร้านบ้านสวน" /></div>
+      <div className="field" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}><label style={{ fontSize: 13 }}>อาชีพ/ทำอะไร (ไม่บังคับ)</label><input value={role} onChange={e => setRole(e.target.value)} placeholder="เช่น แม่ค้าออนไลน์ / ฟรีแลนซ์" /></div>
+    </div>
+    <label className="row" style={{ gap: 8, fontSize: 13.5, margin: "12px 0 4px", cursor: "pointer" }}><input type="checkbox" checked={pub} onChange={e => setPub(e.target.checked)} style={{ width: 18, height: 18 }} />ยินดีให้นำรีวิวนี้ไปโชว์เป็นตัวอย่างได้</label>
+    {err && <div className="msg err">{err}</div>}
+    <div className="center" style={{ marginTop: 12 }}><button className="btn" disabled={busy} onClick={submit} style={{ background: "#f5b301", color: "#5b4400", boxShadow: "0 8px 22px rgba(245,179,1,.3)" }}>{busy ? "กำลังส่ง..." : "ส่งรีวิว 🩵"}</button></div>
+  </div>;
+}
+
 export default function Dashboard() {
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
@@ -254,6 +294,8 @@ export default function Dashboard() {
                   </div>
                 </>}
               </div>)}
+
+          <ReviewCard demo={demo} bpId={bpId} />
 
           {!demo && <Link to="/video-audit" className="card" style={{ display: "block", textDecoration: "none", color: "inherit", border: "1px dashed #d6a0e0", background: "#faf3fc" }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: "#6b3fa0" }}>🎬 ลงคลิปแล้วคนไม่ดู? ให้ครูพี่คิมตรวจคลิปให้</div>

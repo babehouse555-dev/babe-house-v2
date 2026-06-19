@@ -172,6 +172,22 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_video_audits_order ON video_audits(order_id);
+    CREATE TABLE IF NOT EXISTS reviews (
+      review_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      blueprint_id TEXT,
+      billing_cycle TEXT,
+      rating INTEGER,
+      text TEXT,
+      display_name TEXT,
+      role TEXT,
+      allow_public INTEGER DEFAULT 1,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE (email, blueprint_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
   `);
   console.log("[db] schema ready");
 }

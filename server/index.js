@@ -523,8 +523,52 @@ app.get("/api/reviews/public", async (req, res) => {
   res.json({ ok: true, reviews: rows, count, avg: Math.round(Number(avgRow.a) * 10) / 10, total: Number(avgRow.c) });
 });
 
+// ---------- funnel tracking (ดูจุดที่คนหลุดก่อนจ่าย) ----------
+const FUNNEL_STEPS = ["landing", "form_view", "form_submit", "checkout_view", "paid"];
+app.post("/api/track", async (req, res) => {
+  try {
+    const step = String(req.body?.step || "");
+    if (FUNNEL_STEPS.includes(step)) {
+      await run(`INSERT INTO funnel_events (id,step,session_id,email) VALUES ($1,$2,$3,$4)`,
+        [uid("ev"), step, String(req.body?.session_id || "").slice(0, 80), (String(req.body?.email || "").slice(0, 120)) || null]);
+    }
+  } catch {}
+  res.json({ ok: true });
+});
+
+// ---------- ฟีดแบกภายในจาก testers (ไม่ใช่รีวิวสาธารณะ) ----------
+app.post("/api/me/feedback", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const clarity = Math.max(0, Math.min(5, parseInt(req.body?.clarity, 10) || 0));
+  const message = String(req.body?.message || "").slice(0, 2000);
+  if (!clarity && !message) return res.status(400).json({ ok: false, error: "EMPTY", message: "บอกอะไรเราหน่อยนะคะ" });
+  await run(`INSERT INTO feedback (feedback_id,email,blueprint_id,clarity,message) VALUES ($1,$2,$3,$4,$5)`,
+    [uid("fb"), normEmail(email), String(req.body?.blueprint_id || ""), clarity || null, message]);
+  res.json({ ok: true });
+});
+
 // ---------- admin ----------
 const isAdmin = (req) => !!process.env.ADMIN_KEY && (req.headers["x-admin-key"] || req.query.admin_key) === process.env.ADMIN_KEY;
+// funnel: นับจำนวน session ต่อขั้น (N วันล่าสุด) + % ที่ผ่านแต่ละขั้น
+app.get("/api/admin/funnel", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+  const rows = await q(`SELECT step, COUNT(DISTINCT COALESCE(NULLIF(session_id,''), id)) c FROM funnel_events WHERE created_at > now() - ($1 || ' days')::interval GROUP BY step`, [String(days)]);
+  const map = Object.fromEntries(rows.map(r => [r.step, Number(r.c)]));
+  const top = map.landing || map.form_view || 1;
+  const steps = FUNNEL_STEPS.map((s, i) => {
+    const n = map[s] || 0, prev = i > 0 ? (map[FUNNEL_STEPS[i - 1]] || 0) : n;
+    return { step: s, count: n, of_top: top ? Math.round(n / top * 100) : 0, of_prev: prev ? Math.round(n / prev * 100) : 0 };
+  });
+  res.json({ ok: true, days, steps });
+});
+// ฟีดแบกภายในทั้งหมด
+app.get("/api/admin/feedback", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const feedback = await q(`SELECT feedback_id, email, blueprint_id, clarity, message, created_at FROM feedback ORDER BY created_at DESC LIMIT 200`);
+  const a = await one(`SELECT COALESCE(AVG(clarity),0) avg, COUNT(*) FILTER (WHERE clarity>0) rated, COUNT(*) total FROM feedback`);
+  res.json({ ok: true, feedback, avg: Math.round(Number(a.avg) * 10) / 10, rated: Number(a.rated), total: Number(a.total) });
+});
 // รีวิวทั้งหมดสำหรับแอดมินอนุมัติ/ซ่อน
 app.get("/api/admin/reviews", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -749,7 +793,29 @@ async function runHomeworkReminders() {
     if (sent) console.log(`[homework] ${cycle}: ${sent}`); return sent;
   } catch (e) { console.error("homework", e.message); return 0; }
 }
-app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); res.json({ ok: true, sent, homework, cycle: currentBillingCycle() }); });
+// ตามคนที่กรอกฟอร์ม/เห็นสรุปแล้วแต่ไม่จ่าย — ส่งเมลชวนกลับมาทำต่อ (1 ครั้ง/อีเมล)
+// เงื่อนไข: ออเดอร์ยังไม่จ่าย อายุ 2 ชม.–7 วัน, อีเมลนั้นไม่เคยจ่ายออเดอร์ใดเลย, ยังไม่เคยตามอีเมลนี้
+async function runAbandonedFollowups() {
+  try {
+    const rows = await q(`SELECT DISTINCT ON (o.email) o.order_id, o.email, o.billing_cycle FROM blueprint_orders o
+      WHERE o.payment_status IN ('pending','expired') AND o.email IS NOT NULL
+        AND COALESCE(o.tier,'') NOT LIKE 'Video%'
+        AND o.created_at < now() - interval '2 hours' AND o.created_at > now() - interval '7 days'
+        AND o.email NOT IN (SELECT email FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND email IS NOT NULL)
+        AND o.email NOT IN (SELECT email FROM abandoned_reminders)
+      ORDER BY o.email, o.created_at DESC LIMIT 100`);
+    let sent = 0;
+    for (const r of rows) {
+      const url = `${appBaseUrl()}/checkout?order_id=${encodeURIComponent(r.order_id)}`;
+      try { await sendEmail(r.email, "แผนคอนเทนต์ของคุณรอเปิดอยู่นะคะ 🩵", wrap(`เห็นว่าคุณเริ่มกรอกข้อมูลช่องไว้แล้ว แต่ยังไม่ได้เปิดดูแผนเต็มๆ เลยค่ะ<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> ไว้ให้แล้ว — กดปุ่มด้านล่างเพื่อดูสรุปและปลดล็อกได้เลยค่ะ<br><br>${btn(url, "ดูแผนของฉัน · ปลดล็อก 490฿")}<br><br><span style="color:#888;font-size:14px">โปรเปิดตัว 490฿ (จากเต็ม 1,590฿) มีจำนวนจำกัดนะคะ</span>`)); }
+      catch { continue; }
+      await run(`INSERT INTO abandoned_reminders (email,order_id) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING`, [r.email, r.order_id]);
+      sent++;
+    }
+    if (sent) console.log(`[abandoned] ${sent}`); return sent;
+  } catch (e) { console.error("abandoned", e.message); return 0; }
+}
+app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); res.json({ ok: true, sent, homework, abandoned, cycle: currentBillingCycle() }); });
 
 app.get("/api/health", (req, res) => {
   const sk = String(process.env.STRIPE_SECRET_KEY || "");
@@ -794,8 +860,9 @@ async function retryStuckGenerations() {
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
-  setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); }, 30000);
+  setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
   setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
+  setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

@@ -29,6 +29,16 @@ export function captureRef() {
 }
 export const getRef = () => localStorage.getItem("babe_ref") || undefined;
 
+// บันทึก funnel step (landing/form_view/form_submit/checkout_view/paid) — ไม่ throw ไม่บล็อก UI
+function sessionId() {
+  let s = localStorage.getItem("babe_sid");
+  if (!s) { s = "s_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem("babe_sid", s); }
+  return s;
+}
+export function track(step) {
+  try { fetch(BASE + "/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true, body: JSON.stringify({ step, session_id: sessionId(), email: session.email || undefined }) }).catch(() => {}); } catch {}
+}
+
 export async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     if (!file || !file.name) return resolve(null);

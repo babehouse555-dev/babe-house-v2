@@ -18,6 +18,8 @@ export default function Admin() {
   const [showCustDetail, setShowCustDetail] = useState(false);
   const [qual, setQual] = useState(null);
   const [reviews, setReviews] = useState(null);
+  const [funnel, setFunnel] = useState(null);
+  const [feedback, setFeedback] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -31,6 +33,8 @@ export default function Admin() {
     setCustOv(await api("/api/admin/customer-overview", { adminKey: k }));
     setQual(await api("/api/admin/quality", { adminKey: k }));
     setReviews(await api("/api/admin/reviews", { adminKey: k }));
+    setFunnel(await api("/api/admin/funnel", { adminKey: k }));
+    setFeedback(await api("/api/admin/feedback", { adminKey: k }));
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
     loadIndustries(k); loadStudents(null, k);
   }
@@ -69,7 +73,7 @@ export default function Admin() {
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
 
       {ov && <div className="card"><h3>ภาพรวม</h3><div className="row" style={{ marginTop: 12 }}>{[["ลูกค้า", ov.customers], ["เล่ม", ov.blueprints], ["จ่ายแล้ว", ov.paid_orders]].map(([l, n]) => <div key={l} style={{ flex: 1, minWidth: 120, background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", borderRadius: 14, padding: 16 }}><div style={{ fontSize: 28, fontWeight: 800, color: "var(--blue)" }}>{n}</div><div className="muted" style={{ fontSize: 13 }}>{l}</div></div>)}</div>
-        <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`ส่งเตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} ราย`); } catch (e) { setRemind(e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือนต่อเดือน (เดี๋ยวนี้)</button><span className="muted" style={{ fontSize: 13 }}>{remind}</span></div>
+        <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`ส่งเตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} · ตามคนยังไม่จ่าย ${d.abandoned ?? 0} ราย`); } catch (e) { setRemind(e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือน + ตามคนยังไม่จ่าย (เดี๋ยวนี้)</button><span className="muted" style={{ fontSize: 13 }}>{remind}</span></div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ระบบส่งให้อัตโนมัติ <b>ช่วงปลายเดือน (ตั้งแต่วันที่ 25)</b> เพื่อกระตุ้นต่อแผนเดือนหน้า · 1 อีเมล/คน/เดือน — ปุ่มนี้สำหรับสั่งส่งทันทีโดยไม่ต้องรอ</p>
         {(ov.error_gen > 0 || ov.pending_gen > 0) && <div className="msg" style={{ background: ov.error_gen > 0 ? "#fdeaea" : "#fff7e6", color: ov.error_gen > 0 ? "#b3261e" : "#8a6d1f", marginTop: 10 }}>{ov.error_gen > 0 ? `⚠️ มี ${ov.error_gen} เล่มที่จ่ายแล้วแต่ AI สร้างยังไม่สำเร็จ (เช่น Gemini แน่น/token หมด) — ระบบลองใหม่ให้อัตโนมัติทุก 5 นาที ถ้าค้างนานควรเช็ก quota หรือเติม credit ที่ Google` : `⏳ มี ${ov.pending_gen} เล่มกำลังสร้าง...`}</div>}
       </div>}
@@ -93,6 +97,25 @@ export default function Admin() {
         </div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>* นับเฉพาะที่จ่ายผ่าน Stripe จริง (บัตร/PromptPay) มากกว่า 0฿ — ไม่รวมโค้ดฟรีและออเดอร์ทดสอบ</div>
         {rev.by_month.length >= 2 && <div style={{ marginTop: 6 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>รายได้แต่ละเดือน</div>{rev.by_month.map(m => { const max = Math.max(...rev.by_month.map(x => x.revenue), 1); return <div key={m.billing_cycle} style={{ margin: "9px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{m.billing_cycle.replace("_", " ")}</span><span className="muted">{baht(m.revenue)} · {m.c}</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(m.revenue / max * 100)}%` }} /></div></div>; })}</div>}</div>}
+
+      {funnel && (() => {
+        const LBL = { landing: ["👀", "เข้าหน้าแรก"], form_view: ["📝", "เปิดฟอร์ม"], form_submit: ["✅", "กรอกฟอร์มเสร็จ"], checkout_view: ["💳", "ถึงหน้าจ่าย"], paid: ["🎉", "จ่ายสำเร็จ"] };
+        const colors = ["#2E86DE", "#3F6BAE", "#6b3fa0", "#b8860b", "#1a7f43"];
+        const hasData = funnel.steps.some(s => s.count > 0);
+        // หาจุดที่หลุดเยอะสุด (of_prev ต่ำสุด ตั้งแต่ขั้นที่ 2)
+        let worst = null;
+        funnel.steps.forEach((s, i) => { if (i > 0 && funnel.steps[i - 1].count >= 3 && (worst === null || s.of_prev < funnel.steps[worst].of_prev)) worst = i; });
+        return <div className="card"><h3>🔻 เส้นทางลูกค้า (Funnel) — {funnel.days} วันล่าสุด</h3>
+          {!hasData ? <p className="muted" style={{ marginTop: 10 }}>ยังไม่มีข้อมูล — ระบบเพิ่งเริ่มเก็บ จะเห็นตัวเลขเมื่อมีคนเข้าเว็บหลังอัปเดตนี้</p> : <>
+            <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 14px" }}>นับจำนวนคน (session) ที่ผ่านแต่ละขั้น · % คือเทียบกับขั้นก่อนหน้า — ขั้นที่ % ตกเยอะคือจุดที่ควรแก้</p>
+            {funnel.steps.map((s, i) => { const [ic, lbl] = LBL[s.step]; return <div key={s.step} style={{ margin: "10px 0" }}>
+              <div className="between" style={{ fontSize: 13.5, marginBottom: 4 }}><span style={{ fontWeight: 600 }}>{ic} {lbl}</span><span><b>{s.count}</b> คน{i > 0 && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: i === worst ? "#b3261e" : "var(--muted)" }}>{s.of_prev}%{i === worst ? " ⚠️ หลุดเยอะ" : ""}</span>}</span></div>
+              <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(2, s.of_top)}%`, background: colors[i] }} /></div>
+            </div>; })}
+            {funnel.steps[0].count > 0 && <div className="msg" style={{ background: "#EAF3FD", color: "var(--blue-d)", marginTop: 12, fontSize: 13.5 }}>📊 อัตราปิดการขายรวม: <b>{funnel.steps[4].count}</b> จาก <b>{funnel.steps[0].count}</b> คน = <b>{funnel.steps[0].count ? Math.round(funnel.steps[4].count / funnel.steps[0].count * 100) : 0}%</b></div>}
+          </>}
+        </div>;
+      })()}
 
       {custOv && (() => {
         const cats = [["🚺", "เพศ", custOv.by_gender, "214,80,118"], ["🎂", "อายุ", custOv.by_age, "230,150,40"], ["🧑‍💼", "อาชีพ/สถานะ", custOv.by_status, "46,134,222"], ["🎯", "กลุ่มคนดู", custOv.by_audience, "26,127,67"], ["⏳", "ประสบการณ์", custOv.by_experience, "138,109,31"], ["🚀", "เป้าหมาย", custOv.by_goal, "107,63,160"]];
@@ -146,6 +169,15 @@ export default function Admin() {
               {r.status === "approved" && <button className="link" onClick={() => setRvStatus(r.review_id, "hidden")} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5 }}>ซ่อน</button>}
               {r.status !== "hidden" && r.status !== "approved" && <button className="link" onClick={() => setRvStatus(r.review_id, "hidden")} style={{ background: "none", border: 0, cursor: "pointer", color: "var(--muted)", fontSize: 13.5 }}>ซ่อน</button>}
             </div>
+          </div>)}
+      </div>}
+
+      {feedback && <div className="card"><div className="between"><h3>💬 ฟีดแบกจาก testers (ภายใน)</h3>{feedback.rated > 0 && <span className="muted" style={{ fontSize: 13 }}>เข้าใจง่ายเฉลี่ย {feedback.avg}/5 · {feedback.total} ความเห็น</span>}</div>
+        <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 10px" }}>ความเห็นปรับปรุงจากลูกค้า/ทีม — ไม่เปิดเผยสาธารณะ (ต่างจากรีวิว)</p>
+        {feedback.feedback.length === 0 ? <p className="muted">ยังไม่มีฟีดแบก</p> :
+          feedback.feedback.map(f => <div key={f.feedback_id} style={{ borderTop: "1px solid var(--border)", padding: "10px 0" }}>
+            <div className="between" style={{ fontSize: 12.5, marginBottom: 3 }}><span className="muted">{f.email}</span><span>{f.clarity ? <span style={{ color: "#f5b301" }}>{"★".repeat(f.clarity)}</span> : ""} <span className="muted">{String(f.created_at || "").slice(0, 10)}</span></span></div>
+            {f.message && <p style={{ fontSize: 14, margin: 0, lineHeight: 1.5 }}>{f.message}</p>}
           </div>)}
       </div>}
 

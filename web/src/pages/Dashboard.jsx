@@ -88,6 +88,28 @@ function ReviewCard({ demo, bpId }) {
   </div>;
 }
 
+// กล่องฟีดแบกภายใน (สำหรับ testers บอกว่าอยากให้ปรับอะไร) — พับไว้ ไม่เด่นเท่ารีวิว
+function FeedbackCard({ demo, bpId }) {
+  const [open, setOpen] = useState(false), [clarity, setClarity] = useState(0), [hover, setHover] = useState(0);
+  const [msg, setMsg] = useState(""), [busy, setBusy] = useState(false), [done, setDone] = useState(false), [err, setErr] = useState("");
+  const submit = async () => {
+    setErr(""); if (!clarity && !msg.trim()) { setErr("บอกอะไรเราหน่อยนะคะ"); return; }
+    if (demo) { setDone(true); return; }
+    setBusy(true);
+    try { await api("/api/me/feedback", { method: "POST", token: session.token, body: { blueprint_id: bpId, clarity, message: msg } }); setDone(true); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  if (done) return <div className="center muted" style={{ fontSize: 13.5, padding: "10px 0" }}>🙏 ขอบคุณสำหรับความเห็นค่ะ เราเอาไปพัฒนาต่อแน่นอน</div>;
+  if (!open) return <div className="center" style={{ padding: "6px 0 2px" }}><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "var(--muted)" }} onClick={() => setOpen(true)}>💬 มีอะไรอยากให้เราปรับปรุงไหมคะ? บอกทีมได้เลย</button></div>;
+  return <div className="card" style={{ background: "var(--soft)" }}>
+    <div style={{ fontWeight: 700, fontSize: 15 }}>💬 ช่วยบอกทีมหน่อย (ไม่เปิดเผยต่อสาธารณะ)</div>
+    <div className="row" style={{ gap: 10, alignItems: "center", margin: "10px 0" }}><span className="muted" style={{ fontSize: 13.5 }}>เล่มอ่านง่าย/เข้าใจง่ายแค่ไหน?</span><div className="row" style={{ gap: 3 }}>{[1, 2, 3, 4, 5].map(n => <span key={n} onClick={() => setClarity(n)} onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)} style={{ fontSize: 24, cursor: "pointer", color: n <= (hover || clarity) ? "#f5b301" : "#dcdce3" }}>★</span>)}</div></div>
+    <textarea value={msg} onChange={e => setMsg(e.target.value)} style={{ minHeight: 72, width: "100%" }} placeholder="เช่น อยากให้สคริปต์สั้นลง / ตรงนี้งง / อยากได้ฟีเจอร์..." />
+    {err && <div className="msg err">{err}</div>}
+    <div className="row" style={{ gap: 10, marginTop: 8 }}><button className="btn ghost" disabled={busy} onClick={submit} style={{ padding: "9px 16px" }}>{busy ? "กำลังส่ง..." : "ส่งให้ทีม"}</button><button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setOpen(false)}>ปิด</button></div>
+  </div>;
+}
+
 export default function Dashboard() {
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
@@ -296,6 +318,7 @@ export default function Dashboard() {
               </div>)}
 
           <ReviewCard demo={demo} bpId={bpId} />
+          <FeedbackCard demo={demo} bpId={bpId} />
 
           {!demo && <Link to="/video-audit" className="card" style={{ display: "block", textDecoration: "none", color: "inherit", border: "1px dashed #d6a0e0", background: "#faf3fc" }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: "#6b3fa0" }}>🎬 ลงคลิปแล้วคนไม่ดู? ให้ครูพี่คิมตรวจคลิปให้</div>

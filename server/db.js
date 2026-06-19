@@ -188,6 +188,27 @@ export async function initDb() {
       UNIQUE (email, blueprint_id)
     );
     CREATE INDEX IF NOT EXISTS idx_reviews_status ON reviews(status);
+    CREATE TABLE IF NOT EXISTS funnel_events (
+      id TEXT PRIMARY KEY,
+      step TEXT,
+      session_id TEXT,
+      email TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_funnel_step ON funnel_events(step, created_at);
+    CREATE TABLE IF NOT EXISTS feedback (
+      feedback_id TEXT PRIMARY KEY,
+      email TEXT,
+      blueprint_id TEXT,
+      clarity INTEGER,
+      message TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS abandoned_reminders (
+      email TEXT PRIMARY KEY,
+      order_id TEXT,
+      sent_at TIMESTAMPTZ DEFAULT now()
+    );
   `);
   console.log("[db] schema ready");
 }

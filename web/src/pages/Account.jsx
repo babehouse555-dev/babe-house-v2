@@ -42,7 +42,12 @@ export default function Account() {
   function logout() { session.clear(); setData(null); setStep("email"); }
   // สร้างลิงก์จาก origin จริงของเบราว์เซอร์ — ถูกเสมอแม้ APP_BASE_URL บนเซิร์ฟเวอร์จะไม่ถูกตั้ง
   const refLink = ref ? `${window.location.origin}/?ref=${encodeURIComponent(ref.code)}` : "";
-  function copyRef() { if (refLink) navigator.clipboard.writeText(refLink); }
+  const [copied, setCopied] = useState("");
+  const shareMsg = ref ? `แนะนำเลย! ครูพี่คิม (Babe House) ช่วยวางแผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้ ให้ช่องเราโตขึ้นจริง 🩵\nสมัครผ่านลิงก์นี้รับส่วนลด ${ref.percent}% เลย 👇\n${refLink}` : "";
+  function copyRef() { if (refLink) { navigator.clipboard.writeText(refLink); setCopied("link"); setTimeout(() => setCopied(""), 1800); } }
+  function copyMsg() { if (shareMsg) { navigator.clipboard.writeText(shareMsg); setCopied("msg"); setTimeout(() => setCopied(""), 1800); } }
+  function shareNative() { if (navigator.share) navigator.share({ text: shareMsg }).catch(() => {}); else copyMsg(); }
+  const lineShare = ref ? `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(refLink)}` : "";
 
   return (
     <div className="wrap narrow page-pad">
@@ -88,11 +93,16 @@ export default function Account() {
           </Link>)}
         <Link className="card center" to={`/form?renew=1&email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block" }}>+ เพิ่มแผนเดือนใหม่ (490฿)</Link>
         {data.months.length >= 1 && <Link className="btn full" to="/compare" style={{ marginBottom: 16 }}>📈 {data.months.length >= 2 ? "เทียบความคืบหน้าทุกเดือน" : "ดูสถิติ & เส้นทางการเติบโต"}</Link>}
-        {ref && <div className="card" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa" }}>
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🎁 ชวนเพื่อน รับส่วนลด</div>
-          <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>เพื่อนสมัครผ่านลิงก์คุณ — ได้ลด {ref.percent}% และคุณได้โค้ดลดเดือนถัดไป</div>
-          <div className="row"><input readOnly value={refLink} style={{ flex: 1, fontSize: 13 }} /><button className="btn" onClick={copyRef} style={{ padding: "11px 16px" }}>คัดลอก</button></div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 10 }}>แนะนำสำเร็จแล้ว: <b>{ref.count}</b> คน</div>
+        {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
+          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>🎁 ชวนเพื่อน — ได้กันทั้งคู่</div>
+          <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>เพื่อนสมัครผ่านลิงก์คุณ <b style={{ color: "#2C8E8C" }}>รับลด {ref.percent}% ทันที</b> · และคุณได้ <b style={{ color: "#2C8E8C" }}>โค้ดลดเดือนถัดไป</b> ทุกครั้งที่มีเพื่อนสมัครสำเร็จ 🩵</div>
+          <div className="row" style={{ marginBottom: 10 }}><input readOnly value={refLink} style={{ flex: 1, fontSize: 13 }} onFocus={e => e.target.select()} /><button className="btn" onClick={copyRef} style={{ padding: "11px 16px", background: "#2C8E8C" }}>{copied === "link" ? "คัดลอกแล้ว ✓" : "คัดลอกลิงก์"}</button></div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn ghost" onClick={copyMsg} style={{ padding: "9px 14px", fontSize: 14 }}>{copied === "msg" ? "คัดลอกข้อความแล้ว ✓" : "📋 คัดลอกข้อความชวนเพื่อน"}</button>
+            <a className="btn" href={lineShare} target="_blank" rel="noreferrer" style={{ padding: "9px 16px", background: "#06C755", fontSize: 14 }}>แชร์ทาง LINE</a>
+            {typeof navigator !== "undefined" && navigator.share && <button className="btn ghost" onClick={shareNative} style={{ padding: "9px 14px", fontSize: 14 }}>แชร์...</button>}
+          </div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 12 }}>แนะนำสำเร็จแล้ว: <b style={{ color: "#2C8E8C" }}>{ref.count}</b> คน{ref.count > 0 ? " — ขอบคุณที่ช่วยบอกต่อค่ะ 🩵" : ""}</div>
         </div>}
       </>}
     </div>

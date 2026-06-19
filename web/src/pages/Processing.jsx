@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { api } from "../api.js";
+import { api, track } from "../api.js";
 
 export default function Processing() {
   const [sp] = useSearchParams();
@@ -28,6 +28,7 @@ export default function Processing() {
         if (!orderId) throw new Error("ไม่พบหมายเลขคำสั่งซื้อ");
         const { order } = await api(`/api/orders/${orderId}`);
         if (!["paid", "mock_paid"].includes(order.payment_status)) throw new Error("ยังไม่พบสถานะชำระเงินสำเร็จ");
+        track("paid");
         const s = await api("/api/start-generation", { method: "POST", body: { order_id: orderId } });
         if (s.status === "ready" && s.blueprint_id) { nav(`/dashboard?user_id=${encodeURIComponent(s.user_id)}&billing_cycle=${encodeURIComponent(s.billing_cycle)}&blueprint_id=${encodeURIComponent(s.blueprint_id)}`); return; }
         setState({ phase: "working" });

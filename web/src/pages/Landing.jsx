@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api.js";
+import { api, track } from "../api.js";
 
 // ===== ราคาเดียวกันทั้งหน้า: เต็ม 1,590฿ (ขีดฆ่า) · โปรเปิดตัว 490฿ (เด่น) =====
 const FULL = "1,590฿";
@@ -101,6 +101,7 @@ const labelStyle = { color: "var(--blue)", fontWeight: 700, fontSize: 13, letter
 const h2Style = { fontSize: "clamp(23px,4vw,33px)", marginBottom: 12, lineHeight: 1.25 };
 
 export default function Landing() {
+  useEffect(() => { track("landing"); }, []);
   return (
     <div>
       <nav style={{ position: "sticky", top: 0, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)", zIndex: 50 }}>

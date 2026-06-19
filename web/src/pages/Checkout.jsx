@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { api, baht } from "../api.js";
+import { api, baht, track } from "../api.js";
 
 export default function Checkout() {
   const [sp] = useSearchParams();
@@ -13,6 +13,7 @@ export default function Checkout() {
   const [price, setPrice] = useState(49000);
 
   useEffect(() => {
+    track("checkout_view");
     if (!orderId) return;
     api(`/api/orders/${orderId}`).then(d => { setOrder(d.order); if (d.order.final_amount_satang != null) setPrice(d.order.final_amount_satang); }).catch(() => {});
   }, [orderId]);

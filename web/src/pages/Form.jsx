@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { api, filesToBase64, getRef, currentCycle, session } from "../api.js";
+import { api, filesToBase64, getRef, currentCycle, session, track } from "../api.js";
 
 // ไกด์ + ตัวอย่างการกรอกแต่ละช่อง (ใช้ Babe House Academy เป็นตัวอย่างจริง)
 // ยิ่งกรอกละเอียด AI ยิ่งวิเคราะห์ได้ลึก
@@ -131,6 +131,7 @@ export default function Form() {
   const linkBtn = { background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: "8px 0 0", display: "inline-block" };
 
   useEffect(() => {
+    track("form_view");
     const email = sp.get("email") || session.email || "";
     const ig = sp.get("ig") || "";
     setF(v => ({ ...v, email: email || v.email, instagram_account: ig || v.instagram_account }));
@@ -167,6 +168,7 @@ export default function Form() {
         insight_images: images, insight_screenshot_base64: images[0] || null
       };
       const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
+      track("form_submit");
       if (r.existing) alert(r.message || "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ — เปิดเล่มเดิมให้นะคะ (1 อีเมล สร้างได้ 1 เล่ม/เดือน)");
       nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);
     } catch (e2) { setErr(e2.message); setBusy(false); }

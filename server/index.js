@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -304,6 +304,8 @@ const MAX_CONCURRENT_GENS = Number(process.env.MAX_CONCURRENT_GENS) || 3;
 let activeGens = 0; const genQueue = [];
 // order_id ที่กำลังเจน/เข้าคิวอยู่ใน process นี้ — ให้ retryStuckGenerations ข้าม กันเจนซ้ำตอนคิวยาวเกิน 8 นาที
 const inFlightOrders = new Set();
+// blueprint_id ที่กำลังเจนคอนเทนต์/รีไฟน์บทวิเคราะห์อยู่ใน process นี้ (กันยิงซ้ำ)
+const inFlightBp = new Set();
 function acquireGen() { return new Promise(res => { if (activeGens < MAX_CONCURRENT_GENS) { activeGens++; res(); } else genQueue.push(res); }); }
 function releaseGen() { activeGens = Math.max(0, activeGens - 1); const next = genQueue.shift(); if (next) { activeGens++; next(); } }
 
@@ -318,15 +320,14 @@ async function generateBlueprintForPayload(payload) {
   const industry = classifyKeyword(`${parsed.form_responses.business_type} ${parsed.form_responses.monthly_goal}`);
   await run(`INSERT INTO blueprint_requests (request_id,user_id,instagram_account,email,billing_cycle,business_type,starting_point,monthly_goal,competitor_1,competitor_2,insight_screenshot_base64,insight_images_json,raw_payload_json,industry) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry]);
-  const { blueprint, model, usage } = await generateBlueprint(parsed);
-  const qualityFlags = checkBlueprintQuality(blueprint, !!firstImg);
-  if (qualityFlags.length) console.warn(`[quality] ${blueprintId}: ${qualityFlags.join(" · ")}`);
-  await run(`INSERT INTO blueprints (blueprint_id,request_id,user_id,billing_cycle,blueprint_json,model,quality_flags_json) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [blueprintId, requestId, parsed.user_id, parsed.meta_purchase.billing_cycle, JSON.stringify(blueprint), model, JSON.stringify(qualityFlags)]);
+  // สเต็ป 1: เจน "บทวิเคราะห์" ก่อน (เร็ว) — ยังไม่เจน 30 สคริปต์ จนกว่าลูกค้าจะยืนยันว่าแม่น
+  const { analysis, model, usage } = await generateAnalysis(parsed);
+  await run(`INSERT INTO blueprints (blueprint_id,request_id,user_id,billing_cycle,blueprint_json,model,quality_flags_json,content_status,analysis_status) VALUES ($1,$2,$3,$4,$5,$6,'[]','pending','ready')`, [blueprintId, requestId, parsed.user_id, parsed.meta_purchase.billing_cycle, JSON.stringify(analysis), model]);
   // ประหยัดดิสก์: รูป base64 ใช้แค่ตอนเจน — ลบทิ้งหลังเจนสำเร็จ (กัน DB เต็มเหมือนที่เคยล่ม) คงไว้แค่ form_responses
   try { const lean = { ...parsed, insight_images: [], insight_screenshot_base64: null }; await run(`UPDATE blueprint_requests SET insight_screenshot_base64=NULL, insight_images_json='[]', raw_payload_json=$1 WHERE request_id=$2`, [JSON.stringify(lean), requestId]); } catch (e) { console.warn("strip imgs", e.message); }
-  if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'blueprint',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+  if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'analysis',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
   await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,billing_cycle) DO NOTHING`, [uid("marathon"), parsed.user_id, parsed.instagram_account, parsed.meta_purchase.billing_cycle]);
-  return { blueprintId, requestId, parsed, blueprint };
+  return { blueprintId, requestId, parsed, blueprint: analysis };
   } finally { releaseGen(); }
 }
 
@@ -383,12 +384,58 @@ app.post("/api/improve-blueprint", async (req, res) => {
       extra.more && `เล่าเพิ่มเติม: ${extra.more}`].filter(Boolean).join("\n");
     if (extra.competitor_1) fr.competitor_1 = extra.competitor_1;
     if (extra.competitor_2) fr.competitor_2 = extra.competitor_2;
-    const { blueprint, model, usage } = await generateBlueprint(parsed);
-    await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1 WHERE blueprint_id=$3`, [JSON.stringify(blueprint), model, bp.blueprint_id]);
-    await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(parsed), fr.starting_point, bp.request_id]).catch(() => {});
-    if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
-    res.json({ ok: true, blueprint, improve_count: (bp.improve_count || 0) + 1 });
+    // รีไฟน์ "บทวิเคราะห์" เท่านั้น (เร็ว) แบบ async — ตอบทันที แล้วเจนเบื้องหลัง หน้า Dashboard poll analysis_status
+    if (inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" });
+    inFlightBp.add(bpId);
+    await run(`UPDATE blueprints SET analysis_status='generating' WHERE blueprint_id=$1`, [bpId]);
+    res.json({ ok: true, status: "generating", improve_count: (bp.improve_count || 0) + 1 });
+    (async () => {
+      try {
+        await acquireGen();
+        try {
+          const { analysis, model, usage } = await generateAnalysis(parsed);
+          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(analysis), model, bpId]);
+          await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(parsed), fr.starting_point, bp.request_id]).catch(() => {});
+          if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+        } finally { releaseGen(); }
+      } catch (e) { console.error("improve bg", e.message); await run(`UPDATE blueprints SET analysis_status='error' WHERE blueprint_id=$1`, [bpId]).catch(() => {}); }
+      finally { inFlightBp.delete(bpId); }
+    })();
   } catch (err) { console.error("improve", err); res.status(500).json({ ok: false, error: "IMPROVE_FAILED", message: err.message }); }
+});
+
+// สเต็ป 2: สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง) — เรียกเมื่อลูกค้ายืนยันว่าบทวิเคราะห์แม่นแล้ว
+app.post("/api/generate-content", async (req, res) => {
+  try {
+    const userId = String(req.body?.user_id || ""), cycle = String(req.body?.billing_cycle || ""), bpId = String(req.body?.blueprint_id || "");
+    if (!userId || !cycle || !bpId) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
+    const bp = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
+    if (!bp) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
+    const current = safeJson(bp.blueprint_json) || {};
+    if (bp.content_status === "ready" || (Array.isArray(current.scripts) && current.scripts.length)) return res.json({ ok: true, status: "ready" });
+    if (bp.content_status === "generating" && inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" }); // กำลังทำอยู่จริงใน process นี้
+    // ไม่งั้นเริ่มใหม่ (รวมถึงกรณี 'generating' ที่ค้างจาก deploy เก่า = orphaned)
+    inFlightBp.add(bpId);
+    await run(`UPDATE blueprints SET content_status='generating' WHERE blueprint_id=$1`, [bpId]);
+    res.json({ ok: true, status: "generating" });
+    (async () => {
+      try {
+        await acquireGen();
+        try {
+          const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
+          const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+          const { content, model, usage } = await generateContent(parsed, current);
+          const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
+          const qualityFlags = checkBlueprintQuality(merged, true);
+          if (qualityFlags.length) console.warn(`[quality] ${bpId}: ${qualityFlags.join(" · ")}`);
+          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(qualityFlags), bpId]);
+          if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'content',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+          console.log(`[gen-content] ${bpId} สำเร็จ`);
+        } finally { releaseGen(); }
+      } catch (e) { console.error("gen-content bg", e.message); await run(`UPDATE blueprints SET content_status='error' WHERE blueprint_id=$1`, [bpId]).catch(() => {}); }
+      finally { inFlightBp.delete(bpId); }
+    })();
+  } catch (err) { console.error("generate-content", err); res.status(500).json({ ok: false, error: "GEN_CONTENT_FAILED", message: err.message }); }
 });
 
 app.post("/api/generate-blueprint", async (req, res) => {
@@ -404,7 +451,9 @@ app.get("/api/blueprints/latest", async (req, res) => {
   const row = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
   if (!row) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
-  res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, improve_count: row.improve_count || 0, blueprint: safeJson(row.blueprint_json), marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
+  const bpData = safeJson(row.blueprint_json);
+  const contentReady = row.content_status === "ready" || (bpData && Array.isArray(bpData.scripts) && bpData.scripts.length > 0);
+  res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, improve_count: row.improve_count || 0, content_status: contentReady ? "ready" : (row.content_status || "pending"), analysis_status: row.analysis_status || "ready", blueprint: bpData, marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
 });
 
 // ---------- marathon ----------

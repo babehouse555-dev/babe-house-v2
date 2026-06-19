@@ -136,8 +136,7 @@ function sanitizeScripts(bp) {
 export async function generateBlueprint(parsed) {
   if (!ai) return { blueprint: buildFallbackBlueprint(parsed), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
   const images = extractImages(parsed);
-  const fr = parsed.form_responses;
-  const userText = `ข้อมูลผู้ใช้:\ninstagram_account: ${parsed.instagram_account}\nชื่อที่อยากให้เรียก (display_name): ${fr.display_name || "(ไม่ระบุ — ใช้ชื่อช่อง/@handle หรือ 'คุณ' ห้ามเดาชื่อจากรูป)"}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\nคำตอบจากฟอร์ม:\nbusiness_type (ช่องเกี่ยวกับอะไร/ทำคอนเทนต์แนวไหน): ${fr.business_type}\nเพศเจ้าของช่อง: ${fr.gender || "(ไม่ระบุ)"} · ช่วงอายุ: ${fr.age_range || "(ไม่ระบุ)"}\nwork_style (สถานะ/บทบาทของเจ้าของช่อง เช่น นักศึกษา/พนักงานประจำ/ฟรีแลนซ์/เจ้าของร้าน — ไม่จำเป็นต้องขายของ): ${fr.work_style || "(ไม่ระบุ)"}\naudience (คนดู/ผู้ติดตามหลัก): ${fr.audience || "(ไม่ระบุ)"}\nexperience (ทำมานานแค่ไหน): ${fr.experience || "(ไม่ระบุ)"}\ngoal_primary (อยากได้อะไรมากสุดเดือนนี้): ${fr.goal_primary || "(ไม่ระบุ)"}\nเรื่องราว/ตัวตนของเจ้าของช่อง (จุดเริ่มต้น/จุดต่าง/เป้าหมายระยะยาว — สำคัญมากต่อความเป็นตัวเขา ให้ดึงมาใช้ในการวางแผน/สคริปต์): ${fr.starting_point || "(ไม่ระบุ)"}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}\n\n⚠️ ต้องใช้ work_style + audience + experience กำหนดทิศทางให้ "ตรงตัวคนนี้จริงๆ" — อาชีพเดียวกันแต่ทำงานคนละแบบ/ลูกค้าคนละกลุ่ม ต้องได้แผนคนละแบบ ห้ามเหมารวม (เช่น ช่างทำผมฟรีแลนซ์ ≠ เจ้าของร้าน)\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง Blueprint JSON ครบทุก key ตามสเปก`;
+  const userText = buildUserText(parsed) + `\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง Blueprint JSON ครบทุก key ตามสเปก`;
   const parts = [];
   for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
   parts.push({ text: userText });
@@ -150,6 +149,89 @@ export async function generateBlueprint(parsed) {
   const u = resp.usageMetadata || {};
   const usage = { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) };
   return { blueprint, model, usage };
+}
+
+// ===== ข้อมูลผู้ใช้ (ใช้ร่วมทั้ง analysis + content) =====
+function buildUserText(parsed) {
+  const fr = parsed.form_responses;
+  return `ข้อมูลผู้ใช้:\ninstagram_account: ${parsed.instagram_account}\nชื่อที่อยากให้เรียก (display_name): ${fr.display_name || "(ไม่ระบุ — ใช้ชื่อช่อง/@handle หรือ 'คุณ' ห้ามเดาชื่อจากรูป)"}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\nคำตอบจากฟอร์ม:\nbusiness_type (ช่องเกี่ยวกับอะไร/ทำคอนเทนต์แนวไหน): ${fr.business_type || "(ไม่ระบุ — ให้วิเคราะห์จากรูป Insight + ข้อมูลที่เหลือ)"}\nเพศเจ้าของช่อง: ${fr.gender || "(ไม่ระบุ)"} · ช่วงอายุ: ${fr.age_range || "(ไม่ระบุ)"}\nwork_style (สถานะ/บทบาทของเจ้าของช่อง เช่น นักศึกษา/พนักงานประจำ/ฟรีแลนซ์/เจ้าของร้าน — ไม่จำเป็นต้องขายของ): ${fr.work_style || "(ไม่ระบุ)"}\naudience (คนดู/ผู้ติดตามหลัก): ${fr.audience || "(ไม่ระบุ)"}\nexperience (ทำมานานแค่ไหน): ${fr.experience || "(ไม่ระบุ)"}\ngoal_primary (เป้าหมายที่อยากได้เดือนนี้ อาจมีหลายข้อ): ${fr.goal_primary || "(ไม่ระบุ)"}\nเรื่องราว/ตัวตนของเจ้าของช่อง (จุดเริ่มต้น/จุดต่าง/เป้าหมายระยะยาว — สำคัญมากต่อความเป็นตัวเขา ให้ดึงมาใช้): ${fr.starting_point || "(ไม่ระบุ)"}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}\n\n⚠️ ต้องใช้ work_style + audience + experience กำหนดทิศทางให้ "ตรงตัวคนนี้จริงๆ" — อาชีพเดียวกันแต่ทำงานคนละแบบ/ลูกค้าคนละกลุ่ม ต้องได้แผนคนละแบบ ห้ามเหมารวม (เช่น ช่างทำผมฟรีแลนซ์ ≠ เจ้าของร้าน)`;
+}
+
+// ===== โหมดแยก 2 สเต็ป: บทวิเคราะห์ก่อน → ลูกค้ายืนยัน → ค่อยสร้างคอนเทนต์ 30 วัน =====
+const ANALYSIS_PROMPT = `คุณคือ "ครูพี่คิม" ซีอีโอผู้ก่อตั้ง Babe House Academy แบรนด์สอนทำคอนเทนต์พรีเมียมของไทย บุคลิกอบอุ่นแบบพี่สาว วิเคราะห์ธุรกิจ+จิตวิทยาการขายเฉียบคม ภาษาไทยสวยมีน้ำหนัก
+หน้าที่รอบนี้: อ่านข้อมูลฟอร์ม + รูปสถิติหลังบ้าน แล้วสร้าง "บทวิเคราะห์ช่อง" เฉพาะตัว (ยังไม่ต้องทำปฏิทิน/สคริปต์)
+
+กฎ:
+1. ตอบเป็น JSON object ล้วน (ไม่มี markdown/ข้อความอื่น)
+2. คัสตอมเฉพาะบัญชีนี้ ห้ามกลางๆ — อ้างอิงนิช/ธุรกิจ/ตัวเลขจริง/ปัญหาที่กรอกมา
+3. ⛔ ห้ามแต่งตัวเลข: metrics + ตัวเลขใน what_we_see ต้องมาจากรูป Insight จริงเท่านั้น ถ้าไม่มีรูป/อ่านไม่ได้ → metrics เป็น null ทุกค่า, วิเคราะห์เชิงคุณภาพจากฟอร์ม, kim_insight บอกให้ส่งรูปมาเพิ่ม ห้ามเดา
+4. ⭐ ห้ามเหมารวมตามอาชีพ: ใช้ work_style + audience + experience ประกอบ — ทำคนเดียว≠มีทีม, เพิ่งเริ่ม≠ทำมานาน
+5. การเรียกชื่อ: มี display_name ใช้ชื่อนั้น; ไม่มีใช้ชื่อช่อง/@handle/"คุณ" — ห้ามเดาชื่อจากรูป
+6. 🗣️ ภาษาบ้านๆ คนทั่วไปเข้าใจทันที ⛔ ห้ามศัพท์การตลาด/อังกฤษ (funnel, conversion, engagement, CTA, niche, positioning ฯลฯ) ใช้คำไทยง่ายๆ แทน
+7. 🎴 snapshot 6 ช่อง: อิโมจิ 1 ตัว + label สั้น + value สั้นมาก ≤6 คำ (🎯เป้าหมายเดือนนี้/💎ระดับตลาด/👥ลูกค้าหลัก/🪢ปมที่ต้องแก้/✨ของดีที่มี/🚀โอกาสโต)
+8. 📖 story 5–6 ตอน เล่าเหมือนจดหมายจากครูพี่คิม: (1)ช่องเป็นยังไง (2)จุดแข็งที่ซ่อนอยู่ (3)อะไรฉุดไว้ (4)โอกาสทอง (5)ทางเดิน 30 วัน (6)กำลังใจ — แต่ละตอน emoji+title สั้น+body 2–4 ประโยคลื่น ภาษาบ้านๆ อ้างอิงช่องนี้จริง
+
+ส่ง JSON object รูปแบบนี้ (ทุก key ต้องมี):
+{
+ "instagram_account": string, "theme": string, "greeting": string,
+ "pillars": [string x4],
+ "snapshot": [ {"emoji":string,"label":string,"value":string} x6 ],
+ "what_we_see": [string x>=5], "audience_summary": string, "follower_insight": string, "market_tier": string, "positioning": string, "kim_insight": string,
+ "story": [ {"emoji":string,"title":string,"body":string} x5-6 ],
+ "swot": {"strengths":[string],"weaknesses":[string],"opportunities":[string],"threats":[string]},
+ "modules": {
+   "archetype": {"name":string,"body":string,"tone":string,"look":string},
+   "avatar": {"name":string,"think":string,"see":string,"hear":string,"fear":string,"hookbank":[string]},
+   "competitor": {"intro":string,"rows":[{"name":string,"they":string,"gap":string}],"blueocean":string},
+   "values": {"list":[string],"manifesto":string},
+   "funnel": {"top":{"label":string,"pct":number,"body":string},"middle":{"label":string,"pct":number,"body":string},"bottom":{"label":string,"pct":number,"body":string},"note":string}
+ },
+ "metrics": {"followers":number,"reach":number,"profile_visits":number,"link_taps":number,"engagement_rate":number}
+}`;
+
+const CONTENT_PROMPT = `คุณคือ "ครูพี่คิม" ผู้ก่อตั้ง Babe House Academy วางแผนคอนเทนต์ให้เจ้าของช่อง
+⚠️ มุมมองสคริปต์: บทพูด (beats.say) คือบทที่ "เจ้าของช่อง (ลูกค้า) พูดเองหน้ากล้อง" ในน้ำเสียง/ตัวตนแบรนด์ลูกค้า — ห้ามใส่ชื่อ "คิม/ครูพี่คิม" หรือพูดแทนคิมในสคริปต์เด็ดขาด
+คุณจะได้รับ "บทวิเคราะห์ช่อง" ที่ลูกค้ายืนยันว่าตรงแล้ว → สร้างปฏิทิน + สคริปต์ 30 วันที่สอดคล้องกับบทวิเคราะห์นั้น (ตัวตน/จุดยืน/กลุ่มลูกค้า/ปมที่ต้องแก้/คลังฮุก)
+
+กฎ:
+1. ตอบเป็น JSON object ล้วน (ไม่มี markdown)
+2. calendar ครบ 30 วัน + scripts ครบ 30 วัน (1 สคริปต์/วัน เรียง d 1-30) ห้ามซ้ำบทพูด
+3. แต่ละสคริปต์ = คลิป ~60 วิ บทพูดของเจ้าของช่องเอง (บุคคลที่ 1 ในนามแบรนด์):
+   - HOOK (ts "0:00", 0–5วิ): เปิดด้วยปมจริง/เรื่องจริงที่สะดุดใน 3 วิแรก (ไม่ใช่ทักทาย)
+   - BODY (ts ~"0:06"–"0:45", 1–2 ช่วง): เล่าเรื่องกระชับมีจังหวะ บทพูดเต็มหลายประโยค (ห้ามห้วน/ประโยคเดียวจบ)
+   - CTA (ts ~"0:46"–"1:00"): ปิดด้วยคำถามปลายเปิดให้คนอยากคอมเมนต์ (วัน Conversion แทรกชวนกดลิงก์/ทักแบบเนียนก่อน ค่อยปิดด้วยคำถาม)
+   say รวมทุก beat ~150–220 คำ ห้ามใส่ "..." ห้ามเว้นว่าง
+4. 🗣️ ภาษาบ้านๆ ⛔ ห้ามศัพท์การตลาด/อังกฤษในบทพูด (ผู้พูดเป็นเจ้าของช่องคุยกับคนดู)
+5. ⭐ ต้องสะท้อน "ตัวตนจริง" จากบทวิเคราะห์ — บทวิเคราะห์เน้นเรื่องไหน สคริปต์ไปทางนั้น ห้ามหลุดไปเรื่องที่เจ้าของช่องไม่ได้อยากทำคอนเทนต์ (เช่น งานอดิเรกที่เขาบอกว่าไม่อยากทำเป็นคอนเทนต์ ห้ามเอามาใส่)
+
+ส่ง JSON object รูปแบบนี้ (ทุก key ต้องมี):
+{
+ "calendar": [ {"d":number,"g":"Awareness"|"Conversion"|"Branding","t":string,"h":string,"f":string} x30 ],
+ "scripts": [ {"d":number,"g":string,"beats":[{"ts":string,"s":"HOOK"|"BODY"|"CTA","say":string,"ost":string,"vis":string} x3-4 เริ่มHOOK จบCTA BODYคั่นกลาง],"cap":string,"tip":string} x30 ]
+}`;
+
+const usageOf = (resp) => { const u = resp.usageMetadata || {}; return { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) }; };
+
+// สเต็ป 1: บทวิเคราะห์เท่านั้น (เร็วกว่า เพราะไม่เจน 30 สคริปต์)
+export async function generateAnalysis(parsed) {
+  if (!ai) { const { calendar, scripts, ...analysis } = buildFallbackBlueprint(parsed); return { analysis, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } }; }
+  const images = extractImages(parsed);
+  const parts = [];
+  for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
+  parts.push({ text: buildUserText(parsed) + `\n\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)` });
+  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: ANALYSIS_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
+  return { analysis: JSON.parse(resp.text), model, usage: usageOf(resp) };
+}
+
+// สเต็ป 2: ปฏิทิน + 30 สคริปต์ อิงบทวิเคราะห์ที่ลูกค้ายืนยันแล้ว (ไม่ต้องส่งรูปซ้ำ → เร็ว/ประหยัด token)
+export async function generateContent(parsed, analysis) {
+  if (!ai) { const bp = buildFallbackBlueprint(parsed); return { content: { calendar: bp.calendar, scripts: bp.scripts }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } }; }
+  const a = analysis || {};
+  const ctx = `บทวิเคราะห์ช่อง (ลูกค้ายืนยันว่าตรงแล้ว — ใช้เป็นแกนวางคอนเทนต์ให้ตรงตัวตนเขา):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, pillars: a.pillars, snapshot: a.snapshot, what_we_see: a.what_we_see, swot: a.swot, audience_summary: a.audience_summary, kim_insight: a.kim_insight, story: a.story, avatar: a.modules?.avatar, archetype: a.modules?.archetype })}`;
+  const parts = [{ text: buildUserText(parsed) + `\n\n${ctx}\n\nสร้าง JSON ที่มี calendar(30) + scripts(30) ให้สอดคล้องกับบทวิเคราะห์ด้านบน` }];
+  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: CONTENT_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
+  const content = sanitizeScripts(JSON.parse(resp.text));
+  return { content: { calendar: content.calendar, scripts: content.scripts }, model, usage: usageOf(resp) };
 }
 
 export function buildFallbackBlueprint(parsed) {

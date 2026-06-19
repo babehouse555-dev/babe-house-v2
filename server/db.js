@@ -168,6 +168,9 @@ export async function initDb() {
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS improve_count INTEGER DEFAULT 0;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS quality_flags_json TEXT;
+    ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS content_status TEXT DEFAULT 'pending';
+    ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS analysis_status TEXT DEFAULT 'ready';
+    UPDATE blueprints SET content_status='ready' WHERE COALESCE(content_status,'pending') <> 'ready' AND blueprint_json LIKE '%"scripts":[{%';
     CREATE TABLE IF NOT EXISTS video_audits (
       audit_id TEXT PRIMARY KEY,
       order_id TEXT,

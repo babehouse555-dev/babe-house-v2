@@ -133,24 +133,53 @@ export default function Dashboard() {
   const [improveOpen, setImproveOpen] = useState(false);
   const [improving, setImproving] = useState(false);
   const [improveErr, setImproveErr] = useState("");
-  const [ix, setIx] = useState({ products: "", pain_points: "", content_likes: "", brand_info: "", more: "" });
+  const [ix, setIx] = useState({ products: "", pain_points: "", content_likes: "", content_dislikes: "", brand_info: "", more: "" });
+  // โหมดแยก 2 สเต็ป: contentReady = สร้างแผน 30 วันแล้วหรือยัง · genState = สถานะปุ่มสร้างแผน
+  const [contentReady, setContentReady] = useState(demo);
+  const [genState, setGenState] = useState("idle"); // idle | generating | error
+  const latestUrl = `/api/blueprints/latest?user_id=${encodeURIComponent(userId || "")}&billing_cycle=${encodeURIComponent(cycle || "")}&blueprint_id=${encodeURIComponent(bpId || "")}`;
 
+  // สเต็ป 2: ลูกค้ายืนยันบทวิเคราะห์แม่น → สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง + poll จนเสร็จ)
+  async function startContentGen() {
+    if (demo) { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    setGenState("generating");
+    try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId } }); pollContent(0); }
+    catch (e) { setGenState("error"); }
+  }
+  function pollContent(attempt) {
+    setTimeout(async () => {
+      try {
+        const d = await api(latestUrl);
+        if (d.content_status === "ready") { setBp(d.blueprint); setContentReady(true); setGenState("idle"); setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+        if (d.content_status === "error") { setGenState("error"); return; }
+        if (attempt === 40) { try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId } }); } catch {} } // กู้กรณีค้างจาก deploy
+      } catch {}
+      if (attempt < 90) pollContent(attempt + 1); else setGenState("error");
+    }, 4000);
+  }
+  // refine บทวิเคราะห์ (ฟรี 1 ครั้ง) — async + poll analysis_status
   async function submitImprove() {
-    if (demo) { setImproveErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเจนใหม่ให้แม่นขึ้นทันที 🩵"); return; }
+    if (demo) { setImproveErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะแก้บทวิเคราะห์ให้แม่นขึ้นทันที 🩵"); return; }
     setImproving(true); setImproveErr("");
-    try {
-      const d = await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix } });
-      setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setView("info");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (e) { setImproveErr(e.message || "เจนใหม่ไม่สำเร็จ ลองอีกครั้งนะคะ"); }
-    setImproving(false);
+    try { await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix } }); pollAnalysis(0); }
+    catch (e) { setImproveErr(e.message || "เกิดข้อผิดพลาด ลองอีกครั้งนะคะ"); setImproving(false); }
+  }
+  function pollAnalysis(attempt) {
+    setTimeout(async () => {
+      try {
+        const d = await api(latestUrl);
+        if (d.analysis_status === "ready") { setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setImproving(false); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+        if (d.analysis_status === "error") { setImproveErr("ครูพี่คิมเจนไม่สำเร็จ ลองอีกครั้งนะคะ"); setImproving(false); return; }
+      } catch {}
+      if (attempt < 60) pollAnalysis(attempt + 1); else { setImproveErr("ใช้เวลานานผิดปกติ ลองรีเฟรชหน้าดูนะคะ"); setImproving(false); }
+    }, 4000);
   }
 
   useEffect(() => {
     if (demo) return;
     if (!userId || !cycle) { setErr("ไม่พบข้อมูลเล่ม"); return; }
-    api(`/api/blueprints/latest?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId || "")}`)
-      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); })
+    api(latestUrl)
+      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); setContentReady(d.content_status === "ready"); })
       .catch(() => setErr("โหลดเล่มไม่สำเร็จ — อาจกำลังสร้างอยู่ หรือลิงก์ไม่ถูกต้อง"));
   }, [userId, cycle]);
 
@@ -229,7 +258,7 @@ export default function Dashboard() {
             <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 520, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ที่อ่านไปเมื่อกี้เป็นแค่ <b>น้ำจิ้ม</b> ค่ะ — ของจริงคือ <b>บทวิเคราะห์เจาะลึก</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · 5 โมดูลปั้นแบรนด์) + <b>ตารางคอนเทนต์ 30 วัน</b> กดดูเลยค่ะ!</p>
             <div className="row" style={{ gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               <button className="btn-pulse" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>🔍 ดูบทวิเคราะห์เจาะลึก →</button>
-              <button onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "15px 22px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>📅 ไปตาราง 30 วัน</button>
+              {contentReady && <button onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "15px 22px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>📅 ไปตาราง 30 วัน</button>}
             </div>
           </div>}
           {(showDeep || !(bp.story?.length > 0)) && <>
@@ -292,33 +321,44 @@ export default function Dashboard() {
           </div>}
           {m.funnel && <div className="card"><h3 style={modH}><Num n={5} />🫧 Funnel</h3><div style={{ marginTop: 12 }}>{["top", "middle", "bottom"].map(k => m.funnel[k] && <div key={k} style={{ margin: "8px 0" }}><div className="between" style={{ fontSize: 13 }}><span><b>{m.funnel[k].label}</b> · {m.funnel[k].body}</span><span className="muted">{m.funnel[k].pct}%</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${m.funnel[k].pct}%` }} /></div></div>)}</div><p className="muted" style={{ fontSize: 13, marginTop: 8 }}>{m.funnel.note}</p></div>}
 
-          <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "26px 22px", marginTop: 12, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
+          {contentReady ? <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "26px 22px", marginTop: 12, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
             <div style={{ fontSize: 32 }}>📅</div>
             <h3 style={{ margin: "6px 0 6px", color: "#fff", fontSize: 21 }}>นี่เพิ่งแค่ "กลยุทธ์" นะคะ — ของจริงอยู่ที่แผน 30 วัน!</h3>
             <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ครูพี่คิมเขียน <b>สคริปต์พร้อมอัดครบทั้ง 30 วัน</b> (เปิดให้สะดุด–เล่าเรื่อง–ปิดท้ายชวนทำต่อ) + แคปชันพร้อมโพสต์ + เกม Marathon ให้แล้วค่ะ มาเริ่มลงมือทำกันเลย!</p>
             <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
-          </div>
+          </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
+            {genState === "generating" ? <>
+              <div className="spinner" style={{ borderTopColor: "#fff", margin: "0 auto 14px" }} />
+              <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 6px" }}>ครูพี่คิมกำลังสร้างแผน 30 วัน + สคริปต์ให้... 🩵</h3>
+              <p style={{ opacity: .95, fontSize: 14.5 }}>ใช้เวลาประมาณ 1–2 นาที ไม่ต้องปิดหน้านะคะ พอเสร็จจะเด้งไปที่ตารางเองเลย</p>
+            </> : genState === "error" ? <>
+              <div style={{ fontSize: 30 }}>🥺</div>
+              <h3 style={{ color: "#fff", fontSize: 19, margin: "4px 0 6px" }}>เอ๊ะ สะดุดนิดหน่อย</h3>
+              <p style={{ opacity: .95, fontSize: 14.5, marginBottom: 14 }}>ลองกดสร้างใหม่อีกครั้งนะคะ (เงินไม่หาย บทวิเคราะห์ยังอยู่ครบ)</p>
+              <button className="btn-pulse" onClick={startContentGen} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "14px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>ลองสร้างแผน 30 วันอีกครั้ง</button>
+            </> : <>
+              <div style={{ fontSize: 32 }}>📋</div>
+              <h3 style={{ margin: "6px 0 6px", color: "#fff", fontSize: 21 }}>บทวิเคราะห์นี้ตรงกับช่องคุณไหมคะ?</h3>
+              <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>ถ้าตรงแล้ว กดสร้างแผน 30 วัน — ครูพี่คิมจะเขียนสคริปต์พร้อมอัดให้ครบ <b>โดยอิงจากบทวิเคราะห์นี้</b> ถ้ายังไม่ตรง เติมข้อมูลให้แม่นก่อนได้ (ฟรี) คอนเทนต์จะได้ตรงใจกว่าค่ะ</p>
+              {!improveOpen && <div className="row" style={{ gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn-pulse" onClick={startContentGen} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>✅ ตรงแล้ว! สร้างแผน 30 วัน →</button>
+                {improveCount < 1 && <button onClick={() => setImproveOpen(true)} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "15px 20px", fontWeight: 700, fontSize: 14.5, cursor: "pointer" }}>✏️ ขอแก้ให้แม่นขึ้นก่อน (ฟรี)</button>}
+              </div>}
+              {improveCount >= 1 && !improveOpen && <div style={{ marginTop: 12, fontSize: 13.5, opacity: .9 }}>✓ แก้บทวิเคราะห์ให้แม่นขึ้นแล้ว — ถ้าตรงใจแล้วกดสร้างแผนได้เลยค่ะ</div>}
+              {improveOpen && <div style={{ background: "#fff", color: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 6, textAlign: "left" }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>✏️ เล่าเพิ่มให้ครูพี่คิมฟัง</div>
+                <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) — บอก "แนวที่อยากทำ / ไม่อยากทำ" จะช่วยให้คอนเทนต์ตรงใจมากๆ · ใช้สิทธิ์ฟรีได้ครั้งเดียว</p>
+                {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "แนวคอนเทนต์ที่อยากทำ", "เช่น สายเล่าเรื่องจริงจากชีวิต / สอนเป็นขั้นๆ"], ["content_dislikes", "แนวที่ไม่อยากทำ", "เช่น ไม่อยากทำสายตลก / ไม่อยากพูดเรื่องงานอดิเรกที่เล่นบอล-สะสมการ์ด"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
+                  <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 60 }} placeholder={ph} /></div>)}
+                {improveErr && <div className="msg err">{improveErr}</div>}
+                <div className="row" style={{ gap: 10, justifyContent: "center" }}>
+                  <button className="btn" disabled={improving} onClick={submitImprove}>{improving ? "ครูพี่คิมกำลังแก้บทวิเคราะห์... (~1 นาที)" : "แก้บทวิเคราะห์ให้แม่นขึ้น 🩵"}</button>
+                  {!improving && <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>ยกเลิก</button>}
+                </div>
+              </div>}
+            </>}
+          </div>}
           </>}
-
-          {(improveCount >= 1
-            ? <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc" }}><div style={{ fontWeight: 700, color: "#1a7f43" }}>✓ เพิ่มข้อมูลแล้ว — ครูพี่คิมอัปเดตเล่มให้ใหม่เรียบร้อยค่ะ 🩵</div></div>
-            : <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
-                {!improveOpen ? <div className="center">
-                  <div style={{ fontWeight: 800, fontSize: 17, color: "var(--blue-d)" }}>💎 อยากให้ครูพี่คิมเข้าใจคุณมากขึ้น?</div>
-                  <p className="muted" style={{ fontSize: 14, margin: "6px auto 12px", maxWidth: 520 }}>เล่าเรื่องตัวเอง สินค้า หรือสิ่งที่อยากขายเพิ่ม แล้วครูพี่คิมจะ<b>เจนเล่มใหม่ให้แม่นและเป็นคุณมากขึ้น</b> — <b style={{ color: "var(--up)" }}>ฟรี 1 ครั้ง</b> 🎁</p>
-                  <button className="btn" onClick={() => setImproveOpen(true)}>เพิ่มข้อมูลให้แม่นขึ้น (ฟรี) →</button>
-                </div> : <>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>💎 เล่าเพิ่มให้ครูพี่คิมฟัง</div>
-                  <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) แล้วกดเจนใหม่ — ใช้สิทธิ์ฟรีนี้ได้ครั้งเดียว</p>
-                  {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "คอนเทนต์แนวที่ชอบ/อยากได้", "เช่น สายเล่าเรื่องจริงจากชีวิต ไม่เอาสายตลก"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
-                    <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 64 }} placeholder={ph} /></div>)}
-                  {improveErr && <div className="msg err">{improveErr}</div>}
-                  <div className="row" style={{ gap: 10, justifyContent: "center" }}>
-                    <button className="btn" disabled={improving} onClick={submitImprove}>{improving ? "ครูพี่คิมกำลังเจนใหม่... (~1 นาที)" : "เจนเล่มใหม่ให้แม่นขึ้น 🩵"}</button>
-                    {!improving && <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>ยกเลิก</button>}
-                  </div>
-                </>}
-              </div>)}
 
           <ReviewCard demo={demo} bpId={bpId} />
           <FeedbackCard demo={demo} bpId={bpId} />
@@ -329,7 +369,13 @@ export default function Dashboard() {
           </Link>}
         </>}
 
-        {tab === "calendar" && <>
+        {tab !== "strategy" && !contentReady && <div className="card center" style={{ padding: "30px 20px" }}>
+          <div style={{ fontSize: 32 }}>📋</div>
+          <h3 style={{ margin: "8px 0 4px" }}>ยังไม่ได้สร้างแผน 30 วันค่ะ</h3>
+          <p className="muted" style={{ fontSize: 14.5, maxWidth: 420, margin: "0 auto 14px" }}>กลับไปที่แท็บ "กลยุทธ์" อ่านบทวิเคราะห์ → ยืนยันว่าตรง → กดสร้างแผน 30 วันก่อนนะคะ 🩵</p>
+          <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← ไปยืนยันบทวิเคราะห์</button>
+        </div>}
+        {tab === "calendar" && contentReady && <>
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
@@ -361,7 +407,7 @@ export default function Dashboard() {
           <ServicesBlock />
         </>}
 
-        {tab === "marathon" && (() => {
+        {tab === "marathon" && contentReady && (() => {
           const done = uploaded.size;
           // ปีศาจเวลานับจาก "วันที่เริ่มเล่ม" เริ่ม 0 แล้วเพิ่มตามเวลาจริง (ไม่ใช่วันที่ของเดือน)
           const startMs = startedAt ? new Date(startedAt).getTime() : Date.now();

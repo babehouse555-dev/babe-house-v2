@@ -54,12 +54,13 @@ export default function Dashboard() {
   const userId = sp.get("user_id"), cycle = sp.get("billing_cycle"), bpId = sp.get("blueprint_id");
   const [bp, setBp] = useState(demo ? sampleBlueprint() : null);
   const [err, setErr] = useState("");
-  const scriptRef = useRef(null), calRef = useRef(null);
+  const scriptRef = useRef(null), calRef = useRef(null), deepRef = useRef(null);
   // กดวันในปฏิทิน → เลือกวัน + เลื่อนไปที่สคริปต์ทันที (ไม่ต้องเลื่อนยาวเอง)
   const selectDay = (d) => { setSel(d); setTimeout(() => scriptRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60); };
   const scrollToCal = () => calRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const [tab, setTab] = useState("strategy");
   const [view, setView] = useState("info");
+  const [showDeep, setShowDeep] = useState(false);
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
   const [startedAt, setStartedAt] = useState(null);
@@ -137,6 +138,15 @@ export default function Dashboard() {
               })}
             </div>
           </div>}
+          {bp.story?.length > 0 && <div style={{ marginBottom: 8 }}>
+            <p className="muted" style={{ fontSize: 14, marginBottom: 14 }}>นั่งจิบกาแฟอ่านสบายๆ นะคะ — ครูพี่คิมเล่าให้ฟังว่าช่องคุณอยู่ตรงไหน แล้วเราจะไปต่อยังไง 🩵</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {bp.story.map((c, i) => <div key={i} className="card" style={{ margin: 0, borderLeft: "4px solid var(--blue)" }}>
+                <div className="row" style={{ gap: 10, marginBottom: 8 }}><span style={{ fontSize: 26 }}>{c.emoji}</span><h3 style={{ margin: 0, fontSize: 17 }}>{c.title}</h3></div>
+                <p style={{ fontSize: 15.5, lineHeight: 1.85, margin: 0 }}>{c.body}</p>
+              </div>)}
+            </div>
+          </div>}
           {demo && <div className="card" style={{ border: "1px dashed var(--blue)", background: "#F4F8FD" }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>🔍 เล่มจริงของคุณจะละเอียดและตรงกว่านี้อีก เพราะ...</div>
             <ul style={{ paddingLeft: 18, fontSize: 14, lineHeight: 1.8, margin: 0 }}>
@@ -147,20 +157,17 @@ export default function Dashboard() {
             </ul>
             <Link className="btn full" to="/form" style={{ marginTop: 12 }}>สร้างเล่มจริงของฉัน · 490฿</Link>
           </div>}
-          {bp.story?.length > 0 && <div className="row" style={{ gap: 8, marginBottom: 16, background: "var(--soft)", padding: 6, borderRadius: 12, maxWidth: 380 }}>
-            {[["info", "📊 ดูแบบสรุป"], ["story", "📖 อ่านแบบเล่าเรื่อง"]].map(([k, l]) =>
-              <button key={k} onClick={() => setView(k)} style={{ flex: 1, padding: "9px", border: 0, borderRadius: 9, fontWeight: 700, fontSize: 13.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "var(--blue)" : "var(--muted)", boxShadow: view === k ? "0 2px 8px rgba(0,0,0,.06)" : "none" }}>{l}</button>)}
-          </div>}
-          {bp.story?.length > 0 && view === "story" && <div style={{ marginBottom: 8 }}>
-            <p className="muted" style={{ fontSize: 14, marginBottom: 14 }}>นั่งจิบกาแฟอ่านสบายๆ นะคะ — ครูพี่คิมเล่าให้ฟังว่าช่องคุณอยู่ตรงไหน แล้วเราจะไปต่อยังไง 🩵</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {bp.story.map((c, i) => <div key={i} className="card" style={{ margin: 0, borderLeft: "4px solid var(--blue)" }}>
-                <div className="row" style={{ gap: 10, marginBottom: 8 }}><span style={{ fontSize: 26 }}>{c.emoji}</span><h3 style={{ margin: 0, fontSize: 17 }}>{c.title}</h3></div>
-                <p style={{ fontSize: 15.5, lineHeight: 1.85, margin: 0 }}>{c.body}</p>
-              </div>)}
+          {bp.story?.length > 0 && !showDeep && <div className="card center" style={{ background: "linear-gradient(135deg,#E7EDF8,#F4F9FF)", border: "1px solid #cdd9f0" }}>
+            <div style={{ fontSize: 28 }}>✨</div>
+            <h3 style={{ margin: "4px 0 6px" }}>พร้อมลุยคอนเทนต์แล้วใช่ไหมคะ? 🩵</h3>
+            <p className="muted" style={{ fontSize: 14.5, marginBottom: 16, maxWidth: 500, marginInline: "auto" }}>งั้นไปดู <b>บทวิเคราะห์เจาะลึก</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · 5 โมดูลปั้นแบรนด์) แล้วลุย <b>ตารางคอนเทนต์ 30 วัน</b> กันเลยค่ะ!</p>
+            <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <button className="btn" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }}>🔍 ดูบทวิเคราะห์เจาะลึก</button>
+              <button className="btn" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "var(--blue)", border: "1.5px solid var(--blue)" }}>📅 ไปตาราง 30 วัน →</button>
             </div>
           </div>}
-          {view === "info" && <>
+          {(showDeep || !(bp.story?.length > 0)) && <>
+          <div ref={deepRef} style={{ scrollMarginTop: 70 }} />
           {bp.metrics && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 16 }}>
             {[["👁️ ยอดเข้าถึง (Reach)", bp.metrics.reach], ["💙 ผู้ติดตาม", bp.metrics.followers], ["👤 เข้าชมโปรไฟล์", bp.metrics.profile_visits], ["🔗 กดลิงก์ไบโอ", bp.metrics.link_taps], ["⚡ Engagement", bp.metrics.engagement_rate, "%"]].filter(([, v]) => v != null).map(([l, v, suf]) =>
               <div key={l} className="card" style={{ margin: 0, padding: "16px 14px" }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ fontSize: 24, fontWeight: 800, color: "var(--blue)", marginTop: 4 }}>{Number(v).toLocaleString("en-US")}{suf || ""}</div></div>)}

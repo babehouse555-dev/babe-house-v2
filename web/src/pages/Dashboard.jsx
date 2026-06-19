@@ -213,7 +213,7 @@ export default function Dashboard() {
     setTimeout(async () => {
       try {
         const d = await api(latestUrl);
-        if (d.content_status === "ready") { setBp(d.blueprint); setContentReady(true); setGenState("idle"); setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+        if (d.content_status === "ready") { setBp(d.blueprint); setContentReady(true); setGenState("idle"); setTab("calendar"); setTimeout(() => { if (calRef.current) calRef.current.scrollIntoView({ behavior: "auto", block: "start" }); else window.scrollTo(0, 0); }, 200); return; }
         if (d.content_status === "error") { setGenState("error"); return; }
         if (attempt === 40) { try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId } }); } catch {} } // กู้กรณีค้างจาก deploy
       } catch {}

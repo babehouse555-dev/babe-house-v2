@@ -5,8 +5,14 @@ const { Pool } = pg;
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Railway Postgres ต้องการ SSL ในบางกรณี — ปิด verify เพื่อความง่าย
-  ssl: process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : false
+  ssl: process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : false,
+  // ทนโหลดช่วงเปิดขาย: เพิ่ม connection + ตั้ง timeout กันคิวค้าง/ควีรีหนีหาย
+  max: Number(process.env.PG_POOL_MAX) || 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  statement_timeout: 30000
 });
+pool.on("error", (err) => console.error("[pg pool error]", err.message));
 
 // helpers (ใช้ placeholder แบบ $1,$2 ของ Postgres)
 export async function q(sql, params = []) { const r = await pool.query(sql, params); return r.rows; }

@@ -298,7 +298,18 @@ app.post("/api/video-audit/analyze", async (req, res) => {
 });
 
 // ---------- blueprint generation ----------
+// จำกัดจำนวนเจนเล่มพร้อมกัน — กันคนจ่ายพร้อมกันเยอะแล้ว Gemini โดน rate-limit / RAM พุ่งจนล่ม
+// ที่เหลือเข้าคิวรอ (หน้า Processing ของลูกค้า poll อยู่แล้ว + retryStuckGenerations เป็นตาข่ายกันพลาด)
+const MAX_CONCURRENT_GENS = Number(process.env.MAX_CONCURRENT_GENS) || 3;
+let activeGens = 0; const genQueue = [];
+// order_id ที่กำลังเจน/เข้าคิวอยู่ใน process นี้ — ให้ retryStuckGenerations ข้าม กันเจนซ้ำตอนคิวยาวเกิน 8 นาที
+const inFlightOrders = new Set();
+function acquireGen() { return new Promise(res => { if (activeGens < MAX_CONCURRENT_GENS) { activeGens++; res(); } else genQueue.push(res); }); }
+function releaseGen() { activeGens = Math.max(0, activeGens - 1); const next = genQueue.shift(); if (next) { activeGens++; next(); } }
+
 async function generateBlueprintForPayload(payload) {
+  await acquireGen();
+  try {
   const parsed = GenSchema.parse(normalizePayload(payload));
   const firstImg = parsed.insight_screenshot_base64 || (Array.isArray(parsed.insight_images) ? parsed.insight_images[0] : "") || "";
   const requestId = uid("req"), blueprintId = uid("bp");
@@ -316,6 +327,7 @@ async function generateBlueprintForPayload(payload) {
   if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'blueprint',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
   await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,billing_cycle) DO NOTHING`, [uid("marathon"), parsed.user_id, parsed.instagram_account, parsed.meta_purchase.billing_cycle]);
   return { blueprintId, requestId, parsed, blueprint };
+  } finally { releaseGen(); }
 }
 
 app.post("/api/start-generation", async (req, res) => {
@@ -326,6 +338,7 @@ app.post("/api/start-generation", async (req, res) => {
     const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND (generation_status IS NULL OR generation_status IN ('pending','error'))`, [o.order_id]);
     if (claim.rowCount !== 1) return res.json({ ok: true, status: o.generation_status || "generating", order_id: o.order_id });
     res.json({ ok: true, status: "generating", order_id: o.order_id });
+    inFlightOrders.add(o.order_id);
     (async () => {
       try {
         const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
@@ -333,6 +346,7 @@ app.post("/api/start-generation", async (req, res) => {
         const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`;
         if (o.email) await sendEmail(o.email, `เล่ม Blueprint เดือน ${o.billing_cycle} พร้อมแล้ว 🩵`, wrap(`ครูพี่คิมวิเคราะห์เสร็จแล้ว เล่มแผน 30 วันพร้อมเปิดดูค่ะ<br><br>${btn(url, "เปิด Dashboard ของฉัน")}`)).catch(() => {});
       } catch (e) { console.error("bg gen", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), o.order_id]); }
+      finally { inFlightOrders.delete(o.order_id); }
     })();
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "START_GENERATION_FAILED", message: err.message }); }
 });
@@ -624,12 +638,14 @@ app.post("/api/admin/regenerate", async (req, res) => {
   if (!["paid", "mock_paid"].includes(o.payment_status)) return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED" });
   await run(`UPDATE blueprint_orders SET blueprint_id=NULL, generation_status='generating', generation_error=NULL WHERE order_id=$1`, [orderId]);
   res.json({ ok: true, order_id: orderId, status: "generating" });
+  inFlightOrders.add(orderId);
   (async () => {
     try {
       const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
       await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
       console.log(`[regenerate] order ${orderId} → ${result.blueprintId}`);
     } catch (e) { console.error("regenerate", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), orderId]); }
+    finally { inFlightOrders.delete(orderId); }
   })();
 });
 async function getStudents(industry) {
@@ -839,8 +855,10 @@ async function retryStuckGenerations() {
     // กู้: (ก) error (ข) ค้าง 'generating' >8 นาที (โดน deploy ตัด) (ค) 'pending'/ยังไม่เริ่มเจน >2 นาที (จ่ายแล้วแต่ไม่ได้เข้าหน้า processing เช่นปิดแท็บ) — ยกเว้นออเดอร์ Video Audit
     const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND (generation_status='error' OR (generation_status='generating' AND paid_at < now() - interval '8 minutes') OR (COALESCE(generation_status,'pending')='pending' AND paid_at < now() - interval '2 minutes')) AND paid_at > now() - interval '24 hours' LIMIT 5`);
     for (const o of rows) {
+      if (inFlightOrders.has(o.order_id)) continue; // กำลังเจน/เข้าคิวอยู่แล้วใน process นี้ — อย่าเจนซ้ำ
       const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND COALESCE(generation_status,'pending') IN ('pending','error','generating')`, [o.order_id]);
       if (claim.rowCount !== 1) continue;
+      inFlightOrders.add(o.order_id);
       try {
         const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
         await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, o.order_id]);
@@ -852,7 +870,7 @@ async function retryStuckGenerations() {
       } catch (e) {
         console.error(`[retry-gen] order ${o.order_id} ยังไม่สำเร็จ:`, e.message);
         await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), o.order_id]);
-      }
+      } finally { inFlightOrders.delete(o.order_id); }
     }
   } catch (e) { console.error("retryStuckGenerations", e.message); }
 }

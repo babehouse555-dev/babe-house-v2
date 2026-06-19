@@ -16,8 +16,8 @@ function SocialProof() {
       <p className="center" style={{ letterSpacing: 2, fontSize: 12, fontWeight: 800, color: "var(--blue)", textTransform: "uppercase", marginBottom: 6 }}>เสียงจากคนใช้จริง</p>
       <h2 className="center serif" style={{ fontSize: "clamp(22px,3.6vw,30px)", fontWeight: 800, marginBottom: 6 }}>คนทำคอนเทนต์พูดถึง Blueprint ยังไง</h2>
       {data.avg > 0 && <p className="center muted" style={{ fontSize: 15, marginBottom: 28 }}><span style={{ color: "#f5b301", fontSize: 18 }}>{"★".repeat(Math.round(data.avg))}</span> <b>{data.avg}/5</b> จาก {data.total} รีวิว</p>}
-      <div style={{ columnWidth: 300, columnGap: 16 }}>
-        {data.reviews.map((r, i) => <div key={i} className="card" style={{ margin: "0 0 16px", breakInside: "avoid", display: "inline-block", width: "100%" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 16 }}>
+        {data.reviews.map((r, i) => <div key={i} className="card" style={{ margin: 0, flex: "0 1 340px", maxWidth: "100%" }}>
           <div style={{ color: "#f5b301", fontSize: 15, marginBottom: 6 }}>{"★".repeat(r.rating)}<span style={{ color: "#dcdce3" }}>{"★".repeat(5 - r.rating)}</span></div>
           <p style={{ fontSize: 14.5, lineHeight: 1.6, margin: "0 0 10px" }}>“{r.text}”</p>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{r.display_name || "ลูกค้า Babe House"}</div>

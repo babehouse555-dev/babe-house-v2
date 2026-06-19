@@ -516,10 +516,12 @@ async function authEmail(req) {
   return row.email;
 }
 async function getCustomerMonths(email) {
+  // 1 เล่มต่อ 1 เดือน — เอา "เล่มล่าสุด" ของเดือนนั้น (กันเล่มเก่าบังเล่มใหม่เวลาซื้อ/เทสต์ซ้ำเดือนเดิม)
+  // เรียง ASC + Map.set ทับด้วยตัวล่าสุด → ลำดับเดือนยังเรียงเก่า→ใหม่ (Compare ใช้ได้) แต่ข้อมูลเป็นเล่มล่าสุด
   const rows = await q(`SELECT b.blueprint_id,b.billing_cycle,b.created_at,b.user_id,b.blueprint_json,r.instagram_account,r.business_type,r.monthly_goal FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE r.email=$1 ORDER BY b.created_at ASC`, [email]);
-  const seen = new Set(), out = [];
-  for (const r of rows) { if (seen.has(r.billing_cycle)) continue; seen.add(r.billing_cycle); let metrics = null; try { metrics = (safeJson(r.blueprint_json) || {}).metrics || null; } catch {} out.push({ blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics }); }
-  return out;
+  const byCycle = new Map();
+  for (const r of rows) { let metrics = null; try { metrics = (safeJson(r.blueprint_json) || {}).metrics || null; } catch {} byCycle.set(r.billing_cycle, { blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics }); }
+  return [...byCycle.values()];
 }
 app.get("/api/me/blueprints", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

@@ -377,6 +377,7 @@ app.post("/api/improve-blueprint", async (req, res) => {
 });
 
 app.post("/api/generate-blueprint", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); // กันเจนฟรีไม่จ่ายเงิน (เปลือง token) — ลูกค้าใช้ flow checkout→start-generation
   try { const r = await generateBlueprintForPayload(req.body); res.json({ ok: true, blueprint_id: r.blueprintId, user_id: r.parsed.user_id, billing_cycle: r.parsed.meta_purchase.billing_cycle, blueprint: r.blueprint }); }
   catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GENERATE_FAILED", message: err.message }); }
 });

@@ -149,30 +149,22 @@ const SHOOT_FORMATS = [
 ];
 function ShootingGuide() {
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
   if (!open) return <div className="card" style={{ background: "linear-gradient(135deg,#FBF7EE,#F4F9FF)", border: "1px solid #e7dfc5" }}>
     <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
-      <div><div style={{ fontWeight: 800, fontSize: 16 }}>🎬 มีสคริปต์แล้ว แต่ถ่ายไม่เป็น?</div><div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>ดูคู่มือถ่าย — สคริปต์เดียวทำได้หลายแบบ บอกมุมกล้อง · กี่ช็อต · เก็บฟุตเทจอะไร</div></div>
-      <button className="btn" onClick={() => setOpen(true)} style={{ flexShrink: 0, padding: "10px 18px" }}>เปิดคู่มือถ่าย →</button>
+      <div><div style={{ fontWeight: 800, fontSize: 16 }}>🎬 ไม่รู้จะถ่ายคลิปยังไง?</div><div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>ดูคลิปตัวอย่างจริงของ Babe House — สคริปต์เดียวทำได้หลายแบบ</div></div>
+      <button className="btn" onClick={() => setOpen(true)} style={{ flexShrink: 0, padding: "10px 18px" }}>ดูตัวอย่างคลิป →</button>
     </div>
   </div>;
-  const f = SHOOT_FORMATS[active];
   return <div className="card">
-    <div className="between" style={{ marginBottom: 10 }}><h3 style={{ margin: 0 }}>🎬 คู่มือถ่าย — สคริปต์เดียวทำได้หลายแบบ</h3><button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setOpen(false)}>ปิด</button></div>
-    <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>เลือกแบบที่ถนัด แล้วถ่ายตามเช็กลิสต์ได้เลยค่ะ — ไม่ต้องเก่ง แค่ทำตามทีละข้อ 🩵</p>
-    <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-      {SHOOT_FORMATS.map((x, i) => <button key={i} onClick={() => setActive(i)} style={{ border: i === active ? `2px solid ${x.color[1]}` : "1px solid var(--border)", background: i === active ? x.color[0] : "#fff", color: i === active ? x.color[1] : "var(--ink)", fontWeight: 700, fontSize: 13.5, padding: "8px 13px", borderRadius: 20, cursor: "pointer" }}>{x.emoji} {x.name}</button>)}
+    <div className="between" style={{ marginBottom: 4 }}><h3 style={{ margin: 0 }}>🎬 ตัวอย่างการถ่าย</h3><button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setOpen(false)}>ปิด</button></div>
+    <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กดแบบที่ถนัด → ดูคลิปจริงได้เลยค่ะ 🩵</p>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10 }}>
+      {SHOOT_FORMATS.filter(f => f.clip).map((f, i) => <a key={i} href={`https://www.instagram.com/reel/${f.clip}/`} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit", background: f.color[0], borderRadius: 14, padding: "18px 12px", textAlign: "center", display: "block" }}>
+        <div style={{ fontSize: 34, lineHeight: 1 }}>{f.emoji}</div>
+        <div style={{ fontWeight: 800, fontSize: 14, color: f.color[1], marginTop: 8 }}>{f.name}</div>
+        <div style={{ fontSize: 12.5, color: f.color[1], marginTop: 8, fontWeight: 700 }}>▶️ ดูคลิป</div>
+      </a>)}
     </div>
-    <div style={{ background: f.color[0], borderRadius: 16, padding: "16px 18px" }}>
-      <div style={{ fontWeight: 800, fontSize: 16, color: f.color[1] }}>{f.emoji} {f.name}</div>
-      <div className="muted" style={{ fontSize: 13, margin: "2px 0 12px" }}>เหมาะกับ: {f.who}</div>
-      {f.clip ? <a href={`https://www.instagram.com/reel/${f.clip}/`} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#fff", border: `1.5px solid ${f.color[1]}`, color: f.color[1], borderRadius: 12, padding: "13px 14px", fontWeight: 800, fontSize: 14.5, textDecoration: "none", marginBottom: 14 }}>▶️ ดูคลิปตัวอย่างแบบนี้ (เปิดใน Instagram)</a>
-        : <div style={{ background: "#fff", border: "1px dashed " + f.color[1], borderRadius: 12, padding: "12px 14px", marginBottom: 14, fontSize: 13, color: f.color[1], textAlign: "center" }}>🎬 คลิปตัวอย่างแบบนี้ กำลังจะมาเร็วๆ นี้ค่ะ</div>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {f.steps.map(([k, v], i) => <div key={i} style={{ background: "#fff", borderRadius: 10, padding: "10px 13px" }}><div style={{ fontWeight: 700, fontSize: 13, color: f.color[1], marginBottom: 2 }}>{k}</div><div style={{ fontSize: 13.5, lineHeight: 1.55 }}>{v}</div></div>)}
-      </div>
-    </div>
-    <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 12, fontSize: 13 }}>📌 ทุกแบบ: ถ่ายแนวตั้ง (9:16) · 3 วิแรกสำคัญสุดอย่าเกริ่นนาน · เก็บฟุตเทจเผื่อไว้เสมอ</div>
   </div>;
 }
 

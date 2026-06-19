@@ -305,7 +305,7 @@ export default function Dashboard() {
               })}
             </div>
           </div>}
-          {!showDeep && <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 20, padding: "26px 22px", margin: "4px 0", boxShadow: "0 16px 38px rgba(63,107,174,.36)" }}>
+          {!showDeep && <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 20, padding: "26px 22px", margin: "4px 0 28px", boxShadow: "0 16px 38px rgba(63,107,174,.36)" }}>
             <div style={{ fontSize: 38, lineHeight: 1 }}>🔮</div>
             <h3 style={{ margin: "10px 0 6px", color: "#fff", fontSize: 22, lineHeight: 1.35 }}>ครูพี่คิมอ่านช่องคุณจบแล้วค่ะ...</h3>
             <p style={{ fontSize: 15.5, margin: "0 auto 18px", maxWidth: 440, opacity: .96, lineHeight: 1.6 }}>เห็นทั้ง <b>ของดีที่ซ่อนอยู่</b> และ <b>จุดที่ทำให้ยังไม่โต</b> เลย — อยากรู้ไหมคะว่าช่องคุณเป็นยังไง? 👀</p>

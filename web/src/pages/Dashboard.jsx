@@ -388,7 +388,7 @@ export default function Dashboard() {
             <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>📅 มาเริ่มทำคอนเทนต์กันเลย →</button>
           </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, marginBottom: 28, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
             {genState === "generating" ? <>
-              <div className="spinner" style={{ borderTopColor: "#fff", margin: "0 auto 14px" }} />
+              <div className="spinner" style={{ border: "4px solid rgba(255,255,255,.35)", borderTopColor: "#fff", margin: "0 auto 14px" }} />
               <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 6px" }}>ครูพี่คิมกำลังสร้างแผน 30 วัน + สคริปต์ให้... 🩵</h3>
               <p style={{ opacity: .95, fontSize: 14.5 }}>ใช้เวลาประมาณ 1–2 นาที ไม่ต้องปิดหน้านะคะ พอเสร็จจะเด้งไปที่ตารางเองเลย</p>
             </> : genState === "error" ? <>

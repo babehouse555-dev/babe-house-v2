@@ -406,15 +406,21 @@ export default function Dashboard() {
               </div>}
               {improveCount >= 1 && !improveOpen && <div style={{ marginTop: 12, fontSize: 13.5, opacity: .9 }}>✓ แก้บทวิเคราะห์ให้แม่นขึ้นแล้ว — ถ้าตรงใจแล้วกดสร้างแผนได้เลยค่ะ</div>}
               {improveOpen && <div style={{ background: "#fff", color: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 6, textAlign: "left" }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>✏️ เล่าเพิ่มให้ครูพี่คิมฟัง</div>
-                <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) — บอก "แนวที่อยากทำ / ไม่อยากทำ" จะช่วยให้คอนเทนต์ตรงใจมากๆ · ใช้สิทธิ์ฟรีได้ครั้งเดียว</p>
-                {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "แนวคอนเทนต์ที่อยากทำ", "เช่น สายเล่าเรื่องจริงจากชีวิต / สอนเป็นขั้นๆ"], ["content_dislikes", "แนวที่ไม่อยากทำ", "เช่น ไม่อยากทำสายตลก / ไม่อยากพูดเรื่องงานอดิเรกที่เล่นบอล-สะสมการ์ด"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
-                  <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 60 }} placeholder={ph} /></div>)}
-                {improveErr && <div className="msg err">{improveErr}</div>}
-                <div className="row" style={{ gap: 10, justifyContent: "center" }}>
-                  <button className="btn" disabled={improving} onClick={submitImprove}>{improving ? "ครูพี่คิมกำลังแก้บทวิเคราะห์... (~1 นาที)" : "แก้บทวิเคราะห์ให้แม่นขึ้น 🩵"}</button>
-                  {!improving && <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>ยกเลิก</button>}
-                </div>
+                {improving ? <div className="center" style={{ padding: "22px 10px" }}>
+                  <div className="spinner" style={{ margin: "0 auto 16px" }} />
+                  <div style={{ fontWeight: 800, fontSize: 16.5, color: "var(--blue-d)" }}>ครูพี่คิมกำลังอ่านข้อมูลใหม่ของคุณ... 🩵</div>
+                  <p className="muted" style={{ fontSize: 14, margin: "8px auto 0", maxWidth: 360, lineHeight: 1.6 }}>กำลังปรับบทวิเคราะห์ให้แม่นและเป็นคุณมากขึ้น ใช้เวลาประมาณ 1 นาที<br /><b>ไม่ต้องปิดหน้านะคะ</b> — พอเสร็จหน้าจะอัปเดตให้เองอัตโนมัติ ✨</p>
+                </div> : <>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>✏️ เล่าเพิ่มให้ครูพี่คิมฟัง</div>
+                  <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) — บอก "แนวที่อยากทำ / ไม่อยากทำ" จะช่วยให้คอนเทนต์ตรงใจมากๆ · ใช้สิทธิ์ฟรีได้ครั้งเดียว</p>
+                  {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "แนวคอนเทนต์ที่อยากทำ", "เช่น สายเล่าเรื่องจริงจากชีวิต / สอนเป็นขั้นๆ"], ["content_dislikes", "แนวที่ไม่อยากทำ", "เช่น ไม่อยากทำสายตลก / ไม่อยากพูดเรื่องงานอดิเรกที่เล่นบอล-สะสมการ์ด"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
+                    <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 60 }} placeholder={ph} /></div>)}
+                  {improveErr && <div className="msg err">{improveErr}</div>}
+                  <div className="row" style={{ gap: 10, justifyContent: "center" }}>
+                    <button className="btn" onClick={submitImprove}>แก้บทวิเคราะห์ให้แม่นขึ้น 🩵</button>
+                    <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>ยกเลิก</button>
+                  </div>
+                </>}
               </div>}
             </>}
           </div>}

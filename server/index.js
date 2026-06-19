@@ -387,7 +387,7 @@ app.post("/api/improve-blueprint", async (req, res) => {
     // รีไฟน์ "บทวิเคราะห์" เท่านั้น (เร็ว) แบบ async — ตอบทันที แล้วเจนเบื้องหลัง หน้า Dashboard poll analysis_status
     if (inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" });
     inFlightBp.add(bpId);
-    await run(`UPDATE blueprints SET analysis_status='generating' WHERE blueprint_id=$1`, [bpId]);
+    await run(`UPDATE blueprints SET analysis_status='generating', content_started_at=now() WHERE blueprint_id=$1`, [bpId]);
     res.json({ ok: true, status: "generating", improve_count: (bp.improve_count || 0) + 1 });
     (async () => {
       try {
@@ -418,7 +418,7 @@ app.post("/api/generate-content", async (req, res) => {
     if (bp.content_status === "generating" && inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" }); // กำลังทำอยู่จริงใน process นี้
     // ไม่งั้นเริ่มใหม่ (รวมถึงกรณี 'generating' ที่ค้างจาก deploy เก่า = orphaned)
     inFlightBp.add(bpId);
-    await run(`UPDATE blueprints SET content_status='generating' WHERE blueprint_id=$1`, [bpId]);
+    await run(`UPDATE blueprints SET content_status='generating', content_started_at=now() WHERE blueprint_id=$1`, [bpId]);
     res.json({ ok: true, status: "generating" });
     (async () => {
       try {
@@ -930,12 +930,44 @@ async function retryStuckGenerations() {
   } catch (e) { console.error("retryStuckGenerations", e.message); }
 }
 
+// ตาข่ายกันพลาดสเต็ป 2: คอนเทนต์ 30 วันที่ค้าง 'generating' (เช่นเซิร์ฟเวอร์รีสตาร์ตกลางคัน) → เจนต่อให้เสร็จ + ส่งเมล
+// (ลูกค้ายืนยันบทวิเคราะห์แล้วถึงจะมาสเต็ปนี้ = อยากได้แผนแน่นอน → ทำให้เสร็จเสมอ) · refine ที่ค้าง → ปลดล็อก UI
+async function retryStuckContent() {
+  try {
+    const rows = await q(`SELECT blueprint_id, request_id, blueprint_json, billing_cycle FROM blueprints WHERE content_status='generating' AND content_started_at < now() - interval '8 minutes' AND created_at > now() - interval '24 hours' LIMIT 3`);
+    for (const b of rows) {
+      if (inFlightBp.has(b.blueprint_id)) continue;
+      inFlightBp.add(b.blueprint_id);
+      try {
+        const current = safeJson(b.blueprint_json) || {};
+        if (Array.isArray(current.scripts) && current.scripts.length) { await run(`UPDATE blueprints SET content_status='ready' WHERE blueprint_id=$1`, [b.blueprint_id]); continue; }
+        await acquireGen();
+        try {
+          const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [b.request_id]);
+          const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+          const { content, model } = await generateContent(parsed, current);
+          const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
+          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(merged), model, b.blueprint_id]);
+          console.log(`[retry-content] ${b.blueprint_id} สำเร็จ`);
+          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(b.blueprint_id)}`; await sendEmail(parsed.email, `แผนคอนเทนต์ 30 วันของคุณพร้อมแล้ว 🎉`, wrap(`ครูพี่คิมเขียนสคริปต์พร้อมอัดให้ครบทั้ง 30 วันแล้วค่ะ! 🩵<br><br>${btn(url, "เปิดดูแผน 30 วันของฉัน")}`)).catch(() => {}); }
+        } finally { releaseGen(); }
+      } catch (e) { console.error(`[retry-content] ${b.blueprint_id}`, e.message); await run(`UPDATE blueprints SET content_status='error' WHERE blueprint_id=$1`, [b.blueprint_id]).catch(() => {}); }
+      finally { inFlightBp.delete(b.blueprint_id); }
+    }
+    // refine บทวิเคราะห์ที่ค้าง → ปลดล็อก UI (บทวิเคราะห์เดิมยังอยู่ครบ ลูกค้ากดแก้ใหม่ได้)
+    await run(`UPDATE blueprints SET analysis_status='ready' WHERE analysis_status='generating' AND content_started_at < now() - interval '8 minutes'`).catch(() => {});
+  } catch (e) { console.error("retryStuckContent", e.message); }
+}
+
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
+  // ตอนสตาร์ท: คอนเทนต์/refine ที่ค้าง 'generating' = orphan จาก process เก่าแน่นอน → มาร์คให้ "เก่า" เพื่อให้ retryStuckContent กู้ทันที
+  setTimeout(() => { run(`UPDATE blueprints SET content_started_at = now() - interval '10 minutes' WHERE (content_status='generating' OR analysis_status='generating') AND (content_started_at IS NULL OR content_started_at > now() - interval '8 minutes')`).then(() => retryStuckContent()).catch(() => {}); }, 50000);
   setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
   setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
+  setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

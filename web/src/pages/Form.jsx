@@ -145,6 +145,7 @@ export default function Form() {
 
   async function submit(e) {
     e.preventDefault();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr("ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่มให้ + เข้าดูย้อนหลังทุกเดือน"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!f.instagram_account.trim()) { setErr("ช่วยกรอกชื่อช่อง/แฮนเดิล (⭐) ให้หน่อยนะคะ — ที่เหลือไม่บังคับค่ะ"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (![...files].length && !window.confirm("ยังไม่ได้แนบรูปสถิติหลังบ้านเลยค่ะ 📊\n\nรูป Insight คือตัวช่วยที่ทำให้ครูพี่คิมวิเคราะห์ตัวเลขจริงของคุณได้ — แนบก่อนเล่มจะแม่นขึ้นเยอะเลยค่ะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบรูป\nกด \"ยกเลิก\" = กลับไปแนบรูปก่อน")) { setErr(""); imgRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }

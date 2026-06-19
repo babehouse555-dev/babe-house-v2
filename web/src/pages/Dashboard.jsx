@@ -113,6 +113,63 @@ function FeedbackCard({ demo, bpId }) {
   </div>;
 }
 
+// 🎬 คู่มือถ่าย + คลิปตัวอย่าง — แก้ปัญหาลูกค้า "มีสคริปต์แต่ถ่ายไม่เป็น/ไม่รู้มุมกล้อง"
+// คลิปตัวอย่าง: ใส่ YouTube id ในช่อง clip เมื่อได้ลิงก์จากทีม (เว้นว่าง = ยังโชว์เฉพาะคู่มือ)
+const SHOOT_FORMATS = [
+  { emoji: "🎤", name: "พูดหน้ากล้อง", who: "คนกล้าพูด อยากให้คนเชื่อใจไว", clip: "", color: ["#E7EDF8", "#3F6BAE"], steps: [
+    ["📐 ตั้งกล้อง", "วางมือถือระดับสายตา ห่างประมาณ 1 ช่วงแขน · หันหน้าเข้าแสง (ริมหน้าต่างดีสุด) · ให้เห็นหัวถึงไหล่"],
+    ["🎬 ถ่ายกี่ช็อต", "อัดยาวจบใน 1 เทค หรือแบ่ง 3 ช็อต: เปิด / เนื้อหา / ปิดท้าย เผื่อพูดผิดถ่ายซ้ำเฉพาะท่อนนั้น"],
+    ["🎞️ เก็บภาพแทรก", "2-3 คลิปสั้น (มือ / สินค้า / หน้าจอ) ไว้แปะช่วงพูดยาว กันคนดูเบื่อ"],
+    ["💡 ทิป", "มองที่เลนส์ ไม่ใช่มองหน้าตัวเองในจอ · ยิ้มก่อนเริ่มพูด 1 วิ ให้ดูเป็นมิตร"],
+  ] },
+  { emoji: "🎬", name: "เสียงพากย์ + ฟุตเทจ", who: "คนเขินกล้อง ไม่อยากออกหน้าเต็มๆ", clip: "", color: ["#E4F4F3", "#2C8E8C"], steps: [
+    ["📐 ขั้นตอน", "อัดเสียงพากย์ตามสคริปต์ก่อน (ห้องเงียบ ถือใกล้ปาก) แล้วค่อยถ่ายภาพประกอบทีหลัง"],
+    ["🎬 ถ่ายกี่ช็อต", "เก็บฟุตเทจ 6-10 คลิปสั้น (3-5 วิ/คลิป): มือทำงาน, สินค้า, บรรยากาศ, ดีเทลใกล้ๆ"],
+    ["🎞️ มุมกล้อง", "สลับ ใกล้ (ดีเทล) + กลาง + กว้าง ให้ภาพไม่จำเจ · ขยับกล้องช้าๆ จะดูแพงขึ้น"],
+    ["💡 ทิป", "ถ่ายฟุตเทจให้เยอะกว่าที่คิดไว้เสมอ เผื่อเลือกตอนตัด"],
+  ] },
+  { emoji: "📱", name: "อัดหน้าจอ / โชว์ของ", who: "สายรีวิว สอน สาธิต ขายของ", clip: "", color: ["#ECEAF6", "#6E63A6"], steps: [
+    ["📐 วิธีถ่าย", "อัดหน้าจอตรงๆ (มือถือมีปุ่มอัดหน้าจอ) หรือถ่ายมือกำลังใช้ของจริง"],
+    ["🎬 ถ่ายกี่ช็อต", "1 ช็อตหน้าจอ/ของ + (ถ้าได้) หน้าเราเล็กๆ มุมจอ เล่าควบไปด้วย"],
+    ["🎞️ เก็บอะไร", "ซูมเข้าจุดสำคัญ · เก็บ ก่อน/หลัง ถ้ามี จะน่าเชื่อมาก"],
+    ["💡 ทิป", "เอาเฉพาะช่วงที่เด็ด ตัดช่วงโหลด/ลังเลทิ้ง ให้กระชับ"],
+  ] },
+  { emoji: "✍️", name: "ตัวหนังสือขึ้นจอ + เพลง", who: "คนไม่อยากออกหน้าเลย / ยังไม่มั่นใจ", clip: "", color: ["#F7F4EA", "#9A8458"], steps: [
+    ["📐 วิธีถ่าย", "ถ่ายภาพ/ฟุตเทจสวยๆ เป็นพื้นหลัง (วิว, ของ, มือ) หรือใช้ภาพนิ่งเลื่อนก็ได้"],
+    ["🎬 ถ่ายกี่ช็อต", "เก็บ 4-6 ช็อตบรรยากาศ แล้วขึ้นข้อความจากสคริปต์ทีละท่อน"],
+    ["🎞️ เก็บอะไร", "ใส่เพลงที่กำลังฮิต (ช่วยดันยอด) · เปลี่ยนภาพตามจังหวะเพลง"],
+    ["💡 ทิป", "ข้อความสั้นๆ อ่านทันใน 1 บรรทัด/ภาพ อย่ายัดเยอะ"],
+  ] },
+];
+function ShootingGuide() {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  if (!open) return <div className="card" style={{ background: "linear-gradient(135deg,#FBF7EE,#F4F9FF)", border: "1px solid #e7dfc5" }}>
+    <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+      <div><div style={{ fontWeight: 800, fontSize: 16 }}>🎬 มีสคริปต์แล้ว แต่ถ่ายไม่เป็น?</div><div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>ดูคู่มือถ่าย — สคริปต์เดียวทำได้หลายแบบ บอกมุมกล้อง · กี่ช็อต · เก็บฟุตเทจอะไร</div></div>
+      <button className="btn" onClick={() => setOpen(true)} style={{ flexShrink: 0, padding: "10px 18px" }}>เปิดคู่มือถ่าย →</button>
+    </div>
+  </div>;
+  const f = SHOOT_FORMATS[active];
+  return <div className="card">
+    <div className="between" style={{ marginBottom: 10 }}><h3 style={{ margin: 0 }}>🎬 คู่มือถ่าย — สคริปต์เดียวทำได้หลายแบบ</h3><button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setOpen(false)}>ปิด</button></div>
+    <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>เลือกแบบที่ถนัด แล้วถ่ายตามเช็กลิสต์ได้เลยค่ะ — ไม่ต้องเก่ง แค่ทำตามทีละข้อ 🩵</p>
+    <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+      {SHOOT_FORMATS.map((x, i) => <button key={i} onClick={() => setActive(i)} style={{ border: i === active ? `2px solid ${x.color[1]}` : "1px solid var(--border)", background: i === active ? x.color[0] : "#fff", color: i === active ? x.color[1] : "var(--ink)", fontWeight: 700, fontSize: 13.5, padding: "8px 13px", borderRadius: 20, cursor: "pointer" }}>{x.emoji} {x.name}</button>)}
+    </div>
+    <div style={{ background: f.color[0], borderRadius: 16, padding: "16px 18px" }}>
+      <div style={{ fontWeight: 800, fontSize: 16, color: f.color[1] }}>{f.emoji} {f.name}</div>
+      <div className="muted" style={{ fontSize: 13, margin: "2px 0 12px" }}>เหมาะกับ: {f.who}</div>
+      {f.clip ? <div style={{ position: "relative", paddingBottom: "177%", height: 0, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}><iframe src={`https://www.youtube.com/embed/${f.clip}`} title={f.name} allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} /></div>
+        : <div style={{ background: "#fff", border: "1px dashed " + f.color[1], borderRadius: 12, padding: "12px 14px", marginBottom: 14, fontSize: 13, color: f.color[1], textAlign: "center" }}>🎬 คลิปตัวอย่างแบบนี้ กำลังจะมาเร็วๆ นี้ค่ะ</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {f.steps.map(([k, v], i) => <div key={i} style={{ background: "#fff", borderRadius: 10, padding: "10px 13px" }}><div style={{ fontWeight: 700, fontSize: 13, color: f.color[1], marginBottom: 2 }}>{k}</div><div style={{ fontSize: 13.5, lineHeight: 1.55 }}>{v}</div></div>)}
+      </div>
+    </div>
+    <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 12, fontSize: 13 }}>📌 ทุกแบบ: ถ่ายแนวตั้ง (9:16) · 3 วิแรกสำคัญสุดอย่าเกริ่นนาน · เก็บฟุตเทจเผื่อไว้เสมอ</div>
+  </div>;
+}
+
 export default function Dashboard() {
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
@@ -373,6 +430,7 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← ไปยืนยันบทวิเคราะห์</button>
         </div>}
         {tab === "calendar" && contentReady && <>
+          <ShootingGuide />
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>

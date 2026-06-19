@@ -816,6 +816,10 @@ app.post("/api/admin/codes", async (req, res) => {
   res.json({ ok: true, code: await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]) });
 });
 app.post("/api/admin/codes/toggle", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const code = String(req.body?.code || "").trim().toUpperCase(); await run(`UPDATE promo_codes SET active=1-active WHERE code=$1`, [code]); res.json({ ok: true, code: await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]) }); });
+// ลบโค้ด (ออเดอร์เก่าเก็บ discount_code เป็น text อยู่แล้ว ไม่กระทบ)
+app.post("/api/admin/codes/delete", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const code = String(req.body?.code || "").trim().toUpperCase(); await run(`DELETE FROM promo_codes WHERE code=$1`, [code]); res.json({ ok: true, deleted: code }); });
+// ปล่อยผ่านเล่มที่ติดธงคุณภาพ (เคลียร์ flag — เล่มหายจากรายการ "ควรเช็ค")
+app.post("/api/admin/quality/dismiss", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const bpId = String(req.body?.blueprint_id || ""); if (!bpId) return res.status(400).json({ ok: false, error: "MISSING" }); await run(`UPDATE blueprints SET quality_flags_json='[]' WHERE blueprint_id=$1`, [bpId]); res.json({ ok: true, dismissed: bpId }); });
 app.get("/api/admin/ai-insight", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try { const rows = await q(`SELECT business_type, monthly_goal, starting_point FROM blueprint_requests ORDER BY created_at DESC LIMIT 500`); if (!rows.length) return res.json({ ok: true, insight: null, count: 0 }); const { insight, model } = await generateAdminInsight(rows); res.json({ ok: true, count: rows.length, model, insight }); }

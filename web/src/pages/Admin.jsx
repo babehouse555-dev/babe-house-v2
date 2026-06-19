@@ -50,6 +50,8 @@ export default function Admin() {
   async function aiInsight() { setInsight("loading"); try { const d = await api("/api/admin/ai-insight", { adminKey: key }); setInsight(d.insight); } catch { setInsight(null); } }
   async function addCode() { try { await api("/api/admin/codes", { method: "POST", adminKey: key, body: nc }); setNc({ code: "", note: "", discount_percent: "", max_uses: "" }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); } catch (e) { alert(e.message); } }
   async function toggleCode(c) { await api("/api/admin/codes/toggle", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
+  async function deleteCode(c) { if (!window.confirm(`ลบโค้ด ${c} ถาวร? (ออเดอร์เก่าไม่กระทบ)`)) return; await api("/api/admin/codes/delete", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
+  async function dismissQuality(bpId) { await api("/api/admin/quality/dismiss", { method: "POST", adminKey: key, body: { blueprint_id: bpId } }); setQual(await api("/api/admin/quality", { adminKey: key })); }
   async function csv() {
     try {
       const res = await fetch("/api/admin/students.csv" + (filter ? "?industry=" + encodeURIComponent(filter) : ""), { headers: { "x-admin-key": key } });
@@ -149,6 +151,7 @@ export default function Admin() {
               <div className="row" style={{ gap: 14 }}>
                 <a className="link" target="_blank" rel="noreferrer" href={`/dashboard?user_id=${encodeURIComponent(f.user_id)}&billing_cycle=${encodeURIComponent(f.billing_cycle)}&blueprint_id=${encodeURIComponent(f.blueprint_id)}`} style={{ fontSize: 13.5 }}>เปิดเล่ม ›</a>
                 <button className="link" onClick={() => regen(f.user_id, f.billing_cycle)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "var(--blue)", fontWeight: 700 }}>🔄 รีเจนใหม่</button>
+                <button className="link" onClick={() => dismissQuality(f.blueprint_id)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>✓ ปล่อยผ่าน (ไม่ต้องแก้)</button>
               </div>
             </div>)}
           </div>
@@ -201,7 +204,7 @@ export default function Admin() {
           <button className="btn" onClick={addCode}>สร้าง</button>
         </div>
         <div className="scroll" style={{ marginTop: 14 }}><table><thead><tr><th>โค้ด</th><th>ส่วนลด</th><th>หมายเหตุ</th><th>ใช้/สูงสุด</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>{codes.length === 0 ? <tr><td colSpan={6} className="muted">ยังไม่มีโค้ด</td></tr> : codes.map(c => <tr key={c.code}><td><b>{c.code}</b></td><td>{dLabel(c)}</td><td>{c.note}</td><td>{c.used_count}/{c.max_uses == null ? "∞" : c.max_uses}</td><td><span className={`tag ${c.active ? "on" : "off"}`}>{c.active ? "เปิด" : "ปิด"}</span></td><td><button className="link" onClick={() => toggleCode(c.code)} style={{ background: "none", border: 0 }}>{c.active ? "ปิด" : "เปิด"}</button></td></tr>)}</tbody>
+          <tbody>{codes.length === 0 ? <tr><td colSpan={6} className="muted">ยังไม่มีโค้ด</td></tr> : codes.map(c => <tr key={c.code}><td><b>{c.code}</b></td><td>{dLabel(c)}</td><td>{c.note}</td><td>{c.used_count}/{c.max_uses == null ? "∞" : c.max_uses}</td><td><span className={`tag ${c.active ? "on" : "off"}`}>{c.active ? "เปิด" : "ปิด"}</span></td><td><div className="row" style={{ gap: 12 }}><button className="link" onClick={() => toggleCode(c.code)} style={{ background: "none", border: 0, cursor: "pointer" }}>{c.active ? "ปิด" : "เปิด"}</button><button className="link" onClick={() => deleteCode(c.code)} style={{ background: "none", border: 0, cursor: "pointer", color: "#b3261e" }}>ลบ</button></div></td></tr>)}</tbody>
         </table></div>
       </div>
 

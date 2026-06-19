@@ -345,7 +345,7 @@ app.post("/api/start-generation", async (req, res) => {
         const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
         await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, o.order_id]);
         const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`;
-        if (o.email) await sendEmail(o.email, `เล่ม Blueprint เดือน ${o.billing_cycle} พร้อมแล้ว 🩵`, wrap(`ครูพี่คิมวิเคราะห์เสร็จแล้ว เล่มแผน 30 วันพร้อมเปิดดูค่ะ<br><br>${btn(url, "เปิด Dashboard ของฉัน")}`)).catch(() => {});
+        if (o.email) await sendEmail(o.email, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, wrap(`ครูพี่คิมอ่านช่องของคุณเสร็จแล้วค่ะ!<br><br>กดเปิดดู <b>บทวิเคราะห์ช่อง</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · โอกาสโต) — ถ้าตรงแล้ว กดปุ่ม <b>"สร้างแผน 30 วัน"</b> ในเล่ม ครูพี่คิมจะเขียนสคริปต์พร้อมอัดให้ครบทั้งเดือนเลยค่ะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ของฉัน")}`)).catch(() => {});
       } catch (e) { console.error("bg gen", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), o.order_id]); }
       finally { inFlightOrders.delete(o.order_id); }
     })();

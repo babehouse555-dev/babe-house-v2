@@ -13,6 +13,12 @@ export default function Account() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
+  // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
+  useEffect(() => {
+    if (step !== "list" || !(data?.pending || []).length) return;
+    const t = setInterval(() => { if (session.token) loadMonths(); }, 15000);
+    return () => clearInterval(t);
+  }, [step, data?.pending?.length]);
 
   async function loadMonths() {
     try {
@@ -61,7 +67,20 @@ export default function Account() {
 
       {step === "list" && data && <>
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">เล่มของ <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
-        {data.months.length === 0 && <div className="card center muted">ยังไม่มีเล่ม Blueprint ในบัญชีนี้</div>}
+        {(data.pending || []).map(p => p.status === "error"
+          ? <div key={p.order_id} className="card" style={{ background: "#fff7e6", border: "1px solid #e8d49a" }}>
+              <div style={{ fontWeight: 800, color: "#8a6d1f" }}>⚠️ เล่มเดือน {p.billing_cycle.replace("_", " ")} — กำลังสร้าง (สะดุดนิดหน่อย)</div>
+              <div className="muted" style={{ fontSize: 13.5, marginTop: 4 }}>ไม่ต้องห่วงนะคะ ระบบกำลังลองใหม่ให้อัตโนมัติ เดี๋ยวเสร็จส่งเมลแจ้งทันที — หรือกดดูสถานะได้เลยค่ะ</div>
+              <Link className="btn full" to={`/processing?order_id=${encodeURIComponent(p.order_id)}`} style={{ marginTop: 12, background: "#8a6d1f" }}>ดูสถานะเล่ม</Link>
+            </div>
+          : <div key={p.order_id} className="card" style={{ background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", border: "1px solid #d6e7fa" }}>
+              <div className="row" style={{ gap: 12, alignItems: "center" }}>
+                <div className="spinner" style={{ width: 24, height: 24, flexShrink: 0 }} />
+                <div><div style={{ fontWeight: 800, color: "var(--blue-d)" }}>⏳ ครูพี่คิมกำลังสร้างเล่มของคุณอยู่นะคะ...</div><div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>เดือน {p.billing_cycle.replace("_", " ")} · กำลังทำงานอยู่ รอสักครู่ค่ะ — พอเสร็จจะส่งลิงก์เข้าเมล และเด้งขึ้นตรงนี้เองอัตโนมัติ 🩵</div></div>
+              </div>
+              <Link className="btn full" to={`/processing?order_id=${encodeURIComponent(p.order_id)}`} style={{ marginTop: 12 }}>ดูสถานะการสร้างเล่ม</Link>
+            </div>)}
+        {data.months.length === 0 && (data.pending || []).length === 0 && <div className="card center muted">ยังไม่มีเล่ม Blueprint ในบัญชีนี้</div>}
         {data.months.slice().reverse().map((m, i) =>
           <Link key={m.blueprint_id} className="card between" to={`/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`} style={{ textDecoration: "none", color: "inherit", display: "flex" }}>
             <div><div style={{ fontWeight: 700, fontSize: 16 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? " · ล่าสุด" : ""}</div><div className="muted" style={{ fontSize: 13 }}>{(m.monthly_goal || "").slice(0, 60) || "—"}</div></div>

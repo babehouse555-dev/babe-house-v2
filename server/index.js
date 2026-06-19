@@ -454,7 +454,10 @@ async function getCustomerMonths(email) {
 app.get("/api/me/blueprints", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const months = await getCustomerMonths(email);
-  res.json({ ok: true, email, count: months.length, months });
+  // ออเดอร์ที่จ่ายแล้วแต่เล่มยังไม่เสร็จ (กำลังสร้าง/ติดขัด) — โชว์สถานะให้ลูกค้ารู้ว่ากำลังทำอยู่
+  const pendRows = await q(`SELECT order_id, billing_cycle, created_at, COALESCE(generation_status,'pending') gs FROM blueprint_orders WHERE email=$1 AND payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' ORDER BY created_at DESC`, [normEmail(email)]);
+  const pending = pendRows.map(r => ({ order_id: r.order_id, billing_cycle: r.billing_cycle, created_at: r.created_at, status: r.gs === "error" ? "error" : "generating" }));
+  res.json({ ok: true, email, count: months.length, months, pending });
 });
 app.get("/api/me/referral", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -707,10 +710,10 @@ app.use((err, req, res, next) => { console.error("Unhandled:", err?.message); if
 // ลูกค้าที่จ่ายเงินต้องได้เล่มเสมอ — จำกัดเฉพาะที่จ่ายภายใน 24 ชม. กันลูปไม่รู้จบ
 async function retryStuckGenerations() {
   try {
-    // กู้ทั้ง: (ก) error  (ข) ค้าง 'generating' นานเกิน 8 นาที (เช่น โดน deploy/รีสตาร์ทตัดกลางคัน)
-    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND (generation_status='error' OR (generation_status='generating' AND paid_at < now() - interval '8 minutes')) AND paid_at > now() - interval '24 hours' LIMIT 5`);
+    // กู้: (ก) error (ข) ค้าง 'generating' >8 นาที (โดน deploy ตัด) (ค) 'pending'/ยังไม่เริ่มเจน >2 นาที (จ่ายแล้วแต่ไม่ได้เข้าหน้า processing เช่นปิดแท็บ) — ยกเว้นออเดอร์ Video Audit
+    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND (generation_status='error' OR (generation_status='generating' AND paid_at < now() - interval '8 minutes') OR (COALESCE(generation_status,'pending')='pending' AND paid_at < now() - interval '2 minutes')) AND paid_at > now() - interval '24 hours' LIMIT 5`);
     for (const o of rows) {
-      const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND generation_status IN ('error','generating')`, [o.order_id]);
+      const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND COALESCE(generation_status,'pending') IN ('pending','error','generating')`, [o.order_id]);
       if (claim.rowCount !== 1) continue;
       try {
         const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));

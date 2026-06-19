@@ -1,8 +1,15 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import "./styles.css";
 import { captureRef } from "./api.js";
+
+// เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
 
 function TopBar() {
   return (
@@ -55,6 +62,7 @@ captureRef();
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
   <BrowserRouter>
+    <ScrollToTop />
     <Shell>
     <Routes>
       <Route path="/" element={<Landing />} />

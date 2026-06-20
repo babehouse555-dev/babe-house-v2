@@ -300,7 +300,7 @@ app.post("/api/video-audit/analyze", async (req, res) => {
 // ---------- blueprint generation ----------
 // จำกัดจำนวนเจนเล่มพร้อมกัน — กันคนจ่ายพร้อมกันเยอะแล้ว Gemini โดน rate-limit / RAM พุ่งจนล่ม
 // ที่เหลือเข้าคิวรอ (หน้า Processing ของลูกค้า poll อยู่แล้ว + retryStuckGenerations เป็นตาข่ายกันพลาด)
-const MAX_CONCURRENT_GENS = Number(process.env.MAX_CONCURRENT_GENS) || 3;
+const MAX_CONCURRENT_GENS = Number(process.env.MAX_CONCURRENT_GENS) || 6;
 let activeGens = 0; const genQueue = [];
 // order_id ที่กำลังเจน/เข้าคิวอยู่ใน process นี้ — ให้ retryStuckGenerations ข้าม กันเจนซ้ำตอนคิวยาวเกิน 8 นาที
 const inFlightOrders = new Set();

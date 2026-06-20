@@ -102,6 +102,7 @@ const WORK_STYLES = ["นักเรียน / นักศึกษา", "พ
 const AUDIENCES = ["ผู้หญิงวัยทำงาน", "นักเรียน/นักศึกษา", "เจ้าของธุรกิจ/แม่ค้า", "คุณแม่", "วัยรุ่น", "ผู้ชาย", "สายสุขภาพ/ความงาม"];
 const EXPERIENCES = ["เพิ่งเริ่มทำ", "ไม่ถึง 1 ปี", "1–3 ปี", "มากกว่า 3 ปี"];
 const GOALS = ["ยอดขาย / ลูกค้าเพิ่ม", "คนติดตามเพิ่ม", "คนรู้จักมากขึ้น", "สร้างความน่าเชื่อถือ/ตัวตน"];
+const TONES = ["อบอุ่น เป็นกันเอง", "สนุก มีพลัง", "จริงจัง น่าเชื่อถือ", "ตรงไปตรงมา"];
 const GENDERS = ["หญิง", "ชาย", "LGBTQ+", "ไม่ระบุ"];
 const AGES = ["ต่ำกว่า 18", "18–24", "25–34", "35–44", "45 ขึ้นไป"];
 
@@ -118,7 +119,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -164,7 +165,8 @@ export default function Form() {
           experience: f.experience, goal_primary: (f.goal_primary || []).join(", "),
           monthly_goal: `${(f.goal_primary || []).join(" + ") || "(ไม่ได้ระบุ — ให้ครูพี่คิมวิเคราะห์เป้าหมายที่เหมาะสมจากช่อง/รูป Insight)"}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
           starting_point: [f.q_origin && `จุดเริ่มต้น/ทำไมถึงทำ: ${f.q_origin}`, f.q_diff && `จุดที่ต่างจากคนอื่น: ${f.q_diff}`, f.q_vision && `อยากโต/เป้าหมายระยะยาว: ${f.q_vision}`].filter(Boolean).join("\n"),
-          competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name
+          competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name,
+          self_term: f.self_term.trim(), audience_term: f.audience_term.trim(), catchphrases: f.catchphrases.trim(), tone: f.tone
         },
         insight_images: images, insight_screenshot_base64: images[0] || null
       };
@@ -245,6 +247,24 @@ export default function Form() {
               <div className="field"><label>2. อะไรที่ทำให้คุณต่างจากคนอื่นในสายเดียวกัน? <span className="muted">(จุดเด่น/ของดี)</span></label><textarea value={f.q_diff} onChange={upd("q_diff")} onFocus={() => setFocus(null)} style={{ minHeight: 70 }} placeholder="เช่น สอนแบบจับมือทำจริงไม่ทิ้งกลางทาง / ใช้ของออร์แกนิกล้วน / ราคาเข้าถึงง่ายกว่าเจ้าอื่น" /></div>
 
               <div className="field"><label>3. อยากให้ช่อง/ธุรกิจโตไปถึงไหน? <span className="muted">(ความฝัน/เป้าหมายระยะยาว)</span></label><textarea value={f.q_vision} onChange={upd("q_vision")} onFocus={() => setFocus(null)} style={{ minHeight: 70 }} placeholder="เช่น อยากมีคอร์สเป็นของตัวเอง / เปิดร้านสาขา 2 / เป็นที่รู้จักทั่วประเทศ" /></div>
+
+              <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", margin: "4px 0 14px" }}>
+                🎤 <b>ให้สคริปต์เป็นน้ำเสียงของคุณ</b> (ไม่บังคับ) — ตอบนิดเดียว ครูพี่คิมจะเขียนสคริปต์ให้พูดเหมือนเป็นคุณ ไม่ใช่หุ่นยนต์
+              </div>
+
+              <div className="field"><label>คุณแทนตัวเองว่าอะไร?</label>
+                <input value={f.self_term} onChange={upd("self_term")} onFocus={() => setFocus(null)} placeholder="พิมพ์เอง เช่น เรา / ฉัน / พี่ / ชื่อเล่นของคุณ" />
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{["เรา", "ฉัน", "พี่"].map(t => <button key={t} type="button" onClick={() => setVal("self_term", t)} style={{ background: f.self_term === t ? "#EAF3FD" : "#fff", border: `1px solid ${f.self_term === t ? "var(--blue)" : "var(--border)"}`, color: f.self_term === t ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t}</button>)}</div>
+              </div>
+
+              <div className="field"><label>เรียกคนดูว่าอะไร?</label>
+                <input value={f.audience_term} onChange={upd("audience_term")} onFocus={() => setFocus(null)} placeholder="พิมพ์เอง เช่น ทุกคน / เพื่อนๆ / สาวๆ / คุณ" />
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{["ทุกคน", "เพื่อนๆ", "สาวๆ", "คุณ"].map(t => <button key={t} type="button" onClick={() => setVal("audience_term", t)} style={{ background: f.audience_term === t ? "#EAF3FD" : "#fff", border: `1px solid ${f.audience_term === t ? "var(--blue)" : "var(--border)"}`, color: f.audience_term === t ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t}</button>)}</div>
+              </div>
+
+              <div className="field"><label>คำติดปาก หรือสไตล์การพูดของคุณ <span className="muted">(ถ้ามี)</span></label><textarea value={f.catchphrases} onChange={upd("catchphrases")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder="เช่น ชอบทักว่า 'สวัสดีค่าทุกคน' / ติดคำว่า 'บอกเลย' / ลงท้ายด้วย 🩵 / พูดตรงๆ ไม่อ้อม" /></div>
+
+              <div className="field"><label>โทนที่อยากได้ <span className="muted">(เลือกได้)</span></label><ChipGroup options={TONES} value={f.tone} onChange={v => setVal("tone", v)} /></div>
 
               <div className="field"><label>คู่แข่งช่องที่ 1 <span className="muted">(Optional)</span></label><input value={f.competitor_1} onChange={upd("competitor_1")} {...fieldProps("competitor_1")} placeholder="เว้นว่างได้ เดี๋ยว AI วิเคราะห์ให้" />{inlineGuide("competitor_1")}</div>
 

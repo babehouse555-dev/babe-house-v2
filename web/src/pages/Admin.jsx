@@ -104,12 +104,15 @@ export default function Admin() {
         const LBL = { landing: ["👀", "เข้าหน้าแรก"], form_view: ["📝", "เปิดฟอร์ม"], form_submit: ["✅", "กรอกฟอร์มเสร็จ"], checkout_view: ["💳", "ถึงหน้าจ่าย"], paid: ["🎉", "จ่ายสำเร็จ"] };
         const colors = ["#2E86DE", "#3F6BAE", "#6b3fa0", "#b8860b", "#1a7f43"];
         const hasData = funnel.steps.some(s => s.count > 0);
-        // หาจุดที่หลุดเยอะสุด (of_prev ต่ำสุด ตั้งแต่ขั้นที่ 2)
+        // ช่วงทดลอง (คนเข้าน้อย/ใช้โค้ดฟรี) ตัวเลขยังไม่มีความหมาย → ไม่ขึ้น "หลุดเยอะ" จนกว่าจะมีคนเข้าจริง >= 25
+        const bigSample = funnel.steps[0].count >= 25;
         let worst = null;
-        funnel.steps.forEach((s, i) => { if (i > 0 && funnel.steps[i - 1].count >= 3 && (worst === null || s.of_prev < funnel.steps[worst].of_prev)) worst = i; });
+        if (bigSample) funnel.steps.forEach((s, i) => { if (i > 0 && funnel.steps[i - 1].count >= 10 && (worst === null || s.of_prev < funnel.steps[worst].of_prev)) worst = i; });
         return <div className="card"><h3>🔻 เส้นทางลูกค้า (Funnel) — {funnel.days} วันล่าสุด</h3>
           {!hasData ? <p className="muted" style={{ marginTop: 10 }}>ยังไม่มีข้อมูล — ระบบเพิ่งเริ่มเก็บ จะเห็นตัวเลขเมื่อมีคนเข้าเว็บหลังอัปเดตนี้</p> : <>
-            <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 14px" }}>นับจำนวนคน (session) ที่ผ่านแต่ละขั้น · % คือเทียบกับขั้นก่อนหน้า — ขั้นที่ % ตกเยอะคือจุดที่ควรแก้</p>
+            {bigSample
+              ? <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 14px" }}>อ่านง่ายๆ: ไล่จากบนลงล่าง ดูว่าคนค่อยๆ หายตรงขั้นไหนเยอะสุด = จุดที่ควรแก้ (% = เหลือกี่ % จากขั้นก่อนหน้า)</p>
+              : <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", border: "1px dashed #e0b85b", margin: "4px 0 14px", fontSize: 12.5, lineHeight: 1.6 }}>ℹ️ <b>ตอนนี้เป็นช่วงทดลอง</b> (โค้ดฟรี/เทสต์ ทุกคนได้เล่ม) — ตัวเลขนี้ <b>ยังไม่สะท้อนของจริง ไม่ต้องตกใจ %</b> · Funnel จะมีประโยชน์ตอนเปิดขายจริงที่มีคนเข้าเยอะๆ จะได้เห็นว่าคนหายตรงขั้นไหน แล้วไปแก้จุดนั้น</div>}
             {funnel.steps.map((s, i) => { const [ic, lbl] = LBL[s.step]; return <div key={s.step} style={{ margin: "10px 0" }}>
               <div className="between" style={{ fontSize: 13.5, marginBottom: 4 }}><span style={{ fontWeight: 600 }}>{ic} {lbl}</span><span><b>{s.count}</b> คน{i > 0 && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: i === worst ? "#b3261e" : "var(--muted)" }}>{s.of_prev}%{i === worst ? " ⚠️ หลุดเยอะ" : ""}</span>}</span></div>
               <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(2, s.of_top)}%`, background: colors[i] }} /></div>

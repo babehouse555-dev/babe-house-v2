@@ -115,6 +115,37 @@ function ChipGroup({ options, value, onChange, multi }) {
   </div>;
 }
 
+// คู่มือหารูป Insight (เลือก platform) — ภาพจำลอง+ลูกศร ไม่ใช้รูปจริงของลูกค้า
+function InsightGuide() {
+  const [open, setOpen] = useState(false);
+  const [plat, setPlat] = useState("ig");
+  const hl = { border: "2px solid var(--blue)", background: "#EAF3FD", borderRadius: 8, padding: "8px 10px", color: "var(--blue-d)", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 };
+  const num = { flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: "var(--blue)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 };
+  const Step = ({ n, children }) => <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 14 }}><div style={num}>{n}</div><div style={{ flex: 1 }}>{children}</div></div>;
+  if (!open) return <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 8, background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: 0 }}>📊 ไม่รู้จะหารูป Insight ตรงไหน? ดูวิธีหา →</button>;
+  return <div style={{ marginTop: 12, background: "#F7FAFE", border: "1px solid #d6e7fa", borderRadius: 14, padding: "14px 16px" }}>
+    <div className="between" style={{ marginBottom: 12 }}><b style={{ fontSize: 14.5 }}>📊 วิธีหารูป Insight</b><button type="button" onClick={() => setOpen(false)} style={{ background: "none", border: 0, color: "var(--muted)", cursor: "pointer", fontSize: 13 }}>ปิด</button></div>
+    <div className="row" style={{ gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+      <button type="button" onClick={() => setPlat("ig")} style={{ border: `1px solid ${plat === "ig" ? "var(--blue)" : "var(--border)"}`, background: plat === "ig" ? "#EAF3FD" : "#fff", color: plat === "ig" ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>📸 Instagram</button>
+      <button type="button" onClick={() => setPlat("tt")} style={{ border: `1px solid ${plat === "tt" ? "var(--blue)" : "var(--border)"}`, background: plat === "tt" ? "#EAF3FD" : "#fff", color: plat === "tt" ? "var(--blue-d)" : "var(--muted)", borderRadius: 20, padding: "6px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🎵 TikTok</button>
+    </div>
+    {plat === "ig" ? <>
+      <Step n={1}>เข้าหน้าโปรไฟล์ตัวเอง → กดปุ่ม <b style={{ color: "var(--blue-d)" }}>"แดชบอร์ดมืออาชีพ"</b> (อยู่ใต้ไบโอ)
+        <div style={{ ...hl, marginTop: 6 }}><span>แดชบอร์ดมืออาชีพ</span><span>👆 กดตรงนี้</span></div></Step>
+      <Step n={2}>กดเข้า <b style={{ color: "var(--blue-d)" }}>"ยอดดู"</b> → แล้วเลือกช่วงเวลา <b style={{ color: "var(--blue-d)" }}>"30 วัน"</b> ที่มุมซ้ายบน
+        <div style={{ ...hl, marginTop: 6 }}><span>📅 30 วันที่ผ่านมา</span><span>เลือกก่อน</span></div></Step>
+      <Step n={3}><b>เลื่อนลงเรื่อยๆ แล้วแคป 2-3 รูป</b> ให้เห็น 4 อย่างนี้:
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
+          <div style={hl}><span>บัญชีที่เข้าถึง</span><span>(Reach)</span></div>
+          <div style={hl}><span>การเข้าชมโปรไฟล์</span><span>(Profile visits)</span></div>
+          <div style={hl}><span>การแตะลิงก์ภายนอก</span><span>(Link taps)</span></div>
+          <div style={hl}><span>กลุ่มเป้าหมาย</span><span>(อายุ/เพศ/เมือง)</span></div>
+        </div></Step>
+      <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>💡 แคปกี่รูปก็ได้ (สูงสุด 8) ถ่ายให้เห็นตัวเลขชัดๆ ไม่ต้องสวย — ยิ่งครบ ครูพี่คิมยิ่งวิเคราะห์แม่น</div>
+    </> : <div className="center muted" style={{ fontSize: 13.5, padding: "20px 10px" }}>🎵 คู่มือ TikTok กำลังจะมาเร็วๆ นี้ค่ะ<br /><span style={{ fontSize: 12.5 }}>ระหว่างนี้: เข้าโปรไฟล์ → เมนู → เครื่องมือครีเอเตอร์ → ข้อมูลเชิงลึก → แคปหน้า "ภาพรวม" + "ผู้ติดตาม" มาได้เลย</span></div>}
+  </div>;
+}
+
 export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
@@ -206,6 +237,7 @@ export default function Form() {
               <div className="field" ref={imgRef} onClick={() => setFocus("images")}><label>📊 แนบภาพสถิติหลังบ้าน <span className="muted">(สูงสุด 8 รูป)</span></label>
                 <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} />
                 <div className="hint">💡 <b>นี่คือตัวช่วยวิเคราะห์ที่สำคัญที่สุด</b> — AI อ่านตัวเลขจริงจากรูป (Reach, Profile Visits, Link Taps, Audience) ยิ่งครบยิ่งแม่น</div>
+                <InsightGuide />
                 {files.length > 0 && <div className="hint">เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}
                 {inlineGuide("images")}
               </div>

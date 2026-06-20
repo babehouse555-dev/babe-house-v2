@@ -699,6 +699,7 @@ app.post("/api/admin/regenerate", async (req, res) => {
       const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
       await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
       console.log(`[regenerate] order ${orderId} → ${result.blueprintId}`);
+      if (o.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`; await sendEmail(o.email, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, wrap(`ครูพี่คิมอ่านช่องของคุณเสร็จแล้วค่ะ!<br><br>กดเปิดดู <b>บทวิเคราะห์ช่อง</b> — ถ้าตรงแล้ว กดปุ่ม <b>"สร้างแผน 30 วัน"</b> ในเล่ม ครูพี่คิมจะเขียนสคริปต์ให้ครบทั้งเดือนค่ะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ของฉัน")}`)).catch(() => {}); }
     } catch (e) { console.error("regenerate", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), orderId]); }
     finally { inFlightOrders.delete(orderId); }
   })();
@@ -708,8 +709,10 @@ async function getStudents(industry) {
   const rows = await q(`
     SELECT DISTINCT ON (o.email, o.billing_cycle)
       o.created_at, o.email, o.user_id, o.billing_cycle, o.instagram_account, o.blueprint_id, o.generation_status, o.order_payload_json,
+      b.content_status, b.analysis_status,
       r.industry, r.business_type, r.starting_point, r.monthly_goal, r.competitor_1, r.competitor_2
     FROM blueprint_orders o
+    LEFT JOIN blueprints b ON b.blueprint_id = o.blueprint_id
     LEFT JOIN LATERAL (
       SELECT industry, business_type, starting_point, monthly_goal, competitor_1, competitor_2
       FROM blueprint_requests rr WHERE rr.user_id = o.user_id AND rr.billing_cycle = o.billing_cycle
@@ -729,6 +732,13 @@ async function getStudents(industry) {
       competitor_1: o.competitor_1 || fr.competitor_1 || "", competitor_2: o.competitor_2 || fr.competitor_2 || "",
       industry: o.industry || null, blueprint_id: o.blueprint_id,
       status: o.blueprint_id ? "ready" : (o.generation_status || "pending"),
+      // สถานะรวมที่อ่านง่ายสำหรับแอดมิน: เจนบทวิเคราะห์ → รอยืนยัน → เจน 30 วัน → ครบ
+      stage: !o.blueprint_id ? (o.generation_status === "error" ? "❌ บทวิเคราะห์พัง" : o.generation_status === "generating" ? "⏳ กำลังเจนบทวิเคราะห์" : "⏳ รอเจน")
+        : o.content_status === "ready" ? "✅ ครบ (แผน 30 วัน)"
+        : o.content_status === "generating" ? "⏳ กำลังเจนแผน 30 วัน"
+        : o.content_status === "error" ? "❌ แผน 30 วันพัง"
+        : "📋 บทวิเคราะห์พร้อม (รอลูกค้ากดสร้างแผน)",
+      content_status: o.content_status || null,
     };
   });
   students.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));

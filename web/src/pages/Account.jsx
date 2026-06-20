@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 
+// จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
+const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
+const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("babe_opened") || "[]"); if (!a.includes(id)) { a.push(id); localStorage.setItem("babe_opened", JSON.stringify(a)); } } catch {} };
+
 export default function Account() {
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -86,11 +90,18 @@ export default function Account() {
               <Link className="btn full" to={`/processing?order_id=${encodeURIComponent(p.order_id)}`} style={{ marginTop: 12 }}>ดูสถานะการสร้างเล่ม</Link>
             </div>)}
         {data.months.length === 0 && (data.pending || []).length === 0 && <div className="card center muted">ยังไม่มีเล่ม Blueprint ในบัญชีนี้</div>}
-        {data.months.slice().reverse().map((m, i) =>
-          <Link key={m.blueprint_id} className="card between" to={`/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`} style={{ textDecoration: "none", color: "inherit", display: "flex" }}>
+        {data.months.slice().reverse().map((m, i) => {
+          const fresh = !isOpened(m.blueprint_id); // ยังไม่เคยเปิด = เล่มใหม่ → เด่น
+          const to = `/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`;
+          if (fresh) return <Link key={m.blueprint_id} className="btn-pulse" onClick={() => markOpened(m.blueprint_id)} to={to} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 18, padding: "20px 22px", marginBottom: 16, textDecoration: "none", boxShadow: "0 12px 30px rgba(63,107,174,.34)" }}>
+            <div><div style={{ display: "inline-block", background: "rgba(255,255,255,.22)", fontWeight: 800, fontSize: 11, padding: "3px 10px", borderRadius: 20, marginBottom: 6 }}>✨ เล่มใหม่ พร้อมแล้ว!</div><div style={{ fontWeight: 800, fontSize: 17 }}>เล่มเดือน {m.billing_cycle.replace("_", " ")}</div><div style={{ fontSize: 13, opacity: .95 }}>แตะเพื่อเปิดดูเล่มของคุณ 🩵</div></div>
+            <div style={{ fontSize: 24 }}>→</div>
+          </Link>;
+          return <Link key={m.blueprint_id} className="card between" onClick={() => markOpened(m.blueprint_id)} to={to} style={{ textDecoration: "none", color: "inherit", display: "flex" }}>
             <div><div style={{ fontWeight: 700, fontSize: 16 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? " · ล่าสุด" : ""}</div><div className="muted" style={{ fontSize: 13 }}>{(m.monthly_goal || "").slice(0, 60) || "—"}</div></div>
             <div style={{ color: "var(--blue)", fontSize: 20 }}>›</div>
-          </Link>)}
+          </Link>;
+        })}
         <Link className="card center" to={`/form?renew=1&email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block" }}>+ เพิ่มแผนเดือนใหม่ (490฿)</Link>
         {data.months.length >= 1 && <Link className="btn full" to="/compare" style={{ marginBottom: 16 }}>📈 {data.months.length >= 2 ? "เทียบความคืบหน้าทุกเดือน" : "ดูสถิติ & เส้นทางการเติบโต"}</Link>}
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>

@@ -142,7 +142,20 @@ function InsightGuide() {
           <div style={hl}><span>กลุ่มเป้าหมาย</span><span>(อายุ/เพศ/เมือง)</span></div>
         </div></Step>
       <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>💡 แคปกี่รูปก็ได้ (สูงสุด 8) ถ่ายให้เห็นตัวเลขชัดๆ ไม่ต้องสวย — ยิ่งครบ ครูพี่คิมยิ่งวิเคราะห์แม่น</div>
-    </> : <div className="center muted" style={{ fontSize: 13.5, padding: "20px 10px" }}>🎵 คู่มือ TikTok กำลังจะมาเร็วๆ นี้ค่ะ<br /><span style={{ fontSize: 12.5 }}>ระหว่างนี้: เข้าโปรไฟล์ → เมนู → เครื่องมือครีเอเตอร์ → ข้อมูลเชิงลึก → แคปหน้า "ภาพรวม" + "ผู้ติดตาม" มาได้เลย</span></div>}
+    </> : <>
+      <Step n={1}>เข้าหน้าโปรไฟล์ตัวเอง → กดปุ่ม <b style={{ color: "var(--blue-d)" }}>"TikTok Studio"</b> (อยู่ใต้ไบโอ)
+        <div style={{ ...hl, marginTop: 6 }}><span>TikTok Studio</span><span>👆 กดตรงนี้</span></div></Step>
+      <Step n={2}>กดที่การ์ด <b style={{ color: "var(--blue-d)" }}>"การวิเคราะห์"</b> → แล้วเลือกช่วงเวลา <b style={{ color: "var(--blue-d)" }}>"28 วัน"</b>
+        <div style={{ ...hl, marginTop: 6 }}><span>📊 การวิเคราะห์ · 28 วัน</span><span>เลือกก่อน</span></div></Step>
+      <Step n={3}><b>แคป 2-3 รูป</b> จากแท็บด้านบนเหล่านี้ ให้เห็น:
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
+          <div style={hl}><span>ยอดดูโพสต์</span><span>(แท็บภาพรวม)</span></div>
+          <div style={hl}><span>ผู้ติดตามทั้งหมด</span><span>(แท็บผู้ติดตาม)</span></div>
+          <div style={hl}><span>ผู้ชม / การเข้าถึง</span><span>(แท็บผู้ชม)</span></div>
+          <div style={hl}><span>กลุ่มเป้าหมาย</span><span>(เพศ/อายุ/ที่ตั้ง)</span></div>
+        </div></Step>
+      <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>💡 แคปกี่รูปก็ได้ (สูงสุด 8) ถ่ายให้เห็นตัวเลขชัดๆ ไม่ต้องสวย — ยิ่งครบ ครูพี่คิมยิ่งวิเคราะห์แม่น</div>
+    </>}
   </div>;
 }
 

@@ -123,6 +123,32 @@ export function extractImages(payload) {
 // ตัวกรองกันพลาด: บางครั้ง AI หลุดใส่ชื่อ "ครูพี่คิม/คิม" ในบทพูดสคริปต์ (ซึ่งต้องเป็นเสียงลูกค้า)
 // → แทนด้วย "เรา" แบบ deterministic หลังเจนทุกครั้ง (ไม่แตะ greeting/kim_insight ที่เป็นเสียงคิมจริงๆ)
 const deKim = (s) => typeof s === "string" ? s.replace(/ครูพี่คิม|พี่คิม|คิม/g, "เรา") : s;
+
+// แปลงศัพท์การตลาด/อังกฤษ → คำไทยบ้านๆ (เจอหลุดถึงลูกค้าซ้ำหลายเล่ม — กรองหลังบ้านให้ชัวร์ ไม่หวังให้ AI จำกฎ)
+const JARGON = [
+  [/micro[\s-]?influencer/gi, "อินฟลูฯ สายเล็ก"],
+  [/influencer/gi, "อินฟลูเอนเซอร์"],
+  [/call[\s-]?to[\s-]?action/gi, "คำเชิญชวน"],
+  [/\bCTA\b/g, "คำเชิญชวน"],
+  [/\bengagement\b/gi, "การมีส่วนร่วม"],
+  [/\bbranding\b/gi, "การสร้างตัวตน"],
+  [/\bpositioning\b/gi, "การวางจุดยืน"],
+  [/\bconversion\b/gi, "การปิดการขาย"],
+  [/\bfunnel\b/gi, "เส้นทางของลูกค้า"],
+  [/\bretention\b/gi, "การรักษาลูกค้าเก่า"],
+  [/\bawareness\b/gi, "การทำให้คนรู้จัก"],
+  [/\bniche\b/gi, "กลุ่มเฉพาะ"],
+  [/\breach\b/gi, "การเข้าถึง"],
+];
+const deJargon = (s) => typeof s === "string" ? JARGON.reduce((t, [re, rep]) => t.replace(re, rep), s) : s;
+// คีย์ที่ห้ามแตะ (เป็นโค้ดหมวด/เวลาให้ frontend ใช้ ไม่ใช่ข้อความที่ลูกค้าอ่าน)
+const KEEP_KEYS = new Set(["g", "s", "ts", "instagram_account", "emoji"]);
+function deepJargon(node, key) {
+  if (typeof node === "string") return KEEP_KEYS.has(key) ? node : deJargon(node);
+  if (Array.isArray(node)) return node.map(v => deepJargon(v, key));
+  if (node && typeof node === "object") { const o = {}; for (const k in node) o[k] = deepJargon(node[k], k); return o; }
+  return node;
+}
 function sanitizeScripts(bp) {
   if (bp && Array.isArray(bp.scripts)) {
     for (const sc of bp.scripts) {
@@ -145,7 +171,7 @@ export async function generateBlueprint(parsed) {
     config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } },
     retries: 2,
   });
-  const blueprint = sanitizeScripts(JSON.parse(resp.text));
+  const blueprint = sanitizeScripts(deepJargon(JSON.parse(resp.text)));
   const u = resp.usageMetadata || {};
   const usage = { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) };
   return { blueprint, model, usage };
@@ -222,7 +248,7 @@ export async function generateAnalysis(parsed) {
   for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
   parts.push({ text: buildUserText(parsed) + `\n\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)` });
   const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: ANALYSIS_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
-  return { analysis: JSON.parse(resp.text), model, usage: usageOf(resp) };
+  return { analysis: deepJargon(JSON.parse(resp.text)), model, usage: usageOf(resp) };
 }
 
 // สเต็ป 2: ปฏิทิน + 30 สคริปต์ อิงบทวิเคราะห์ที่ลูกค้ายืนยันแล้ว (ไม่ต้องส่งรูปซ้ำ → เร็ว/ประหยัด token)
@@ -230,10 +256,27 @@ export async function generateContent(parsed, analysis) {
   if (!ai) { const bp = buildFallbackBlueprint(parsed); return { content: { calendar: bp.calendar, scripts: bp.scripts }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } }; }
   const a = analysis || {};
   const ctx = `บทวิเคราะห์ช่อง (ลูกค้ายืนยันว่าตรงแล้ว — ใช้เป็นแกนวางคอนเทนต์ให้ตรงตัวตนเขา):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, pillars: a.pillars, snapshot: a.snapshot, what_we_see: a.what_we_see, swot: a.swot, audience_summary: a.audience_summary, kim_insight: a.kim_insight, story: a.story, avatar: a.modules?.avatar, archetype: a.modules?.archetype })}`;
-  const parts = [{ text: buildUserText(parsed) + `\n\n${ctx}\n\nสร้าง JSON ที่มี calendar(30) + scripts(30) ให้สอดคล้องกับบทวิเคราะห์ด้านบน` }];
-  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: CONTENT_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
-  const content = sanitizeScripts(JSON.parse(resp.text));
-  return { content: { calendar: content.calendar, scripts: content.scripts }, model, usage: usageOf(resp) };
+  // เจนสูงสุด 2 รอบ: ถ้ารอบแรกสคริปต์ไม่ครบ 30 หรือสั้นเกิน (truncation ตอนโหลดพีค) → เจนใหม่ เก็บอันที่ครบกว่า
+  const scoreContent = (c) => {
+    const s = Array.isArray(c?.scripts) ? c.scripts : [];
+    const full = s.filter(x => (x.beats || []).reduce((a, b) => a + String(b.say || "").length, 0) >= 150).length;
+    return { n: s.length, full };
+  };
+  let best = null, bestModel = "", bestResp = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const warn = attempt > 0 ? `\n\n⚠️ รอบก่อนสคริปต์ไม่ครบ/สั้นไป — รอบนี้ "ต้องครบ 30 สคริปต์เต็ม" (d 1–30) ทุกอัน say รวม ~150–220 คำ ห้ามขาดแม้แต่วันเดียว ห้ามย่อ` : "";
+    const parts = [{ text: buildUserText(parsed) + `\n\n${ctx}\n\nสร้าง JSON ที่มี calendar(30) + scripts(30) ให้สอดคล้องกับบทวิเคราะห์ด้านบน${warn}` }];
+    let content = null;
+    try {
+      const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: CONTENT_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
+      content = sanitizeScripts(deepJargon(JSON.parse(resp.text)));
+      const sc = scoreContent(content);
+      const bestSc = best ? scoreContent(best) : { n: -1, full: -1 };
+      if (sc.full > bestSc.full || (sc.full === bestSc.full && sc.n > bestSc.n)) { best = content; bestModel = model; bestResp = resp; }
+      if (sc.n >= 30 && sc.full >= 30) break; // ครบเต็มแล้ว ไม่ต้องเจนซ้ำ
+    } catch (e) { if (best) break; if (attempt === 1) throw e; } // parse error รอบสุดท้ายแล้วไม่มีของเลย → โยน
+  }
+  return { content: { calendar: best.calendar, scripts: best.scripts }, model: bestModel, usage: usageOf(bestResp) };
 }
 
 export function buildFallbackBlueprint(parsed) {

@@ -194,13 +194,17 @@ export default function Dashboard() {
   // โหมดแยก 2 สเต็ป: contentReady = สร้างแผน 30 วันแล้วหรือยัง · genState = สถานะปุ่มสร้างแผน
   const [contentReady, setContentReady] = useState(demo);
   const [genState, setGenState] = useState("idle"); // idle | generating | error
+  const [snapEdits, setSnapEdits] = useState({}); // แก้ค่า 6 ช่องตรงๆ (index→value ใหม่) ไม่ต้องเจนใหม่
+  const [editTile, setEditTile] = useState(null);  // ช่องที่กำลังแก้
   const latestUrl = `/api/blueprints/latest?user_id=${encodeURIComponent(userId || "")}&billing_cycle=${encodeURIComponent(cycle || "")}&blueprint_id=${encodeURIComponent(bpId || "")}`;
 
   // สเต็ป 2: ลูกค้ายืนยันบทวิเคราะห์แม่น → สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง + poll จนเสร็จ)
   async function startContentGen() {
     if (demo) { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     setGenState("generating");
-    try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId } }); pollContent(0); }
+    // ส่งค่า 6 ช่องที่ลูกค้าแก้เอง (ถ้ามี) → backend เอาไปอัปเดตบทวิเคราะห์ก่อนเจนคอนเทนต์ (ไม่ต้องเจนวิเคราะห์ใหม่)
+    const snapshot_edits = Object.keys(snapEdits).length ? Object.entries(snapEdits).map(([i, value]) => ({ i: Number(i), value })) : null;
+    try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, snapshot_edits } }); pollContent(0); }
     catch (e) { setGenState("error"); }
   }
   function pollContent(attempt) {
@@ -287,14 +291,19 @@ export default function Dashboard() {
             <Link className="btn full" to="/form" style={{ marginTop: 12 }}>สร้างเล่มจริงของฉัน · 490฿</Link>
           </div>}
           {bp.snapshot?.length > 0 && <div style={{ marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 12px" }}>🎴 ช่องของคุณใน 3 วินาที</h3>
+            <h3 style={{ margin: "0 0 4px" }}>🎴 ช่องของคุณใน 3 วินาที</h3>
+            {!contentReady && <p className="muted" style={{ fontSize: 13, margin: "0 0 12px" }}>ตรงกับช่องคุณไหมคะ? <b style={{ color: "var(--blue-d)" }}>แตะ "แก้" ช่องที่ยังไม่ใช่</b> ได้เลย (ไม่ต้องเจนใหม่)</p>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
               {bp.snapshot.map((s, i) => {
                 const c = [["#ECEAF6", "#6E63A6"], ["#E7EDF8", "#3F6BAE"], ["#E4F4F3", "#2C8E8C"], ["#F3F0F5", "#7E7392"], ["#F7F4EA", "#9A8458"], ["#E9EEF6", "#5573A0"]][i % 6];
-                return <div key={i} style={{ background: c[0], borderRadius: 16, padding: "16px 14px", textAlign: "center" }}>
-                  <div style={{ fontSize: 34, lineHeight: 1 }}>{s.emoji}</div>
-                  <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, margin: "8px 0 4px", letterSpacing: .2 }}>{s.label}</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: c[1], lineHeight: 1.3 }}>{s.value}</div>
+                const val = snapEdits[i] ?? s.value;
+                return <div key={i} style={{ background: c[0], borderRadius: 16, padding: "14px 12px", textAlign: "center", position: "relative" }}>
+                  <div style={{ fontSize: 30, lineHeight: 1 }}>{s.emoji}</div>
+                  <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, margin: "6px 0 4px", letterSpacing: .2 }}>{s.label}</div>
+                  {editTile === i
+                    ? <textarea autoFocus value={val} onChange={e => setSnapEdits(p => ({ ...p, [i]: e.target.value }))} onBlur={() => setEditTile(null)} rows={2} style={{ width: "100%", fontSize: 13, fontWeight: 700, color: c[1], textAlign: "center", border: `1.5px solid ${c[1]}`, borderRadius: 8, padding: "4px", background: "#fff", resize: "none" }} />
+                    : <div style={{ fontSize: 14.5, fontWeight: 800, color: c[1], lineHeight: 1.3 }}>{val}</div>}
+                  {!contentReady && editTile !== i && <button onClick={() => setEditTile(i)} style={{ marginTop: 6, background: "none", border: 0, color: c[1], fontSize: 11.5, fontWeight: 700, cursor: "pointer", opacity: .8 }}>{snapEdits[i] != null ? "✓ แก้แล้ว · แตะแก้อีก" : "✏️ แก้"}</button>}
                 </div>;
               })}
             </div>

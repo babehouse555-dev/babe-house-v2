@@ -309,6 +309,19 @@ const inFlightBp = new Set();
 function acquireGen() { return new Promise(res => { if (activeGens < MAX_CONCURRENT_GENS) { activeGens++; res(); } else genQueue.push(res); }); }
 function releaseGen() { activeGens = Math.max(0, activeGens - 1); const next = genQueue.shift(); if (next) { activeGens++; next(); } }
 
+// ดึงบริบทเดือนก่อนของลูกค้าคนเดิม (จับคู่ด้วยอีเมล, คนละ billing_cycle) → ใช้เจนเดือน 2+ ให้ต่อยอด ไม่ซ้ำ
+async function getPrevContext(email, cycle) {
+  if (!email) return null;
+  try {
+    const r = await one(`SELECT b.blueprint_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2 AND b.blueprint_json IS NOT NULL ORDER BY b.created_at DESC LIMIT 1`, [email, cycle]);
+    if (!r) return null;
+    const a = safeJson(r.blueprint_json) || {};
+    const topics = Array.isArray(a.calendar) ? a.calendar.map(c => c && c.t).filter(Boolean).slice(0, 30) : [];
+    if (!a.positioning && !a.theme && !topics.length) return null;
+    return { theme: a.theme, positioning: a.positioning, prev_topics: topics };
+  } catch (e) { console.warn("getPrevContext", e.message); return null; }
+}
+
 async function generateBlueprintForPayload(payload) {
   await acquireGen();
   try {
@@ -321,6 +334,7 @@ async function generateBlueprintForPayload(payload) {
   await run(`INSERT INTO blueprint_requests (request_id,user_id,instagram_account,email,billing_cycle,business_type,starting_point,monthly_goal,competitor_1,competitor_2,insight_screenshot_base64,insight_images_json,raw_payload_json,industry) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry]);
   // สเต็ป 1: เจน "บทวิเคราะห์" ก่อน (เร็ว) — ยังไม่เจน 30 สคริปต์ จนกว่าลูกค้าจะยืนยันว่าแม่น
+  parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase.billing_cycle); // เดือน 2+ = ต่อยอด ไม่เริ่มใหม่
   const { analysis, model, usage } = await generateAnalysis(parsed);
   await run(`INSERT INTO blueprints (blueprint_id,request_id,user_id,billing_cycle,blueprint_json,model,quality_flags_json,content_status,analysis_status) VALUES ($1,$2,$3,$4,$5,$6,'[]','pending','ready')`, [blueprintId, requestId, parsed.user_id, parsed.meta_purchase.billing_cycle, JSON.stringify(analysis), model]);
   // ประหยัดดิสก์: รูป base64 ใช้แค่ตอนเจน — ลบทิ้งหลังเจนสำเร็จ (กัน DB เต็มเหมือนที่เคยล่ม) คงไว้แค่ form_responses
@@ -396,6 +410,7 @@ app.post("/api/improve-blueprint", async (req, res) => {
       try {
         await acquireGen();
         try {
+          parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase?.billing_cycle);
           const { analysis, model, usage } = await generateAnalysis(parsed);
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(analysis), model, bpId]);
           const lean = { ...parsed, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม)
@@ -418,6 +433,11 @@ app.post("/api/generate-content", async (req, res) => {
     const bp = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
     if (!bp) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
     const current = safeJson(bp.blueprint_json) || {};
+    // ลูกค้าแก้ค่า 6 ช่องเอง → อัปเดตบทวิเคราะห์ก่อนเจนคอนเทนต์ (คอนเทนต์อิงค่าที่แก้ + ช่องในเล่มอัปเดตด้วย) ไม่ต้องเจนวิเคราะห์ใหม่
+    const edits = Array.isArray(req.body?.snapshot_edits) ? req.body.snapshot_edits : [];
+    if (edits.length && Array.isArray(current.snapshot)) {
+      for (const e of edits) { const idx = Number(e?.i); if (current.snapshot[idx] && typeof e?.value === "string" && e.value.trim()) current.snapshot[idx].value = e.value.trim().slice(0, 60); }
+    }
     if (bp.content_status === "ready" || (Array.isArray(current.scripts) && current.scripts.length)) return res.json({ ok: true, status: "ready" });
     if (bp.content_status === "generating" && inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" }); // กำลังทำอยู่จริงใน process นี้
     // ไม่งั้นเริ่มใหม่ (รวมถึงกรณี 'generating' ที่ค้างจาก deploy เก่า = orphaned)
@@ -430,6 +450,7 @@ app.post("/api/generate-content", async (req, res) => {
         try {
           const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
           const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+          parsed.prev_context = await getPrevContext(parsed.email, cycle); // เดือน 2+ = ห้ามคอนเทนต์ซ้ำเดือนก่อน
           const { content, model, usage } = await generateContent(parsed, current);
           const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
           const qualityFlags = checkBlueprintQuality(merged, true);

@@ -906,16 +906,6 @@ async function runAbandonedFollowups() {
 }
 app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); res.json({ ok: true, sent, homework, abandoned, cycle: currentBillingCycle() }); });
 
-// ⚠️ ชั่วคราว: เทียบบทวิเคราะห์ "กรอกเต็ม vs 3 ข้อ" (ไม่สร้าง order/blueprint ลง DB) — ลบทิ้งหลังตัดสินใจ
-app.post("/api/admin/compare-analysis", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const mk = (p) => ({ instagram_account: p.instagram_account || "@test", meta_purchase: { tier: "premium", billing_cycle: "June_2026" }, form_responses: { monthly_goal: "", competitor_1: "", competitor_2: "", ...(p.form_responses || {}) }, insight_images: [], insight_screenshot_base64: null });
-  try {
-    const [ra, rb] = await Promise.all([generateAnalysis(mk(req.body?.a || {})), generateAnalysis(mk(req.body?.b || {}))]);
-    res.json({ ok: true, a: ra.analysis, b: rb.analysis });
-  } catch (err) { console.error(err); res.status(500).json({ ok: false, error: String(err.message || err) }); }
-});
-
 app.get("/api/health", (req, res) => {
   const sk = String(process.env.STRIPE_SECRET_KEY || "");
   const stripe_mode = sk.startsWith("sk_live_") ? "live" : sk.startsWith("sk_test_") ? "test" : "none";

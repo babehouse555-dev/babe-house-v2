@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
@@ -190,6 +190,7 @@ export default function Dashboard() {
   const [improving, setImproving] = useState(false);
   const [improveErr, setImproveErr] = useState("");
   const [ix, setIx] = useState({ products: "", pain_points: "", content_likes: "", content_dislikes: "", brand_info: "", more: "" });
+  const [ixFiles, setIxFiles] = useState([]);
   // โหมดแยก 2 สเต็ป: contentReady = สร้างแผน 30 วันแล้วหรือยัง · genState = สถานะปุ่มสร้างแผน
   const [contentReady, setContentReady] = useState(demo);
   const [genState, setGenState] = useState("idle"); // idle | generating | error
@@ -217,7 +218,7 @@ export default function Dashboard() {
   async function submitImprove() {
     if (demo) { setImproveErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะแก้บทวิเคราะห์ให้แม่นขึ้นทันที 🩵"); return; }
     setImproving(true); setImproveErr("");
-    try { await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix } }); pollAnalysis(0); }
+    try { const images = ixFiles.length ? await filesToBase64([...ixFiles], 8) : []; await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix, images } }); pollAnalysis(0); }
     catch (e) { setImproveErr(e.message || "เกิดข้อผิดพลาด ลองอีกครั้งนะคะ"); setImproving(false); }
   }
   function pollAnalysis(attempt) {
@@ -406,6 +407,12 @@ export default function Dashboard() {
                 </div> : <>
                   <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>✏️ เล่าเพิ่มให้ครูพี่คิมฟัง</div>
                   <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>กรอกเท่าที่อยากเล่า (ไม่ต้องครบทุกช่อง) — บอก "แนวที่อยากทำ / ไม่อยากทำ" จะช่วยให้คอนเทนต์ตรงใจมากๆ · ใช้สิทธิ์ฟรีได้ครั้งเดียว</p>
+                  <div style={{ background: "#fff7e6", border: "1px dashed #e0b85b", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#8a6d1f" }}>📊 ลืมแนบรูปสถิติ? แนบตรงนี้ได้เลย!</div>
+                    <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 8px" }}>ถ้ารอบแรกไม่ได้ใส่รูป Insight — แนบตอนนี้ ครูพี่คิมจะอ่านตัวเลขจริงแล้ววิเคราะห์แม่นขึ้นเยอะ</p>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e => setIxFiles(e.target.files)} />
+                    {ixFiles.length > 0 && <div className="hint" style={{ color: "#1a7f43" }}>✓ แนบแล้ว {Math.min(ixFiles.length, 8)} รูป</div>}
+                  </div>
                   {[["products", "สินค้า/บริการที่อยากขายเดือนนี้", "เช่น คอร์สออนไลน์ 1,990฿ / รับงานแต่งหน้าเจ้าสาว"], ["pain_points", "ปัญหา/อุปสรรคตอนนี้", "เช่น คนทักเยอะแต่ปิดการขายไม่ได้"], ["content_likes", "แนวคอนเทนต์ที่อยากทำ", "เช่น สายเล่าเรื่องจริงจากชีวิต / สอนเป็นขั้นๆ"], ["content_dislikes", "แนวที่ไม่อยากทำ", "เช่น ไม่อยากทำสายตลก / ไม่อยากพูดเรื่องงานอดิเรกที่เล่นบอล-สะสมการ์ด"], ["brand_info", "เล่าเรื่องแบรนด์/ตัวตนเพิ่ม", "เช่น เริ่มจากศูนย์เมื่อ 2 ปีก่อน อยากเป็นแรงบันดาลใจให้แม่ๆ"], ["more", "อื่นๆ ที่อยากบอก", "พิมพ์อะไรก็ได้ที่อยากให้ครูพี่คิมรู้"]].map(([k, label, ph]) =>
                     <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 60 }} placeholder={ph} /></div>)}
                   {improveErr && <div className="msg err">{improveErr}</div>}

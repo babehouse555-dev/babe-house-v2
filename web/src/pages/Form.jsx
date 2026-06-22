@@ -187,7 +187,8 @@ export default function Form() {
     setF(v => ({ ...v, email: email || v.email, instagram_account: ig || v.instagram_account }));
     // เดือน 2+ (renew + login แล้ว) → ดึงโปรไฟล์เดือนก่อนมา ไม่ต้องกรอกซ้ำ
     if (renew && session.token) {
-      api("/api/me/last-profile", { token: session.token })
+      const ch = sp.get("channel");
+      api("/api/me/last-profile" + (ch ? `?channel=${encodeURIComponent(ch)}` : ""), { token: session.token })
         .then(d => { if (d.profile && d.profile.form_responses) { setLastProfile(d.profile); const g = String(d.profile.form_responses.goal_primary || "").split(/[,+]/).map(s => s.trim()).filter(Boolean); setRenewGoal(g.filter(x => GOALS.includes(x))); } })
         .catch(() => {});
     }
@@ -351,7 +352,9 @@ export default function Form() {
         {/* ===== ขั้น 1: ติดต่อ & ช่อง ===== */}
         {step === 1 && <div className="card">
           <div className="field"><label>อีเมล <span style={{ color: "var(--blue)" }}>⭐</span> <span className="muted">(ใช้เข้าดูเล่มย้อนหลังทุกเดือน)</span></label><input type="email" value={f.email} onChange={upd("email")} onFocus={() => setFocus(null)} placeholder="you@email.com" /><div className="hint">ใช้อีเมลเดิมทุกเดือนเพื่อเก็บประวัติและติดตามการเติบโต</div></div>
-          <div className="field"><label>ชื่อช่อง (Instagram / TikTok) <span style={{ color: "var(--blue)" }}>⭐</span></label><input value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}</div>
+          <div className="field"><label>ชื่อช่อง (Instagram / TikTok) <span style={{ color: "var(--blue)" }}>⭐</span></label><input value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}
+            <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>💡 ดูแลหลายช่อง? (ช่องตัวเอง · ช่องลูก · ช่องลูกค้า) ทำทีละช่องได้เลย — แต่ละช่องเป็นเล่มแยก <b>รวมอยู่ในอีเมลเดียว</b> เพิ่มทีหลังในหน้าบัญชีก็ได้</div>
+          </div>
           <div className="field"><label>ชื่อที่อยากให้ครูพี่คิมเรียก <span className="muted">(ไม่บังคับ)</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="เช่น พี่มะปราง / Namo" /><div className="hint">เว้นว่างได้ จะเรียก "คุณ" แทนค่ะ</div></div>
         </div>}
 

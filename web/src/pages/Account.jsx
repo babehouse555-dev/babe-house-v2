@@ -89,21 +89,35 @@ export default function Account() {
               </div>
               <Link className="btn full" to={`/processing?order_id=${encodeURIComponent(p.order_id)}`} style={{ marginTop: 12 }}>ดูสถานะการสร้างเล่ม</Link>
             </div>)}
-        {data.months.length === 0 && (data.pending || []).length === 0 && <div className="card center muted">ยังไม่มีเล่ม Blueprint ในบัญชีนี้</div>}
-        {data.months.slice().reverse().map((m, i) => {
-          const fresh = !isOpened(m.blueprint_id); // ยังไม่เคยเปิด = เล่มใหม่ → เด่น
-          const to = `/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`;
-          if (fresh) return <Link key={m.blueprint_id} className="btn-pulse" onClick={() => markOpened(m.blueprint_id)} to={to} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 18, padding: "20px 22px", marginBottom: 16, textDecoration: "none", boxShadow: "0 12px 30px rgba(63,107,174,.34)" }}>
-            <div><div style={{ display: "inline-block", background: "rgba(255,255,255,.22)", fontWeight: 800, fontSize: 11, padding: "3px 10px", borderRadius: 20, marginBottom: 6 }}>✨ เล่มใหม่ พร้อมแล้ว!</div><div style={{ fontWeight: 800, fontSize: 17 }}>เล่มเดือน {m.billing_cycle.replace("_", " ")}</div><div style={{ fontSize: 13, opacity: .95 }}>แตะเพื่อเปิดดูเล่มของคุณ 🩵</div></div>
-            <div style={{ fontSize: 24 }}>→</div>
-          </Link>;
-          return <Link key={m.blueprint_id} className="card between" onClick={() => markOpened(m.blueprint_id)} to={to} style={{ textDecoration: "none", color: "inherit", display: "flex" }}>
-            <div><div style={{ fontWeight: 700, fontSize: 16 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? " · ล่าสุด" : ""}</div><div className="muted" style={{ fontSize: 13 }}>{(m.monthly_goal || "").slice(0, 60) || "—"}</div></div>
-            <div style={{ color: "var(--blue)", fontSize: 20 }}>›</div>
-          </Link>;
+        {(data.channels || []).length === 0 && (data.pending || []).length === 0 && <div className="card center muted">ยังไม่มีเล่ม Blueprint ในบัญชีนี้</div>}
+
+        {(data.channels || []).length > 0 && <div className="muted" style={{ fontSize: 13, fontWeight: 700, margin: "4px 0 8px" }}>ช่องของฉัน ({(data.channels || []).length})</div>}
+        {(data.channels || []).map(ch => {
+          const months = ch.months.slice().reverse(); // ใหม่ → เก่า
+          const anyFresh = months.some(m => !isOpened(m.blueprint_id));
+          return <div key={ch.channel} className="card" style={anyFresh ? { borderTop: "4px solid #2C8E8C" } : undefined}>
+            <div className="row" style={{ gap: 11, alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 22 }}>📺</span>
+              <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 15.5 }}>{ch.channel}</div><div className="muted" style={{ fontSize: 12.5 }}>{ch.count} เดือน</div></div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+              {months.map((m, i) => {
+                const fresh = !isOpened(m.blueprint_id);
+                const to = `/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`;
+                return <Link key={m.blueprint_id} onClick={() => markOpened(m.blueprint_id)} to={to} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: fresh ? "linear-gradient(135deg,#EAF3FD,#F4F9FF)" : "var(--bg-soft,#f7f7f8)", border: fresh ? "1px solid #d6e7fa" : "1px solid var(--border)", color: "inherit" }}>
+                  <div><span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? " · ล่าสุด" : ""}</span>{fresh && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, background: "#2C8E8C", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>ใหม่</span>}</div>
+                  <span style={{ color: "var(--blue)", fontSize: 18 }}>›</span>
+                </Link>;
+              })}
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              <Link className="btn" to={`/form?renew=1&email=${encodeURIComponent(data.email)}&channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>+ ต่อแผนเดือนนี้</Link>
+              {ch.count >= 1 && <Link className="btn ghost" to={`/compare?channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>📈 ดูการโต</Link>}
+            </div>
+          </div>;
         })}
-        <Link className="card center" to={`/form?renew=1&email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block" }}>+ เพิ่มแผนเดือนใหม่ (490฿)</Link>
-        {data.months.length >= 1 && <Link className="btn full" to="/compare" style={{ marginBottom: 16 }}>📈 {data.months.length >= 2 ? "เทียบความคืบหน้าทุกเดือน" : "ดูสถิติ & เส้นทางการเติบโต"}</Link>}
+
+        <Link className="card center" to={`/form?email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block", border: "1.5px dashed var(--blue)", background: "#F4F8FD" }}>+ เพิ่มช่องใหม่ (490฿)</Link>
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>🎁 ชวนเพื่อน — ได้กันทั้งคู่</div>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>เพื่อนสมัครผ่านลิงก์คุณ <b style={{ color: "#2C8E8C" }}>รับลด {ref.percent}% ทันที</b> · และคุณได้ <b style={{ color: "#2C8E8C" }}>โค้ดลดเดือนถัดไป</b> ทุกครั้งที่มีเพื่อนสมัครสำเร็จ 🩵</div>

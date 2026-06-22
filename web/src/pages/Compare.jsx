@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, session, fmt } from "../api.js";
 
 const METRICS = [["followers", "ผู้ติดตาม", "💙"], ["reach", "การเข้าถึง (Reach)", "👁️"], ["profile_visits", "เข้าชมโปรไฟล์", "👤"], ["link_taps", "กดลิงก์ไบโอ", "🔗"], ["engagement_rate", "Engagement", "⚡", "%"]];
@@ -7,13 +7,15 @@ const pct = (a, b) => (a == null || b == null || a === 0) ? null : Math.round((b
 
 export default function Compare() {
   const nav = useNavigate();
+  const [sp] = useSearchParams();
+  const channel = sp.get("channel") || ""; // เทียบการโตเฉพาะช่องนี้ (ถ้ามี)
   const [months, setMonths] = useState(null);
   const [coach, setCoach] = useState("loading");
 
   useEffect(() => {
     if (!session.token) { nav("/account"); return; }
-    api("/api/me/blueprints", { token: session.token }).then(d => setMonths(d.months)).catch(() => { session.clear(); nav("/account"); });
-    api("/api/me/growth-analysis", { token: session.token }).then(d => setCoach(d.analysis || null)).catch(() => setCoach(null));
+    api("/api/me/blueprints", { token: session.token }).then(d => setMonths(channel ? (d.months || []).filter(m => String(m.instagram_account || "") === channel) : (d.months || []))).catch(() => { session.clear(); nav("/account"); });
+    api("/api/me/growth-analysis" + (channel ? `?channel=${encodeURIComponent(channel)}` : ""), { token: session.token }).then(d => setCoach(d.analysis || null)).catch(() => setCoach(null));
   }, []);
 
   if (!months) return <div className="wrap narrow page-pad center"><div className="spinner" /><p className="muted">กำลังโหลด...</p></div>;

@@ -20,6 +20,11 @@ const ACADEMY_COURSES = ["📱 All in Your Phone — ตัดต่อในม
 // บล็อกบริการ Babe House (ใช้ทั้งหน้าปฏิทินและมาราธอน)
 function ServicesBlock() {
   return <>
+    <Link to="/account" style={{ display: "flex", alignItems: "center", gap: 12, background: "#eef4fb", border: "1px dashed #bcd4ee", borderRadius: 14, padding: "13px 15px", textDecoration: "none", color: "var(--blue-d)", margin: "24px 0 4px" }}>
+      <span style={{ fontSize: 24 }}>📺</span>
+      <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 14 }}>ดูแลช่องอื่นด้วยไหม?</div><div className="muted" style={{ fontSize: 12.5 }}>เพิ่มช่องลูก/ลูกค้า — จัดการทุกช่องในบัญชีเดียว</div></div>
+      <span style={{ background: "var(--blue)", color: "#fff", borderRadius: 20, padding: "6px 13px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>+ เพิ่มช่อง</span>
+    </Link>
     <h2 className="serif" style={{ fontSize: 20, margin: "26px 0 4px" }}>🎁 บริการของ Babe House</h2>
     <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>เลือกเส้นทางที่ใช่สำหรับคุณ — อยากเก่งขึ้นเอง · ให้เราทำให้ · หรือให้ AI ช่วยตรวจคลิป</p>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>

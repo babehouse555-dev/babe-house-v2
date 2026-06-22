@@ -274,11 +274,22 @@ export async function generateContent(parsed, analysis) {
   if (!ai) { const bp = buildFallbackBlueprint(parsed); return { content: { calendar: bp.calendar, scripts: bp.scripts }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } }; }
   const a = analysis || {};
   const ctx = `บทวิเคราะห์ช่อง (ลูกค้ายืนยันว่าตรงแล้ว — ใช้เป็นแกนวางคอนเทนต์ให้ตรงตัวตนเขา):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, pillars: a.pillars, snapshot: a.snapshot, what_we_see: a.what_we_see, swot: a.swot, audience_summary: a.audience_summary, kim_insight: a.kim_insight, story: a.story, avatar: a.modules?.avatar, archetype: a.modules?.archetype })}`;
-  // เจนสูงสุด 2 รอบ: ถ้ารอบแรกสคริปต์ไม่ครบ 30 หรือสั้นเกิน (truncation ตอนโหลดพีค) → เจนใหม่ เก็บอันที่ครบกว่า
+  // เจนสูงสุด 2 รอบ: นับเป็น "รายวัน" (วันที่ 1-30 ที่มีสคริปต์เต็ม) — กันเคส 31 อันแต่มีวันซ้ำ/ว่าง
+  const sayLen = (x) => (x?.beats || []).reduce((a, b) => a + String(b?.say || "").length, 0);
   const scoreContent = (c) => {
     const s = Array.isArray(c?.scripts) ? c.scripts : [];
-    const full = s.filter(x => (x.beats || []).reduce((a, b) => a + String(b.say || "").length, 0) >= 150).length;
-    return { n: s.length, full };
+    const fullDays = new Set(s.filter(x => sayLen(x) >= 150 && Number(x.d) >= 1 && Number(x.d) <= 30).map(x => Number(x.d)));
+    return { fullDays: fullDays.size, n: s.length };
+  };
+  // เลือกสคริปต์/ปฏิทินวันละ 1 อัน (วันที่ 1-30) เอาอันที่เต็มสุด เรียงตามวัน → เล่มสะอาดเสมอ
+  const dedupePerDay = (arr, fuller) => {
+    const byDay = new Map();
+    for (const x of (Array.isArray(arr) ? arr : [])) {
+      const d = Number(x?.d); if (!(d >= 1 && d <= 30)) continue;
+      const prev = byDay.get(d);
+      if (!prev || (fuller && sayLen(x) > sayLen(prev))) byDay.set(d, x);
+    }
+    return [...byDay.values()].sort((a, b) => Number(a.d) - Number(b.d));
   };
   let best = null, bestModel = "", bestResp = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -289,12 +300,12 @@ export async function generateContent(parsed, analysis) {
       const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: CONTENT_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
       content = sanitizeScripts(deepJargon(JSON.parse(resp.text)), usesKim(parsed));
       const sc = scoreContent(content);
-      const bestSc = best ? scoreContent(best) : { n: -1, full: -1 };
-      if (sc.full > bestSc.full || (sc.full === bestSc.full && sc.n > bestSc.n)) { best = content; bestModel = model; bestResp = resp; }
-      if (sc.n >= 30 && sc.full >= 30) break; // ครบเต็มแล้ว ไม่ต้องเจนซ้ำ
+      const bestSc = best ? scoreContent(best) : { fullDays: -1, n: -1 };
+      if (sc.fullDays > bestSc.fullDays) { best = content; bestModel = model; bestResp = resp; }
+      if (sc.fullDays >= 30) break; // ครบทั้ง 30 วัน วันละสคริปต์เต็ม → ไม่ต้องเจนซ้ำ
     } catch (e) { if (best) break; if (attempt === 1) throw e; } // parse error รอบสุดท้ายแล้วไม่มีของเลย → โยน
   }
-  return { content: { calendar: best.calendar, scripts: best.scripts }, model: bestModel, usage: usageOf(bestResp) };
+  return { content: { calendar: dedupePerDay(best.calendar, false), scripts: dedupePerDay(best.scripts, true) }, model: bestModel, usage: usageOf(bestResp) };
 }
 
 export function buildFallbackBlueprint(parsed) {

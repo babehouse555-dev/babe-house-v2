@@ -210,7 +210,7 @@ export default function Dashboard() {
   function pollContent(attempt) {
     setTimeout(async () => {
       try {
-        const d = await api(latestUrl, { token: session.token });
+        const d = await api(latestUrl, { token: session.token, adminKey: localStorage.getItem("babe_admin_key") || undefined });
         if (d.content_status === "ready") { setBp(d.blueprint); setContentReady(true); setGenState("idle"); setTab("calendar"); setTimeout(() => { if (calRef.current) calRef.current.scrollIntoView({ behavior: "auto", block: "start" }); else window.scrollTo(0, 0); }, 200); return; }
         if (d.content_status === "error") { setGenState("error"); return; }
         if (attempt === 40) { try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId } }); } catch {} } // กู้กรณีค้างจาก deploy
@@ -228,7 +228,7 @@ export default function Dashboard() {
   function pollAnalysis(attempt) {
     setTimeout(async () => {
       try {
-        const d = await api(latestUrl, { token: session.token });
+        const d = await api(latestUrl, { token: session.token, adminKey: localStorage.getItem("babe_admin_key") || undefined });
         if (d.analysis_status === "ready") { setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setImproving(false); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
         if (d.analysis_status === "error") { setImproveErr("ครูพี่คิมเจนไม่สำเร็จ ลองอีกครั้งนะคะ"); setImproving(false); return; }
       } catch {}
@@ -239,7 +239,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (demo) return;
     if (!userId || !cycle) { setErr("ไม่พบข้อมูลเล่ม"); return; }
-    api(latestUrl, { token: session.token })
+    api(latestUrl, { token: session.token, adminKey: localStorage.getItem("babe_admin_key") || undefined })
       .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); const ready = d.content_status === "ready"; setContentReady(ready); if (ready) setTab("calendar"); /* นักเรียนเก่ากลับมา = เห็นแผน 30 วันเลย ไม่ต้องตามหา */ })
       .catch((e) => { if (e.code === "NOT_OWNER") setErr(`🔒 เล่มนี้เป็นของบัญชี ${e.data?.owner_hint || ""} — กรุณาเข้าสู่ระบบด้วยอีเมลนั้นก่อนเปิดดูค่ะ`); else setErr("โหลดเล่มไม่สำเร็จ — อาจกำลังสร้างอยู่ หรือลิงก์ไม่ถูกต้อง"); });
   }, [userId, cycle]);

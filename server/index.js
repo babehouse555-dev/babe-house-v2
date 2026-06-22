@@ -482,7 +482,7 @@ app.get("/api/blueprints/latest", async (req, res) => {
   if (!row) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
   // เช็กเจ้าของ: ต้อง login เป็นอีเมลเจ้าของเล่มเท่านั้น (กันเปิดเล่มคนอื่นแม้มีลิงก์) — เล่มไม่มีอีเมล (เก่า) ปล่อยผ่านกันล็อกเอาต์
   const ownerEmail = row.owner_email ? normEmail(row.owner_email) : "";
-  if (ownerEmail) {
+  if (ownerEmail && !isAdmin(req)) { // แอดมินเปิดดูได้ทุกเล่ม (ไว้ซัพพอร์ตลูกค้า)
     const viewer = await authEmail(req);
     if (!viewer || normEmail(viewer) !== ownerEmail) return res.status(403).json({ ok: false, error: "NOT_OWNER", owner_hint: maskEmail(row.owner_email) });
   }

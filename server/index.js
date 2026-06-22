@@ -576,6 +576,16 @@ app.get("/api/me/blueprints", async (req, res) => {
   const pending = pendRows.map(r => ({ order_id: r.order_id, billing_cycle: r.billing_cycle, created_at: r.created_at, status: r.gs === "error" ? "error" : "generating" }));
   res.json({ ok: true, email, count: months.length, months, pending });
 });
+// โปรไฟล์เดือนล่าสุด (สำหรับเดือน 2+ ไม่ต้องกรอกซ้ำ) — เอาข้อมูลเดิมมาใช้ ลูกค้าแค่ใส่รูป Insight เดือนใหม่
+app.get("/api/me/last-profile", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const r = await one(`SELECT raw_payload_json, instagram_account FROM blueprint_requests WHERE lower(email)=lower($1) AND raw_payload_json IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [email]);
+  if (!r) return res.json({ ok: true, profile: null });
+  const parsed = safeJson(r.raw_payload_json) || {};
+  const fr = parsed.form_responses || {};
+  delete fr._prev; // กันข้อมูลภายในหลุด
+  res.json({ ok: true, profile: { instagram_account: parsed.instagram_account || r.instagram_account || "", form_responses: fr } });
+});
 app.get("/api/me/referral", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   await upsertCustomer(email, "");

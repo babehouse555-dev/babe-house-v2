@@ -174,6 +174,9 @@ export default function Form() {
   const [showExtra, setShowExtra] = useState(false);
   const [step, setStep] = useState(0);          // 0=แยกทาง 1=ติดต่อ/ช่อง 2=เกี่ยวกับช่อง 3=รูป/ลูกค้า 4=story+ส่ง
   const [hasChannel, setHasChannel] = useState(null); // true=มีช่อง false=มือใหม่
+  const [lastProfile, setLastProfile] = useState(null); // เดือน 2+ : โปรไฟล์เดือนก่อน (ไม่ต้องกรอกซ้ำ)
+  const [renewGoal, setRenewGoal] = useState([]);
+  const [renewNote, setRenewNote] = useState("");
   const imgRef = useRef(null);
   const linkBtn = { background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: "8px 0 0", display: "inline-block" };
 
@@ -182,6 +185,12 @@ export default function Form() {
     const email = sp.get("email") || session.email || "";
     const ig = sp.get("ig") || "";
     setF(v => ({ ...v, email: email || v.email, instagram_account: ig || v.instagram_account }));
+    // เดือน 2+ (renew + login แล้ว) → ดึงโปรไฟล์เดือนก่อนมา ไม่ต้องกรอกซ้ำ
+    if (renew && session.token) {
+      api("/api/me/last-profile", { token: session.token })
+        .then(d => { if (d.profile && d.profile.form_responses) { setLastProfile(d.profile); const g = String(d.profile.form_responses.goal_primary || "").split(/[,+]/).map(s => s.trim()).filter(Boolean); setRenewGoal(g.filter(x => GOALS.includes(x))); } })
+        .catch(() => {});
+    }
   }, []);
 
   const upd = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
@@ -238,10 +247,77 @@ export default function Form() {
     } catch (e2) { setErr(e2.message); setBusy(false); }
   }
 
+  // เดือน 2+ : ส่งต่อแผนโดยใช้โปรไฟล์เดิม + รูปเดือนใหม่ (ไม่ต้องกรอกซ้ำ)
+  async function submitRenew() {
+    if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
+    if (![...files].length && !window.confirm("ยังไม่ได้แนบรูป Insight เดือนนี้เลยค่ะ 📊\n\nรูปเดือนล่าสุดคือสิ่งที่ทำให้ครูพี่คิมเห็น 'การเติบโต' จากเดือนก่อน — แนบก่อนดีกว่าไหมคะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบ")) return;
+    setBusy(true); setErr("");
+    try {
+      const images = await filesToBase64([...files], 8);
+      const fr = { ...lastProfile.form_responses };
+      if (renewGoal.length) { fr.goal_primary = renewGoal.join(", "); fr.monthly_goal = renewGoal.join(" + "); }
+      if (renewNote.trim()) fr.starting_point = `${fr.starting_point || ""}\nอัปเดตเดือนนี้: ${renewNote.trim()}`.trim();
+      const payload = {
+        user_id: `babe_user_${Date.now()}`, email: (session.email || f.email).trim().toLowerCase(), referred_by: getRef(),
+        meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
+        instagram_account: lastProfile.instagram_account || f.instagram_account,
+        form_responses: fr, insight_images: images, insight_screenshot_base64: images[0] || null
+      };
+      const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
+      track("form_submit");
+      if (r.existing) alert(r.message || "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ");
+      nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);
+    } catch (e2) { setErr(e2.message); setBusy(false); }
+  }
+
   // guide ใต้ช่อง (โชว์เฉพาะมือถือ เมื่อช่องนั้นถูกโฟกัส)
   const inlineGuide = (k) => focus === k && GUIDE[k] ? (
     <div className="guide-inline"><GuideContent k={k} onFill={fillExample} /></div>
   ) : null;
+
+  // ===== เดือน 2+ : หน้าต่อแผนสั้นๆ (ไม่ต้องกรอกซ้ำ) =====
+  if (renew && lastProfile) {
+    const p = lastProfile.form_responses || {};
+    const voice = [p.self_term && `แทนตัว "${p.self_term}"`, p.audience_term && `เรียกคนดู "${p.audience_term}"`, p.tone].filter(Boolean).join(" · ");
+    return (
+      <div className="wrap narrow page-pad">
+        <div className="brand">BABE HOUSE · ต่อแผนเดือนใหม่</div>
+        <h1 className="page" style={{ marginBottom: 4 }}>ต่อแผนเดือนนี้ 🎉 ({currentCycle().replace("_", " ")})</h1>
+        <div className="msg" style={{ background: "#eef7f0", color: "#1a7f43", border: "1px dashed #9ed3b0", margin: "12px 0 16px" }}>
+          ✨ <b>เราจำข้อมูลคุณไว้แล้ว — ไม่ต้องกรอกใหม่!</b> แค่แนบ <b>รูป Insight เดือนนี้</b> ครูพี่คิมจะเทียบการเติบโตจากเดือนก่อน + วางแผนต่อยอดให้เลย 🩵
+        </div>
+        <div className="card">
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>ข้อมูลเดิมของคุณ</div>
+          <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.9 }}>
+            📍 ช่อง: <b>{lastProfile.instagram_account || "-"}</b><br />
+            🎯 สาย: {p.business_type || "-"}<br />
+            👥 ลูกค้า: {p.audience || "-"}<br />
+            🗣️ น้ำเสียง: {voice || "-"}
+          </div>
+          <div className="hint">ถ้าข้อมูลเปลี่ยน เล่าในช่อง "อัปเดตเดือนนี้" ด้านล่างได้เลยค่ะ</div>
+        </div>
+        <div className="card" ref={imgRef}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>📊 แนบรูป Insight เดือนนี้</div>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>ตัวเลขล่าสุด = ครูพี่คิมเทียบการเติบโตจากเดือนก่อน แล้ววางแผนต่อยอด (ไม่ต้องแนบรูปเดือนเก่าซ้ำ)</p>
+          <div style={{ border: "2px dashed var(--blue)", borderRadius: 14, padding: "18px 14px", textAlign: "center", background: "#F4F8FD" }}>
+            <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto" }} />
+            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>✓ เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}
+          </div>
+        </div>
+        <div className="card">
+          <div className="field"><label>เป้าหมายเดือนนี้ <span className="muted">(เลือกได้หลายข้อ · เปลี่ยนได้)</span></label><ChipGroup options={GOALS} value={renewGoal} onChange={setRenewGoal} multi /></div>
+          <div className="field"><label>มีอะไรอัปเดต/เปลี่ยนไหม? <span className="muted">(ไม่บังคับ)</span></label><textarea value={renewNote} onChange={e => setRenewNote(e.target.value)} style={{ minHeight: 70 }} placeholder="เช่น เริ่มขายคอร์สแล้ว / เปลี่ยนกลุ่มลูกค้า / เดือนนี้อยากเน้นขายมากขึ้น" /></div>
+        </div>
+        <label className="row" style={{ alignItems: "flex-start", fontSize: 13, color: "var(--muted)", margin: "4px 2px 14px" }}>
+          <input type="checkbox" style={{ width: 18, height: 18, marginTop: 3 }} checked={consent} onChange={e => setConsent(e.target.checked)} />
+          <span>ฉันยินยอมให้ Babe House ใช้ข้อมูลเพื่อวิเคราะห์ต่อ ตาม <Link to="/privacy" target="_blank" className="link">นโยบายความเป็นส่วนตัว</Link></span>
+        </label>
+        {err && <div className="msg err">{err}</div>}
+        <button className="btn full" type="button" onClick={submitRenew} disabled={busy}>{busy ? "กำลังไปหน้าสรุป..." : "ต่อแผนเดือนนี้ · 490฿ →"}</button>
+        <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>มีหน้าสรุป/ใส่โค้ดก่อนจ่าย กดแล้วยังไม่ตัดเงิน · <button type="button" style={linkBtn} onClick={() => setLastProfile(null)}>หรือกรอกใหม่ทั้งหมด</button></p>
+      </div>
+    );
+  }
 
   const TOTAL = 4; // ขั้น 1-4 (ขั้น 0 = แยกทาง)
   const stepTitle = ["", "ติดต่อ & ช่องของคุณ", "ช่องคุณเกี่ยวกับอะไร", hasChannel ? "แนบรูปสถิติ" : "อยากให้ใครดู", "เล่าเรื่องของคุณ"][step];

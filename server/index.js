@@ -311,10 +311,12 @@ function acquireGen() { return new Promise(res => { if (activeGens < MAX_CONCURR
 function releaseGen() { activeGens = Math.max(0, activeGens - 1); const next = genQueue.shift(); if (next) { activeGens++; next(); } }
 
 // ดึงบริบทเดือนก่อนของลูกค้าคนเดิม (จับคู่ด้วยอีเมล, คนละ billing_cycle) → ใช้เจนเดือน 2+ ให้ต่อยอด ไม่ซ้ำ
-async function getPrevContext(email, cycle) {
+async function getPrevContext(email, cycle, channel) {
   if (!email) return null;
   try {
-    const r = await one(`SELECT b.blueprint_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2 AND b.blueprint_json IS NOT NULL ORDER BY b.created_at DESC LIMIT 1`, [email, cycle]);
+    const params = [email, cycle]; let chFilter = "";
+    if (channel) { params.push(channel); chFilter = ` AND lower(r.instagram_account)=lower($3)`; } // เทียบเฉพาะช่องเดียวกัน ไม่ปนข้ามช่อง
+    const r = await one(`SELECT b.blueprint_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2${chFilter} AND b.blueprint_json IS NOT NULL ORDER BY b.created_at DESC LIMIT 1`, params);
     if (!r) return null;
     const a = safeJson(r.blueprint_json) || {};
     const topics = Array.isArray(a.calendar) ? a.calendar.map(c => c && c.t).filter(Boolean).slice(0, 30) : [];
@@ -335,7 +337,7 @@ async function generateBlueprintForPayload(payload) {
   await run(`INSERT INTO blueprint_requests (request_id,user_id,instagram_account,email,billing_cycle,business_type,starting_point,monthly_goal,competitor_1,competitor_2,insight_screenshot_base64,insight_images_json,raw_payload_json,industry) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry]);
   // สเต็ป 1: เจน "บทวิเคราะห์" ก่อน (เร็ว) — ยังไม่เจน 30 สคริปต์ จนกว่าลูกค้าจะยืนยันว่าแม่น
-  parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase.billing_cycle); // เดือน 2+ = ต่อยอด ไม่เริ่มใหม่
+  parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase.billing_cycle, parsed.instagram_account); // เดือน 2+ ต่อยอด แยกตามช่อง
   const { analysis, model, usage } = await generateAnalysis(parsed);
   await run(`INSERT INTO blueprints (blueprint_id,request_id,user_id,billing_cycle,blueprint_json,model,quality_flags_json,content_status,analysis_status) VALUES ($1,$2,$3,$4,$5,$6,'[]','pending','ready')`, [blueprintId, requestId, parsed.user_id, parsed.meta_purchase.billing_cycle, JSON.stringify(analysis), model]);
   // ประหยัดดิสก์: รูป base64 ใช้แค่ตอนเจน — ลบทิ้งหลังเจนสำเร็จ (กัน DB เต็มเหมือนที่เคยล่ม) คงไว้แค่ form_responses
@@ -411,7 +413,7 @@ app.post("/api/improve-blueprint", async (req, res) => {
       try {
         await acquireGen();
         try {
-          parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase?.billing_cycle);
+          parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase?.billing_cycle, parsed.instagram_account);
           const { analysis, model, usage } = await generateAnalysis(parsed);
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(analysis), model, bpId]);
           const lean = { ...parsed, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม)
@@ -451,7 +453,7 @@ app.post("/api/generate-content", async (req, res) => {
         try {
           const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
           const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
-          parsed.prev_context = await getPrevContext(parsed.email, cycle); // เดือน 2+ = ห้ามคอนเทนต์ซ้ำเดือนก่อน
+          parsed.prev_context = await getPrevContext(parsed.email, cycle, parsed.instagram_account); // เดือน 2+ ห้ามซ้ำ แยกตามช่อง
           const { content, model, usage } = await generateContent(parsed, current);
           const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
           const qualityFlags = checkBlueprintQuality(merged, true);
@@ -560,26 +562,41 @@ async function authEmail(req) {
   if (!row || Number(row.expires_at) < Date.now()) return null;
   return row.email;
 }
-async function getCustomerMonths(email) {
-  // 1 เล่มต่อ 1 เดือน — เอา "เล่มล่าสุด" ของเดือนนั้น (กันเล่มเก่าบังเล่มใหม่เวลาซื้อ/เทสต์ซ้ำเดือนเดิม)
-  // เรียง ASC + Map.set ทับด้วยตัวล่าสุด → ลำดับเดือนยังเรียงเก่า→ใหม่ (Compare ใช้ได้) แต่ข้อมูลเป็นเล่มล่าสุด
+async function getCustomerMonths(email, channel) {
+  // dedupe ตาม (ช่อง + เดือน) — เอาเล่มล่าสุดของช่องนั้นในเดือนนั้น · หลายช่องเดือนเดียวกัน "ไม่ชนกันแล้ว" (แก้ bug เล่มหาย)
   const rows = await q(`SELECT b.blueprint_id,b.billing_cycle,b.created_at,b.user_id,b.blueprint_json,r.instagram_account,r.business_type,r.monthly_goal FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) ORDER BY b.created_at ASC`, [email]);
-  const byCycle = new Map();
-  for (const r of rows) { let metrics = null; try { metrics = (safeJson(r.blueprint_json) || {}).metrics || null; } catch {} byCycle.set(r.billing_cycle, { blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics }); }
-  return [...byCycle.values()];
+  const byKey = new Map();
+  for (const r of rows) {
+    if (channel && String(r.instagram_account || "").toLowerCase() !== String(channel).toLowerCase()) continue;
+    let metrics = null; try { metrics = (safeJson(r.blueprint_json) || {}).metrics || null; } catch {}
+    const key = `${String(r.instagram_account || "").toLowerCase()}|${r.billing_cycle}`;
+    byKey.set(key, { blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics });
+  }
+  return [...byKey.values()];
+}
+// จัดกลุ่มเล่มตาม "ช่อง" → [{channel, months:[...], latest}]  (1 อีเมล ดูแลหลายช่อง)
+async function getCustomerChannels(email) {
+  const months = await getCustomerMonths(email);
+  const byCh = new Map();
+  for (const m of months) { const ch = m.instagram_account || "(ไม่ระบุช่อง)"; if (!byCh.has(ch)) byCh.set(ch, []); byCh.get(ch).push(m); }
+  return [...byCh.entries()].map(([channel, list]) => ({ channel, months: list, latest: list[list.length - 1], count: list.length }));
 }
 app.get("/api/me/blueprints", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const months = await getCustomerMonths(email);
+  const channels = await getCustomerChannels(email);
   // ออเดอร์ที่จ่ายแล้วแต่เล่มยังไม่เสร็จ (กำลังสร้าง/ติดขัด) — โชว์สถานะให้ลูกค้ารู้ว่ากำลังทำอยู่
   const pendRows = await q(`SELECT order_id, billing_cycle, created_at, COALESCE(generation_status,'pending') gs FROM blueprint_orders WHERE email=$1 AND payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' ORDER BY created_at DESC`, [normEmail(email)]);
   const pending = pendRows.map(r => ({ order_id: r.order_id, billing_cycle: r.billing_cycle, created_at: r.created_at, status: r.gs === "error" ? "error" : "generating" }));
-  res.json({ ok: true, email, count: months.length, months, pending });
+  res.json({ ok: true, email, count: months.length, months, channels, pending });
 });
 // โปรไฟล์เดือนล่าสุด (สำหรับเดือน 2+ ไม่ต้องกรอกซ้ำ) — เอาข้อมูลเดิมมาใช้ ลูกค้าแค่ใส่รูป Insight เดือนใหม่
 app.get("/api/me/last-profile", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const r = await one(`SELECT raw_payload_json, instagram_account FROM blueprint_requests WHERE lower(email)=lower($1) AND raw_payload_json IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [email]);
+  const channel = String(req.query.channel || "").trim();
+  const params = [email]; let chFilter = "";
+  if (channel) { params.push(channel); chFilter = ` AND lower(instagram_account)=lower($2)`; } // โปรไฟล์ของ "ช่องนั้น" โดยเฉพาะ (ต่อแผนแยกช่อง)
+  const r = await one(`SELECT raw_payload_json, instagram_account FROM blueprint_requests WHERE lower(email)=lower($1)${chFilter} AND raw_payload_json IS NOT NULL ORDER BY created_at DESC LIMIT 1`, params);
   if (!r) return res.json({ ok: true, profile: null });
   const parsed = safeJson(r.raw_payload_json) || {};
   const fr = parsed.form_responses || {};
@@ -596,9 +613,10 @@ app.get("/api/me/referral", async (req, res) => {
 app.get("/api/me/growth-analysis", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try {
-    const months = await getCustomerMonths(email);
+    const channel = String(req.query.channel || "").trim(); // เทียบการโตแยกตามช่อง
+    const months = await getCustomerMonths(email, channel || undefined);
     if (months.length < 1) return res.json({ ok: true, analysis: null, count: 0 });
-    const signature = `${months.length}:${months[months.length - 1].blueprint_id}`;
+    const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}`;
     const cached = await one(`SELECT signature, analysis_json, model FROM growth_analyses WHERE email=$1`, [email]);
     if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, cached: true });
     const { analysis, model } = await generateGrowthAnalysis(months);

@@ -39,9 +39,20 @@ export function track(step) {
   try { fetch(BASE + "/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true, body: JSON.stringify({ step, session_id: sessionId(), email: session.email || undefined }) }).catch(() => {}); } catch {}
 }
 
+// ย่อ+บีบอัดรูปก่อนอัป (กัน payload ใหญ่/อัปช้า/ค้าง) — สกรีนช็อต Insight ไม่ต้องความละเอียดเต็ม AI ก็อ่านตัวเลขได้
+async function compressImage(file, maxDim = 1800, quality = 0.85) {
+  const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
+  let w = img.width, h = img.height;
+  if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+  const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", quality);
+}
 export async function fileToBase64(file) {
+  if (!file || !file.name) return null;
+  if (/^image\//.test(file.type || "")) { try { return await compressImage(file); } catch { /* ถ้าย่อไม่ได้ ใช้ไฟล์เดิม */ } }
   return new Promise((resolve, reject) => {
-    if (!file || !file.name) return resolve(null);
     const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file);
   });
 }

@@ -53,6 +53,9 @@ export default function Admin() {
   async function toggleCode(c) { await api("/api/admin/codes/toggle", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
   async function deleteCode(c) { if (!window.confirm(`ลบโค้ด ${c} ถาวร? (ออเดอร์เก่าไม่กระทบ)`)) return; await api("/api/admin/codes/delete", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
   async function dismissQuality(bpId) { await api("/api/admin/quality/dismiss", { method: "POST", adminKey: key, body: { blueprint_id: bpId } }); setQual(await api("/api/admin/quality", { adminKey: key })); }
+  async function fixBook(bpId) { try { await api("/api/admin/regen-content", { method: "POST", adminKey: key, body: { blueprint_id: bpId } }); alert("เริ่มซ่อมแล้ว — เจนคอนเทนต์ใหม่ในลิงก์เดิม รอ ~1-2 นาทีแล้วกดรีเฟรชเช็ค"); } catch (e) { alert(e.message); } }
+  async function fixAll() { if (!window.confirm("ซ่อมทุกเล่มที่สคริปต์ไม่ครบ/วันว่าง/error? (เจนคอนเทนต์ใหม่ในลิงก์เดิม ทีละเล่ม)")) return; try { const d = await api("/api/admin/fix-flagged", { method: "POST", adminKey: key }); alert(`เริ่มซ่อม ${d.count} เล่มแล้ว — รอสักครู่แล้วรีเฟรชค่ะ`); } catch (e) { alert(e.message); } }
+  async function editEmail() { const o = prompt("อีเมลเดิม (ที่พิมพ์ผิด):"); if (!o) return; const n = prompt("อีเมลใหม่ (ที่ถูกต้อง):"); if (!n) return; try { const d = await api("/api/admin/edit-email", { method: "POST", adminKey: key, body: { old_email: o, new_email: n } }); alert(`ย้ายเรียบร้อย ${d.moved_books} เล่ม\n${d.old} → ${d.new}`); } catch (e) { alert(e.message); } }
   async function csv() {
     try {
       const res = await fetch("/api/admin/students.csv" + (filter ? "?industry=" + encodeURIComponent(filter) : ""), { headers: { "x-admin-key": key } });
@@ -138,19 +141,26 @@ export default function Admin() {
 
       {qual && (qual.flagged.length > 0
         ? <div className="card" style={{ border: "1px solid #e0b85b", background: "#fffdf5" }}>
-            <h3 style={{ color: "#8a6d1f" }}>🔎 เล่มที่ควรเช็ค ({qual.flagged.length})</h3>
-            <p className="muted" style={{ fontSize: 13, margin: "4px 0 12px" }}>ตัวตรวจคุณภาพอัตโนมัติพบจุดที่อาจไม่แม่น — กดรีเจนแก้ก่อนลูกค้าเห็นได้เลย (จากทั้งหมด {qual.total} เล่ม)</p>
+            <div className="between" style={{ flexWrap: "wrap", gap: 8 }}><h3 style={{ color: "#8a6d1f", margin: 0 }}>🔎 เล่มที่ควรเช็ค ({qual.flagged.length})</h3><button onClick={fixAll} style={{ background: "#8a6d1f", color: "#fff", border: 0, borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🛠️ ซ่อมทั้งหมด (สคริปต์ไม่ครบ)</button></div>
+            <p className="muted" style={{ fontSize: 13, margin: "4px 0 12px" }}>ระบบเมลแจ้งคุณอัตโนมัติเมื่อเจอเล่มพัง · "ซ่อมสคริปต์" = เจนคอนเทนต์ใหม่ในลิงก์เดิม (จากทั้งหมด {qual.total} เล่ม)</p>
             {qual.flagged.map(f => <div key={f.blueprint_id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
               <div className="between" style={{ marginBottom: 6 }}><b style={{ fontSize: 14 }}>{f.email || f.business_type || f.user_id}</b><span className="muted" style={{ fontSize: 12 }}>{String(f.created_at || "").slice(0, 10)}</span></div>
               <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>{f.flags.map((fl, i) => <span key={i} style={{ background: "#fff3d6", color: "#8a6d1f", fontSize: 12, fontWeight: 600, padding: "3px 9px", borderRadius: 12 }}>⚠️ {fl}</span>)}</div>
               <div className="row" style={{ gap: 14 }}>
                 <a className="link" target="_blank" rel="noreferrer" href={`/dashboard?user_id=${encodeURIComponent(f.user_id)}&billing_cycle=${encodeURIComponent(f.billing_cycle)}&blueprint_id=${encodeURIComponent(f.blueprint_id)}`} style={{ fontSize: 13.5 }}>เปิดเล่ม ›</a>
-                <button className="link" onClick={() => regen(f.user_id, f.billing_cycle)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "var(--blue)", fontWeight: 700 }}>🔄 รีเจนใหม่</button>
-                <button className="link" onClick={() => dismissQuality(f.blueprint_id)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>✓ ปล่อยผ่าน (ไม่ต้องแก้)</button>
+                <button className="link" onClick={() => fixBook(f.blueprint_id)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "#8a6d1f", fontWeight: 700 }}>🛠️ ซ่อมสคริปต์ (ลิงก์เดิม)</button>
+                <button className="link" onClick={() => regen(f.user_id, f.billing_cycle)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "var(--blue)", fontWeight: 700 }}>🔄 รีเจนทั้งเล่ม</button>
+                <button className="link" onClick={() => dismissQuality(f.blueprint_id)} style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>✓ ปล่อยผ่าน</button>
               </div>
             </div>)}
           </div>
-        : <div className="card"><h3>🔎 ตรวจคุณภาพเล่ม</h3><p className="muted" style={{ marginTop: 8 }}>✓ ทุกเล่มผ่านการตรวจอัตโนมัติ ไม่พบจุดที่ต้องแก้ ({qual.total} เล่ม)</p></div>)}
+        : <div className="card"><div className="between" style={{ flexWrap: "wrap", gap: 8 }}><h3 style={{ margin: 0 }}>🔎 ตรวจคุณภาพเล่ม</h3><button onClick={fixAll} className="link" style={{ background: "none", border: 0, cursor: "pointer", color: "#8a6d1f", fontWeight: 700, fontSize: 13 }}>🛠️ ซ่อมเล่มพัง</button></div><p className="muted" style={{ marginTop: 8 }}>✓ ทุกเล่มผ่านการตรวจอัตโนมัติ ({qual.total} เล่ม) · ระบบเมลแจ้งคุณเองถ้าเจอเล่มพัง</p></div>)}
+
+      <div className="card"><div className="between"><h3 style={{ margin: 0 }}>🛠️ เครื่องมือ</h3></div>
+        <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <button className="btn ghost" onClick={editEmail} style={{ fontSize: 13.5 }}>✉️ แก้อีเมลลูกค้า (พิมพ์ผิด)</button>
+        </div>
+      </div>
 
       {reviews && <div className="card"><div className="between"><h3>⭐ รีวิวจากลูกค้า</h3>{reviews.avg > 0 && <span className="muted" style={{ fontSize: 13 }}>เฉลี่ย {reviews.avg}/5 · อนุมัติแล้ว {reviews.approved} · รอ {reviews.pending}</span>}</div>
         <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 12px" }}>กด "อนุมัติ" เพื่อนำไปโชว์ที่หน้าแรกเป็น social proof · รีวิวที่ลูกค้าแก้ไขจะกลับมารอตรวจใหม่</p>

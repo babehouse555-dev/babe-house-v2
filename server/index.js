@@ -990,6 +990,31 @@ async function runAbandonedFollowups() {
   } catch (e) { console.error("abandoned", e.message); return 0; }
 }
 app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); res.json({ ok: true, sent, homework, abandoned, cycle: currentBillingCycle() }); });
+// ซ่อมเล่มเดียว: เจนคอนเทนต์ใหม่ในเล่มเดิม (สคริปต์ไม่ครบ/พัง)
+app.post("/api/admin/regen-content", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || ""); if (!bpId) return res.status(400).json({ ok: false, error: "MISSING" });
+  res.json({ ok: true, status: "generating" });
+  regenContentForBp(bpId);
+});
+// ซ่อมทั้งหมด: หาเล่มสคริปต์ไม่ครบ/วันว่าง/error แล้วเจนคอนเทนต์ใหม่ให้ทีละเล่ม
+app.post("/api/admin/fix-flagged", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const broken = await findBrokenBooks(7);
+  res.json({ ok: true, count: broken.length, books: broken.map(b => ({ email: b.email, instagram_account: b.instagram_account, reason: b.reason })) });
+  (async () => { for (const b of broken) { await regenContentForBp(b.blueprint_id); } })();
+});
+// แก้อีเมลลูกค้า (เคสพิมพ์ผิด) — ย้ายทุกเล่ม/ออเดอร์/รีวิวไปอีเมลใหม่
+app.post("/api/admin/edit-email", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const oldE = normEmail(req.body?.old_email), newE = normEmail(req.body?.new_email);
+  if (!oldE || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newE)) return res.status(400).json({ ok: false, error: "INVALID", message: "อีเมลไม่ถูกต้อง" });
+  const r1 = await run(`UPDATE blueprint_requests SET email=$1 WHERE lower(email)=lower($2)`, [newE, oldE]);
+  await run(`UPDATE blueprint_orders SET email=$1 WHERE lower(email)=lower($2)`, [newE, oldE]).catch(() => {});
+  await run(`UPDATE customers SET email=$1 WHERE lower(email)=lower($2)`, [newE, oldE]).catch(() => {});
+  await run(`UPDATE reviews SET email=$1 WHERE lower(email)=lower($2)`, [newE, oldE]).catch(() => {});
+  res.json({ ok: true, moved_books: r1.rowCount || 0, old: oldE, new: newE });
+});
 
 app.get("/api/health", (req, res) => {
   const sk = String(process.env.STRIPE_SECRET_KEY || "");
@@ -1062,6 +1087,62 @@ async function retryStuckContent() {
   } catch (e) { console.error("retryStuckContent", e.message); }
 }
 
+// ซ่อมเล่ม: เจน "คอนเทนต์" ใหม่ในเล่มเดิม (bp_id เดิม ลิงก์เดิม) — ใช้ตอนสคริปต์ไม่ครบ/พัง
+async function regenContentForBp(bpId) {
+  if (inFlightBp.has(bpId)) return false;
+  const b = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1`, [bpId]);
+  if (!b) return false;
+  inFlightBp.add(bpId);
+  try {
+    await run(`UPDATE blueprints SET content_status='generating', content_started_at=now() WHERE blueprint_id=$1`, [bpId]);
+    await acquireGen();
+    try {
+      const current = safeJson(b.blueprint_json) || {};
+      const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [b.request_id]);
+      const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+      parsed.prev_context = await getPrevContext(parsed.email, b.billing_cycle, parsed.instagram_account);
+      const { content, model } = await generateContent(parsed, current);
+      const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
+      const flags = checkBlueprintQuality(merged, true);
+      await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(flags), bpId]);
+      console.log(`[regen-content] ${bpId} สำเร็จ (${(merged.scripts || []).length} สคริปต์)`);
+      return true;
+    } finally { releaseGen(); }
+  } catch (e) { console.error(`[regen-content] ${bpId}`, e.message); await run(`UPDATE blueprints SET content_status='error' WHERE blueprint_id=$1`, [bpId]).catch(() => {}); return false; }
+  finally { inFlightBp.delete(bpId); }
+}
+// หาเล่มที่สคริปต์ไม่ครบ/วันว่าง/error (ใช้ทั้ง watchdog + ปุ่มซ่อมทั้งหมด)
+async function findBrokenBooks(days = 7) {
+  const rows = await q(`SELECT b.blueprint_id, b.content_status, b.blueprint_json, r.email, r.instagram_account FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.created_at > now() - interval '${Number(days)} days' AND b.content_status IN ('ready','error')`);
+  const broken = [];
+  for (const r of rows) {
+    let reason = "";
+    if (r.content_status === "error") reason = "เจนคอนเทนต์ error";
+    else {
+      const bp = safeJson(r.blueprint_json) || {};
+      const scr = Array.isArray(bp.scripts) ? bp.scripts : [];
+      const empty = scr.filter(s => (s.beats || []).reduce((a, x) => a + String(x.say || "").length, 0) < 50).length;
+      if (scr.length && scr.length < 30) reason = `สคริปต์ ${scr.length}/30`;
+      else if (empty > 0) reason = `${empty} วันว่าง`;
+    }
+    if (reason) broken.push({ blueprint_id: r.blueprint_id, email: r.email, instagram_account: r.instagram_account, reason });
+  }
+  return broken;
+}
+// Watchdog: เจอเล่มพัง → เมลแจ้งแอดมินทันที (ไม่ต้องรอลูกค้าบอก)
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
+const alertedBp = new Set();
+async function runQualityWatch() {
+  try {
+    const broken = (await findBrokenBooks(2)).filter(b => !alertedBp.has(b.blueprint_id));
+    if (!broken.length) return;
+    for (const b of broken) alertedBp.add(b.blueprint_id);
+    const list = broken.map(b => `• ${b.email || "?"} (${b.instagram_account || "?"}) — ${b.reason}`).join("<br>");
+    await sendEmail(ADMIN_ALERT_EMAIL, `⚠️ Babe House: พบ ${broken.length} เล่มอาจมีปัญหา`, wrap(`ระบบตรวจพบเล่มที่อาจมีปัญหา (สคริปต์ไม่ครบ/error):<br><br>${list}<br><br>เข้าหลังบ้าน → "คุณภาพเล่ม" กดปุ่ม <b>ซ่อมเล่ม</b> ได้เลยค่ะ`)).catch(() => {});
+    console.log(`[quality-watch] แจ้งเตือน ${broken.length} เล่ม`);
+  } catch (e) { console.error("quality-watch", e.message); }
+}
+
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
@@ -1073,4 +1154,6 @@ initDb().then(() => {
   setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
+  setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → เมลแจ้งแอดมิน
+  setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

@@ -259,18 +259,21 @@ export default function Dashboard() {
   }
 
   // ดาวน์โหลดปฏิทิน 30 วัน เป็น CSV (เปิดใน Excel / Google Sheets ได้เลย · เอเจนซีส่งต่อลูกค้า)
+  // ฟอร์แมตอ่านง่าย: NO · หัวข้อ · รายละเอียด(บล็อกเดียว) · REF(ว่างให้ใส่เอง) · แคปชั่น
   function exportCSV() {
     const G = { Awareness: "ให้คนรู้จัก", Conversion: "ขาย/ทักเรา", Branding: "สร้างตัวตน" };
-    const head = ["วันที่", "ประเภท", "หัวข้อคลิป", "ฮุก (0-5 วิ)", "เนื้อหา", "ปิดท้าย/ชวนคุย", "แคปชั่น + แฮชแท็ก", "ทิปครูพี่คิม"];
+    const head = ["NO", "หัวข้อ", "รายละเอียด (สคริปต์)", "REF (ใส่รูป/ลิงก์อ้างอิงเอง)", "แคปชั่น + แฮชแท็ก"];
     const rows = [head];
     const scripts = (bp.scripts || []).slice().sort((a, b) => Number(a.d) - Number(b.d));
     for (const s of scripts) {
       const cal = (bp.calendar || []).find(c => Number(c.d) === Number(s.d)) || {};
       const beats = s.beats || [];
       const hook = (beats.find(b => b.s === "HOOK") || {}).say || "";
-      const body = beats.filter(b => b.s === "BODY").map(b => b.say).join("\n");
+      const body = beats.filter(b => b.s === "BODY").map(b => b.say).join("\n\n");
       const cta = (beats.find(b => b.s === "CTA") || {}).say || "";
-      rows.push([s.d, G[s.g] || s.g || "", cal.t || "", hook, body, cta, s.cap || "", s.tip || ""]);
+      const detail = [hook, body, cta, s.tip ? `💡 ทิป: ${s.tip}` : ""].filter(Boolean).join("\n\n");
+      const topic = `${cal.t || ""}${s.g ? `\n[${G[s.g] || s.g}]` : ""}`;
+      rows.push([s.d, topic, detail, "", s.cap || ""]); // REF เว้นว่างให้ลูกค้าใส่เอง
     }
     const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

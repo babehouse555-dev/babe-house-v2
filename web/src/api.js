@@ -8,7 +8,7 @@ export async function api(path, { method = "GET", body, token, adminKey } = {}) 
   if (adminKey) headers["x-admin-key"] = adminKey;
   const res = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.ok === false) throw new Error(data.message || `Request failed: ${res.status}`);
+  if (!res.ok || data.ok === false) { const e = new Error(data.message || `Request failed: ${res.status}`); e.code = data.error; e.status = res.status; e.data = data; throw e; }
   return data;
 }
 

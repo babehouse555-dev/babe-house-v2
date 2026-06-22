@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { api, track } from "../api.js";
+import { api, track, session } from "../api.js";
 
 export default function Processing() {
   const [sp] = useSearchParams();
@@ -11,11 +11,16 @@ export default function Processing() {
 
   useEffect(() => {
     let alive = true;
+    // จ่ายเงินเสร็จ → ขอ session ให้อัตโนมัติ (จะได้เปิดเล่มแรกได้เลยไม่ต้อง login) แล้วค่อยไปหน้า Dashboard
+    async function goDash(u, c, b) {
+      try { const r = await api("/api/auth/claim-order", { method: "POST", body: { order_id: orderId } }); if (r.token) session.set(r.token, r.email); } catch {}
+      nav(`/dashboard?user_id=${encodeURIComponent(u)}&billing_cycle=${encodeURIComponent(c)}&blueprint_id=${encodeURIComponent(b)}`);
+    }
     async function poll(attempt = 0) {
       try {
         const { order: o } = await api(`/api/orders/${orderId}`);
         if (!alive) return;
-        if (o.blueprint_id && o.generation_status === "ready") { nav(`/dashboard?user_id=${encodeURIComponent(o.user_id)}&billing_cycle=${encodeURIComponent(o.billing_cycle)}&blueprint_id=${encodeURIComponent(o.blueprint_id)}`); return; }
+        if (o.blueprint_id && o.generation_status === "ready") { goDash(o.user_id, o.billing_cycle, o.blueprint_id); return; }
         // ถ้า generation พลาดชั่วคราว (เช่น AI แน่น) ระบบจะลองสร้างใหม่ให้เองทุก 5 นาที → ไม่โชว์ error ดิบ
         // คงหน้า "กำลังวิเคราะห์ + ส่งลิงก์ทางอีเมล" ไว้ แล้ว poll ต่อ (ช้าลงตอน error) จนได้เล่มหรือผู้ใช้ปิดหน้าไปเอง
         setState({ phase: "working" });
@@ -30,7 +35,7 @@ export default function Processing() {
         if (!["paid", "mock_paid"].includes(order.payment_status)) throw new Error("ยังไม่พบสถานะชำระเงินสำเร็จ");
         track("paid");
         const s = await api("/api/start-generation", { method: "POST", body: { order_id: orderId } });
-        if (s.status === "ready" && s.blueprint_id) { nav(`/dashboard?user_id=${encodeURIComponent(s.user_id)}&billing_cycle=${encodeURIComponent(s.billing_cycle)}&blueprint_id=${encodeURIComponent(s.blueprint_id)}`); return; }
+        if (s.status === "ready" && s.blueprint_id) { goDash(s.user_id, s.billing_cycle, s.blueprint_id); return; }
         setState({ phase: "working" });
         if (!polling.current) { polling.current = true; setTimeout(poll, 4000); }
       } catch (e) { setState({ phase: "error", msg: e.message }); }

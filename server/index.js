@@ -74,6 +74,7 @@ app.use("/api/start-generation", rateLimit(60, M10));
 const uid = (p) => `${p}_${crypto.randomUUID()}`;
 const safeJson = (t) => { try { return JSON.parse(String(t || "{}")); } catch { return {}; } };
 const normEmail = (e) => String(e || "").trim().toLowerCase();
+const maskEmail = (e) => { const [u, d] = String(e || "").split("@"); return d ? `${u.slice(0, 2)}***@${d}` : "***"; };
 const appBaseUrl = () => (process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
 const cycleMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const currentBillingCycle = () => { const d = new Date(); return `${cycleMonths[d.getMonth()]}_${d.getFullYear()}`; };
@@ -477,8 +478,14 @@ app.get("/api/blueprints/latest", async (req, res) => {
   const userId = String(req.query.user_id || ""), cycle = String(req.query.billing_cycle || ""), bpId = String(req.query.blueprint_id || "");
   if (!userId || !cycle || !bpId) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
   // ต้องรู้ blueprint_id (สุ่ม เดาไม่ได้) ถึงเปิดได้ — กันเดา user_id แล้วอ่านเล่มคนอื่น
-  const row = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
+  const row = await one(`SELECT b.*, r.email AS owner_email FROM blueprints b LEFT JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.blueprint_id=$1 AND b.user_id=$2 AND b.billing_cycle=$3`, [bpId, userId, cycle]);
   if (!row) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
+  // เช็กเจ้าของ: ต้อง login เป็นอีเมลเจ้าของเล่มเท่านั้น (กันเปิดเล่มคนอื่นแม้มีลิงก์) — เล่มไม่มีอีเมล (เก่า) ปล่อยผ่านกันล็อกเอาต์
+  const ownerEmail = row.owner_email ? normEmail(row.owner_email) : "";
+  if (ownerEmail) {
+    const viewer = await authEmail(req);
+    if (!viewer || normEmail(viewer) !== ownerEmail) return res.status(403).json({ ok: false, error: "NOT_OWNER", owner_hint: maskEmail(row.owner_email) });
+  }
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
   const bpData = safeJson(row.blueprint_json);
   const contentReady = row.content_status === "ready" || (bpData && Array.isArray(bpData.scripts) && bpData.scripts.length > 0);
@@ -536,6 +543,15 @@ app.post("/api/auth/verify-otp", async (req, res) => {
     await run(`INSERT INTO auth_sessions (token,email,expires_at) VALUES ($1,$2,$3)`, [token, email, Date.now() + 30 * 24 * 3600 * 1000]);
     res.json({ ok: true, token, email });
   } catch (err) { res.status(500).json({ ok: false, error: "VERIFY_FAILED", message: err.message }); }
+});
+// จ่ายเงินเสร็จ = ออก session ให้อัตโนมัติ (order_id เป็น UUID จากการ checkout ของเขาเอง = พิสูจน์ตัวตน) → เปิดเล่มแรกได้เลยไม่ต้อง login
+app.post("/api/auth/claim-order", async (req, res) => {
+  const o = await getOrder(String(req.body?.order_id || ""));
+  if (!o || !["paid", "mock_paid"].includes(o.payment_status) || !o.email) return res.status(403).json({ ok: false, error: "NOT_CLAIMABLE" });
+  const email = normEmail(o.email);
+  const token = uid("sess");
+  await run(`INSERT INTO auth_sessions (token,email,expires_at) VALUES ($1,$2,$3)`, [token, email, Date.now() + 30 * 24 * 3600 * 1000]);
+  res.json({ ok: true, token, email });
 });
 async function authEmail(req) {
   const a = String(req.headers.authorization || ""); const token = a.startsWith("Bearer ") ? a.slice(7) : "";

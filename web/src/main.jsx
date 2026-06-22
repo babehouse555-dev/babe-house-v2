@@ -2,12 +2,14 @@ import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import "./styles.css";
-import { captureRef } from "./api.js";
+import { captureRef, ping } from "./api.js";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  // ปิงสถานะออนไลน์ทุก 45 วิ ตลอดที่เปิดเว็บอยู่ (ให้หลังบ้านนับคนออนไลน์)
+  useEffect(() => { ping(); const t = setInterval(ping, 45000); return () => clearInterval(t); }, []);
   return null;
 }
 

@@ -656,6 +656,26 @@ app.post("/api/track", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ปิงสถานะออนไลน์ (เปิดหน้าอยู่) — หน้าเว็บยิงทุก ~45 วิ → หลังบ้านนับ "ออนไลน์ตอนนี้"
+app.post("/api/presence", async (req, res) => {
+  try {
+    const sid = String(req.body?.session_id || "").slice(0, 80);
+    if (sid) {
+      const email = req.body?.email ? normEmail(req.body.email).slice(0, 120) : null;
+      await run(`INSERT INTO presence (session_id,email,last_seen) VALUES ($1,$2,$3) ON CONFLICT (session_id) DO UPDATE SET email=COALESCE(EXCLUDED.email,presence.email), last_seen=EXCLUDED.last_seen`, [sid, email, Date.now()]);
+    }
+  } catch {}
+  res.json({ ok: true });
+});
+app.get("/api/admin/presence", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const cutoff = Date.now() - 3 * 60 * 1000; // ออนไลน์ = มีการใช้งานใน 3 นาทีล่าสุด
+  const rows = await q(`SELECT email, session_id FROM presence WHERE last_seen > $1`, [cutoff]).catch(() => []);
+  const students = [...new Set(rows.filter(r => r.email).map(r => r.email))];
+  const visitors = rows.filter(r => !r.email).length;
+  res.json({ ok: true, online_total: students.length + visitors, students_online: students.length, students, visitors });
+});
+
 // ---------- ฟีดแบกภายในจาก testers (ไม่ใช่รีวิวสาธารณะ) ----------
 app.post("/api/me/feedback", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

@@ -20,6 +20,7 @@ export default function Admin() {
   const [reviews, setReviews] = useState(null);
   const [funnel, setFunnel] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const [presence, setPresence] = useState(null);
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
@@ -36,8 +37,10 @@ export default function Admin() {
     setFunnel(await api("/api/admin/funnel", { adminKey: k }));
     setFeedback(await api("/api/admin/feedback", { adminKey: k }));
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
-    loadIndustries(k); loadStudents(null, k);
+    loadIndustries(k); loadStudents(null, k); loadPresence(k);
   }
+  async function loadPresence(k = key) { try { setPresence(await api("/api/admin/presence", { adminKey: k })); } catch {} }
+  useEffect(() => { if (!authed) return; const t = setInterval(() => loadPresence(), 20000); return () => clearInterval(t); }, [authed]);
   async function regen(user_id, billing_cycle) {
     if (!window.confirm("รีเจนเล่มนี้ใหม่ด้วย prompt ล่าสุด? (ใช้เวลา ~1-2 นาที)")) return;
     try { await api("/api/admin/regenerate", { method: "POST", adminKey: key, body: { user_id, billing_cycle } }); alert("เริ่มรีเจนแล้ว — รอ ~1-2 นาที แล้วกดรีเฟรชหน้าเช็คอีกที"); }
@@ -73,6 +76,18 @@ export default function Admin() {
   return (
     <div className="wrap page-pad">
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
+
+      {presence && <div className="card" style={{ background: presence.students_online > 0 ? "linear-gradient(135deg,#e8f7ee,#f3fbf6)" : "#f7f7f8", border: `1px solid ${presence.students_online > 0 ? "#9ed3b0" : "var(--border)"}` }}>
+        <div className="between">
+          <span style={{ fontSize: 13.5, fontWeight: 700 }}><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: presence.online_total > 0 ? "#22c55e" : "#cbd5e1", marginRight: 8, boxShadow: presence.online_total > 0 ? "0 0 0 3px rgba(34,197,94,.2)" : "none" }} />🟢 สถานะตอนนี้ <span className="muted" style={{ fontWeight: 400 }}>(อัปเดตทุก 20 วิ)</span></span>
+          <button className="link" onClick={() => loadPresence()} style={{ background: "none", border: 0, fontSize: 13 }}>↻ รีเฟรช</button>
+        </div>
+        <div className="row" style={{ marginTop: 12, gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 130, background: "#fff", borderRadius: 14, padding: 16, textAlign: "center" }}><div style={{ fontSize: 30, fontWeight: 800, color: "#1a7f43" }}>{presence.students_online}</div><div className="muted" style={{ fontSize: 13 }}>🎓 นักเรียนออนไลน์</div></div>
+          <div style={{ flex: 1, minWidth: 130, background: "#fff", borderRadius: 14, padding: 16, textAlign: "center" }}><div style={{ fontSize: 30, fontWeight: 800, color: "var(--blue)" }}>{presence.visitors}</div><div className="muted" style={{ fontSize: 13 }}>👀 ผู้เข้าชม (ยังไม่ล็อกอิน)</div></div>
+        </div>
+        {presence.students && presence.students.length > 0 && <div className="muted" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>กำลังออนไลน์: {presence.students.join(" · ")}</div>}
+      </div>}
 
       {ov && <div className="card"><h3>ภาพรวม</h3><div className="row" style={{ marginTop: 12 }}>{[["ลูกค้า", ov.customers], ["เล่ม", ov.blueprints], ["จ่ายแล้ว", ov.paid_orders]].map(([l, n]) => <div key={l} style={{ flex: 1, minWidth: 120, background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", borderRadius: 14, padding: 16 }}><div style={{ fontSize: 28, fontWeight: 800, color: "var(--blue)" }}>{n}</div><div className="muted" style={{ fontSize: 13 }}>{l}</div></div>)}</div>
         <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`ส่งเตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} · ตามคนยังไม่จ่าย ${d.abandoned ?? 0} ราย`); } catch (e) { setRemind(e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือน + ตามคนยังไม่จ่าย (เดี๋ยวนี้)</button><span className="muted" style={{ fontSize: 13 }}>{remind}</span></div>

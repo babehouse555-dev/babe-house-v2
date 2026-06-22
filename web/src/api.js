@@ -38,6 +38,10 @@ function sessionId() {
 export function track(step) {
   try { fetch(BASE + "/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true, body: JSON.stringify({ step, session_id: sessionId(), email: session.email || undefined }) }).catch(() => {}); } catch {}
 }
+// ปิงสถานะออนไลน์ (ให้หลังบ้านเห็นว่ามีคน/นักเรียนเปิดหน้าอยู่กี่คน)
+export function ping() {
+  try { fetch(BASE + "/api/presence", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true, body: JSON.stringify({ session_id: sessionId(), email: session.email || undefined }) }).catch(() => {}); } catch {}
+}
 
 // ย่อ+บีบอัดรูปก่อนอัป (กัน payload ใหญ่/อัปช้า/ค้าง) — สกรีนช็อต Insight ไม่ต้องความละเอียดเต็ม AI ก็อ่านตัวเลขได้
 async function compressImage(file, maxDim = 1800, quality = 0.85) {

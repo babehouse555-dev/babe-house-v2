@@ -160,6 +160,12 @@ export async function initDb() {
       total_tokens INTEGER DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS presence (
+      session_id TEXT PRIMARY KEY,
+      email TEXT,
+      last_seen BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_presence_seen ON presence(last_seen);
     CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at);
     CREATE INDEX IF NOT EXISTS idx_req_email ON blueprint_requests(email);
     CREATE INDEX IF NOT EXISTS idx_req_cycle ON blueprint_requests(billing_cycle);

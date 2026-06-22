@@ -258,29 +258,33 @@ export default function Dashboard() {
     try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
   }
 
-  // ดาวน์โหลดปฏิทิน 30 วัน เป็น CSV (เปิดใน Excel / Google Sheets ได้เลย · เอเจนซีส่งต่อลูกค้า)
-  // ฟอร์แมตอ่านง่าย: NO · หัวข้อ · รายละเอียด(บล็อกเดียว) · REF(ว่างให้ใส่เอง) · แคปชั่น
-  function exportCSV() {
-    const G = { Awareness: "ให้คนรู้จัก", Conversion: "ขาย/ทักเรา", Branding: "สร้างตัวตน" };
-    const head = ["NO", "หัวข้อ", "รายละเอียด (สคริปต์)", "REF (ใส่รูป/ลิงก์อ้างอิงเอง)", "แคปชั่น + แฮชแท็ก"];
-    const rows = [head];
-    const scripts = (bp.scripts || []).slice().sort((a, b) => Number(a.d) - Number(b.d));
-    for (const s of scripts) {
-      const cal = (bp.calendar || []).find(c => Number(c.d) === Number(s.d)) || {};
-      const beats = s.beats || [];
-      const hook = (beats.find(b => b.s === "HOOK") || {}).say || "";
-      const body = beats.filter(b => b.s === "BODY").map(b => b.say).join("\n\n");
-      const cta = (beats.find(b => b.s === "CTA") || {}).say || "";
-      const detail = [hook, body, cta, s.tip ? `💡 ทิป: ${s.tip}` : ""].filter(Boolean).join("\n\n");
-      const topic = `${cal.t || ""}${s.g ? `\n[${G[s.g] || s.g}]` : ""}`;
-      rows.push([s.d, topic, detail, "", s.cap || ""]); // REF เว้นว่างให้ลูกค้าใส่เอง
-    }
-    const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `BabeHouse_${(bp.instagram_account || "content").replace(/[^\w@.-]/g, "")}_${cycle}_30วัน.csv`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  // ดาวน์โหลดปฏิทิน 30 วัน เป็น Excel (.xlsx จริง — ตั้งความกว้าง + ตัดบรรทัด + หัวตารางสวย · เปิดใน Excel/Google Sheets)
+  const [exporting, setExporting] = useState(false);
+  async function exportXLSX() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const writeXlsxFile = (await import("write-excel-file/browser")).default;
+      const G = { Awareness: "ให้คนรู้จัก", Conversion: "ขาย/ทักเรา", Branding: "สร้างตัวตน" };
+      const H = { fontWeight: "bold", color: "#FFFFFF", backgroundColor: "#3F6BAE", align: "center", alignVertical: "center", wrap: true };
+      const head = ["NO", "หัวข้อ", "รายละเอียด (สคริปต์)", "REF (ใส่รูป/ลิงก์อ้างอิงเอง)", "แคปชั่น + แฮชแท็ก"].map(v => ({ value: v, type: String, ...H }));
+      const rows = [head];
+      const scripts = (bp.scripts || []).slice().sort((a, b) => Number(a.d) - Number(b.d));
+      const cell = (v, extra) => ({ value: String(v ?? ""), type: String, wrap: true, alignVertical: "top", ...extra });
+      for (const s of scripts) {
+        const cal = (bp.calendar || []).find(c => Number(c.d) === Number(s.d)) || {};
+        const beats = s.beats || [];
+        const hook = (beats.find(b => b.s === "HOOK") || {}).say || "";
+        const body = beats.filter(b => b.s === "BODY").map(b => b.say).join("\n\n");
+        const cta = (beats.find(b => b.s === "CTA") || {}).say || "";
+        const detail = [hook && `🎬 เปิด (ฮุก)\n${hook}`, body && `📝 เนื้อหา\n${body}`, cta && `📣 ปิดท้าย\n${cta}`, s.tip && `💡 ทิป: ${s.tip}`].filter(Boolean).join("\n\n");
+        const topic = `${cal.t || ""}${s.g ? `\n[${G[s.g] || s.g}]` : ""}`;
+        rows.push([cell(s.d, { align: "center", fontWeight: "bold" }), cell(topic, { fontWeight: "bold" }), cell(detail), cell(""), cell(s.cap)]);
+      }
+      const columns = [{ width: 6 }, { width: 30 }, { width: 75 }, { width: 24 }, { width: 45 }];
+      await writeXlsxFile(rows, { columns, fileName: `BabeHouse_${(bp.instagram_account || "content").replace(/[^\w@.-]/g, "")}_${cycle}_30วัน.xlsx`, sheet: "แผน 30 วัน" });
+    } catch (e) { alert("ดาวน์โหลดไม่สำเร็จ ลองอีกครั้งนะคะ"); console.error(e); }
+    finally { setExporting(false); }
   }
 
   if (err) return <div className="wrap narrow page-pad center"><div className="card"><h2>{err}</h2><Link className="btn" to="/account" style={{ marginTop: 16 }}>ไปบัญชีของฉัน</Link></div></div>;
@@ -483,7 +487,7 @@ export default function Dashboard() {
         {tab === "calendar" && contentReady && <>
           {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>📅 แผนคอนเทนต์ 30 วัน</span>
-            <button onClick={exportCSV} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>📥 ดาวน์โหลด Excel / Sheet</button>
+            <button onClick={exportXLSX} disabled={exporting} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? "กำลังสร้างไฟล์..." : "📥 ดาวน์โหลด Excel"}</button>
           </div>}
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>

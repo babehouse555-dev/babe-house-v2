@@ -11,6 +11,7 @@ export default function Compare() {
   const channel = sp.get("channel") || ""; // เทียบการโตเฉพาะช่องนี้ (ถ้ามี)
   const [months, setMonths] = useState(null);
   const [coach, setCoach] = useState("loading");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!session.token) { nav("/account"); return; }
@@ -26,11 +27,56 @@ export default function Compare() {
   const flw = pct(first.metrics?.followers, last.metrics?.followers);
   const maxF = Math.max(...months.map(m => m.metrics?.followers || 0), 1);
   const renewLink = `/form?renew=1&email=${encodeURIComponent(session.email || "")}`;
+  const co = coach && coach !== "loading" ? coach : null;
+
+  // ดาวน์โหลดรายงานการเติบโตเป็น Excel (เอเจนซีส่งต่อลูกค้า: โต %, จุดแข็ง/อ่อน, แผน)
+  async function exportGrowthXLSX() {
+    if (exporting) return; setExporting(true);
+    try {
+      const writeXlsxFile = (await import("write-excel-file/browser")).default;
+      const ch = channel || last.instagram_account || "ช่อง";
+      const cyc = (c) => String(c || "").replace("_", " ");
+      const HEAD = { fontWeight: "bold", color: "#FFFFFF", backgroundColor: "#3F6BAE", wrap: true };
+      const SEC = (txt, bg) => [{ value: txt, span: 4, fontWeight: "bold", backgroundColor: bg || "#ECEAF6", wrap: true }, null, null, null];
+      const FULL = (txt, extra) => [{ value: String(txt ?? ""), span: 4, wrap: true, alignVertical: "top", type: String, ...extra }, null, null, null];
+      const rows = [];
+      rows.push(FULL(`📈 รายงานการเติบโต — ${ch}`, { fontWeight: "bold", fontSize: 16 }));
+      if (co?.headline) rows.push(FULL(co.headline, { fontWeight: "bold", color: "#3F6BAE" }));
+      rows.push(FULL(`ช่วงเวลา: ${cyc(first.billing_cycle)} → ${cyc(last.billing_cycle)} · ${months.length} เดือน`, { color: "#777777" }));
+      rows.push(FULL(""));
+      rows.push([{ value: "ตัวชี้วัด", ...HEAD }, { value: cyc(first.billing_cycle), ...HEAD }, { value: cyc(last.billing_cycle), ...HEAD }, { value: "เปลี่ยนแปลง", ...HEAD }]);
+      for (const [k, label, ic, suf] of METRICS) {
+        const a = first.metrics?.[k], b = last.metrics?.[k]; if (a == null && b == null) continue;
+        const p = pct(a, b);
+        rows.push([
+          { value: `${ic} ${label}`, type: String, wrap: true },
+          { value: (a == null ? "-" : a.toLocaleString()) + (suf || ""), type: String },
+          { value: (b == null ? "-" : b.toLocaleString()) + (suf || ""), type: String, fontWeight: "bold" },
+          { value: p == null ? "-" : (p >= 0 ? `▲ +${p}` : `▼ ${p}`) + (suf === "%" ? " จุด" : "%"), type: String, fontWeight: "bold", color: p != null && p >= 0 ? "#1a7f43" : "#b3261e" },
+        ]);
+      }
+      rows.push(FULL(""));
+      for (const [h, arr, bg] of [["📈 โตขึ้นเพราะอะไร", co?.growth_drivers, "#E4F4F3"], ["✅ จุดแข็งของคุณ", co?.strengths, "#E7EDF8"], ["⚠️ จุดที่ต้องระวัง", co?.watchouts, "#F7F4EA"], ["🎯 เดือนนี้/ถัดไปโฟกัส", co?.next_focus, "#ECEAF6"]]) {
+        if (!(arr || []).length) continue;
+        rows.push(SEC(h, bg));
+        for (const item of arr) rows.push(FULL(`•  ${item}`));
+      }
+      if (co?.coach_message) { rows.push(SEC("💬 ข้อความจากครูพี่คิม")); rows.push(FULL(co.coach_message)); }
+      rows.push(SEC("🎯 แผน/เป้าหมายเดือนล่าสุด", "#E7EDF8"));
+      rows.push(FULL(last.monthly_goal || "-"));
+      const columns = [{ width: 30 }, { width: 24 }, { width: 24 }, { width: 20 }];
+      await writeXlsxFile(rows, { columns, fileName: `BabeHouse_รายงานการเติบโต_${ch.replace(/[^\w@.-]/g, "")}.xlsx`, sheet: "รายงานการเติบโต" });
+    } catch (e) { alert("ดาวน์โหลดไม่สำเร็จ ลองอีกครั้งนะคะ"); console.error(e); }
+    finally { setExporting(false); }
+  }
 
   return (
     <div className="wrap narrow page-pad">
       <div className="between"><span className="brand">BABE HOUSE · ACADEMY</span><Link className="link" to="/account">← บัญชีของฉัน</Link></div>
-      <h1 className="page">📈 เส้นทางการเติบโตของคุณ</h1>
+      <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+        <h1 className="page" style={{ margin: 0 }}>📈 เส้นทางการเติบโตของคุณ</h1>
+        <button onClick={exportGrowthXLSX} disabled={exporting} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? "กำลังสร้างไฟล์..." : "📥 ดาวน์โหลดรายงาน (Excel)"}</button>
+      </div>
 
       {single ? <>
         <div style={{ background: "linear-gradient(135deg,#6E63A6,#2C8E8C)", color: "#fff", borderRadius: 22, padding: "26px 24px", boxShadow: "0 16px 38px rgba(110,99,166,.32)" }}>

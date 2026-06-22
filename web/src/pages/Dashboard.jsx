@@ -258,6 +258,28 @@ export default function Dashboard() {
     try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
   }
 
+  // ดาวน์โหลดปฏิทิน 30 วัน เป็น CSV (เปิดใน Excel / Google Sheets ได้เลย · เอเจนซีส่งต่อลูกค้า)
+  function exportCSV() {
+    const G = { Awareness: "ให้คนรู้จัก", Conversion: "ขาย/ทักเรา", Branding: "สร้างตัวตน" };
+    const head = ["วันที่", "ประเภท", "หัวข้อคลิป", "ฮุก (0-5 วิ)", "เนื้อหา", "ปิดท้าย/ชวนคุย", "แคปชั่น + แฮชแท็ก", "ทิปครูพี่คิม"];
+    const rows = [head];
+    const scripts = (bp.scripts || []).slice().sort((a, b) => Number(a.d) - Number(b.d));
+    for (const s of scripts) {
+      const cal = (bp.calendar || []).find(c => Number(c.d) === Number(s.d)) || {};
+      const beats = s.beats || [];
+      const hook = (beats.find(b => b.s === "HOOK") || {}).say || "";
+      const body = beats.filter(b => b.s === "BODY").map(b => b.say).join("\n");
+      const cta = (beats.find(b => b.s === "CTA") || {}).say || "";
+      rows.push([s.d, G[s.g] || s.g || "", cal.t || "", hook, body, cta, s.cap || "", s.tip || ""]);
+    }
+    const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `BabeHouse_${(bp.instagram_account || "content").replace(/[^\w@.-]/g, "")}_${cycle}_30วัน.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
   if (err) return <div className="wrap narrow page-pad center"><div className="card"><h2>{err}</h2><Link className="btn" to="/account" style={{ marginTop: 16 }}>ไปบัญชีของฉัน</Link></div></div>;
   if (!bp) return <div className="wrap narrow page-pad center"><div className="spinner" /><p className="muted">กำลังโหลดเล่มของคุณ...</p></div>;
 
@@ -456,6 +478,10 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>← ไปยืนยันบทวิเคราะห์</button>
         </div>}
         {tab === "calendar" && contentReady && <>
+          {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
+            <span className="muted" style={{ fontSize: 13 }}>📅 แผนคอนเทนต์ 30 วัน</span>
+            <button onClick={exportCSV} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>📥 ดาวน์โหลด Excel / Sheet</button>
+          </div>}
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}วันที่ {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>

@@ -303,7 +303,7 @@ export default function Dashboard() {
                   {editTile === i
                     ? <textarea autoFocus value={val} onChange={e => setSnapEdits(p => ({ ...p, [i]: e.target.value }))} onBlur={() => setEditTile(null)} rows={2} style={{ width: "100%", fontSize: 13, fontWeight: 700, color: c[1], textAlign: "center", border: `1.5px solid ${c[1]}`, borderRadius: 8, padding: "4px", background: "#fff", resize: "none" }} />
                     : <div style={{ fontSize: 14.5, fontWeight: 800, color: c[1], lineHeight: 1.3 }}>{val}</div>}
-                  {!contentReady && editTile !== i && <button onClick={() => setEditTile(i)} style={{ marginTop: 6, background: "none", border: 0, color: c[1], fontSize: 11.5, fontWeight: 700, cursor: "pointer", opacity: .8 }}>{snapEdits[i] != null ? "✓ แก้แล้ว · แตะแก้อีก" : "✏️ แก้"}</button>}
+                  {!contentReady && editTile !== i && <button onClick={() => setEditTile(i)} style={{ marginTop: 9, background: "#fff", border: `1.5px solid ${c[1]}`, borderRadius: 20, color: c[1], fontSize: 12, fontWeight: 800, cursor: "pointer", padding: "4px 14px", boxShadow: "0 2px 6px rgba(0,0,0,.06)" }}>{snapEdits[i] != null ? "✓ แก้แล้ว" : "✏️ แก้"}</button>}
                 </div>;
               })}
             </div>

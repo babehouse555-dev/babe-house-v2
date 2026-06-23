@@ -95,6 +95,12 @@ export default function Dashboard() {
     if (demo) return; // เดโม: โชว์ติ๊กเขียวได้ แต่ไม่บันทึก
     try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
   }
+  async function clearAllMarathon() {
+    if (!window.confirm("ล้างเครื่องหมาย ✓ ทั้งหมด? (รีเซ็ตเป็น 'ยังไม่ได้ลงคลิป' ทุกวัน)")) return;
+    setUploaded(new Set());
+    if (demo) return;
+    try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [] } }); } catch {}
+  }
 
   // ดาวน์โหลดปฏิทิน 30 วัน เป็น Excel (.xlsx จริง — ตั้งความกว้าง + ตัดบรรทัด + หัวตารางสวย · เปิดใน Excel/Google Sheets)
   const [exporting, setExporting] = useState(false);
@@ -325,7 +331,10 @@ export default function Dashboard() {
         {tab === "calendar" && contentReady && <>
           {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>📅 แผนคอนเทนต์ 30 วัน</span>
-            <button onClick={exportXLSX} disabled={exporting} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? "กำลังสร้างไฟล์..." : "📥 ดาวน์โหลด Excel"}</button>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {uploaded.size > 0 && <button onClick={clearAllMarathon} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 13px", fontSize: 13, fontWeight: 600, color: "var(--muted)", cursor: "pointer" }}>↺ ล้างเครื่องหมายทั้งหมด</button>}
+              <button onClick={exportXLSX} disabled={exporting} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? "กำลังสร้างไฟล์..." : "📥 ดาวน์โหลด Excel"}</button>
+            </div>
           </div>}
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
             {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>

@@ -206,8 +206,10 @@ async function applyCode(req, res) {
   if (!row || !row.active) return res.status(400).json({ ok: false, error: "INVALID_CODE", message: "โค้ดไม่ถูกต้องหรือถูกปิด" });
   const percent = row.discount_percent == null ? 100 : Math.max(1, Math.min(100, row.discount_percent));
   const isFree = percent >= 100;
-  // โค้ดฟรีเท่านั้น: เมลเดิมใช้โค้ดนี้ซ้ำไม่ได้ (กันแจกฟรีรัวๆ) — โค้ดลด% / จ่ายจริง ใช้ได้ไม่จำกัด
-  if (isFree) {
+  // โค้ดล็อกอีเมล: ใช้ได้เฉพาะอีเมลที่กำหนด (กันโค้ดทดสอบหลุด) + อีเมลนั้นใช้ซ้ำได้หลายครั้ง (เช่น dogfood agency หลายช่อง)
+  if (row.locked_email && normEmail(o.email) !== normEmail(row.locked_email)) return res.status(400).json({ ok: false, error: "EMAIL_LOCKED", message: "โค้ดนี้ใช้ได้เฉพาะอีเมลที่กำหนดเท่านั้นค่ะ" });
+  // โค้ดฟรีทั่วไป: เมลเดิมใช้โค้ดนี้ซ้ำไม่ได้ (กันแจกฟรีรัวๆ) — ยกเว้นโค้ดล็อกอีเมล (ตั้งใจให้ใช้ซ้ำได้)
+  if (isFree && !row.locked_email) {
     const used = await usedFreeCodeBefore(o.email, code);
     if (used) return res.json({ ok: true, existing: true, free: true, redirect_url: used.blueprint_id ? dashUrlOf(used) : `/processing?order_id=${encodeURIComponent(used.order_id)}`, message: "อีเมลนี้ใช้โค้ดฟรีนี้ไปแล้วค่ะ (1 โค้ด / 1 อีเมล)" });
   }
@@ -910,7 +912,8 @@ app.post("/api/admin/codes", async (req, res) => {
   const maxUses = req.body?.max_uses == null || req.body?.max_uses === "" ? null : Math.max(1, parseInt(req.body.max_uses, 10) || 1);
   let percent = req.body?.discount_percent == null || req.body?.discount_percent === "" ? 100 : parseInt(req.body.discount_percent, 10);
   percent = Math.max(1, Math.min(100, isNaN(percent) ? 100 : percent));
-  try { await run(`INSERT INTO promo_codes (code,note,max_uses,discount_percent) VALUES ($1,$2,$3,$4)`, [code, note, maxUses, percent]); }
+  const lockedEmail = req.body?.locked_email ? normEmail(req.body.locked_email) : null; // โค้ดล็อกเฉพาะอีเมล (ใช้ซ้ำได้)
+  try { await run(`INSERT INTO promo_codes (code,note,max_uses,discount_percent,locked_email) VALUES ($1,$2,$3,$4,$5)`, [code, note, maxUses, percent, lockedEmail]); }
   catch { return res.status(400).json({ ok: false, error: "CODE_EXISTS", message: "โค้ดนี้มีอยู่แล้ว" }); }
   res.json({ ok: true, code: await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]) });
 });

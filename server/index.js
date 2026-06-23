@@ -317,7 +317,7 @@ async function getPrevContext(email, cycle, channel) {
   if (!email) return null;
   try {
     const params = [email, cycle]; let chFilter = "";
-    if (channel) { params.push(channel); chFilter = ` AND lower(r.instagram_account)=lower($3)`; } // เทียบเฉพาะช่องเดียวกัน ไม่ปนข้ามช่อง
+    if (channel) { params.push(channel); chFilter = ` AND regexp_replace(lower(r.instagram_account),'[@\\s._-]','','g')=regexp_replace(lower($3),'[@\\s._-]','','g')`; } // เทียบเฉพาะช่องเดียวกัน (normalize @/เว้นวรรค)
     const r = await one(`SELECT b.blueprint_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2${chFilter} AND b.blueprint_json IS NOT NULL ORDER BY b.created_at DESC LIMIT 1`, params);
     if (!r) return null;
     const a = safeJson(r.blueprint_json) || {};
@@ -564,24 +564,30 @@ async function authEmail(req) {
   if (!row || Number(row.expires_at) < Date.now()) return null;
   return row.email;
 }
+// คีย์รวมช่อง: ตัด @ เว้นวรรค _ . - และตัวพิมพ์ ออก → "@babehouse_academy" = "babe house academy" = ช่องเดียวกัน
+const chKey = (s) => String(s || "").toLowerCase().replace(/^@/, "").replace(/[\s._-]/g, "").trim() || "(ไม่ระบุ)";
 async function getCustomerMonths(email, channel) {
   // dedupe ตาม (ช่อง + เดือน) — เอาเล่มล่าสุดของช่องนั้นในเดือนนั้น · หลายช่องเดือนเดียวกัน "ไม่ชนกันแล้ว" (แก้ bug เล่มหาย)
   const rows = await q(`SELECT b.blueprint_id,b.billing_cycle,b.created_at,b.user_id,b.blueprint_json,r.instagram_account,r.business_type,r.monthly_goal FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.deleted_at IS NULL ORDER BY b.created_at ASC`, [email]);
   const byKey = new Map();
   for (const r of rows) {
-    if (channel && String(r.instagram_account || "").toLowerCase() !== String(channel).toLowerCase()) continue;
+    if (channel && chKey(r.instagram_account) !== chKey(channel)) continue;
     let metrics = null; try { metrics = (safeJson(r.blueprint_json) || {}).metrics || null; } catch {}
-    const key = `${String(r.instagram_account || "").toLowerCase()}|${r.billing_cycle}`;
+    const key = `${chKey(r.instagram_account)}|${r.billing_cycle}`;
     byKey.set(key, { blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics });
   }
   return [...byKey.values()];
 }
 // จัดกลุ่มเล่มตาม "ช่อง" → [{channel, months:[...], latest}]  (1 อีเมล ดูแลหลายช่อง)
+// รวมช่องเดียวกันที่พิมพ์ต่างกัน (@/เว้นวรรค/ตัวพิมพ์) ให้เป็นโฟลเดอร์เดียว
 async function getCustomerChannels(email) {
   const months = await getCustomerMonths(email);
   const byCh = new Map();
-  for (const m of months) { const ch = m.instagram_account || "(ไม่ระบุช่อง)"; if (!byCh.has(ch)) byCh.set(ch, []); byCh.get(ch).push(m); }
-  return [...byCh.entries()].map(([channel, list]) => ({ channel, months: list, latest: list[list.length - 1], count: list.length }));
+  for (const m of months) { const k = chKey(m.instagram_account); if (!byCh.has(k)) byCh.set(k, []); byCh.get(k).push(m); }
+  return [...byCh.values()].map(list => {
+    const display = list.find(x => String(x.instagram_account || "").startsWith("@"))?.instagram_account || list[list.length - 1].instagram_account || "(ไม่ระบุช่อง)";
+    return { channel: display, months: list, latest: list[list.length - 1], count: list.length };
+  });
 }
 app.get("/api/me/blueprints", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -607,7 +613,7 @@ app.get("/api/me/last-profile", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const channel = String(req.query.channel || "").trim();
   const params = [email]; let chFilter = "";
-  if (channel) { params.push(channel); chFilter = ` AND lower(instagram_account)=lower($2)`; } // โปรไฟล์ของ "ช่องนั้น" โดยเฉพาะ (ต่อแผนแยกช่อง)
+  if (channel) { params.push(channel); chFilter = ` AND regexp_replace(lower(instagram_account),'[@\\s._-]','','g')=regexp_replace(lower($2),'[@\\s._-]','','g')`; } // โปรไฟล์ "ช่องนั้น" (normalize @/เว้นวรรค)
   const r = await one(`SELECT raw_payload_json, instagram_account FROM blueprint_requests WHERE lower(email)=lower($1)${chFilter} AND raw_payload_json IS NOT NULL ORDER BY created_at DESC LIMIT 1`, params);
   if (!r) return res.json({ ok: true, profile: null });
   const parsed = safeJson(r.raw_payload_json) || {};

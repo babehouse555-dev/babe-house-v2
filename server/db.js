@@ -178,6 +178,7 @@ export async function initDb() {
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS analysis_status TEXT DEFAULT 'ready';
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS content_started_at TIMESTAMPTZ;
     ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS locked_email TEXT;
+    ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     UPDATE blueprints SET content_status='ready' WHERE COALESCE(content_status,'pending') <> 'ready' AND blueprint_json LIKE '%"scripts":[{%';
     CREATE TABLE IF NOT EXISTS video_audits (
       audit_id TEXT PRIMARY KEY,

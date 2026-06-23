@@ -44,6 +44,11 @@ export default function Account() {
     catch (e) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
   function logout() { session.clear(); setData(null); setStep("email"); }
+  async function deleteBook(bpId, cycle) {
+    if (!window.confirm(`ลบเล่มเดือน ${String(cycle).replace("_", " ")}?\n\n(ลบออกจากบัญชีของคุณ — ถ้าเผลอลบ ทักทีม Babe House กู้คืนให้ได้)`)) return;
+    try { await api("/api/me/delete-book", { method: "POST", token: session.token, body: { blueprint_id: bpId } }); loadMonths(); }
+    catch (e) { alert(e.message || "ลบไม่สำเร็จ ลองอีกครั้งนะคะ"); }
+  }
   // สร้างลิงก์จาก origin จริงของเบราว์เซอร์ — ถูกเสมอแม้ APP_BASE_URL บนเซิร์ฟเวอร์จะไม่ถูกตั้ง
   const refLink = ref ? `${window.location.origin}/?ref=${encodeURIComponent(ref.code)}` : "";
   const [copied, setCopied] = useState("");
@@ -104,10 +109,13 @@ export default function Account() {
               {months.map((m, i) => {
                 const fresh = !isOpened(m.blueprint_id);
                 const to = `/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`;
-                return <Link key={m.blueprint_id} onClick={() => markOpened(m.blueprint_id)} to={to} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: fresh ? "linear-gradient(135deg,#EAF3FD,#F4F9FF)" : "var(--bg-soft,#f7f7f8)", border: fresh ? "1px solid #d6e7fa" : "1px solid var(--border)", color: "inherit" }}>
-                  <div><span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? " · ล่าสุด" : ""}</span>{fresh && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, background: "#2C8E8C", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>ใหม่</span>}</div>
-                  <span style={{ color: "var(--blue)", fontSize: 18 }}>›</span>
-                </Link>;
+                return <div key={m.blueprint_id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Link onClick={() => markOpened(m.blueprint_id)} to={to} style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: fresh ? "linear-gradient(135deg,#EAF3FD,#F4F9FF)" : "var(--bg-soft,#f7f7f8)", border: fresh ? "1px solid #d6e7fa" : "1px solid var(--border)", color: "inherit" }}>
+                    <div><span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? " · ล่าสุด" : ""}</span>{fresh && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, background: "#2C8E8C", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>ใหม่</span>}</div>
+                    <span style={{ color: "var(--blue)", fontSize: 18 }}>›</span>
+                  </Link>
+                  <button onClick={() => deleteBook(m.blueprint_id, m.billing_cycle)} title="ลบเล่มนี้" style={{ background: "none", border: 0, cursor: "pointer", color: "#b9b9c2", fontSize: 16, padding: "8px 6px", flexShrink: 0 }}>🗑️</button>
+                </div>;
               })}
             </div>
             <div className="row" style={{ gap: 8 }}>

@@ -185,6 +185,7 @@ export async function initDb() {
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_mime TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS context TEXT;
     ALTER TABLE credit_scripts ADD COLUMN IF NOT EXISTS cycle TEXT;
+    UPDATE credit_scripts SET cycle = to_char(created_at, 'FMMonth_YYYY') WHERE cycle IS NULL;
     CREATE TABLE IF NOT EXISTS credit_scripts (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL,

@@ -181,6 +181,9 @@ export async function initDb() {
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 0;
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS credits_granted BOOLEAN DEFAULT false;
+    ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_data TEXT;
+    ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_mime TEXT;
+    ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS context TEXT;
     CREATE TABLE IF NOT EXISTS credit_scripts (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL,

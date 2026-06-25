@@ -51,52 +51,53 @@ export default function VideoAudit() {
   const [audit, setAudit] = useState(null);
   const [code, setCode] = useState("");
   const [showCode, setShowCode] = useState(false);
+  const [showSample, setShowSample] = useState(false);
 
   useEffect(() => { if (orderId) refresh(); }, [orderId]);
 
   async function refresh() {
     try {
       const d = await api(`/api/video-audit/${orderId}`);
-      if (!d.paid) return setPhase("needpay");
       if (d.audit_status === "ready" && d.audit) { setAudit(d.audit); return setPhase("ready"); }
       if (d.audit_status === "analyzing") { setPhase("analyzing"); return poll(); }
-      setPhase("upload");
+      if (d.paid) { // จ่ายแล้ว — มีคลิปเก็บไว้แล้ว → เริ่มวิเคราะห์เลย
+        if (d.has_video || d.audit_status === "uploaded") return startAnalysis();
+        return setPhase("upload"); // จ่ายแล้วแต่คลิปหาย (เคสหายาก) → ให้อัปใหม่
+      }
+      return d.has_video ? setPhase("needpay") : setPhase("intro"); // ยังไม่จ่าย: อัปแล้ว→รอจ่าย, ยังไม่อัป→หน้าแนะนำ
     } catch { setPhase("intro"); }
   }
 
-  async function unlock() {
-    if (!email.trim()) { setErr("ใส่อีเมลก่อนนะคะ (ไว้ส่งผลวิเคราะห์)"); return; }
-    setBusy(true); setErr("");
-    try {
-      const c = await api("/api/video-audit/create", { method: "POST", body: { email: email.trim().toLowerCase() } });
-      const pay = await api("/api/create-payment-session", { method: "POST", body: { order_id: c.order_id } });
-      window.location.href = pay.redirect_url;
-    } catch (e) { setErr(e.message); setBusy(false); }
-  }
-
-  async function redeemCode() {
-    if (!email.trim()) { setErr("ใส่อีเมลก่อนนะคะ (ไว้ส่งผลวิเคราะห์)"); return; }
-    if (!code.trim()) { setErr("ใส่โค้ดก่อนนะคะ"); return; }
-    setBusy(true); setErr("");
-    try {
-      const c = await api("/api/video-audit/create", { method: "POST", body: { email: email.trim().toLowerCase() } });
-      const r = await api("/api/apply-code", { method: "POST", body: { order_id: c.order_id, code: code.trim() } });
-      if (r.free) { window.location.href = `/video-audit?order_id=${encodeURIComponent(c.order_id)}`; return; }
-      // โค้ดลด% (ไม่ฟรี) → ไปจ่ายส่วนต่าง
-      const pay = await api("/api/create-payment-session", { method: "POST", body: { order_id: c.order_id } });
-      window.location.href = pay.redirect_url;
-    } catch (e) { setErr(e.message || "โค้ดไม่ถูกต้องค่ะ"); setBusy(false); }
-  }
-
-  async function analyze() {
+  // flow ใหม่: อัปคลิปก่อน → แล้วค่อยไปจ่าย (จ่ายเสร็จ AI ถึงเริ่มวิเคราะห์)
+  async function submitUpload() {
+    setErr("");
     if (!file) { setErr("เลือกคลิปก่อนนะคะ"); return; }
-    if (file.size > 24 * 1024 * 1024) { setErr("คลิปใหญ่เกินไป (เกิน 24MB) — ลองอัปคลิปสั้นกว่า ~1 นาที หรือลดความละเอียดลงนะคะ"); return; }
-    setBusy(true); setErr("");
+    if (file.size > 24 * 1024 * 1024) { setErr("คลิปใหญ่เกินไป (เกิน 24MB) — ลองคลิปสั้นกว่า ~1 นาที หรือลดความละเอียดนะคะ"); return; }
+    if (!email.trim()) { setErr("ใส่อีเมลด้วยนะคะ (ไว้ส่งผลวิเคราะห์)"); return; }
+    setBusy(true);
     try {
+      const c = await api("/api/video-audit/create", { method: "POST", body: { email: email.trim().toLowerCase() } });
       const video = await fileToBase64(file);
-      await api("/api/video-audit/analyze", { method: "POST", body: { order_id: orderId, video, mime: file.type || "video/mp4", context } });
-      setPhase("analyzing"); setBusy(false); poll();
-    } catch (e) { setErr(e.message); setBusy(false); }
+      await api("/api/video-audit/upload", { method: "POST", body: { order_id: c.order_id, video, mime: file.type || "video/mp4", context } });
+      if (showCode && code.trim()) { // มีโค้ด → ลองใช้ก่อน ถ้าฟรีข้ามจ่ายเลย
+        const r = await api("/api/apply-code", { method: "POST", body: { order_id: c.order_id, code: code.trim() } });
+        if (r.free) { window.location.href = `/video-audit?order_id=${encodeURIComponent(c.order_id)}`; return; }
+      }
+      const pay = await api("/api/create-payment-session", { method: "POST", body: { order_id: c.order_id } });
+      window.location.href = pay.redirect_url;
+    } catch (e) { setErr(e.message || "อัปคลิปไม่สำเร็จ ลองใหม่นะคะ"); setBusy(false); }
+  }
+
+  async function payExisting() { // กลับมาหน้าที่อัปคลิปแล้วแต่ยังไม่จ่าย
+    setBusy(true); setErr("");
+    try { const pay = await api("/api/create-payment-session", { method: "POST", body: { order_id: orderId } }); window.location.href = pay.redirect_url; }
+    catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  async function startAnalysis() { // จ่ายแล้ว → สั่ง AI วิเคราะห์คลิปที่เก็บไว้
+    setPhase("analyzing"); setErr("");
+    try { await api("/api/video-audit/analyze", { method: "POST", body: { order_id: orderId } }); poll(); }
+    catch (e) { setErr(e.message || "เริ่มวิเคราะห์ไม่สำเร็จ ลองรีเฟรชนะคะ"); }
   }
 
   function poll() {
@@ -106,7 +107,7 @@ export default function VideoAudit() {
       try {
         const d = await api(`/api/video-audit/${orderId}`);
         if (d.audit_status === "ready" && d.audit) { clearInterval(t); setAudit(d.audit); setPhase("ready"); }
-        else if (d.audit_status === "error") { clearInterval(t); setErr("วิเคราะห์ไม่สำเร็จ ลองอัปคลิปใหม่อีกครั้งนะคะ"); setPhase("upload"); }
+        else if (d.audit_status === "error" || d.audit_status === "uploaded") { clearInterval(t); setErr("วิเคราะห์ไม่สำเร็จ ลองกดวิเคราะห์อีกครั้งนะคะ (คลิปยังอยู่ ไม่ต้องอัปใหม่)"); setPhase("analyzeretry"); }
       } catch {}
       if (n > 75) { clearInterval(t); setErr("ใช้เวลานานผิดปกติ ลองรีเฟรชหน้าดูนะคะ"); }
     }, 4000);
@@ -119,40 +120,66 @@ export default function VideoAudit() {
 
       {phase === "loading" && <div className="card center muted">กำลังโหลด...</div>}
 
-      {(phase === "intro" || phase === "needpay") && <>
-        <p className="sub">ลงคลิปแล้วแต่ <b>คนไม่ดู / ไม่ซื้อ / ไม่กดติดตาม</b>? ส่งคลิปให้ครูพี่คิม (AI) ดูทุกวินาที แล้วบอกตรงๆ ว่าต้องแก้อะไร — Hook 3 วิแรก · ภาพ/แต่งตัว/แสง · น้ำเสียง/จังหวะ · การตัดต่อ · แคปชัน/CTA</p>
-        <div className="card" style={{ background: "#eef7f0", border: "1px dashed #9ed3b0", color: "#1a7f43" }}>
-          👇 <b>นี่คือตัวอย่างผลวิเคราะห์จริงที่คุณจะได้</b> — ของจริงครูพี่คิม (AI) จะดู<b>คลิปของคุณเอง</b> แล้ววิเคราะห์ทีละวินาทีแบบนี้เลย
+      {phase === "intro" && <>
+        <p className="sub">ลงคลิปแล้วแต่ <b>คนไม่ดู / ไม่ซื้อ / ไม่กดติดตาม</b>? ส่งคลิปให้ครูพี่คิม (AI) ดูทุกวินาที แล้วบอกตรงๆ ว่าต้องแก้อะไร</p>
+        <div className="card">
+          <h3 style={{ margin: "0 0 10px" }}>ครูพี่คิม AI ดูให้ครบทุกจุด</h3>
+          {[["🎣", "Hook 3 วิแรก", "เปิดยังไงให้คนหยุดนิ้ว ไม่เลื่อนผ่าน"], ["🎨", "ภาพ / แต่งตัว / แสง", "หน้าสว่างไหม ฉากกลืนตัวรึเปล่า"], ["🎙️", "น้ำเสียง / จังหวะพูด", "พูดเร็วไป? มีจุดเน้นให้จำไหม"], ["✂️", "การตัดต่อ", "คัต/ซูม/ตัวอักษร พอให้ไม่น่าเบื่อไหม"], ["💬", "แคปชัน / ปิดท้าย (CTA)", "ชวนคอมเมนต์/ติดตามรึยัง"]].map(([ic, t, d], i) =>
+            <div key={i} className="row" style={{ gap: 11, alignItems: "flex-start", padding: "8px 0", borderTop: i ? "1px solid var(--border)" : 0 }}>
+              <span style={{ fontSize: 20 }}>{ic}</span><div><div style={{ fontWeight: 700, fontSize: 14 }}>{t}</div><div className="muted" style={{ fontSize: 12.5 }}>{d}</div></div>
+            </div>)}
         </div>
-        <AuditView a={SAMPLE} />
+
+        <div className="center" style={{ margin: "4px 0 8px" }}>
+          <button type="button" onClick={() => setShowSample(s => !s)} style={{ background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>👀 {showSample ? "ซ่อนตัวอย่าง" : "ดูตัวอย่างผลวิเคราะห์จริง"}</button>
+        </div>
+        {showSample && <><div className="card" style={{ background: "#eef7f0", border: "1px dashed #9ed3b0", color: "#1a7f43" }}>👇 นี่คือ<b>ตัวอย่าง</b> — ของจริงครูพี่คิม (AI) จะดู<b>คลิปของคุณเอง</b> แล้ววิเคราะห์ทีละวินาทีแบบนี้</div><AuditView a={SAMPLE} /></>}
+
         <div className="card" style={{ border: "1px solid var(--blue)", marginTop: 8 }}>
-          <h3 style={{ margin: "0 0 6px" }}>ปลดล็อกตรวจคลิปของคุณ</h3>
-          <div className="row" style={{ alignItems: "baseline", gap: 8, marginBottom: 12 }}><div style={{ fontSize: 30, fontWeight: 800, color: "var(--blue)" }}>{baht(19900)}</div><span className="muted">/ คลิป</span></div>
-          <div className="field"><label>อีเมล (ไว้ส่งผลวิเคราะห์)</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></div>
-          {err && <div className="msg err">{err}</div>}
-          <button className="btn full" disabled={busy} onClick={unlock}>{busy ? "กำลังดำเนินการ..." : "🔓 ปลดล็อกตรวจคลิป · 199฿"}</button>
-          <p className="center muted" style={{ fontSize: 13, margin: "10px 0" }}>จ่ายครั้งเดียวต่อ 1 คลิป · ชำระผ่านบัตร/PromptPay</p>
-          {!showCode
-            ? <div className="center"><button type="button" onClick={() => { setShowCode(true); setErr(""); }} style={{ background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>มีโค้ดเข้าใช้ฟรี/ส่วนลด? กดที่นี่</button></div>
-            : <div style={{ borderTop: "1px dashed var(--border)", marginTop: 6, paddingTop: 14 }}>
-                <div className="field"><label>โค้ดส่วนลด / โค้ดฟรี</label><input value={code} onChange={e => setCode(e.target.value)} placeholder="เช่น BABETEAM" style={{ textTransform: "uppercase" }} /></div>
-                <button className="btn full" disabled={busy} onClick={redeemCode} style={{ background: "#1a7f43", boxShadow: "0 6px 18px rgba(26,127,67,.28)" }}>{busy ? "กำลังตรวจโค้ด..." : "ใช้โค้ด →"}</button>
-              </div>}
+          <div className="row" style={{ alignItems: "baseline", gap: 8, marginBottom: 4 }}><div style={{ fontSize: 30, fontWeight: 800, color: "var(--blue)" }}>{baht(19900)}</div><span className="muted">/ คลิป · จ่ายครั้งเดียวต่อ 1 คลิป</span></div>
+          <p className="muted" style={{ fontSize: 13, margin: "0 0 12px" }}>อัปคลิปก่อน แล้วค่อยจ่าย — จ่ายเสร็จครูพี่คิมเริ่มตรวจให้ทันที</p>
+          <button className="btn full" onClick={() => { setErr(""); setPhase("upload"); }}>🎬 เริ่มตรวจคลิป →</button>
         </div>
       </>}
 
       {phase === "upload" && <>
-        <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc", color: "#1a7f43", fontWeight: 700 }}>✓ ชำระเงินแล้ว — อัปคลิปที่อยากให้ครูพี่คิมตรวจได้เลยค่ะ</div>
         <div className="card">
+          <h3 style={{ margin: "0 0 4px" }}>📤 อัปคลิปที่อยากให้ครูพี่คิมตรวจ</h3>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>ขั้นที่ 1/2 — อัปคลิป แล้วขั้นต่อไปจ่าย {baht(19900)} เพื่อปลดล็อกผล</p>
           <div className="field"><label>อัปโหลดคลิป (mp4/mov · แนะนำสั้นกว่า 1 นาที · ไม่เกิน ~25MB)</label>
             <input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={e => setFile(e.target.files?.[0] || null)} />
             {file && <div className="hint">เลือกแล้ว: {file.name} ({(file.size / 1048576).toFixed(1)}MB)</div>}
           </div>
+          <div className="field"><label>อีเมล (ไว้ส่งผลวิเคราะห์)</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" /></div>
           <div className="field"><label>อยากให้ครูพี่คิมรู้อะไรเพิ่ม? <span className="muted">(ไม่บังคับ)</span></label><textarea value={context} onChange={e => setContext(e.target.value)} style={{ minHeight: 64 }} placeholder="เช่น คลิปนี้อยากขายคอร์ส / รู้สึกว่าคนดูไม่จบ" /></div>
           {err && <div className="msg err">{err}</div>}
-          <button className="btn full" disabled={busy} onClick={analyze}>{busy ? "กำลังอัปโหลด..." : "ส่งให้ครูพี่คิมตรวจ 🎬"}</button>
+          <button className="btn full" disabled={busy} onClick={submitUpload}>{busy ? "กำลังอัปคลิป..." : `ถัดไป — จ่าย ${baht(19900)} ปลดล็อกผล →`}</button>
+          <p className="center muted" style={{ fontSize: 13, margin: "10px 0 0" }}>ชำระผ่านบัตร/PromptPay · คลิปจะถูกตรวจหลังจ่ายเสร็จ</p>
+          {!showCode
+            ? <div className="center" style={{ marginTop: 8 }}><button type="button" onClick={() => { setShowCode(true); setErr(""); }} style={{ background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>มีโค้ดเข้าใช้ฟรี/ส่วนลด? กดที่นี่</button></div>
+            : <div style={{ borderTop: "1px dashed var(--border)", marginTop: 10, paddingTop: 12 }}>
+                <div className="field" style={{ marginBottom: 0 }}><label>โค้ดส่วนลด / โค้ดฟรี</label><input value={code} onChange={e => setCode(e.target.value)} placeholder="เช่น BABETEAM" style={{ textTransform: "uppercase" }} /></div>
+                <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>ใส่โค้ดไว้ แล้วกดปุ่มด้านบนได้เลย — ถ้าโค้ดฟรีจะข้ามจ่าย</p>
+              </div>}
         </div>
       </>}
+
+      {phase === "needpay" && <>
+        <div className="card" style={{ background: "#eef7f0", border: "1px solid #bfe3cc", color: "#1a7f43", fontWeight: 700 }}>✓ อัปคลิปเรียบร้อย — จ่ายเพื่อให้ครูพี่คิมเริ่มตรวจได้เลยค่ะ</div>
+        <div className="card" style={{ border: "1px solid var(--blue)" }}>
+          <div className="row" style={{ alignItems: "baseline", gap: 8, marginBottom: 12 }}><div style={{ fontSize: 30, fontWeight: 800, color: "var(--blue)" }}>{baht(19900)}</div><span className="muted">/ คลิป</span></div>
+          {err && <div className="msg err">{err}</div>}
+          <button className="btn full" disabled={busy} onClick={payExisting}>{busy ? "กำลังดำเนินการ..." : `🔓 จ่าย ${baht(19900)} · ปลดล็อกผล`}</button>
+          <p className="center muted" style={{ fontSize: 13, margin: "10px 0 0" }}>ชำระผ่านบัตร/PromptPay</p>
+        </div>
+      </>}
+
+      {phase === "analyzeretry" && <div className="card center" style={{ padding: "30px 20px" }}>
+        <div style={{ fontSize: 36 }}>😅</div>
+        <h3 style={{ margin: "10px 0 6px" }}>ขออภัยค่ะ วิเคราะห์ไม่สำเร็จ</h3>
+        {err && <p className="muted" style={{ fontSize: 14 }}>{err}</p>}
+        <button className="btn" style={{ marginTop: 12 }} onClick={startAnalysis}>🎬 ลองวิเคราะห์อีกครั้ง</button>
+      </div>}
 
       {phase === "analyzing" && <div className="card center" style={{ padding: "40px 20px" }}>
         <div style={{ fontSize: 40 }}>🎬</div>

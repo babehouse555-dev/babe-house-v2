@@ -282,11 +282,26 @@ app.post("/api/video-audit/create", async (req, res) => {
   } catch (err) { console.error("video create", err); res.status(500).json({ ok: false, error: "VIDEO_CREATE_FAILED", message: err.message }); }
 });
 
+// เก็บคลิปไว้ "ก่อนจ่ายเงิน" (flow ใหม่: อัปคลิป → จ่าย → วิเคราะห์) — ยังไม่เรียก AI จนกว่าจะจ่าย
+app.post("/api/video-audit/upload", async (req, res) => {
+  try {
+    const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+    const video = String(req.body?.video || ""); const mime = String(req.body?.mime || "video/mp4"); const context = String(req.body?.context || "").slice(0, 800);
+    if (!video) return res.status(400).json({ ok: false, error: "NO_VIDEO", message: "ยังไม่ได้แนบคลิปค่ะ" });
+    if (video.length > 36 * 1024 * 1024) return res.status(413).json({ ok: false, error: "TOO_LARGE", message: "คลิปใหญ่เกินไปค่ะ (ลองสั้นกว่า ~1 นาที)" });
+    const existing = await one(`SELECT audit_id, status FROM video_audits WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.order_id]);
+    if (existing && ["analyzing", "ready"].includes(existing.status)) return res.json({ ok: true, status: existing.status }); // วิเคราะห์ไปแล้ว ไม่ทับ
+    if (existing) await run(`UPDATE video_audits SET video_data=$1, video_mime=$2, context=$3, status='uploaded', error=NULL WHERE audit_id=$4`, [video, mime, context, existing.audit_id]);
+    else await run(`INSERT INTO video_audits (audit_id,order_id,email,status,video_data,video_mime,context) VALUES ($1,$2,$3,'uploaded',$4,$5,$6)`, [uid("va"), o.order_id, o.email || null, video, mime, context]);
+    res.json({ ok: true, status: "uploaded" });
+  } catch (err) { console.error("video upload", err); res.status(500).json({ ok: false, error: "VIDEO_UPLOAD_FAILED", message: err.message }); }
+});
+
 app.get("/api/video-audit/:orderId", async (req, res) => {
   const o = await getOrder(req.params.orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   const va = await one(`SELECT * FROM video_audits WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.order_id]);
-  res.json({ ok: true, order_id: o.order_id, payment_status: o.payment_status, paid: ["paid", "mock_paid"].includes(o.payment_status), audit_status: va?.status || null, audit: va?.result_json ? safeJson(va.result_json) : null, error: va?.error || null });
+  res.json({ ok: true, order_id: o.order_id, payment_status: o.payment_status, paid: ["paid", "mock_paid"].includes(o.payment_status), audit_status: va?.status || null, has_video: !!(va && va.video_data), audit: va?.result_json ? safeJson(va.result_json) : null, error: va?.error || null });
 });
 
 app.post("/api/video-audit/analyze", async (req, res) => {
@@ -296,18 +311,23 @@ app.post("/api/video-audit/analyze", async (req, res) => {
     const existing = await one(`SELECT * FROM video_audits WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.order_id]);
     if (existing && existing.status === "ready") return res.json({ ok: true, status: "ready", audit: safeJson(existing.result_json), cached: true });
     if (existing && existing.status === "analyzing") return res.json({ ok: true, status: "analyzing" });
-    const video = String(req.body?.video || ""); const mime = req.body?.mime;
+    // คลิป + บริบท: เอาจาก body (flow เก่า) หรือจากที่อัปเก็บไว้ก่อนจ่าย (flow ใหม่)
+    const video = String(req.body?.video || "") || (existing && existing.video_data) || "";
+    const mime = req.body?.mime || (existing && existing.video_mime) || "video/mp4";
+    const contextRaw = req.body?.context != null ? String(req.body.context) : (existing && existing.context) || "";
     if (!video) return res.status(400).json({ ok: false, error: "NO_VIDEO", message: "ยังไม่ได้แนบวิดีโอค่ะ" });
-    const auditId = uid("va");
-    await run(`INSERT INTO video_audits (audit_id,order_id,email,status) VALUES ($1,$2,$3,'analyzing')`, [auditId, o.order_id, o.email || null]);
+    // มีแถว uploaded อยู่แล้ว → อัปเป็น analyzing (ไม่สร้างแถวใหม่) · ไม่งั้น insert ใหม่
+    const auditId = existing && existing.status === "uploaded" ? existing.audit_id : uid("va");
+    if (existing && existing.status === "uploaded") await run(`UPDATE video_audits SET status='analyzing', error=NULL WHERE audit_id=$1`, [auditId]);
+    else await run(`INSERT INTO video_audits (audit_id,order_id,email,status) VALUES ($1,$2,$3,'analyzing')`, [auditId, o.order_id, o.email || null]);
     res.json({ ok: true, status: "analyzing" });
-    const ctx = `บริบทจากเจ้าของคลิป (ถ้ามี): ${String(req.body?.context || "(ไม่ระบุ)").slice(0, 800)}\nช่วยตรวจคลิปนี้ละเอียดตามสเปก JSON`;
+    const ctx = `บริบทจากเจ้าของคลิป (ถ้ามี): ${(contextRaw || "(ไม่ระบุ)").slice(0, 800)}\nช่วยตรวจคลิปนี้ละเอียดตามสเปก JSON`;
     (async () => {
       try {
         const { audit, model, usage } = await analyzeVideo({ dataUrl: video, mimeType: mime, contextText: ctx });
-        await run(`UPDATE video_audits SET status='ready', result_json=$1 WHERE audit_id=$2`, [JSON.stringify(audit), auditId]);
+        await run(`UPDATE video_audits SET status='ready', result_json=$1, video_data=NULL WHERE audit_id=$2`, [JSON.stringify(audit), auditId]); // เคลียร์คลิปทิ้ง วิเคราะห์เสร็จแล้ว
         if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'video_audit',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
-      } catch (e) { console.error("video analyze bg", e.message); await run(`UPDATE video_audits SET status='error', error=$1 WHERE audit_id=$2`, [String(e.message).slice(0, 300), auditId]); }
+      } catch (e) { console.error("video analyze bg", e.message); await run(`UPDATE video_audits SET status='uploaded', error=$1 WHERE audit_id=$2`, [String(e.message).slice(0, 300), auditId]); } // คงคลิปไว้ให้ retry ได้
     })();
   } catch (err) { console.error("video analyze", err); res.status(500).json({ ok: false, error: "VIDEO_ANALYZE_FAILED", message: err.message }); }
 });
@@ -1267,6 +1287,7 @@ initDb().then(() => {
   setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
+  setInterval(() => run(`UPDATE video_audits SET video_data=NULL WHERE status='uploaded' AND video_data IS NOT NULL AND created_at < now() - interval '24 hours' AND order_id IN (SELECT order_id FROM blueprint_orders WHERE payment_status NOT IN ('paid','mock_paid'))`).catch(e => console.error("va cleanup", e.message)), 3600 * 1000); // ทุก 1 ชม. ลบคลิปที่อัปแต่ไม่จ่ายเกิน 24 ชม.
   setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → เมลแจ้งแอดมิน
   setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

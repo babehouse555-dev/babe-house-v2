@@ -134,21 +134,24 @@ export function ServicesBlock() {
       <span style={{ fontSize: 20, lineHeight: 1.2 }}>🎁</span>
       <div><div style={{ fontWeight: 800, fontSize: 15 }}>ทำเองไม่ไหววันไหน? ให้ Babe House ช่วยได้</div><div className="muted" style={{ fontSize: 12.5 }}>เรียนทำเอง หรือให้ทีมเราทำให้ก็ได้</div></div>
     </div>
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12, marginTop: 14 }}>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px", display: "flex", flexDirection: "column" }}>
         <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
           <span style={{ fontSize: 26 }}>🎓</span>
           <div><div style={{ fontWeight: 800, fontSize: 15 }}>Academy — เรียนตัดต่อเอง</div><div className="muted" style={{ fontSize: 12.5 }}>มีคอนเทนต์แล้วแต่ตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม</div></div>
         </div>
         <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-        <div className="center" style={{ marginBottom: 12 }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>สแกนเพิ่มเพื่อน · {LINE_ACADEMY.id}</div></div>
+        <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>สแกนเพิ่มเพื่อน · {LINE_ACADEMY.id}</div></div>
         <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
       </div>
-      <Link to="/production" style={{ display: "flex", alignItems: "center", gap: 11, border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", textDecoration: "none", color: "var(--ink)" }}>
-        <span style={{ fontSize: 26 }}>🎬</span>
-        <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 15 }}>Production — ให้เราทำให้</div><div className="muted" style={{ fontSize: 12.5 }}>ไม่มีเวลาทำเอง? ทีม Babe House ถ่าย/ตัดต่อ ครบวงจร</div></div>
-        <span style={{ color: "var(--blue)", fontSize: 18 }}>→</span>
-      </Link>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px", display: "flex", flexDirection: "column" }}>
+        <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 26 }}>🎬</span>
+          <div><div style={{ fontWeight: 800, fontSize: 15 }}>Production — ให้เราทำให้</div><div className="muted" style={{ fontSize: 12.5 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House ถ่าย/ตัดต่อให้</div></div>
+        </div>
+        <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
+        <Link to="/production" className="btn full" style={{ margin: "auto 0 0", background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>🎬 ดูผลงาน & ส่งบรีฟ →</Link>
+      </div>
     </div>
   </div>;
 }

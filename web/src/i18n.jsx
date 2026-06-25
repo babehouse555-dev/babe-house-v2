@@ -53,10 +53,15 @@ const DICT = {
 
   // HERO
   hero_badge: { th: "🩵 โปรเปิดตัว — กลุ่มแรกเท่านั้น", en: "🩵 Launch offer — first group only" },
-  hero_title_a: { th: "ทำคอนเทนต์มานาน", en: "Posting content for months" },
-  hero_title_b: { th: "แต่ช่องไม่โตสักที?", en: "but your channel won't grow?" },
-  hero_sub: { th: "ให้ครูพี่คิมอ่าน Insight หลังบ้านของคุณ แล้ววางแผนคอนเทนต์ 30 วัน + สคริปต์และแคปชันพร้อมใช้ — เปลี่ยนคนดูให้กลายเป็นยอดติดตามและยอดขาย", en: "Let Kim read your channel Insights, then build a 30-day content plan + ready-to-use scripts and captions — turning viewers into followers and sales." },
-  hero_for_launch: { th: "สำหรับช่วงเปิดตัวเท่านั้น", en: "Launch period only" },
+  hero_title_a: { th: "ทำคอนเทนต์มานาน", en: "Posting for months," },
+  hero_title_b: { th: "แต่ช่องไม่โตสักที?", en: "but not growing?" },
+  hero_sub: { th: "ครูพี่คิมอ่าน Insight ของคุณ แล้ววางแผนคอนเทนต์ 30 วัน พร้อมสคริปต์และแคปชัน", en: "Kim reads your Insights and builds a 30-day content plan — scripts and captions included." },
+  hero_for_launch: { th: "ราคาโปรเปิดตัว · จ่ายหลังดูสรุปแล้ว", en: "Launch price · pay only after you see the summary" },
+  // พรีวิวเล่ม (ภาพสินค้าใน hero)
+  preview_label: { th: "เล่ม 30 วันของคุณ", en: "Your 30-Day Blueprint" },
+  preview_cal: { th: "📅 ปฏิทินคอนเทนต์ 30 วัน", en: "📅 30-Day Content Calendar" },
+  preview_day: { th: "วันที่ 1 · เปิดเรื่อง", en: "DAY 1 · HOOK" },
+  preview_hook: { th: "“หยุดเลื่อนก่อน — นี่คือเหตุผลที่ยอดวิวคุณนิ่ง…”", en: "“Stop scrolling — here's why your views are stuck…”" },
   hero_nocharge: { th: "🔒 กรอกข้อมูลช่องก่อน · ดูสรุปแล้วค่อยจ่าย — กดแล้วยังไม่ตัดเงิน", en: "🔒 Fill in your channel first · see the summary, then pay — you won't be charged yet" },
   hero_returning: { th: "นักเรียนเก่า? เข้าสู่ระบบที่นี่ →", en: "Returning user? Log in here →" },
 

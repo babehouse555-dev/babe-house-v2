@@ -36,6 +36,32 @@ function PriceTag({ big = 52, gap = 12 }) {
   );
 }
 
+// ภาพพรีวิวสินค้า — เล่ม Blueprint จำลอง (ปฏิทิน 30 วัน + ตัวอย่างสคริปต์) ทำให้ hero มี "ของให้ดู" แบบเว็บ Apple
+function BlueprintPreview() {
+  const { t } = useI18n();
+  const shades = ["var(--blue)", "#9CC4EF", "#cfe0f5", "#9CC4EF", "#cfe0f5", "var(--blue)", "#bcd6f3"];
+  return (
+    <div style={{ maxWidth: 470, margin: "36px auto 0" }}>
+      <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "20px 20px 0 0", boxShadow: "0 -2px 50px rgba(46,134,222,.16), 0 20px 50px rgba(46,134,222,.10)", padding: "18px 18px 24px", textAlign: "left" }}>
+        <div className="row" style={{ gap: 7, marginBottom: 14, alignItems: "center" }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ff5f57" }} />
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#febc2e" }} />
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#28c840" }} />
+          <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>{t("preview_label")}</span>
+        </div>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>{t("preview_cal")}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 5, marginBottom: 14 }}>
+          {Array.from({ length: 21 }, (_, i) => <div key={i} style={{ aspectRatio: "1", borderRadius: 7, background: shades[i % 7], opacity: i < 7 ? 1 : i < 14 ? 0.7 : 0.45 }} />)}
+        </div>
+        <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 13px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--blue)", marginBottom: 4, letterSpacing: 0.4 }}>{t("preview_day")}</div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.45 }}>{t("preview_hook")}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const labelStyle = { color: "var(--blue)", fontWeight: 700, fontSize: 13, letterSpacing: 1, marginBottom: 10 };
 const h2Style = { fontSize: "clamp(23px,4vw,33px)", marginBottom: 12, lineHeight: 1.25 };
 
@@ -56,20 +82,19 @@ export default function Landing() {
         </div>
       </nav>
 
-      {/* 1. HERO */}
-      <header className="center" style={{ background: "linear-gradient(180deg,var(--soft),#fff)", padding: "52px 0 46px" }}>
+      {/* 1. HERO — สะอาด มีพรีวิวสินค้า (สไตล์ Apple) */}
+      <header className="center" style={{ background: "linear-gradient(180deg,var(--soft),#fff)", padding: "48px 0 0", overflow: "hidden" }}>
         <div className="wrap narrow">
-          <span style={{ display: "inline-block", background: "#fff", border: "1px solid var(--border)", color: "var(--blue)", fontWeight: 700, fontSize: 13, padding: "7px 16px", borderRadius: 30, marginBottom: 20 }}>{t("hero_badge")}</span>
-          <h1 className="serif" style={{ fontSize: "clamp(28px,5.4vw,46px)", lineHeight: 1.2, fontWeight: 800 }}>{t("hero_title_a")}<br /><span style={{ color: "var(--blue)" }}>{t("hero_title_b")}</span></h1>
-          <p className="muted" style={{ fontSize: "clamp(15px,2.2vw,18px)", maxWidth: 600, margin: "16px auto 22px", textWrap: "balance" }}>{t("hero_sub")}</p>
-          <PriceTag big={52} />
-          <p className="muted" style={{ fontSize: 13, margin: "8px 0 24px" }}>{t("hero_for_launch")}</p>
-          <div className="row" style={{ justifyContent: "center" }}>
+          <span style={{ display: "inline-block", background: "#fff", border: "1px solid var(--border)", color: "var(--blue)", fontWeight: 600, fontSize: 13, padding: "6px 15px", borderRadius: 30, marginBottom: 20 }}>{t("hero_badge")}</span>
+          <h1 className="serif" style={{ fontSize: "clamp(30px,5.6vw,48px)", lineHeight: 1.1, fontWeight: 800 }}>{t("hero_title_a")}<br /><span style={{ color: "var(--blue)" }}>{t("hero_title_b")}</span></h1>
+          <p className="muted" style={{ fontSize: "clamp(15px,2.1vw,18px)", maxWidth: 460, margin: "16px auto 24px", textWrap: "balance", lineHeight: 1.5 }}>{t("hero_sub")}</p>
+          <div className="row" style={{ justifyContent: "center", alignItems: "center", gap: 18 }}>
             <Link className="btn" to="/form">{t("cta_start")}</Link>
-            <Link className="btn ghost" to="/dashboard?demo=1">{t("cta_see_demo")}</Link>
+            <Link to="/dashboard?demo=1" className="link" style={{ fontWeight: 600, fontSize: 15.5 }}>{t("cta_see_demo")} →</Link>
           </div>
-          <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>{t("hero_nocharge")}</p>
-          <p style={{ marginTop: 8, fontSize: 13 }}><Link to="/account" className="link">{t("hero_returning")}</Link></p>
+          <p className="muted" style={{ fontSize: 13.5, margin: "14px 0 2px" }}><b style={{ color: "var(--ink)" }}>{PROMO}</b> <span style={{ textDecoration: "line-through", opacity: .6 }}>{FULL}</span> · {t("hero_for_launch")}</p>
+          <p style={{ marginTop: 10, fontSize: 13 }}><Link to="/account" className="link">{t("hero_returning")}</Link></p>
+          <BlueprintPreview />
         </div>
       </header>
 

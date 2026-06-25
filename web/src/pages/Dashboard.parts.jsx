@@ -9,12 +9,27 @@ const ACADEMY_COURSES = ["📱 All in Your Phone — ตัดต่อในม
 
 // ⚡ เพิ่มสคริปต์เดี่ยว (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) — ใช้ 1 เครดิต/สคริปต์
 const SL = { HOOK: ["เปิดให้สะดุด", "#2E86DE"], BODY: ["เนื้อหา", "#1a7f43"], CTA: ["ปิดท้าย", "#b8860b"] };
+const copyTxt = (t) => navigator.clipboard?.writeText(t);
+function ScriptBlock({ s }) { // แสดงสคริปต์ 1 อัน (ใช้ทั้งอันที่เพิ่งสร้าง + ประวัติ)
+  if (!s) return null;
+  return <>
+    <div className="between"><div style={{ fontWeight: 800, fontSize: 15 }}>{s.title || "สคริปต์"}</div><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13 }} onClick={() => copyTxt([...(s.beats || []).map(b => b.say), s.cap].filter(Boolean).join("\n\n"))}>คัดลอก 📋</button></div>
+    {(s.beats || []).map((b, i) => <div key={i} style={{ marginTop: 10 }}>
+      <span style={{ background: (SL[b.s] || ["", "#888"])[1], color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 10 }}>{(SL[b.s] || [b.s])[0]}</span>
+      <div style={{ fontSize: 14, lineHeight: 1.6, marginTop: 5 }}>{b.say}</div>
+      {b.vis && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🎬 {b.vis}</div>}
+    </div>)}
+    {s.cap && <div style={{ marginTop: 12, fontSize: 13.5, background: "#fff", borderRadius: 8, padding: "10px 12px" }}><b>แคปชั่น:</b> {s.cap}</div>}
+    {s.tip && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>💡 {s.tip}</div>}
+  </>;
+}
 export function AddScript({ channel, demo }) {
   const [credits, setCredits] = useState(null);
   const [open, setOpen] = useState(false);
   const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
-  useEffect(() => { if (demo) { setCredits(3); return; } api("/api/me/credits", { token: session.token }).then(d => setCredits(d.credits)).catch(() => setCredits(0)); }, []);
+  const [history, setHistory] = useState([]), [openId, setOpenId] = useState(null);
+  useEffect(() => { if (demo) { setCredits(3); return; } api("/api/me/credits", { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0)); }, []);
   async function gen() {
     setErr(""); if (!brief.trim() && ![...files].length) { setErr("ใส่บรีฟงาน หรือแนบไฟล์บรีฟก่อนนะคะ"); return; }
     if (demo) { setErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเขียนสคริปต์งานนี้ให้ทันที 🩵"); return; }
@@ -23,12 +38,13 @@ export function AddScript({ channel, demo }) {
       const brief_files = [...files].length ? await filesToBase64([...files], 3) : [];
       const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, brief, sponsor, brief_files } });
       setScript(d.script); setCredits(d.credits);
+      setHistory(h => [{ id: "new_" + Date.now(), script: d.script, sponsor, brief, created_at: new Date().toISOString() }, ...h]);
+      setBrief(""); setSponsor(""); setFiles([]);
     } catch (e) { setErr(e.message || "สร้างไม่สำเร็จ"); } finally { setBusy(false); }
   }
-  const copy = (t) => navigator.clipboard?.writeText(t);
   return <div className="card" style={{ borderTop: "4px solid #9A8458", margin: "24px 0 0" }}>
     <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
-      <div><div style={{ fontWeight: 800, fontSize: 16 }}>⚡ เพิ่มสคริปต์ (งานสปอนเซอร์/ด่วน)</div><div className="muted" style={{ fontSize: 12.5 }}>งานนอกแผน 30 วัน — เขียนตามบรีฟ ตรงสไตล์ช่องนี้</div></div>
+      <div><div style={{ fontWeight: 800, fontSize: 16 }}>⚡ เพิ่มสคริปต์ (งานสปอนเซอร์/ด่วน)</div><div className="muted" style={{ fontSize: 12.5 }}>งานนอกแผน 30 วัน — เขียนตามบรีฟ ตรงสไตล์ช่องนี้ · เก็บไว้ในนี้ ไม่หาย</div></div>
       <span style={{ background: credits > 0 ? "#e8f5ee" : "#fdeaea", color: credits > 0 ? "#1a7f43" : "#b3261e", fontWeight: 800, fontSize: 13, padding: "5px 12px", borderRadius: 20 }}>เครดิต: {credits == null ? "…" : credits}</span>
     </div>
     {!open && <button onClick={() => setOpen(true)} className="btn full" style={{ marginTop: 12, background: "#9A8458" }}>+ เขียนสคริปต์งานใหม่</button>}
@@ -46,15 +62,17 @@ export function AddScript({ channel, demo }) {
       </div>
       {credits < 1 && credits != null && <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 10, fontSize: 13 }}>เครดิตหมดแล้วค่ะ — ปุ่มซื้อแพ็กเครดิตกำลังมาเร็วๆ นี้ (ระหว่างนี้ทักทีมเติมให้ได้)</div>}
     </div>}
-    {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}>
-      <div className="between"><div style={{ fontWeight: 800, fontSize: 15 }}>{script.title || "สคริปต์ใหม่"}</div><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13 }} onClick={() => copy([...(script.beats || []).map(b => b.say), script.cap].filter(Boolean).join("\n\n"))}>คัดลอกทั้งหมด 📋</button></div>
-      {(script.beats || []).map((b, i) => <div key={i} style={{ marginTop: 10 }}>
-        <span style={{ background: (SL[b.s] || ["", "#888"])[1], color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 10 }}>{(SL[b.s] || [b.s])[0]}</span>
-        <div style={{ fontSize: 14, lineHeight: 1.6, marginTop: 5 }}>{b.say}</div>
-        {b.vis && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🎬 {b.vis}</div>}
+    {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}><div style={{ fontSize: 11.5, fontWeight: 700, color: "#1a7f43", marginBottom: 6 }}>✓ สร้างแล้ว · เก็บไว้ด้านล่าง</div><ScriptBlock s={script} /></div>}
+
+    {history.length > 0 && <div style={{ marginTop: 16 }}>
+      <div className="muted" style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📁 สคริปต์ที่สร้างไว้ ({history.length}) — กดเพื่อเปิด</div>
+      {history.map(it => <div key={it.id} className="card" style={{ margin: "0 0 8px", padding: "12px 14px" }}>
+        <button onClick={() => setOpenId(openId === it.id ? null : it.id)} style={{ width: "100%", background: "none", border: 0, cursor: "pointer", textAlign: "left", padding: 0, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <span><span style={{ fontWeight: 700, fontSize: 14 }}>{(it.script && it.script.title) || "สคริปต์"}</span>{it.sponsor && <span style={{ marginLeft: 8, fontSize: 11, background: "#ECEAF6", color: "#6E63A6", borderRadius: 10, padding: "2px 8px", fontWeight: 700 }}>🤝 {it.sponsor}</span>}<div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{String(it.created_at || "").slice(0, 10)}</div></span>
+          <span style={{ color: "var(--blue)", fontSize: 13, flexShrink: 0 }}>{openId === it.id ? "▲ ปิด" : "▼ เปิด"}</span>
+        </button>
+        {openId === it.id && <div style={{ marginTop: 12 }}><ScriptBlock s={it.script} /></div>}
       </div>)}
-      {script.cap && <div style={{ marginTop: 12, fontSize: 13.5, background: "#fff", borderRadius: 8, padding: "10px 12px" }}><b>แคปชั่น:</b> {script.cap}</div>}
-      {script.tip && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>💡 {script.tip}</div>}
     </div>}
   </div>;
 }

@@ -127,32 +127,27 @@ export function ToolsAndServices({ channel, demo }) {
   </div>;
 }
 
-// 🎁 บริการ Babe House (คนทำให้/เรียน) — เห็นตลอดเป็นแถบบางๆ "ทำเองไม่ไหววันไหน ให้เราช่วย"
+// 🎁 บริการ Babe House (คนทำให้/เรียน) — เห็นตลอด "ทำเองไม่ไหววันไหน ให้เราช่วย" · QR โชว์เลย เลื่อนมาสแกนได้ทันที
 export function ServicesBlock() {
-  const [aca, setAca] = useState(false);
-  const rowSt = { display: "flex", alignItems: "center", gap: 11, border: "1px solid var(--border)", borderRadius: 12, padding: "12px 13px", textDecoration: "none", color: "var(--ink)" };
   return <div className="card" style={{ borderTop: "4px solid var(--blue)", marginTop: 16 }}>
     <div className="row" style={{ gap: 9, alignItems: "flex-start" }}>
       <span style={{ fontSize: 20, lineHeight: 1.2 }}>🎁</span>
       <div><div style={{ fontWeight: 800, fontSize: 15 }}>ทำเองไม่ไหววันไหน? ให้ Babe House ช่วยได้</div><div className="muted" style={{ fontSize: 12.5 }}>เรียนทำเอง หรือให้ทีมเราทำให้ก็ได้</div></div>
     </div>
-    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 13 }}>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <button onClick={() => setAca(a => !a)} style={{ ...rowSt, border: 0, borderRadius: 0, width: "100%", cursor: "pointer", background: "none" }}>
-          <span style={{ fontSize: 22 }}>🎓</span>
-          <div style={{ flex: 1, textAlign: "left" }}><div style={{ fontWeight: 700, fontSize: 13.5 }}>Academy — เรียนทำเอง</div><div className="muted" style={{ fontSize: 11.5 }}>คอร์สตัดต่อ / ออกแบบ กับครูพี่คิม</div></div>
-          <span style={{ color: "var(--blue)", fontSize: 13 }}>{aca ? "▲" : "▼"}</span>
-        </button>
-        {aca && <div style={{ padding: "0 13px 13px" }}>
-          <ul style={{ paddingLeft: 18, fontSize: 13, margin: "0 0 10px" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-          <div className="center" style={{ marginBottom: 10 }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={130} height={130} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 12.5, marginTop: 5, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
-          <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
-        </div>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px" }}>
+        <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 26 }}>🎓</span>
+          <div><div style={{ fontWeight: 800, fontSize: 15 }}>Academy — เรียนตัดต่อเอง</div><div className="muted" style={{ fontSize: 12.5 }}>มีคอนเทนต์แล้วแต่ตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม</div></div>
+        </div>
+        <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
+        <div className="center" style={{ marginBottom: 12 }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>สแกนเพิ่มเพื่อน · {LINE_ACADEMY.id}</div></div>
+        <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
       </div>
-      <Link to="/production" style={rowSt}>
-        <span style={{ fontSize: 22 }}>🎬</span>
-        <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 13.5 }}>Production — ให้เราทำให้</div><div className="muted" style={{ fontSize: 11.5 }}>ทีมถ่าย / ตัดต่อ ครบวงจร</div></div>
-        <span style={{ color: "var(--blue)", fontSize: 16 }}>→</span>
+      <Link to="/production" style={{ display: "flex", alignItems: "center", gap: 11, border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", textDecoration: "none", color: "var(--ink)" }}>
+        <span style={{ fontSize: 26 }}>🎬</span>
+        <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 15 }}>Production — ให้เราทำให้</div><div className="muted" style={{ fontSize: 12.5 }}>ไม่มีเวลาทำเอง? ทีม Babe House ถ่าย/ตัดต่อ ครบวงจร</div></div>
+        <span style={{ color: "var(--blue)", fontSize: 18 }}>→</span>
       </Link>
     </div>
   </div>;

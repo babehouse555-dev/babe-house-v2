@@ -308,6 +308,24 @@ export async function generateContent(parsed, analysis) {
   return { content: { calendar: dedupePerDay(best.calendar, false), scripts: dedupePerDay(best.scripts, true) }, model: bestModel, usage: usageOf(bestResp) };
 }
 
+// ===== สคริปต์เดี่ยว on-demand (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) — ใช้โปรไฟล์ช่องเดิม + บรีฟใหม่ =====
+const SINGLE_PROMPT = `คุณคือ "ครูพี่คิม" เขียนสคริปต์คลิป "1 อัน" สำหรับงานเฉพาะกิจที่เจ้าของช่องสั่ง (เช่น งานสปอนเซอร์/คอนเทนต์ด่วน) — อิงตัวตน/น้ำเสียง/กลุ่มลูกค้าของช่องนี้ + บรีฟงานที่ให้มา
+⚠️ บทพูด (beats.say) = เจ้าของช่องพูดเองหน้ากล้องในน้ำเสียงแบรนด์เขา (บุคคลที่ 1) — ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ยกเว้นเจ้าของช่องตั้ง self_term="คิม")
+กฎ: 1.ตอบ JSON object ล้วน 2.บทพูดต้องเนียนกับงาน/สปอนเซอร์ในบรีฟ + ตรงสไตล์ช่อง 3.🗣️ ภาษาบ้านๆ ห้ามศัพท์การตลาด/อังกฤษในบทพูด 4.HOOK เปิดด้วยปม/เรื่องจริงใน 3 วิแรก, BODY เล่าเต็มมีจังหวะ (ถ้าเป็นงานสปอนเซอร์ ต้องเล่าถึงแบรนด์/สินค้าให้เนียนน่าเชื่อ ไม่แข็ง), CTA ปิดด้วยคำเชิญ/คำถามปลายเปิด · say รวม ~150–220 คำ
+ส่ง JSON: { "title": string(หัวข้อคลิปสั้นๆ), "g": "Awareness"|"Conversion"|"Branding", "beats": [ {"ts":string,"s":"HOOK"|"BODY"|"CTA","say":string,"ost":string,"vis":string} x3-4 เริ่มHOOK จบCTA ], "cap": string(แคปชั่น+แฮชแท็ก), "tip": string(ทิปถ่าย/โพสต์) }`;
+export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
+  const a = analysis || {};
+  if (!ai) return { script: { title: "สคริปต์ (ตัวอย่าง)", g: "Awareness", beats: [{ ts: "0:00", s: "HOOK", say: brief ? `วันนี้มาเล่าเรื่อง ${String(brief).slice(0, 40)}...` : "วันนี้มีเรื่องมาเล่า", ost: "หยุดดูก่อน", vis: "พูดหน้ากล้อง" }], cap: "#BabeHouse", tip: "ถ่ายในที่แสงสวย" }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
+  const ctx = `บทวิเคราะห์ช่อง (แกนตัวตน/น้ำเสียง):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, audience_summary: a.audience_summary, snapshot: a.snapshot, kim_insight: a.kim_insight, avatar: a.modules?.avatar })}`;
+  const job = `\n\n🎯 บรีฟงานชิ้นนี้ (เขียนสคริปต์ 1 คลิปสำหรับงานนี้โดยเฉพาะ):\n${brief || "(ไม่ระบุ — ใช้แนวช่องเป็นหลัก)"}${opts.sponsor ? `\nสปอนเซอร์/แบรนด์: ${opts.sponsor} (ทำให้เนียนเข้ากับช่อง)` : ""}`;
+  const parts = [{ text: buildUserText(parsed) + `\n\n${ctx}${job}\n\nสร้าง JSON สคริปต์ 1 อันตามสเปก` }];
+  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: SINGLE_PROMPT, responseMimeType: "application/json", maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
+  const raw = JSON.parse(resp.text);
+  const one = raw.script || raw;
+  const clean = sanitizeScripts(deepJargon({ scripts: [one] }), usesKim(parsed));
+  return { script: clean.scripts[0], model, usage: usageOf(resp) };
+}
+
 export function buildFallbackBlueprint(parsed) {
   const fr = parsed.form_responses, account = parsed.instagram_account, goal = fr.monthly_goal, business = fr.business_type;
   const MO = ["January","February","March","April","May","June","July","August","September","October","November","December"];

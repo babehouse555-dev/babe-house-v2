@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -597,6 +597,51 @@ app.get("/api/me/blueprints", async (req, res) => {
   const pendRows = await q(`SELECT order_id, billing_cycle, created_at, COALESCE(generation_status,'pending') gs FROM blueprint_orders WHERE email=$1 AND payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' ORDER BY created_at DESC`, [normEmail(email)]);
   const pending = pendRows.map(r => ({ order_id: r.order_id, billing_cycle: r.billing_cycle, created_at: r.created_at, status: r.gs === "error" ? "error" : "generating" }));
   res.json({ ok: true, email, count: months.length, months, channels, pending });
+});
+// ===== เครดิต: สร้างสคริปต์เดี่ยว on-demand (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) =====
+app.get("/api/me/credits", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const c = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
+  const scripts = await q(`SELECT id, channel, sponsor, brief, script_json, created_at FROM credit_scripts WHERE lower(email)=lower($1) ORDER BY created_at DESC LIMIT 50`, [email]).catch(() => []);
+  res.json({ ok: true, credits: (c && c.credits) || 0, scripts: scripts.map(s => ({ id: s.id, channel: s.channel, sponsor: s.sponsor, brief: s.brief, script: safeJson(s.script_json), created_at: s.created_at })) });
+});
+app.post("/api/credits/generate-script", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const channel = String(req.body?.channel || "").trim();
+  const brief = String(req.body?.brief || "").trim().slice(0, 2000);
+  const sponsor = String(req.body?.sponsor || "").trim().slice(0, 120);
+  if (!brief) return res.status(400).json({ ok: false, error: "NO_BRIEF", message: "ใส่บรีฟงานก่อนนะคะ" });
+  const cust = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
+  if (!cust || (cust.credits || 0) < 1) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตไม่พอ — ซื้อแพ็กเครดิตก่อนนะคะ 🩵" });
+  // ดึงบทวิเคราะห์ + โปรไฟล์ของช่องนั้นมาเป็นแกน
+  let bp;
+  if (channel) bp = await one(`SELECT b.blueprint_json, r.raw_payload_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND regexp_replace(lower(r.instagram_account),'[@\\s._-]','','g')=regexp_replace(lower($2),'[@\\s._-]','','g') AND b.deleted_at IS NULL ORDER BY b.created_at DESC LIMIT 1`, [email, channel]);
+  if (!bp) bp = await one(`SELECT b.blueprint_json, r.raw_payload_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.deleted_at IS NULL ORDER BY b.created_at DESC LIMIT 1`, [email]);
+  const analysis = safeJson(bp?.blueprint_json) || {};
+  let parsed; try { parsed = GenSchema.parse(normalizePayload(safeJson(bp?.raw_payload_json) || {})); } catch { parsed = { form_responses: {}, instagram_account: channel || "", meta_purchase: { tier: "", billing_cycle: "" } }; }
+  // หักเครดิตแบบ atomic ก่อนเจน
+  const ded = await run(`UPDATE customers SET credits=credits-1 WHERE lower(email)=lower($1) AND credits>=1`, [email]);
+  if (ded.rowCount !== 1) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตไม่พอค่ะ" });
+  try {
+    await acquireGen();
+    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor }); } finally { releaseGen(); }
+    await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json) VALUES ($1,$2,$3,$4,$5,$6)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script)]).catch(() => {});
+    const bal = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
+    res.json({ ok: true, script: result.script, credits: (bal && bal.credits) || 0 });
+  } catch (e) {
+    await run(`UPDATE customers SET credits=credits+1 WHERE lower(email)=lower($1)`, [email]).catch(() => {}); // คืนเครดิตถ้าเจนพลาด
+    console.error("gen-single", e.message);
+    res.status(500).json({ ok: false, error: "GEN_FAILED", message: "สร้างไม่สำเร็จ คืนเครดิตให้แล้ว ลองใหม่นะคะ" });
+  }
+});
+app.post("/api/admin/grant-credits", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = normEmail(req.body?.email); const n = Math.max(1, parseInt(req.body?.amount, 10) || 0);
+  if (!email || !n) return res.status(400).json({ ok: false, error: "INVALID" });
+  await upsertCustomer(email, "");
+  await run(`UPDATE customers SET credits=COALESCE(credits,0)+$1 WHERE lower(email)=lower($2)`, [n, email]);
+  const c = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
+  res.json({ ok: true, email, credits: (c && c.credits) || 0 });
 });
 // ลูกค้าลบเล่มของตัวเอง (soft-delete — ซ่อนจากบัญชี แต่ admin กู้คืนได้ ไม่หายถาวร)
 app.post("/api/me/delete-book", async (req, res) => {

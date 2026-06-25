@@ -7,6 +7,51 @@ const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%4
 const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
 const ACADEMY_COURSES = ["📱 All in Your Phone — ตัดต่อในมือถือ (3,745฿)", "🎬 ตัดต่อ Advance — สายเล่าเรื่อง (5,990฿)", "👑 Workshop ตัวต่อตัว"];
 
+// ⚡ เพิ่มสคริปต์เดี่ยว (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) — ใช้ 1 เครดิต/สคริปต์
+const SL = { HOOK: ["เปิดให้สะดุด", "#2E86DE"], BODY: ["เนื้อหา", "#1a7f43"], CTA: ["ปิดท้าย", "#b8860b"] };
+export function AddScript({ channel, demo }) {
+  const [credits, setCredits] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState("");
+  const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
+  useEffect(() => { if (demo) { setCredits(3); return; } api("/api/me/credits", { token: session.token }).then(d => setCredits(d.credits)).catch(() => setCredits(0)); }, []);
+  async function gen() {
+    setErr(""); if (!brief.trim()) { setErr("ใส่บรีฟงานก่อนนะคะ"); return; }
+    if (demo) { setErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเขียนสคริปต์งานนี้ให้ทันที 🩵"); return; }
+    setBusy(true); setScript(null);
+    try { const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, brief, sponsor } }); setScript(d.script); setCredits(d.credits); }
+    catch (e) { setErr(e.message || "สร้างไม่สำเร็จ"); } finally { setBusy(false); }
+  }
+  const copy = (t) => navigator.clipboard?.writeText(t);
+  return <div className="card" style={{ borderTop: "4px solid #9A8458", margin: "24px 0 0" }}>
+    <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+      <div><div style={{ fontWeight: 800, fontSize: 16 }}>⚡ เพิ่มสคริปต์ (งานสปอนเซอร์/ด่วน)</div><div className="muted" style={{ fontSize: 12.5 }}>งานนอกแผน 30 วัน — เขียนตามบรีฟ ตรงสไตล์ช่องนี้</div></div>
+      <span style={{ background: credits > 0 ? "#e8f5ee" : "#fdeaea", color: credits > 0 ? "#1a7f43" : "#b3261e", fontWeight: 800, fontSize: 13, padding: "5px 12px", borderRadius: 20 }}>เครดิต: {credits == null ? "…" : credits}</span>
+    </div>
+    {!open && <button onClick={() => setOpen(true)} className="btn full" style={{ marginTop: 12, background: "#9A8458" }}>+ เขียนสคริปต์งานใหม่</button>}
+    {open && <div style={{ marginTop: 14 }}>
+      <div className="field"><label>บรีฟงาน / รายละเอียดที่อยากได้ <span style={{ color: "var(--blue)" }}>⭐</span></label><textarea value={brief} onChange={e => setBrief(e.target.value)} style={{ minHeight: 80 }} placeholder="เช่น รีวิวครีมกันแดดแบรนด์ X เน้นว่าไม่เหนียว กันน้ำ ชวนกดลิงก์ในไบโอ / คลิปเกาะเทรนด์...อยากให้พูดถึง..." /></div>
+      <div className="field"><label>ชื่อสปอนเซอร์/แบรนด์ <span className="muted">(ถ้ามี — เก็บไว้นับในรายงาน)</span></label><input value={sponsor} onChange={e => setSponsor(e.target.value)} placeholder="เช่น แบรนด์ X" /></div>
+      {err && <div className="msg err">{err}</div>}
+      <div className="row" style={{ gap: 10 }}>
+        <button className="btn" disabled={busy || credits < 1} onClick={gen} style={{ background: "#9A8458", opacity: (busy || credits < 1) ? .6 : 1 }}>{busy ? "กำลังเขียน..." : "สร้างสคริปต์ (ใช้ 1 เครดิต)"}</button>
+        <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => { setOpen(false); setScript(null); setErr(""); }}>ปิด</button>
+      </div>
+      {credits < 1 && credits != null && <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 10, fontSize: 13 }}>เครดิตหมดแล้วค่ะ — ปุ่มซื้อแพ็กเครดิตกำลังมาเร็วๆ นี้ (ระหว่างนี้ทักทีมเติมให้ได้)</div>}
+    </div>}
+    {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}>
+      <div className="between"><div style={{ fontWeight: 800, fontSize: 15 }}>{script.title || "สคริปต์ใหม่"}</div><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13 }} onClick={() => copy([...(script.beats || []).map(b => b.say), script.cap].filter(Boolean).join("\n\n"))}>คัดลอกทั้งหมด 📋</button></div>
+      {(script.beats || []).map((b, i) => <div key={i} style={{ marginTop: 10 }}>
+        <span style={{ background: (SL[b.s] || ["", "#888"])[1], color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 10 }}>{(SL[b.s] || [b.s])[0]}</span>
+        <div style={{ fontSize: 14, lineHeight: 1.6, marginTop: 5 }}>{b.say}</div>
+        {b.vis && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🎬 {b.vis}</div>}
+      </div>)}
+      {script.cap && <div style={{ marginTop: 12, fontSize: 13.5, background: "#fff", borderRadius: 8, padding: "10px 12px" }}><b>แคปชั่น:</b> {script.cap}</div>}
+      {script.tip && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>💡 {script.tip}</div>}
+    </div>}
+  </div>;
+}
+
 // บล็อกบริการ Babe House (ใช้ทั้งหน้าปฏิทินและมาราธอน)
 export function ServicesBlock() {
   return <>

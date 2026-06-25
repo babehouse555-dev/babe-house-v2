@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
-import { ServicesBlock, ReviewCard, FeedbackCard, ShootingGuide } from "./Dashboard.parts.jsx";
+import { ServicesBlock, ReviewCard, FeedbackCard, ShootingGuide, AddScript } from "./Dashboard.parts.jsx";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
 // แปลงคำศัพท์เทคนิคเป็นไทยบ้านๆ ก่อนโชว์ลูกค้า (ลูกค้างงคำอังกฤษ)
@@ -365,6 +365,7 @@ export default function Dashboard() {
           })()}
 
           {script && <ShootingGuide />}
+          <AddScript channel={bp.instagram_account} demo={demo} />
           <ServicesBlock />
         </>}
 

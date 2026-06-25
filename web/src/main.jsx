@@ -5,6 +5,7 @@ import "./styles.css";
 import { captureRef, ping } from "./api.js";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
+if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);

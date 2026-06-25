@@ -23,9 +23,9 @@ function ScriptBlock({ s }) { // แสดงสคริปต์ 1 อัน (
     {s.tip && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>💡 {s.tip}</div>}
   </>;
 }
-export function AddScript({ channel, demo }) {
+export function AddScript({ channel, demo, startOpen }) {
   const [credits, setCredits] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!startOpen);
   const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
   const [history, setHistory] = useState([]), [openId, setOpenId] = useState(null);
@@ -103,44 +103,59 @@ export function AddScript({ channel, demo }) {
   </div>;
 }
 
-// บล็อกบริการ Babe House (ใช้ทั้งหน้าปฏิทินและมาราธอน)
-export function ServicesBlock() {
-  return <>
-    <Link to="/account" style={{ display: "flex", alignItems: "center", gap: 12, background: "#eef4fb", border: "1px dashed #bcd4ee", borderRadius: 14, padding: "13px 15px", textDecoration: "none", color: "var(--blue-d)", margin: "24px 0 4px" }}>
-      <span style={{ fontSize: 24 }}>📺</span>
-      <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 14 }}>ดูแลช่องอื่นด้วยไหม?</div><div className="muted" style={{ fontSize: 12.5 }}>เพิ่มช่องลูก/ลูกค้า — จัดการทุกช่องในบัญชีเดียว</div></div>
-      <span style={{ background: "var(--blue)", color: "#fff", borderRadius: 20, padding: "6px 13px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>+ เพิ่มช่อง</span>
-    </Link>
-    <h2 className="serif" style={{ fontSize: 20, margin: "26px 0 4px" }}>🎁 บริการของ Babe House</h2>
-    <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>เลือกเส้นทางที่ใช่สำหรับคุณ — อยากเก่งขึ้นเอง · ให้เราทำให้ · หรือให้ AI ช่วยตรวจคลิป</p>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
-      <div className="card" style={{ margin: 0, borderTop: "4px solid var(--blue)", display: "flex", flexDirection: "column" }}>
-        <div style={{ fontSize: 30 }}>🎓</div>
-        <h3 style={{ margin: "6px 0 4px" }}>เรียนตัดต่อเอง</h3>
-        <p className="muted" style={{ fontSize: 13 }}>มีคอนเทนต์อยู่แล้ว แต่ยังตัดต่อไม่เป็น? มาเรียนกับครูพี่คิม — ทำเองได้ทุกคลิป</p>
-        <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-        <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={140} height={140} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
-        <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
-      </div>
-      <div className="card" style={{ margin: 0, borderTop: "4px solid #06C755", display: "flex", flexDirection: "column" }}>
-        <div style={{ fontSize: 30 }}>🎬</div>
-        <h3 style={{ margin: "6px 0 4px" }}>ให้เราทำให้ (Production)</h3>
-        <p className="muted" style={{ fontSize: 13 }}>ไม่มีเวลาทำเอง? ให้ทีม Babe House Production ตัดต่อ/ทำคอนเทนต์ให้ครบวงจร</p>
-        <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎞️ รับตัดต่อคลิป Reels/TikTok</li><li style={{ marginBottom: 3 }}>📸 ผลิตคอนเทนต์ครบวงจร</li><li>🧠 วางแผน + โปรดิวซ์โดยทีมมือโปร</li></ul>
-        <div style={{ margin: "auto 0 0" }}>
-          <Link to="/production" className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>🎬 ดูผลงาน & ส่งบรีฟ →</Link>
-        </div>
-      </div>
-      <div className="card" style={{ margin: 0, borderTop: "4px solid #6b3fa0", display: "flex", flexDirection: "column" }}>
-        <div style={{ fontSize: 30 }}>🤖</div>
-        <h3 style={{ margin: "6px 0 4px" }}>ให้ AI ตรวจคลิป</h3>
-        <p className="muted" style={{ fontSize: 13 }}>ลงคลิปแล้วคนไม่ดู? อัปคลิปให้ครูพี่คิม AI ดูทุกวินาที บอกตรงๆ ว่าต้องแก้อะไร</p>
-        <ul style={{ paddingLeft: 18, fontSize: 13, margin: "10px 0" }}><li style={{ marginBottom: 3 }}>🎣 Hook 3 วิแรก</li><li style={{ marginBottom: 3 }}>🎨 ภาพ/แสง/การตัดต่อ</li><li>🎙️ น้ำเสียง/จังหวะพูด</li></ul>
-        <div style={{ textAlign: "center", margin: "auto 0 12px" }}><span style={{ fontSize: 26, fontWeight: 800, color: "#6b3fa0" }}>199฿</span> <span className="muted" style={{ fontSize: 13 }}>/ คลิป</span></div>
-        <Link to="/video-audit" className="btn full" style={{ background: "#6b3fa0", boxShadow: "0 8px 22px rgba(107,63,160,.28)" }}>ตรวจคลิปเลย →</Link>
+// 🧰 เครื่องมือ (AI ช่วยทำเอง) + 🎁 บริการ (คนทำให้/เรียน) — รวมเป็นโครงเดียว ลดความรก
+// เครื่องมือ = ไทล์เล็ก 4 อัน (กดขยายในที่ หรือพาไปหน้าอื่น) · บริการ = แถบบางเห็นตลอด
+export function ToolsAndServices({ channel, demo }) {
+  const [panel, setPanel] = useState(null); // "script" | "shoot" | null
+  useEffect(() => { if (typeof location !== "undefined" && location.search.includes("topup=ok")) setPanel("script"); }, []); // กลับจากซื้อเครดิต → เปิดแผงสคริปต์เลย
+  const tileSt = (on) => ({ display: "flex", alignItems: "center", gap: 9, border: on ? "1.5px solid #9A8458" : "1px solid var(--border)", background: on ? "#fbf9f3" : "#fff", borderRadius: 12, padding: "11px 13px", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textDecoration: "none", width: "100%", textAlign: "left" });
+  const toggle = (p) => setPanel(panel === p ? null : p);
+  return <div style={{ marginTop: 24 }}>
+    <div className="card" style={{ marginTop: 0 }}>
+      <div style={{ fontWeight: 800, fontSize: 15.5 }}>🧰 เครื่องมือ</div>
+      <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>AI ช่วยทำให้ — ใช้ได้เองทันที</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}>
+        <button style={tileSt(panel === "script")} onClick={() => toggle("script")}><span style={{ fontSize: 19 }}>⚡</span> เพิ่มสคริปต์</button>
+        <Link to="/video-audit" style={tileSt(false)}><span style={{ fontSize: 19 }}>🤖</span> AI ตรวจคลิป</Link>
+        <Link to="/account" style={tileSt(false)}><span style={{ fontSize: 19 }}>📺</span> เพิ่มช่อง</Link>
+        <button style={tileSt(panel === "shoot")} onClick={() => toggle("shoot")}><span style={{ fontSize: 19 }}>🎬</span> ตัวอย่างคลิป</button>
       </div>
     </div>
-  </>;
+    {panel === "script" && <AddScript channel={channel} demo={demo} startOpen />}
+    {panel === "shoot" && <div style={{ marginTop: 14 }}><ShootingGuide startOpen /></div>}
+    <ServicesBlock />
+  </div>;
+}
+
+// 🎁 บริการ Babe House (คนทำให้/เรียน) — เห็นตลอดเป็นแถบบางๆ "ทำเองไม่ไหววันไหน ให้เราช่วย"
+export function ServicesBlock() {
+  const [aca, setAca] = useState(false);
+  const rowSt = { display: "flex", alignItems: "center", gap: 11, border: "1px solid var(--border)", borderRadius: 12, padding: "12px 13px", textDecoration: "none", color: "var(--ink)" };
+  return <div className="card" style={{ borderTop: "4px solid var(--blue)", marginTop: 16 }}>
+    <div className="row" style={{ gap: 9, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 20, lineHeight: 1.2 }}>🎁</span>
+      <div><div style={{ fontWeight: 800, fontSize: 15 }}>ทำเองไม่ไหววันไหน? ให้ Babe House ช่วยได้</div><div className="muted" style={{ fontSize: 12.5 }}>เรียนทำเอง หรือให้ทีมเราทำให้ก็ได้</div></div>
+    </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 13 }}>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <button onClick={() => setAca(a => !a)} style={{ ...rowSt, border: 0, borderRadius: 0, width: "100%", cursor: "pointer", background: "none" }}>
+          <span style={{ fontSize: 22 }}>🎓</span>
+          <div style={{ flex: 1, textAlign: "left" }}><div style={{ fontWeight: 700, fontSize: 13.5 }}>Academy — เรียนทำเอง</div><div className="muted" style={{ fontSize: 11.5 }}>คอร์สตัดต่อ / ออกแบบ กับครูพี่คิม</div></div>
+          <span style={{ color: "var(--blue)", fontSize: 13 }}>{aca ? "▲" : "▼"}</span>
+        </button>
+        {aca && <div style={{ padding: "0 13px 13px" }}>
+          <ul style={{ paddingLeft: 18, fontSize: 13, margin: "0 0 10px" }}>{ACADEMY_COURSES.map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
+          <div className="center" style={{ marginBottom: 10 }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={130} height={130} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 12.5, marginTop: 5, fontWeight: 700 }}>{LINE_ACADEMY.id}</div></div>
+          <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">เพิ่มเพื่อน · เรียนคอร์ส</a>
+        </div>}
+      </div>
+      <Link to="/production" style={rowSt}>
+        <span style={{ fontSize: 22 }}>🎬</span>
+        <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 13.5 }}>Production — ให้เราทำให้</div><div className="muted" style={{ fontSize: 11.5 }}>ทีมถ่าย / ตัดต่อ ครบวงจร</div></div>
+        <span style={{ color: "var(--blue)", fontSize: 16 }}>→</span>
+      </Link>
+    </div>
+  </div>;
 }
 
 // การ์ดให้ลูกค้ารีวิวเล่มของตัวเอง → เก็บไว้โชว์เป็น social proof ตอนเปิดขาย
@@ -238,8 +253,8 @@ const SHOOT_FORMATS = [
     ["💡 ทิป", "น้ำเสียงสำคัญกว่าภาพ เล่าให้มีจังหวะขึ้น-ลง อย่าราบเรียบ"],
   ] },
 ];
-export function ShootingGuide() {
-  const [open, setOpen] = useState(false);
+export function ShootingGuide({ startOpen }) {
+  const [open, setOpen] = useState(!!startOpen);
   if (!open) return <div className="card" style={{ background: "linear-gradient(135deg,#FBF7EE,#F4F9FF)", border: "1px solid #e7dfc5" }}>
     <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
       <div><div style={{ fontWeight: 800, fontSize: 16 }}>🎬 ไม่รู้จะถ่ายคลิปยังไง?</div><div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>ดูคลิปตัวอย่างจริงของ Babe House — สคริปต์เดียวทำได้หลายแบบ</div></div>

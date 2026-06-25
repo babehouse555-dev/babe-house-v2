@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
-import { ServicesBlock, ReviewCard, FeedbackCard, ShootingGuide, AddScript } from "./Dashboard.parts.jsx";
+import { ToolsAndServices, ReviewCard, FeedbackCard } from "./Dashboard.parts.jsx";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
 // แปลงคำศัพท์เทคนิคเป็นไทยบ้านๆ ก่อนโชว์ลูกค้า (ลูกค้างงคำอังกฤษ)
@@ -364,9 +364,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
-          {script && <ShootingGuide />}
-          <AddScript channel={bp.instagram_account} demo={demo} />
-          <ServicesBlock />
+          <ToolsAndServices channel={bp.instagram_account} demo={demo} />
         </>}
 
         {tab === "marathon" && contentReady && (() => {
@@ -402,7 +400,7 @@ export default function Dashboard() {
                 {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
               </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>(โหมดตัวอย่าง — ติ๊กได้เมื่อเป็นเล่มจริง)</p>}
             </div>
-            <ServicesBlock />
+            <ToolsAndServices channel={bp.instagram_account} demo={demo} />
           </>;
         })()}
 

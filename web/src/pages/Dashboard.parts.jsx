@@ -30,7 +30,7 @@ export function AddScript({ channel, demo }) {
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
   const [history, setHistory] = useState([]), [openId, setOpenId] = useState(null);
   const [buying, setBuying] = useState(false), [buyBusy, setBuyBusy] = useState(false);
-  const loadCredits = () => api("/api/me/credits", { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0));
+  const loadCredits = () => api("/api/me/credits" + (channel ? `?channel=${encodeURIComponent(channel)}` : ""), { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0));
   useEffect(() => {
     if (demo) { setCredits(3); return; }
     loadCredits();

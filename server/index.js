@@ -614,7 +614,9 @@ app.get("/api/me/blueprints", async (req, res) => {
 app.get("/api/me/credits", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const c = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
-  const scripts = await q(`SELECT id, channel, sponsor, brief, script_json, created_at FROM credit_scripts WHERE lower(email)=lower($1) ORDER BY created_at DESC LIMIT 50`, [email]).catch(() => []);
+  const channel = String(req.query.channel || "").trim(); // กรองประวัติสคริปต์ให้ตรงช่องที่เปิดอยู่ (กันสคริปต์ข้ามช่องปนกัน)
+  const chF = channel ? ` AND regexp_replace(lower(channel),'[@\\s._-]','','g')=regexp_replace(lower($2),'[@\\s._-]','','g')` : "";
+  const scripts = await q(`SELECT id, channel, sponsor, brief, script_json, created_at FROM credit_scripts WHERE lower(email)=lower($1)${chF} ORDER BY created_at DESC LIMIT 50`, channel ? [email, channel] : [email]).catch(() => []);
   res.json({ ok: true, credits: (c && c.credits) || 0, scripts: scripts.map(s => ({ id: s.id, channel: s.channel, sponsor: s.sponsor, brief: s.brief, script: safeJson(s.script_json), created_at: s.created_at })) });
 });
 app.post("/api/credits/generate-script", async (req, res) => {

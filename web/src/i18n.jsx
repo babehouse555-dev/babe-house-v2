@@ -230,4 +230,48 @@ const DICT = {
   // FOOTER
   footer_make: { th: "สร้าง Blueprint", en: "Create Blueprint" },
   footer_privacy: { th: "นโยบายความเป็นส่วนตัว", en: "Privacy policy" },
+
+  // CHECKOUT
+  co_title: { th: "ชำระเงิน Blueprint Premium", en: "Pay for Blueprint Premium" },
+  co_sub: { th: "เมื่อชำระสำเร็จ ระบบจะเริ่มให้ AI วิเคราะห์และส่งลิงก์ Dashboard ทางอีเมลค่ะ", en: "Once paid, the AI starts analyzing and emails you your Dashboard link." },
+  co_pay_mock: { th: "จำลองชำระสำเร็จ (PromptPay/บัตร)", en: "Simulate successful payment (PromptPay/card)" },
+  co_pay: { th: "ชำระเงิน (PromptPay / บัตรเครดิต)", en: "Pay (PromptPay / credit card)" },
+  co_or_code: { th: "หรือมีโค้ดส่วนลด", en: "or use a discount code" },
+  co_code_ph: { th: "กรอกโค้ด เช่น SAVE30", en: "Enter code, e.g. SAVE30" },
+  co_use_code: { th: "ใช้โค้ด", en: "Apply" },
+  co_code_empty: { th: "กรุณากรอกโค้ด", en: "Please enter a code" },
+  co_code_checking: { th: "กำลังตรวจสอบ...", en: "Checking…" },
+  co_code_ok_pre: { th: "ใช้โค้ดสำเร็จ! ลด", en: "Code applied! " },
+  co_off: { th: "แล้ว", en: "off" },
+
+  // PROCESSING
+  pr_checking: { th: "กำลังตรวจสอบการชำระเงิน", en: "Verifying your payment" },
+  pr_wait: { th: "รอสักครู่ค่ะ", en: "One moment…" },
+  pr_done_title: { th: "ได้รับข้อมูลเรียบร้อยแล้วค่ะ", en: "We've got your details" },
+  pr_done_sub: { th: "ครูพี่คิมกำลังวิเคราะห์ข้อมูลและรูป Insight เพื่อสร้างแผน 30 วันเฉพาะตัว", en: "Kim is analyzing your details and Insights to build your personal 30-day plan." },
+  pr_email_note: { th: "📩 ใช้เวลาไม่เกิน 30 นาที เราจะส่งลิงก์ไปที่อีเมลของคุณ — ปิดหน้านี้ได้เลย หรือรอไว้ ระบบจะเปิดให้อัตโนมัติเมื่อเสร็จ", en: "📩 Within 30 minutes we'll email you the link — you can close this page, or wait and it'll open automatically when ready." },
+  pr_go_account: { th: "ไปที่บัญชีของฉัน", en: "Go to my account" },
+  pr_error_title: { th: "ระบบขัดข้อง", en: "Something went wrong" },
+  pr_back_form: { th: "กลับหน้าแบบฟอร์ม", en: "Back to the form" },
+  pr_err_noorder: { th: "ไม่พบหมายเลขคำสั่งซื้อ", en: "Order not found" },
+  pr_err_unpaid: { th: "ยังไม่พบสถานะชำระเงินสำเร็จ", en: "Payment not confirmed yet" },
+
+  // NOT FOUND
+  nf_title: { th: "ไม่พบหน้านี้ค่ะ 🩵", en: "Page not found 🩵" },
+  nf_sub: { th: "หน้าที่คุณกำลังหาอาจถูกย้ายหรือไม่มีอยู่แล้ว", en: "The page you're looking for may have moved or no longer exists." },
+  back_home: { th: "กลับหน้าแรก", en: "Back to home" },
+  back_home_arrow: { th: "← กลับหน้าแรก", en: "← Back to home" },
+
+  // PRIVACY
+  pv_title: { th: "นโยบายความเป็นส่วนตัว", en: "Privacy policy" },
+  pv_pdpa: { th: "สอดคล้องกับ พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล (PDPA)", en: "Compliant with Thailand's Personal Data Protection Act (PDPA)" },
+  pv_summary: { th: "โดยสรุป: เราเก็บข้อมูลที่คุณกรอกและรูปสถิติ เพื่อให้ AI วิเคราะห์และสร้างแผนคอนเทนต์เฉพาะตัวให้คุณเท่านั้น ไม่ขายข้อมูลให้บุคคลที่สาม", en: "In short: we collect what you enter and your stats screenshots only so the AI can analyze and build your personal content plan. We never sell your data to third parties." },
+  pv_h1: { th: "1. ข้อมูลที่เราเก็บ", en: "1. What we collect" },
+  pv_p1: { th: "อีเมล, บัญชี Instagram/TikTok, ข้อมูลธุรกิจ/เป้าหมาย/ปัญหา, รูปสถิติหลังบ้าน, ข้อมูลการชำระเงิน (ผ่าน Stripe — เราไม่เก็บเลขบัตร)", en: "Email, your Instagram/TikTok handle, business/goals/pain details, Insights screenshots, payment info (via Stripe — we never store card numbers)." },
+  pv_h2: { th: "2. การใช้ข้อมูล", en: "2. How we use it" },
+  pv_p2: { th: "วิเคราะห์สร้างแผนเฉพาะตัว, ติดตามการเติบโต, ส่งลิงก์/แจ้งเตือนทางอีเมล, ปรับปรุงบริการ", en: "To build your personal plan, track growth, email links/notifications, and improve the service." },
+  pv_h3: { th: "3. การประมวลผลด้วย AI", en: "3. AI processing" },
+  pv_p3: { th: "ข้อมูลและรูปถูกส่งไปประมวลผลกับผู้ให้บริการ AI (Google Gemini) เท่าที่จำเป็นต่อการวิเคราะห์", en: "Your data and images are sent to our AI provider (Google Gemini) only as needed for the analysis." },
+  pv_h4: { th: "4. สิทธิของคุณ (PDPA)", en: "4. Your rights (PDPA)" },
+  pv_p4: { th: "ขอเข้าถึง แก้ไข ลบ คัดค้าน หรือถอนความยินยอมได้ทุกเมื่อ ติดต่อ babehouse555@gmail.com", en: "You can request access, correction, deletion, objection, or withdraw consent anytime — contact babehouse555@gmail.com." },
 };

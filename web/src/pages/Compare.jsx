@@ -11,12 +11,13 @@ export default function Compare() {
   const channel = sp.get("channel") || ""; // เทียบการโตเฉพาะช่องนี้ (ถ้ามี)
   const [months, setMonths] = useState(null);
   const [coach, setCoach] = useState("loading");
+  const [sponsors, setSponsors] = useState([]);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!session.token) { nav("/account"); return; }
     api("/api/me/blueprints", { token: session.token }).then(d => setMonths(channel ? (d.months || []).filter(m => String(m.instagram_account || "") === channel) : (d.months || []))).catch(() => { session.clear(); nav("/account"); });
-    api("/api/me/growth-analysis" + (channel ? `?channel=${encodeURIComponent(channel)}` : ""), { token: session.token }).then(d => setCoach(d.analysis || null)).catch(() => setCoach(null));
+    api("/api/me/growth-analysis" + (channel ? `?channel=${encodeURIComponent(channel)}` : ""), { token: session.token }).then(d => { setCoach(d.analysis || null); setSponsors(d.sponsors || []); }).catch(() => setCoach(null));
   }, []);
 
   if (!months) return <div className="wrap narrow page-pad center"><div className="spinner" /><p className="muted">กำลังโหลด...</p></div>;
@@ -56,6 +57,11 @@ export default function Compare() {
         ]);
       }
       rows.push(FULL(""));
+      if (sponsors.length) {
+        rows.push(SEC("🤝 งานสปอนเซอร์รายเดือน", "#ECEAF6"));
+        for (const m of sponsors) rows.push(FULL(`${m.ym}: ${m.total} เจ้า — ${m.brands.map(b => b.name + (b.n > 1 ? ` ×${b.n}` : "")).join(", ")}`));
+        rows.push(FULL(""));
+      }
       for (const [h, arr, bg] of [["📈 โตขึ้นเพราะอะไร", co?.growth_drivers, "#E4F4F3"], ["✅ จุดแข็งของคุณ", co?.strengths, "#E7EDF8"], ["⚠️ จุดที่ต้องระวัง", co?.watchouts, "#F7F4EA"], ["🎯 เดือนนี้/ถัดไปโฟกัส", co?.next_focus, "#ECEAF6"]]) {
         if (!(arr || []).length) continue;
         rows.push(SEC(h, bg));
@@ -117,6 +123,15 @@ export default function Compare() {
           </div>; })}
         </div>
       </>}
+
+      {sponsors.length > 0 && <div className="card" style={{ marginTop: 16, borderTop: "4px solid #6E63A6" }}>
+        <h3 style={{ margin: "0 0 4px" }}>🤝 งานสปอนเซอร์รายเดือน</h3>
+        <p className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>นับจากสคริปต์งานสปอนเซอร์ที่สร้าง — เอาไปโชว์ลูกค้าได้ว่าเดือนนี้รับงานกี่เจ้า</p>
+        {sponsors.map(m => <div key={m.ym} style={{ borderTop: "1px solid var(--border)", padding: "10px 0" }}>
+          <div className="between"><b style={{ fontSize: 14 }}>{m.ym}</b><span style={{ background: "#ECEAF6", color: "#6E63A6", fontWeight: 800, fontSize: 13, padding: "2px 11px", borderRadius: 20 }}>{m.total} เจ้า</span></div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 6 }}>{m.brands.map((b, i) => <span key={i} style={{ fontSize: 12.5, background: "#f4f2f8", borderRadius: 10, padding: "3px 10px" }}>{b.name}{b.n > 1 ? ` ×${b.n}` : ""}</span>)}</div>
+        </div>)}
+      </div>}
 
       {coach === "loading" && <div className="card center muted" style={{ marginTop: 16 }}>ครูพี่คิมกำลังวิเคราะห์การเติบโตของคุณ... 🩵</div>}
       {coach && coach !== "loading" && <div className="card" style={{ marginTop: 16, borderTop: "4px solid #6E63A6" }}>

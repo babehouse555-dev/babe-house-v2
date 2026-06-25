@@ -710,18 +710,27 @@ app.get("/api/me/referral", async (req, res) => {
   const c = await one(`SELECT referral_count FROM customers WHERE email=$1`, [email]);
   res.json({ ok: true, code, count: (c && c.referral_count) || 0, percent: REFERRAL_PERCENT, link: `${appBaseUrl()}/?ref=${encodeURIComponent(code)}` });
 });
+// สรุปงานสปอนเซอร์ต่อเดือน (จาก credit_scripts ที่แท็กสปอนเซอร์) — เอาไปใส่รายงานให้เอเจนซีโชว์ลูกค้า
+async function sponsorSummary(email, channel) {
+  const chF = channel ? ` AND regexp_replace(lower(channel),'[@\\s._-]','','g')=regexp_replace(lower($2),'[@\\s._-]','','g')` : "";
+  const rows = await q(`SELECT to_char(created_at,'YYYY-MM') ym, sponsor sp, COUNT(*) n FROM credit_scripts WHERE lower(email)=lower($1) AND sponsor IS NOT NULL AND sponsor<>''${chF} GROUP BY ym, sponsor ORDER BY ym DESC`, channel ? [email, channel] : [email]).catch(() => []);
+  const byM = new Map();
+  for (const r of rows) { if (!byM.has(r.ym)) byM.set(r.ym, { ym: r.ym, total: 0, brands: [] }); const m = byM.get(r.ym); m.total += Number(r.n); m.brands.push({ name: r.sp, n: Number(r.n) }); }
+  return [...byM.values()];
+}
 app.get("/api/me/growth-analysis", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try {
     const channel = String(req.query.channel || "").trim(); // เทียบการโตแยกตามช่อง
+    const sponsors = await sponsorSummary(email, channel); // งานสปอนเซอร์ (สด ไม่ cache)
     const months = await getCustomerMonths(email, channel || undefined);
-    if (months.length < 1) return res.json({ ok: true, analysis: null, count: 0 });
+    if (months.length < 1) return res.json({ ok: true, analysis: null, count: 0, sponsors });
     const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}`;
     const cached = await one(`SELECT signature, analysis_json, model FROM growth_analyses WHERE email=$1`, [email]);
-    if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, cached: true });
+    if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, sponsors, cached: true });
     const { analysis, model } = await generateGrowthAnalysis(months);
     await run(`INSERT INTO growth_analyses (email,signature,analysis_json,model,created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (email) DO UPDATE SET signature=EXCLUDED.signature,analysis_json=EXCLUDED.analysis_json,model=EXCLUDED.model,created_at=now()`, [email, signature, JSON.stringify(analysis), model]);
-    res.json({ ok: true, analysis, model, count: months.length });
+    res.json({ ok: true, analysis, model, count: months.length, sponsors });
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GROWTH_FAILED", message: err.message }); }
 });
 

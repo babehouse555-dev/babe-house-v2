@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import "./styles.css";
 import { captureRef, ping } from "./api.js";
+import { LangToggle, useI18n } from "./i18n.jsx";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
 if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
@@ -15,13 +16,15 @@ function ScrollToTop() {
 }
 
 function TopBar() {
+  const { t: tb } = useI18n();
   return (
     <div style={{ position: "sticky", top: 0, zIndex: 60, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)" }}>
       <div className="wrap between" style={{ height: 56 }}>
         <Link to="/" style={{ fontWeight: 800, fontSize: 17 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></Link>
-        <div className="row" style={{ gap: 18 }}>
-          <Link to="/" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>หน้าแรก</Link>
-          <Link to="/account" className="link" style={{ fontSize: 14 }}>บัญชีของฉัน</Link>
+        <div className="row" style={{ gap: 16, alignItems: "center" }}>
+          <Link to="/" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>{tb("nav_home")}</Link>
+          <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>
+          <LangToggle />
         </div>
       </div>
     </div>

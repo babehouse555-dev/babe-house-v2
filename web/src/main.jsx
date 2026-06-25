@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import "./styles.css";
@@ -8,7 +8,7 @@ import { captureRef, ping } from "./api.js";
 if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  useLayoutEffect(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, [pathname]); // ก่อนวาดจอ ไม่ให้เห็นกระพริบกลางหน้า
   // ปิงสถานะออนไลน์ทุก 45 วิ ตลอดที่เปิดเว็บอยู่ (ให้หลังบ้านนับคนออนไลน์)
   useEffect(() => { ping(); const t = setInterval(ping, 45000); return () => clearInterval(t); }, []);
   return null;

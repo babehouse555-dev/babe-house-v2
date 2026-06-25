@@ -634,14 +634,18 @@ app.get("/api/me/blueprints", async (req, res) => {
 app.get("/api/me/credits", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const c = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
-  const channel = String(req.query.channel || "").trim(); // กรองประวัติสคริปต์ให้ตรงช่องที่เปิดอยู่ (กันสคริปต์ข้ามช่องปนกัน)
-  const chF = channel ? ` AND regexp_replace(lower(channel),'[@\\s._-]','','g')=regexp_replace(lower($2),'[@\\s._-]','','g')` : "";
-  const scripts = await q(`SELECT id, channel, sponsor, brief, script_json, created_at FROM credit_scripts WHERE lower(email)=lower($1)${chF} ORDER BY created_at DESC LIMIT 50`, channel ? [email, channel] : [email]).catch(() => []);
+  const channel = String(req.query.channel || "").trim(); // กรองประวัติให้ตรงช่อง (กันข้ามช่อง)
+  const cycle = String(req.query.cycle || "").trim();     // + ตรงเล่มเดือนนั้น (ลูกค้ากลับมาดูเดือนไหนเห็นของเดือนนั้น)
+  const params = [email]; let where = "";
+  if (channel) { params.push(channel); where += ` AND regexp_replace(lower(channel),'[@\\s._-]','','g')=regexp_replace(lower($${params.length}),'[@\\s._-]','','g')`; }
+  if (cycle) { params.push(cycle); where += ` AND cycle = $${params.length}`; }
+  const scripts = await q(`SELECT id, channel, sponsor, brief, script_json, created_at FROM credit_scripts WHERE lower(email)=lower($1)${where} ORDER BY created_at DESC LIMIT 50`, params).catch(() => []);
   res.json({ ok: true, credits: (c && c.credits) || 0, scripts: scripts.map(s => ({ id: s.id, channel: s.channel, sponsor: s.sponsor, brief: s.brief, script: safeJson(s.script_json), created_at: s.created_at })) });
 });
 app.post("/api/credits/generate-script", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const channel = String(req.body?.channel || "").trim();
+  const cycle = String(req.body?.cycle || "").trim(); // เล่มเดือนที่สร้างสคริปต์นี้ (ผูกให้โชว์ในเล่มนั้น)
   const brief = String(req.body?.brief || "").trim().slice(0, 2000);
   const sponsor = String(req.body?.sponsor || "").trim().slice(0, 120);
   const briefFiles = (Array.isArray(req.body?.brief_files) ? req.body.brief_files : []).filter(f => typeof f === "string" && /^data:(application\/pdf|image\/)/.test(f)).slice(0, 3);
@@ -660,7 +664,7 @@ app.post("/api/credits/generate-script", async (req, res) => {
   try {
     await acquireGen();
     let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, files: briefFiles }); } finally { releaseGen(); }
-    await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json) VALUES ($1,$2,$3,$4,$5,$6)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script)]).catch(() => {});
+    await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json,cycle) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script), cycle || null]).catch(() => {});
     const bal = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
     res.json({ ok: true, script: result.script, credits: (bal && bal.credits) || 0 });
   } catch (e) {

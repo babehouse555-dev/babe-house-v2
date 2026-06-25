@@ -364,7 +364,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
-          <ToolsAndServices channel={bp.instagram_account} demo={demo} />
+          <ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} />
         </>}
 
         {tab === "marathon" && contentReady && (() => {
@@ -400,7 +400,7 @@ export default function Dashboard() {
                 {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
               </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>(โหมดตัวอย่าง — ติ๊กได้เมื่อเป็นเล่มจริง)</p>}
             </div>
-            <ToolsAndServices channel={bp.instagram_account} demo={demo} />
+            <ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} />
           </>;
         })()}
 

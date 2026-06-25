@@ -23,14 +23,14 @@ function ScriptBlock({ s }) { // แสดงสคริปต์ 1 อัน (
     {s.tip && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>💡 {s.tip}</div>}
   </>;
 }
-export function AddScript({ channel, demo, startOpen }) {
+export function AddScript({ channel, cycle, demo, startOpen }) {
   const [credits, setCredits] = useState(null);
   const [open, setOpen] = useState(!!startOpen);
   const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
   const [history, setHistory] = useState([]), [openId, setOpenId] = useState(null);
   const [buying, setBuying] = useState(false), [buyBusy, setBuyBusy] = useState(false);
-  const loadCredits = () => api("/api/me/credits" + (channel ? `?channel=${encodeURIComponent(channel)}` : ""), { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0));
+  const loadCredits = () => api("/api/me/credits?" + new URLSearchParams({ ...(channel ? { channel } : {}), ...(cycle ? { cycle } : {}) }), { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0));
   useEffect(() => {
     if (demo) { setCredits(3); return; }
     loadCredits();
@@ -50,7 +50,7 @@ export function AddScript({ channel, demo, startOpen }) {
     setBusy(true); setScript(null);
     try {
       const brief_files = [...files].length ? await filesToBase64([...files], 3) : [];
-      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, brief, sponsor, brief_files } });
+      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, cycle, brief, sponsor, brief_files } });
       setScript(d.script); setCredits(d.credits);
       setHistory(h => [{ id: "new_" + Date.now(), script: d.script, sponsor, brief, created_at: new Date().toISOString() }, ...h]);
       setBrief(""); setSponsor(""); setFiles([]);
@@ -105,7 +105,7 @@ export function AddScript({ channel, demo, startOpen }) {
 
 // 🧰 เครื่องมือ (AI ช่วยทำเอง) + 🎁 บริการ (คนทำให้/เรียน) — รวมเป็นโครงเดียว ลดความรก
 // เครื่องมือ = ไทล์เล็ก 4 อัน (กดขยายในที่ หรือพาไปหน้าอื่น) · บริการ = แถบบางเห็นตลอด
-export function ToolsAndServices({ channel, demo }) {
+export function ToolsAndServices({ channel, cycle, demo }) {
   const [panel, setPanel] = useState(null); // "script" | "shoot" | null
   useEffect(() => { if (typeof location !== "undefined" && location.search.includes("topup=ok")) setPanel("script"); }, []); // กลับจากซื้อเครดิต → เปิดแผงสคริปต์เลย
   const tileSt = (on) => ({ display: "flex", alignItems: "center", gap: 9, border: on ? "1.5px solid #9A8458" : "1px solid var(--border)", background: on ? "#fbf9f3" : "#fff", borderRadius: 12, padding: "11px 13px", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textDecoration: "none", width: "100%", textAlign: "left" });
@@ -121,7 +121,7 @@ export function ToolsAndServices({ channel, demo }) {
         <button style={tileSt(panel === "shoot")} onClick={() => toggle("shoot")}><span style={{ fontSize: 19 }}>🎬</span> ตัวอย่างคลิป</button>
       </div>
     </div>
-    {panel === "script" && <AddScript channel={channel} demo={demo} startOpen />}
+    {panel === "script" && <AddScript channel={channel} cycle={cycle} demo={demo} startOpen />}
     {panel === "shoot" && <div style={{ marginTop: 14 }}><ShootingGuide startOpen /></div>}
     <ServicesBlock />
   </div>;

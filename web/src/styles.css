@@ -16,8 +16,9 @@ html[lang="en"] h1,html[lang="en"] h2,html[lang="en"] h3{letter-spacing:-.02em}
 .btn:hover{transform:translateY(-2px)}
 .btn:disabled{opacity:.55;cursor:default;transform:none}
 .btn.ghost{background:#fff;color:var(--blue);box-shadow:none;border:1.5px solid var(--border)}
+.btn.ghost:hover{border-color:var(--blue);transform:translateY(-1px)}
 .btn.full{width:100%;display:block}
-.card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:22px;box-shadow:0 6px 22px rgba(20,40,80,.05);margin-bottom:16px}
+.card{background:#fff;border:1px solid #eef3f9;border-radius:20px;padding:22px;box-shadow:0 6px 28px rgba(46,90,160,.07);margin-bottom:16px}
 .field{margin-bottom:16px}
 label{display:block;font-weight:600;font-size:14px;margin-bottom:8px}
 input,textarea,select{width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:12px;font:inherit;font-size:16px;outline:none;font-family:inherit}

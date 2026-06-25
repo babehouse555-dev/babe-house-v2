@@ -122,7 +122,19 @@ async function markOrderPaid(orderId, provider = "mock", sid = "") {
   // live_mode = จ่ายด้วย Stripe จริง (คีย์ sk_live_) เท่านั้น = เงินเข้าจริง; mock/code/test = false
   const liveMode = provider === "stripe" && String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live_");
   await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4`, [provider, sid || null, liveMode, orderId]);
+  grantCreditsIfCreditOrder(orderId).catch(e => console.error("grant-credits", e.message));
   processReferralReward(orderId).catch(e => console.error("referral", e.message));
+}
+// ออเดอร์ซื้อเครดิต (tier Credits_N) จ่ายแล้ว → เติมเครดิต (idempotent กัน webhook ยิงซ้ำ)
+async function grantCreditsIfCreditOrder(orderId) {
+  const o = await getOrder(orderId);
+  if (!o || !String(o.tier || "").startsWith("Credits")) return;
+  const claim = await run(`UPDATE blueprint_orders SET credits_granted=true WHERE order_id=$1 AND COALESCE(credits_granted,false)=false`, [orderId]);
+  if (claim.rowCount !== 1) return; // เติมไปแล้ว
+  const pl = safeJson(o.order_payload_json) || {};
+  const n = Number(pl.credit_pack) || 0;
+  const email = normEmail(pl.email || o.email);
+  if (n > 0 && email) { await upsertCustomer(email, ""); await run(`UPDATE customers SET credits=COALESCE(credits,0)+$1 WHERE lower(email)=lower($2)`, [n, email]); console.log(`[credits] +${n} → ${email}`); }
 }
 async function getOrCreateReferralCode(email) {
   const e = normEmail(email); if (!e) return null;
@@ -634,6 +646,30 @@ app.post("/api/credits/generate-script", async (req, res) => {
     console.error("gen-single", e.message);
     res.status(500).json({ ok: false, error: "GEN_FAILED", message: "สร้างไม่สำเร็จ คืนเครดิตให้แล้ว ลองใหม่นะคะ" });
   }
+});
+// ซื้อแพ็กเครดิต — สร้างออเดอร์ + ไป Stripe (จ่ายเสร็จ markOrderPaid เติมเครดิตให้)
+const CREDIT_PACKS = { "1": [1, 5000], "10": [10, 45000], "30": [30, 120000] }; // [จำนวนเครดิต, satang]
+app.post("/api/credits/checkout", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const p = CREDIT_PACKS[String(req.body?.pack || "")]; if (!p) return res.status(400).json({ ok: false, error: "BAD_PACK" });
+  const [n, satang] = p;
+  const returnPath = (String(req.body?.return_path || "/account").match(/^\/[\w\-/?=&.%]*$/) ? req.body.return_path : "/account").slice(0, 300);
+  const orderId = uid("ord");
+  await upsertCustomer(email, "");
+  await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10)`,
+    [orderId, "credits_" + Date.now(), "", normEmail(email), "Credits_" + n, currentBillingCycle(), JSON.stringify({ credit_pack: n, email: normEmail(email) }), PROVIDER, satang, `/account`]);
+  try {
+    if (PROVIDER === "stripe") {
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
+      const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
+      const sep = returnPath.includes("?") ? "&" : "?";
+      const s = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang, productName: `Babe House เครดิต ${n} สคริปต์`, successPath: `${returnPath}${sep}topup=ok` });
+      await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [s.provider_session_id, orderId]);
+      return res.json({ ok: true, redirect_url: s.checkout_url, external: true });
+    }
+    await markOrderPaid(orderId, "mock", "mock_paid"); // mock: เติมเลย
+    res.json({ ok: true, redirect_url: returnPath });
+  } catch (err) { console.error("credits/checkout", err); res.status(500).json({ ok: false, error: "CHECKOUT_FAILED", message: err.message }); }
 });
 app.post("/api/admin/grant-credits", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

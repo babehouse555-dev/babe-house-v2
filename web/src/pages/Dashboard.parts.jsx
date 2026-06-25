@@ -29,7 +29,21 @@ export function AddScript({ channel, demo }) {
   const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
   const [history, setHistory] = useState([]), [openId, setOpenId] = useState(null);
-  useEffect(() => { if (demo) { setCredits(3); return; } api("/api/me/credits", { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0)); }, []);
+  const [buying, setBuying] = useState(false), [buyBusy, setBuyBusy] = useState(false);
+  const loadCredits = () => api("/api/me/credits", { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0));
+  useEffect(() => {
+    if (demo) { setCredits(3); return; }
+    loadCredits();
+    if (typeof location !== "undefined" && location.search.includes("topup=ok")) { setOpen(true); const t1 = setTimeout(loadCredits, 2500), t2 = setTimeout(loadCredits, 7000); return () => { clearTimeout(t1); clearTimeout(t2); }; } // เติมเครดิตเสร็จ → รอ webhook แล้วรีเฟรชยอด
+  }, []);
+  async function buyPack(pack) {
+    if (demo) { setErr("เล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วไปหน้าจ่ายเงินซื้อเครดิตได้เลย 🩵"); return; }
+    setBuyBusy(true);
+    try {
+      const d = await api("/api/credits/checkout", { method: "POST", token: session.token, body: { pack, return_path: location.pathname + location.search } });
+      if (d.redirect_url) window.location.href = d.redirect_url;
+    } catch (e) { setErr(e.message || "เปิดหน้าจ่ายเงินไม่สำเร็จ"); setBuyBusy(false); }
+  }
   async function gen() {
     setErr(""); if (!brief.trim() && ![...files].length) { setErr("ใส่บรีฟงาน หรือแนบไฟล์บรีฟก่อนนะคะ"); return; }
     if (demo) { setErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเขียนสคริปต์งานนี้ให้ทันที 🩵"); return; }
@@ -45,8 +59,20 @@ export function AddScript({ channel, demo }) {
   return <div className="card" style={{ borderTop: "4px solid #9A8458", margin: "24px 0 0" }}>
     <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
       <div><div style={{ fontWeight: 800, fontSize: 16 }}>⚡ เพิ่มสคริปต์ (งานสปอนเซอร์/ด่วน)</div><div className="muted" style={{ fontSize: 12.5 }}>งานนอกแผน 30 วัน — เขียนตามบรีฟ ตรงสไตล์ช่องนี้ · เก็บไว้ในนี้ ไม่หาย</div></div>
-      <span style={{ background: credits > 0 ? "#e8f5ee" : "#fdeaea", color: credits > 0 ? "#1a7f43" : "#b3261e", fontWeight: 800, fontSize: 13, padding: "5px 12px", borderRadius: 20 }}>เครดิต: {credits == null ? "…" : credits}</span>
+      <div className="row" style={{ gap: 8, alignItems: "center" }}>
+        <span style={{ background: credits > 0 ? "#e8f5ee" : "#fdeaea", color: credits > 0 ? "#1a7f43" : "#b3261e", fontWeight: 800, fontSize: 13, padding: "5px 12px", borderRadius: 20 }}>เครดิต: {credits == null ? "…" : credits}</span>
+        <button onClick={() => setBuying(b => !b)} className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#9A8458" }}>+ ซื้อเครดิต</button>
+      </div>
     </div>
+    {buying && <div style={{ marginTop: 12, background: "#fbf9f3", border: "1px solid #e7dfc5", borderRadius: 12, padding: "12px 14px" }}>
+      <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>เลือกแพ็กเครดิต (1 เครดิต = 1 สคริปต์)</div>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        {[["1", "1 สคริปต์", "50฿"], ["10", "10 สคริปต์", "450฿ (45/อัน)"], ["30", "30 สคริปต์", "1,200฿ (40/อัน)"]].map(([p, t, price]) =>
+          <button key={p} disabled={buyBusy} onClick={() => buyPack(p)} style={{ flex: "1 1 120px", border: "1.5px solid #9A8458", background: "#fff", borderRadius: 12, padding: "12px 10px", cursor: buyBusy ? "default" : "pointer", opacity: buyBusy ? .6 : 1, textAlign: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#9A8458" }}>{t}</div><div className="muted" style={{ fontSize: 12.5 }}>{price}</div></button>)}
+      </div>
+      <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>{buyBusy ? "กำลังไปหน้าจ่ายเงิน..." : "จ่ายผ่านบัตร/พร้อมเพย์ · เติมเข้าทันทีหลังจ่าย"}</div>
+    </div>}
     {!open && <button onClick={() => setOpen(true)} className="btn full" style={{ marginTop: 12, background: "#9A8458" }}>+ เขียนสคริปต์งานใหม่</button>}
     {open && <div style={{ marginTop: 14 }}>
       <div className="field"><label>บรีฟงาน / รายละเอียดที่อยากได้</label><textarea value={brief} onChange={e => setBrief(e.target.value)} style={{ minHeight: 80 }} placeholder="เช่น รีวิวครีมกันแดดแบรนด์ X เน้นว่าไม่เหนียว กันน้ำ ชวนกดลิงก์ในไบโอ / คลิปเกาะเทรนด์...อยากให้พูดถึง..." /></div>

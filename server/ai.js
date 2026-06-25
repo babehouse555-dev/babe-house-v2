@@ -317,8 +317,15 @@ export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
   const a = analysis || {};
   if (!ai) return { script: { title: "สคริปต์ (ตัวอย่าง)", g: "Awareness", beats: [{ ts: "0:00", s: "HOOK", say: brief ? `วันนี้มาเล่าเรื่อง ${String(brief).slice(0, 40)}...` : "วันนี้มีเรื่องมาเล่า", ost: "หยุดดูก่อน", vis: "พูดหน้ากล้อง" }], cap: "#BabeHouse", tip: "ถ่ายในที่แสงสวย" }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
   const ctx = `บทวิเคราะห์ช่อง (แกนตัวตน/น้ำเสียง):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, audience_summary: a.audience_summary, snapshot: a.snapshot, kim_insight: a.kim_insight, avatar: a.modules?.avatar })}`;
-  const job = `\n\n🎯 บรีฟงานชิ้นนี้ (เขียนสคริปต์ 1 คลิปสำหรับงานนี้โดยเฉพาะ):\n${brief || "(ไม่ระบุ — ใช้แนวช่องเป็นหลัก)"}${opts.sponsor ? `\nสปอนเซอร์/แบรนด์: ${opts.sponsor} (ทำให้เนียนเข้ากับช่อง)` : ""}`;
-  const parts = [{ text: buildUserText(parsed) + `\n\n${ctx}${job}\n\nสร้าง JSON สคริปต์ 1 อันตามสเปก` }];
+  // ไฟล์บรีฟที่แนบ (PDF/รูป) — Gemini อ่านได้โดยตรง
+  const fileParts = [];
+  for (const f of (opts.files || [])) {
+    const m = String(f || "").match(/^data:(application\/pdf|image\/jpeg|image\/png|image\/webp);base64,(.+)$/);
+    if (m) fileParts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+    if (fileParts.length >= 3) break;
+  }
+  const job = `\n\n🎯 บรีฟงานชิ้นนี้ (เขียนสคริปต์ 1 คลิปสำหรับงานนี้โดยเฉพาะ):\n${brief || "(ดูจากไฟล์บรีฟที่แนบ)"}${opts.sponsor ? `\nสปอนเซอร์/แบรนด์: ${opts.sponsor} (ทำให้เนียนเข้ากับช่อง)` : ""}${fileParts.length ? "\n📎 มีไฟล์บรีฟแนบมา (PDF/รูป) — อ่านให้ครบแล้วดึงรายละเอียด/ข้อความหลัก/CTA มาใช้เขียนสคริปต์" : ""}`;
+  const parts = [...fileParts, { text: buildUserText(parsed) + `\n\n${ctx}${job}\n\nสร้าง JSON สคริปต์ 1 อันตามสเปก` }];
   const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: SINGLE_PROMPT, responseMimeType: "application/json", maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
   const raw = JSON.parse(resp.text);
   const one = raw.script || raw;

@@ -610,7 +610,8 @@ app.post("/api/credits/generate-script", async (req, res) => {
   const channel = String(req.body?.channel || "").trim();
   const brief = String(req.body?.brief || "").trim().slice(0, 2000);
   const sponsor = String(req.body?.sponsor || "").trim().slice(0, 120);
-  if (!brief) return res.status(400).json({ ok: false, error: "NO_BRIEF", message: "ใส่บรีฟงานก่อนนะคะ" });
+  const briefFiles = (Array.isArray(req.body?.brief_files) ? req.body.brief_files : []).filter(f => typeof f === "string" && /^data:(application\/pdf|image\/)/.test(f)).slice(0, 3);
+  if (!brief && !briefFiles.length) return res.status(400).json({ ok: false, error: "NO_BRIEF", message: "ใส่บรีฟงาน หรือแนบไฟล์บรีฟก่อนนะคะ" });
   const cust = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
   if (!cust || (cust.credits || 0) < 1) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตไม่พอ — ซื้อแพ็กเครดิตก่อนนะคะ 🩵" });
   // ดึงบทวิเคราะห์ + โปรไฟล์ของช่องนั้นมาเป็นแกน
@@ -624,7 +625,7 @@ app.post("/api/credits/generate-script", async (req, res) => {
   if (ded.rowCount !== 1) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตไม่พอค่ะ" });
   try {
     await acquireGen();
-    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor }); } finally { releaseGen(); }
+    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, files: briefFiles }); } finally { releaseGen(); }
     await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json) VALUES ($1,$2,$3,$4,$5,$6)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script)]).catch(() => {});
     const bal = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
     res.json({ ok: true, script: result.script, credits: (bal && bal.credits) || 0 });

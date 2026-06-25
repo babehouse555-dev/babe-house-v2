@@ -1,7 +1,7 @@
 // ชิ้นส่วนของหน้า Dashboard ที่แยกออกมาให้ไฟล์หลักอ่านง่ายขึ้น (หน้าตาเหมือนเดิมทุกอย่าง)
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, filesToBase64 } from "../api.js";
 
 const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%40babehouse_academy" };
 const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
@@ -12,15 +12,18 @@ const SL = { HOOK: ["เปิดให้สะดุด", "#2E86DE"], BODY: ["
 export function AddScript({ channel, demo }) {
   const [credits, setCredits] = useState(null);
   const [open, setOpen] = useState(false);
-  const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState("");
+  const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
   useEffect(() => { if (demo) { setCredits(3); return; } api("/api/me/credits", { token: session.token }).then(d => setCredits(d.credits)).catch(() => setCredits(0)); }, []);
   async function gen() {
-    setErr(""); if (!brief.trim()) { setErr("ใส่บรีฟงานก่อนนะคะ"); return; }
+    setErr(""); if (!brief.trim() && ![...files].length) { setErr("ใส่บรีฟงาน หรือแนบไฟล์บรีฟก่อนนะคะ"); return; }
     if (demo) { setErr("นี่คือเล่มตัวอย่างค่ะ — ในเล่มจริงกดแล้วครูพี่คิมจะเขียนสคริปต์งานนี้ให้ทันที 🩵"); return; }
     setBusy(true); setScript(null);
-    try { const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, brief, sponsor } }); setScript(d.script); setCredits(d.credits); }
-    catch (e) { setErr(e.message || "สร้างไม่สำเร็จ"); } finally { setBusy(false); }
+    try {
+      const brief_files = [...files].length ? await filesToBase64([...files], 3) : [];
+      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, brief, sponsor, brief_files } });
+      setScript(d.script); setCredits(d.credits);
+    } catch (e) { setErr(e.message || "สร้างไม่สำเร็จ"); } finally { setBusy(false); }
   }
   const copy = (t) => navigator.clipboard?.writeText(t);
   return <div className="card" style={{ borderTop: "4px solid #9A8458", margin: "24px 0 0" }}>
@@ -30,7 +33,11 @@ export function AddScript({ channel, demo }) {
     </div>
     {!open && <button onClick={() => setOpen(true)} className="btn full" style={{ marginTop: 12, background: "#9A8458" }}>+ เขียนสคริปต์งานใหม่</button>}
     {open && <div style={{ marginTop: 14 }}>
-      <div className="field"><label>บรีฟงาน / รายละเอียดที่อยากได้ <span style={{ color: "var(--blue)" }}>⭐</span></label><textarea value={brief} onChange={e => setBrief(e.target.value)} style={{ minHeight: 80 }} placeholder="เช่น รีวิวครีมกันแดดแบรนด์ X เน้นว่าไม่เหนียว กันน้ำ ชวนกดลิงก์ในไบโอ / คลิปเกาะเทรนด์...อยากให้พูดถึง..." /></div>
+      <div className="field"><label>บรีฟงาน / รายละเอียดที่อยากได้</label><textarea value={brief} onChange={e => setBrief(e.target.value)} style={{ minHeight: 80 }} placeholder="เช่น รีวิวครีมกันแดดแบรนด์ X เน้นว่าไม่เหนียว กันน้ำ ชวนกดลิงก์ในไบโอ / คลิปเกาะเทรนด์...อยากให้พูดถึง..." /></div>
+      <div className="field"><label>📎 แนบไฟล์บรีฟ <span className="muted">(PDF/รูป — ลูกค้าส่งบรีฟมาแนบได้เลย ไม่ต้องพิมพ์)</span></label>
+        <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple onChange={e => setFiles(e.target.files)} />
+        {[...files].length > 0 && <div className="hint" style={{ color: "#1a7f43" }}>✓ แนบแล้ว {Math.min([...files].length, 3)} ไฟล์ — AI จะอ่านบรีฟให้</div>}
+      </div>
       <div className="field"><label>ชื่อสปอนเซอร์/แบรนด์ <span className="muted">(ถ้ามี — เก็บไว้นับในรายงาน)</span></label><input value={sponsor} onChange={e => setSponsor(e.target.value)} placeholder="เช่น แบรนด์ X" /></div>
       {err && <div className="msg err">{err}</div>}
       <div className="row" style={{ gap: 10 }}>

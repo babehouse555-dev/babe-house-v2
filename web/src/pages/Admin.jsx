@@ -114,6 +114,13 @@ export default function Admin() {
           <span style={{ background: "#f3edfb", color: "#6b3fa0", fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>🧪 ทดสอบ (mock): {rev.test_count ?? 0}</span>
         </div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>* นับเฉพาะที่จ่ายผ่าน Stripe จริง (บัตร/PromptPay) มากกว่า 0฿ — ไม่รวมโค้ดฟรีและออเดอร์ทดสอบ</div>
+        {(rev.paid_orders || []).length > 0 && <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>ใครจ่ายบ้าง ({rev.paid_orders.length})</div>
+          {rev.paid_orders.map((o, i) => <div key={i} className="between" style={{ fontSize: 13, padding: "7px 0", borderTop: "1px solid var(--border)" }}>
+            <span><b>{o.email}</b> <span className="muted" style={{ fontSize: 11.5 }}>· {(o.tier || "").startsWith("Credits") ? "เครดิต" : (o.tier || "").startsWith("Video") ? "ตรวจคลิป" : "เล่ม Blueprint"}</span></span>
+            <span><b style={{ color: "var(--up)" }}>{o.baht}฿</b> <span className="muted" style={{ fontSize: 11.5 }}>{String(o.paid_at || "").slice(0, 10)}</span></span>
+          </div>)}
+        </div>}
         {rev.by_month.length >= 2 && <div style={{ marginTop: 6 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>รายได้แต่ละเดือน</div>{rev.by_month.map(m => { const max = Math.max(...rev.by_month.map(x => x.revenue), 1); return <div key={m.billing_cycle} style={{ margin: "9px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{m.billing_cycle.replace("_", " ")}</span><span className="muted">{baht(m.revenue)} · {m.c}</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(m.revenue / max * 100)}%` }} /></div></div>; })}</div>}</div>}
 
 

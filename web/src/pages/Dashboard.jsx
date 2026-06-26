@@ -15,7 +15,8 @@ export default function Dashboard() {
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
   const userId = sp.get("user_id"), cycle = sp.get("billing_cycle"), bpId = sp.get("blueprint_id");
-  const [bp, setBp] = useState(demo ? sampleBlueprint() : null);
+  const [bp, setBp] = useState(demo ? sampleBlueprint(lang) : null);
+  useEffect(() => { if (demo) setBp(sampleBlueprint(lang)); }, [lang]); // เดโม: สลับภาษา → เปลี่ยนตัวอย่างเป็น EN/TH
   const [err, setErr] = useState("");
   const scriptRef = useRef(null), calRef = useRef(null), deepRef = useRef(null);
   // กดวันในปฏิทิน → เลือกวัน + เลื่อนไปที่สคริปต์ทันที (ไม่ต้องเลื่อนยาวเอง)

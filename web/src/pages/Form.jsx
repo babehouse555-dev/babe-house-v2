@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, filesToBase64, getRef, currentCycle, session, track } from "../api.js";
+import { useI18n } from "../i18n.jsx";
 
 // ไกด์ + ตัวอย่างการกรอกแต่ละช่อง (ใช้ Babe House Academy เป็นตัวอย่างจริง)
 // ยิ่งกรอกละเอียด AI ยิ่งวิเคราะห์ได้ลึก
@@ -78,19 +79,20 @@ const GUIDE = {
 };
 
 function GuideContent({ k, onFill }) {
-  const g = GUIDE[k];
+  const { t } = useI18n();
+  const g = t("fm_guide")[k];
   if (!g) return null;
   return (
     <div style={{ background: "#F4F8FD", border: "1px solid #d6e7fa", borderRadius: 14, padding: "16px 18px" }}>
-      <div style={{ fontWeight: 800, color: "var(--blue-d)", marginBottom: 10, fontSize: 14.5 }}>💡 {g.title} — กรอกแบบนี้</div>
+      <div style={{ fontWeight: 800, color: "var(--blue-d)", marginBottom: 10, fontSize: 14.5 }}>💡 {g.title} — {t("fm_guide_how")}</div>
       <ul style={{ paddingLeft: 18, fontSize: 13.5, lineHeight: 1.75, margin: "0 0 12px" }}>
         {g.bullets.map((b, i) => <li key={i} style={{ marginBottom: 3 }}>{b}</li>)}
       </ul>
-      <div style={{ fontWeight: 700, fontSize: 12, color: "var(--muted)", marginBottom: 5 }}>📝 ตัวอย่าง (อิงจาก Babe House Academy):</div>
+      <div style={{ fontWeight: 700, fontSize: 12, color: "var(--muted)", marginBottom: 5 }}>{t("fm_guide_example")}</div>
       <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 13px", fontSize: 13.5, lineHeight: 1.65, color: "var(--ink)" }}>{g.example}</div>
       {onFill && k !== "images" && (
         <button type="button" onClick={() => onFill(k)} className="link" style={{ marginTop: 10, fontSize: 13, background: "none", border: 0, cursor: "pointer", padding: 0 }}>
-          ✍️ กรอกตัวอย่างนี้ให้เลย (แล้วแก้เป็นของคุณ)
+          {t("fm_guide_fill")}
         </button>
       )}
     </div>
@@ -117,49 +119,51 @@ function ChipGroup({ options, value, onChange, multi }) {
 
 // คู่มือหารูป Insight (เลือก platform) — ภาพจำลอง+ลูกศร ไม่ใช้รูปจริงของลูกค้า
 function InsightGuide() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [plat, setPlat] = useState("ig");
   const hl = { border: "2px solid var(--blue)", background: "#EAF3FD", borderRadius: 8, padding: "8px 10px", color: "var(--blue-d)", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 };
   const num = { flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: "var(--blue)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 };
   const Step = ({ n, children }) => <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 14 }}><div style={num}>{n}</div><div style={{ flex: 1 }}>{children}</div></div>;
-  if (!open) return <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 8, background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: 0 }}>📊 ไม่รู้จะหารูป Insight ตรงไหน? ดูวิธีหา →</button>;
+  if (!open) return <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 8, background: "none", border: 0, color: "var(--blue)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: 0 }}>{t("ig_find")}</button>;
   return <div style={{ marginTop: 12, background: "#F7FAFE", border: "1px solid #d6e7fa", borderRadius: 14, padding: "14px 16px" }}>
-    <div className="between" style={{ marginBottom: 12 }}><b style={{ fontSize: 14.5 }}>📊 วิธีหารูป Insight</b><button type="button" onClick={() => setOpen(false)} style={{ background: "none", border: 0, color: "var(--muted)", cursor: "pointer", fontSize: 13 }}>ปิด</button></div>
+    <div className="between" style={{ marginBottom: 12 }}><b style={{ fontSize: 14.5 }}>{t("ig_title")}</b><button type="button" onClick={() => setOpen(false)} style={{ background: "none", border: 0, color: "var(--muted)", cursor: "pointer", fontSize: 13 }}>{t("ig_close")}</button></div>
     <div className="row" style={{ gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
       <button type="button" onClick={() => setPlat("ig")} style={{ border: `1px solid ${plat === "ig" ? "var(--blue)" : "var(--border)"}`, background: plat === "ig" ? "#EAF3FD" : "#fff", color: plat === "ig" ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>📸 Instagram</button>
       <button type="button" onClick={() => setPlat("tt")} style={{ border: `1px solid ${plat === "tt" ? "var(--blue)" : "var(--border)"}`, background: plat === "tt" ? "#EAF3FD" : "#fff", color: plat === "tt" ? "var(--blue-d)" : "var(--muted)", borderRadius: 20, padding: "6px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🎵 TikTok</button>
     </div>
     {plat === "ig" ? <>
-      <Step n={1}>เข้าหน้าโปรไฟล์ตัวเอง → กดปุ่ม <b style={{ color: "var(--blue-d)" }}>"แดชบอร์ดมืออาชีพ"</b> (อยู่ใต้ไบโอ)
-        <div style={{ ...hl, marginTop: 6 }}><span>แดชบอร์ดมืออาชีพ</span><span>👆 กดตรงนี้</span></div></Step>
-      <Step n={2}>กดเข้า <b style={{ color: "var(--blue-d)" }}>"ยอดดู"</b> → แล้วเลือกช่วงเวลา <b style={{ color: "var(--blue-d)" }}>"30 วัน"</b> ที่มุมซ้ายบน
-        <div style={{ ...hl, marginTop: 6 }}><span>📅 30 วันที่ผ่านมา</span><span>เลือกก่อน</span></div></Step>
-      <Step n={3}><b>เลื่อนลงเรื่อยๆ แล้วแคป 2-3 รูป</b> ให้เห็น 4 อย่างนี้:
+      <Step n={1}>{t("ig_ig_1")}
+        <div style={{ ...hl, marginTop: 6 }}><span>{t("ig_ig_1b")}</span><span>{t("ig_tap_here")}</span></div></Step>
+      <Step n={2}>{t("ig_ig_2")}
+        <div style={{ ...hl, marginTop: 6 }}><span>{t("ig_30d")}</span><span>{t("ig_pick_first")}</span></div></Step>
+      <Step n={3}><b>{t("ig_ig_3")}</b>
         <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
-          <div style={hl}><span>บัญชีที่เข้าถึง</span><span>(Reach)</span></div>
-          <div style={hl}><span>การเข้าชมโปรไฟล์</span><span>(Profile visits)</span></div>
-          <div style={hl}><span>การแตะลิงก์ภายนอก</span><span>(Link taps)</span></div>
-          <div style={hl}><span>กลุ่มเป้าหมาย</span><span>(อายุ/เพศ/เมือง)</span></div>
+          <div style={hl}><span>{t("ig_reach")}</span><span>(Reach)</span></div>
+          <div style={hl}><span>{t("ig_pv")}</span><span>(Profile visits)</span></div>
+          <div style={hl}><span>{t("ig_lt")}</span><span>(Link taps)</span></div>
+          <div style={hl}><span>{t("ig_aud")}</span><span>{t("ig_aud_sub")}</span></div>
         </div></Step>
-      <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>💡 แคปกี่รูปก็ได้ (สูงสุด 8) ถ่ายให้เห็นตัวเลขชัดๆ ไม่ต้องสวย — ยิ่งครบ ครูพี่คิมยิ่งวิเคราะห์แม่น</div>
+      <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>{t("ig_tip")}</div>
     </> : <>
-      <Step n={1}>เข้าหน้าโปรไฟล์ตัวเอง → กดปุ่ม <b style={{ color: "var(--blue-d)" }}>"TikTok Studio"</b> (อยู่ใต้ไบโอ)
-        <div style={{ ...hl, marginTop: 6 }}><span>TikTok Studio</span><span>👆 กดตรงนี้</span></div></Step>
-      <Step n={2}>กดที่การ์ด <b style={{ color: "var(--blue-d)" }}>"การวิเคราะห์"</b> → แล้วเลือกช่วงเวลา <b style={{ color: "var(--blue-d)" }}>"28 วัน"</b>
-        <div style={{ ...hl, marginTop: 6 }}><span>📊 การวิเคราะห์ · 28 วัน</span><span>เลือกก่อน</span></div></Step>
-      <Step n={3}><b>แคป 2-3 รูป</b> จากแท็บด้านบนเหล่านี้ ให้เห็น:
+      <Step n={1}>{t("ig_tt_1")}
+        <div style={{ ...hl, marginTop: 6 }}><span>TikTok Studio</span><span>{t("ig_tap_here")}</span></div></Step>
+      <Step n={2}>{t("ig_tt_2")}
+        <div style={{ ...hl, marginTop: 6 }}><span>{t("ig_tt_2b")}</span><span>{t("ig_pick_first")}</span></div></Step>
+      <Step n={3}><b>{t("ig_tt_3")}</b>
         <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
-          <div style={hl}><span>ยอดดูโพสต์</span><span>(แท็บภาพรวม)</span></div>
-          <div style={hl}><span>ผู้ติดตามทั้งหมด</span><span>(แท็บผู้ติดตาม)</span></div>
-          <div style={hl}><span>ผู้ชม / การเข้าถึง</span><span>(แท็บผู้ชม)</span></div>
-          <div style={hl}><span>กลุ่มเป้าหมาย</span><span>(เพศ/อายุ/ที่ตั้ง)</span></div>
+          <div style={hl}><span>{t("ig_tt_views")}</span><span>{t("ig_tt_views_sub")}</span></div>
+          <div style={hl}><span>{t("ig_tt_followers")}</span><span>{t("ig_tt_followers_sub")}</span></div>
+          <div style={hl}><span>{t("ig_tt_viewers")}</span><span>{t("ig_tt_viewers_sub")}</span></div>
+          <div style={hl}><span>{t("ig_aud")}</span><span>{t("ig_tt_aud_sub")}</span></div>
         </div></Step>
-      <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>💡 แคปกี่รูปก็ได้ (สูงสุด 8) ถ่ายให้เห็นตัวเลขชัดๆ ไม่ต้องสวย — ยิ่งครบ ครูพี่คิมยิ่งวิเคราะห์แม่น</div>
+      <div className="hint" style={{ background: "#EAF3FD", color: "var(--blue-d)", borderRadius: 8, padding: "9px 11px", marginTop: 2 }}>{t("ig_tip")}</div>
     </>}
   </div>;
 }
 
 export default function Form() {
+  const { t } = useI18n();
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
@@ -189,14 +193,14 @@ export default function Form() {
     if (renew && session.token) {
       const ch = sp.get("channel");
       api("/api/me/last-profile" + (ch ? `?channel=${encodeURIComponent(ch)}` : ""), { token: session.token })
-        .then(d => { if (d.profile && d.profile.form_responses) { setLastProfile(d.profile); const g = String(d.profile.form_responses.goal_primary || "").split(/[,+]/).map(s => s.trim()).filter(Boolean); setRenewGoal(g.filter(x => GOALS.includes(x))); } })
+        .then(d => { if (d.profile && d.profile.form_responses) { setLastProfile(d.profile); const g = String(d.profile.form_responses.goal_primary || "").split(/[,+]/).map(s => s.trim()).filter(Boolean); setRenewGoal(g.filter(x => t("fm_goals").includes(x))); } })
         .catch(() => {});
     }
   }, []);
 
   const upd = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
   const setVal = (k, val) => setF(v => ({ ...v, [k]: val }));
-  const fillExample = (k) => { setF(v => ({ ...v, [k]: GUIDE[k].example })); };
+  const fillExample = (k) => { setF(v => ({ ...v, [k]: t("fm_guide")[k].example })); };
   // props ช่วยใส่ onFocus + render guide ใต้ช่อง (มือถือ)
   const fieldProps = (k) => ({ onFocus: () => setFocus(k) });
 
@@ -207,20 +211,19 @@ export default function Form() {
   const goNext = () => {
     setErr("");
     if (step === 1) {
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr("ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่ม + เข้าดูย้อนหลัง"); return; }
-      if (!f.instagram_account.trim()) { setErr("ช่วยกรอกชื่อช่อง/แฮนเดิลด้วยนะคะ"); return; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email")); return; }
+      if (!f.instagram_account.trim()) { setErr(t("fm_v_channel")); return; }
     }
-    if (step === 3 && hasChannel && ![...files].length &&
-      !window.confirm("ยังไม่ได้แนบรูปสถิติเลยค่ะ 📊\n\nรูป Insight ช่วยให้วิเคราะห์ตัวเลขจริงได้แม่นขึ้นเยอะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบ\nกด \"ยกเลิก\" = กลับไปแนบรูป")) return;
+    if (step === 3 && hasChannel && ![...files].length && !window.confirm(t("fm_confirm_noimg"))) return;
     setStep(s => s + 1); toTop();
   };
 
   async function submit(e) {
     e.preventDefault();
     if (step !== 4) { goNext(); return; } // กด Enter ก่อนถึงขั้นสุดท้าย = ไปขั้นถัดไป ไม่ใช่ส่งฟอร์ม
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr("ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่มให้ + เข้าดูย้อนหลังทุกเดือน"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    if (!f.instagram_account.trim()) { setErr("ช่วยกรอกชื่อช่อง/แฮนเดิล (⭐) ให้หน่อยนะคะ — ที่เหลือไม่บังคับค่ะ"); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email2")); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (!consent) { setErr(t("fm_v_consent")); return; }
     setBusy(true); setErr("");
     try {
       const images = await filesToBase64([...files], 8);
@@ -243,15 +246,15 @@ export default function Form() {
       };
       const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
       track("form_submit");
-      if (r.existing) alert(r.message || "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ — เปิดเล่มเดิมให้นะคะ (1 อีเมล สร้างได้ 1 เล่ม/เดือน)");
+      if (r.existing) alert(r.message || t("fm_exists"));
       nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);
     } catch (e2) { setErr(e2.message); setBusy(false); }
   }
 
   // เดือน 2+ : ส่งต่อแผนโดยใช้โปรไฟล์เดิม + รูปเดือนใหม่ (ไม่ต้องกรอกซ้ำ)
   async function submitRenew() {
-    if (!consent) { setErr("กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ"); return; }
-    if (![...files].length && !window.confirm("ยังไม่ได้แนบรูป Insight เดือนนี้เลยค่ะ 📊\n\nรูปเดือนล่าสุดคือสิ่งที่ทำให้ครูพี่คิมเห็น 'การเติบโต' จากเดือนก่อน — แนบก่อนดีกว่าไหมคะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบ")) return;
+    if (!consent) { setErr(t("fm_v_consent")); return; }
+    if (![...files].length && !window.confirm(t("fm_confirm_noimg_renew"))) return;
     setBusy(true); setErr("");
     try {
       const images = await filesToBase64([...files], 8);
@@ -266,71 +269,71 @@ export default function Form() {
       };
       const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
       track("form_submit");
-      if (r.existing) alert(r.message || "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ");
+      if (r.existing) alert(r.message || t("fm_exists2"));
       nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);
     } catch (e2) { setErr(e2.message); setBusy(false); }
   }
 
   // guide ใต้ช่อง (โชว์เฉพาะมือถือ เมื่อช่องนั้นถูกโฟกัส)
-  const inlineGuide = (k) => focus === k && GUIDE[k] ? (
+  const inlineGuide = (k) => focus === k && t("fm_guide")[k] ? (
     <div className="guide-inline"><GuideContent k={k} onFill={fillExample} /></div>
   ) : null;
 
   // ===== เดือน 2+ : หน้าต่อแผนสั้นๆ (ไม่ต้องกรอกซ้ำ) =====
   if (renew && lastProfile) {
     const p = lastProfile.form_responses || {};
-    const voice = [p.self_term && `แทนตัว "${p.self_term}"`, p.audience_term && `เรียกคนดู "${p.audience_term}"`, p.tone].filter(Boolean).join(" · ");
+    const voice = [p.self_term && `"${p.self_term}"`, p.audience_term && `"${p.audience_term}"`, p.tone].filter(Boolean).join(" · ");
     return (
       <div className="wrap narrow page-pad">
-        <div className="brand">BABE HOUSE · ต่อแผนเดือนใหม่</div>
-        <h1 className="page" style={{ marginBottom: 4 }}>ต่อแผนเดือนนี้ 🎉 ({currentCycle().replace("_", " ")})</h1>
+        <div className="brand">{t("fm_renew_brand")}</div>
+        <h1 className="page" style={{ marginBottom: 4 }}>{t("fm_renew_title")} ({currentCycle().replace("_", " ")})</h1>
         <div className="msg" style={{ background: "#eef7f0", color: "#1a7f43", border: "1px dashed #9ed3b0", margin: "12px 0 16px" }}>
-          ✨ <b>เราจำข้อมูลคุณไว้แล้ว — ไม่ต้องกรอกใหม่!</b> แค่แนบ <b>รูป Insight เดือนนี้</b> ครูพี่คิมจะเทียบการเติบโตจากเดือนก่อน + วางแผนต่อยอดให้เลย 🩵
+          {t("fm_renew_remember")}
         </div>
         <div className="card">
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>ข้อมูลเดิมของคุณ</div>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>{t("fm_your_info")}</div>
           <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.9 }}>
-            📍 ช่อง: <b>{lastProfile.instagram_account || "-"}</b><br />
-            🎯 สาย: {p.business_type || "-"}<br />
-            👥 ลูกค้า: {p.audience || "-"}<br />
-            🗣️ น้ำเสียง: {voice || "-"}
+            {t("fm_channel_l")} <b>{lastProfile.instagram_account || "-"}</b><br />
+            {t("fm_niche_l")} {p.business_type || "-"}<br />
+            {t("fm_audience_l")} {p.audience || "-"}<br />
+            {t("fm_voice_l")} {voice || "-"}
           </div>
-          <div className="hint">ถ้าข้อมูลเปลี่ยน เล่าในช่อง "อัปเดตเดือนนี้" ด้านล่างได้เลยค่ะ</div>
+          <div className="hint">{t("fm_info_changed")}</div>
         </div>
         <div className="card" ref={imgRef}>
-          <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>📊 แนบรูป Insight เดือนนี้</div>
-          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>ตัวเลขล่าสุด = ครูพี่คิมเทียบการเติบโตจากเดือนก่อน แล้ววางแผนต่อยอด (ไม่ต้องแนบรูปเดือนเก่าซ้ำ)</p>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>{t("fm_attach_insights")}</div>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>{t("fm_attach_insights_sub")}</p>
           <div style={{ border: "2px dashed var(--blue)", borderRadius: 14, padding: "18px 14px", textAlign: "center", background: "#F4F8FD" }}>
             <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto" }} />
-            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>✓ เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}
+            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>{t("fm_selected")} {Math.min(files.length, 8)} {t("fm_images_word")}</div>}
           </div>
         </div>
         <div className="card">
-          <div className="field"><label>เป้าหมายเดือนนี้ <span className="muted">(เลือกได้หลายข้อ · เปลี่ยนได้)</span></label><ChipGroup options={GOALS} value={renewGoal} onChange={setRenewGoal} multi /></div>
-          <div className="field"><label>มีอะไรอัปเดต/เปลี่ยนไหม? <span className="muted">(ไม่บังคับ)</span></label><textarea value={renewNote} onChange={e => setRenewNote(e.target.value)} style={{ minHeight: 70 }} placeholder="เช่น เริ่มขายคอร์สแล้ว / เปลี่ยนกลุ่มลูกค้า / เดือนนี้อยากเน้นขายมากขึ้น" /></div>
+          <div className="field"><label>{t("fm_goal_month")} <span className="muted">{t("fm_multi_change")}</span></label><ChipGroup options={t("fm_goals")} value={renewGoal} onChange={setRenewGoal} multi /></div>
+          <div className="field"><label>{t("fm_any_update")} <span className="muted">{t("fm_optional")}</span></label><textarea value={renewNote} onChange={e => setRenewNote(e.target.value)} style={{ minHeight: 70 }} placeholder={t("fm_update_ph")} /></div>
         </div>
         <label className="row" style={{ alignItems: "flex-start", fontSize: 13, color: "var(--muted)", margin: "4px 2px 14px" }}>
           <input type="checkbox" style={{ width: 18, height: 18, marginTop: 3 }} checked={consent} onChange={e => setConsent(e.target.checked)} />
-          <span>ฉันยินยอมให้ Babe House ใช้ข้อมูลเพื่อวิเคราะห์ต่อ ตาม <Link to="/privacy" target="_blank" className="link">นโยบายความเป็นส่วนตัว</Link></span>
+          <span>{t("fm_consent_renew")} <Link to="/privacy" target="_blank" className="link">{t("fm_privacy_policy")}</Link></span>
         </label>
         {err && <div className="msg err">{err}</div>}
-        <button className="btn full" type="button" onClick={submitRenew} disabled={busy}>{busy ? "กำลังไปหน้าสรุป..." : "ต่อแผนเดือนนี้ · 490฿ →"}</button>
-        <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>มีหน้าสรุป/ใส่โค้ดก่อนจ่าย กดแล้วยังไม่ตัดเงิน · <button type="button" style={linkBtn} onClick={() => setLastProfile(null)}>หรือกรอกใหม่ทั้งหมด</button></p>
+        <button className="btn full" type="button" onClick={submitRenew} disabled={busy}>{busy ? t("fm_going_summary") : t("fm_renew_cta")}</button>
+        <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>{t("fm_summary_note")} <button type="button" style={linkBtn} onClick={() => setLastProfile(null)}>{t("fm_refill_all")}</button></p>
       </div>
     );
   }
 
   const TOTAL = 4; // ขั้น 1-4 (ขั้น 0 = แยกทาง)
-  const stepTitle = ["", "ติดต่อ & ช่องของคุณ", "ช่องคุณเกี่ยวกับอะไร", hasChannel ? "แนบรูปสถิติ" : "อยากให้ใครดู", "เล่าเรื่องของคุณ"][step];
+  const stepTitle = ["", t("fm_step_titles")[1], t("fm_step_titles")[2], hasChannel ? t("fm_step_titles")[3] : t("fm_step3_newbie"), t("fm_step_titles")[4]][step];
 
   return (
     <div className="wrap narrow page-pad">
-      <div className="brand">BABE HOUSE · AI CREATOR BLUEPRINT</div>
-      <h1 className="page" style={{ marginBottom: 4 }}>{renew ? `เพิ่มแผนเดือนใหม่ (${currentCycle().replace("_", " ")})` : "สร้างเล่มแผนคอนเทนต์ส่วนตัว"}</h1>
+      <div className="brand">{t("fm_brand")}</div>
+      <h1 className="page" style={{ marginBottom: 4 }}>{renew ? `${t("fm_new_month")} (${currentCycle().replace("_", " ")})` : t("fm_create_title")}</h1>
 
       {step > 0 && <div style={{ margin: "14px 0 18px" }}>
         <div className="row" style={{ gap: 6, marginBottom: 6 }}>{[1, 2, 3, 4].map(n => <div key={n} style={{ flex: 1, height: 6, borderRadius: 6, background: n <= step ? "var(--blue)" : "var(--border)" }} />)}</div>
-        <div className="muted" style={{ fontSize: 12.5 }}>ขั้นที่ {step}/{TOTAL} · {stepTitle}</div>
+        <div className="muted" style={{ fontSize: 12.5 }}>{t("fm_step")} {step}/{TOTAL} · {stepTitle}</div>
       </div>}
 
       {err && <div className="msg err" style={{ marginBottom: 14 }}>{err}</div>}
@@ -339,94 +342,94 @@ export default function Form() {
 
         {/* ===== ขั้น 0: แยกทาง ===== */}
         {step === 0 && <div>
-          <p className="sub" style={{ marginBottom: 18 }}>เริ่มกันเลยค่ะ! ตอนนี้คุณ...</p>
+          <p className="sub" style={{ marginBottom: 18 }}>{t("fm_start")}</p>
           <button type="button" onClick={() => chooseBranch(true)} className="card" style={{ width: "100%", textAlign: "left", cursor: "pointer", border: "1.5px solid var(--border)", display: "flex", gap: 14, alignItems: "center", margin: "0 0 12px" }}>
-            <span style={{ fontSize: 32 }}>📈</span><span><div style={{ fontWeight: 800, fontSize: 16.5, color: "var(--blue-d)" }}>มีช่องอยู่แล้ว</div><div className="muted" style={{ fontSize: 13.5 }}>ทำมาสักพัก มีคนดู/ผู้ติดตามบ้างแล้ว — มีรูปสถิติหลังบ้านให้ดูได้</div></span>
+            <span style={{ fontSize: 32 }}>📈</span><span><div style={{ fontWeight: 800, fontSize: 16.5, color: "var(--blue-d)" }}>{t("fm_have_channel")}</div><div className="muted" style={{ fontSize: 13.5 }}>{t("fm_have_channel_sub")}</div></span>
           </button>
           <button type="button" onClick={() => chooseBranch(false)} className="card" style={{ width: "100%", textAlign: "left", cursor: "pointer", border: "1.5px solid var(--border)", display: "flex", gap: 14, alignItems: "center", margin: "0 0 18px" }}>
-            <span style={{ fontSize: 32 }}>🌱</span><span><div style={{ fontWeight: 800, fontSize: 16.5, color: "#2C8E8C" }}>เพิ่งเริ่ม / ยังไม่มีช่อง</div><div className="muted" style={{ fontSize: 13.5 }}>อยากเริ่มทำคอนเทนต์ ยังไม่มีสถิติ — ครูพี่คิมช่วยวางแผนเริ่มต้นให้</div></span>
+            <span style={{ fontSize: 32 }}>🌱</span><span><div style={{ fontWeight: 800, fontSize: 16.5, color: "#2C8E8C" }}>{t("fm_newbie")}</div><div className="muted" style={{ fontSize: 13.5 }}>{t("fm_newbie_sub")}</div></span>
           </button>
-          <Link className="link" to="/account" style={{ display: "block", textAlign: "center", fontWeight: 700 }}>เป็นนักเรียนเก่า? เข้าสู่ระบบ →</Link>
+          <Link className="link" to="/account" style={{ display: "block", textAlign: "center", fontWeight: 700 }}>{t("fm_returning_login")}</Link>
         </div>}
 
         {/* ===== ขั้น 1: ติดต่อ & ช่อง ===== */}
         {step === 1 && <div className="card">
-          <div className="field"><label>อีเมล <span style={{ color: "var(--blue)" }}>⭐</span> <span className="muted">(ใช้เข้าดูเล่มย้อนหลังทุกเดือน)</span></label><input type="email" value={f.email} onChange={upd("email")} onFocus={() => setFocus(null)} placeholder="you@email.com" /><div className="hint">ใช้อีเมลเดิมทุกเดือนเพื่อเก็บประวัติและติดตามการเติบโต</div></div>
-          <div className="field"><label>ชื่อช่อง (Instagram / TikTok) <span style={{ color: "var(--blue)" }}>⭐</span></label><input value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="เช่น @babehouse_academy" />{inlineGuide("instagram_account")}
-            <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>💡 ดูแลหลายช่อง? (ช่องตัวเอง · ช่องลูก · ช่องลูกค้า) ทำทีละช่องได้เลย — แต่ละช่องเป็นเล่มแยก <b>รวมอยู่ในอีเมลเดียว</b> เพิ่มทีหลังในหน้าบัญชีก็ได้</div>
+          <div className="field"><label>{t("fm_email_label")} <span style={{ color: "var(--blue)" }}>⭐</span> <span className="muted">{t("fm_email_hint_inline")}</span></label><input type="email" value={f.email} onChange={upd("email")} onFocus={() => setFocus(null)} placeholder="you@email.com" /><div className="hint">{t("fm_email_hint")}</div></div>
+          <div className="field"><label>{t("fm_channel_name")} <span style={{ color: "var(--blue)" }}>⭐</span></label><input value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="@babehouse_academy" />{inlineGuide("instagram_account")}
+            <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>{t("fm_multi_hint")}</div>
           </div>
-          <div className="field"><label>ชื่อที่อยากให้ครูพี่คิมเรียก <span className="muted">(ไม่บังคับ)</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="เช่น พี่มะปราง / Namo" /><div className="hint">เว้นว่างได้ จะเรียก "คุณ" แทนค่ะ</div></div>
+          <div className="field"><label>{t("fm_call_you")} <span className="muted">{t("fm_optional")}</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="Namo / Mint" /><div className="hint">{t("fm_call_you_hint")}</div></div>
         </div>}
 
         {/* ===== ขั้น 2: เกี่ยวกับช่อง + เป้าหมาย ===== */}
         {step === 2 && <div className="card">
-          <div className="field"><label>{hasChannel ? "ช่องของคุณเกี่ยวกับอะไร?" : "อยากทำคอนเทนต์แนวไหน?"} <span className="muted">(แนวที่อยากทำ)</span></label><input value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder="เช่น รีวิวชีวิตนักศึกษา · สอนแต่งหน้า · ขายเสื้อผ้าวินเทจ · สายกิน-คาเฟ่ · เล่าเรื่อง/ไลฟ์สไตล์" />
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>💡 บอกแนวที่ <b>อยากทำจริงๆ</b> ได้เลย (ไม่จำเป็นต้องเป็นอาชีพตอนนี้) — เช่น ทำงานประจำแต่อยากทำช่องไลฟ์สไตล์ตัวเอง ก็เขียน "ไลฟ์สไตล์" ได้</div>{inlineGuide("business_type")}</div>
-          <div className="field"><label>เดือนนี้อยากได้อะไร? <span className="muted">(เลือกได้หลายข้อ)</span></label><ChipGroup options={GOALS} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} multi /></div>
+          <div className="field"><label>{hasChannel ? t("fm_about_q") : t("fm_about_q_new")} <span className="muted">{t("fm_about_tag")}</span></label><input value={f.business_type} onChange={upd("business_type")} {...fieldProps("business_type")} placeholder={t("fm_about_ph")} />
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{t("fm_about_hint")}</div>{inlineGuide("business_type")}</div>
+          <div className="field"><label>{t("fm_want_month")} <span className="muted">{t("fm_multi")}</span></label><ChipGroup options={t("fm_goals")} value={f.goal_primary} onChange={v => setVal("goal_primary", v)} multi /></div>
         </div>}
 
         {/* ===== ขั้น 3: รูป (มีช่อง) หรือ ลูกค้า (มือใหม่) ===== */}
         {step === 3 && hasChannel && <div className="card" ref={imgRef}>
-          <div style={{ fontWeight: 800, fontSize: 17, color: "var(--blue-d)", marginBottom: 4 }}>📊 แนบรูปสถิติหลังบ้าน</div>
-          <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>นี่คือ <b>ตัวช่วยวิเคราะห์ที่สำคัญที่สุด</b> — AI อ่านตัวเลขจริง (คนเข้าถึง · คนเข้าโปรไฟล์ · เพศ-อายุคนดู) ทำให้เล่มแม่นขึ้นมาก</p>
+          <div style={{ fontWeight: 800, fontSize: 17, color: "var(--blue-d)", marginBottom: 4 }}>{t("fm_attach_stats")}</div>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>{t("fm_attach_stats_sub")}</p>
           <div style={{ border: "2px dashed var(--blue)", borderRadius: 14, padding: "20px 16px", textAlign: "center", background: "#F4F8FD" }}>
             <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto" }} />
-            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>✓ เลือกแล้ว {Math.min(files.length, 8)} รูป</div>}
+            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>{t("fm_selected")} {Math.min(files.length, 8)} {t("fm_images_word")}</div>}
           </div>
           <div style={{ marginTop: 12 }}><InsightGuide /></div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>ยังไม่มีรูปตอนนี้? กด "ถัดไป" ข้ามได้ แต่เล่มจะแม่นน้อยลงนิดนึงค่ะ</div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>{t("fm_skip_note")}</div>
         </div>}
 
         {step === 3 && !hasChannel && <div className="card">
-          <div className="field"><label>อยากให้ใครดูช่องคุณ? <span className="muted">(กลุ่มคนที่อยากได้ — เลือกได้หลายข้อ)</span></label><ChipGroup options={AUDIENCES} value={f.audience} onChange={v => setVal("audience", v)} multi />
-            {(showAudOther || f.audience_other) ? <input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} autoFocus placeholder="พิมพ์เอง เช่น คนเลี้ยงแมว / เด็กมหาลัยปี 1" style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowAudOther(true)}>+ ไม่มีที่ตรง? พิมพ์เอง</button>}
+          <div className="field"><label>{t("fm_who_watch")} <span className="muted">{t("fm_who_tag")}</span></label><ChipGroup options={t("fm_audiences")} value={f.audience} onChange={v => setVal("audience", v)} multi />
+            {(showAudOther || f.audience_other) ? <input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} autoFocus placeholder={t("fm_type_own")} style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowAudOther(true)}>{t("fm_no_match")}</button>}
           </div>
-          <div className="msg" style={{ background: "#e4f4f3", color: "#2C8E8C", border: "1px dashed #9ad0ce", fontSize: 12.5 }}>🌱 มือใหม่ไม่ต้องมีรูปสถิติค่ะ — ครูพี่คิมจะวางแผนเริ่มต้นจากแนวที่อยากทำ + กลุ่มที่อยากได้ พอทำไป 1 เดือนค่อยกลับมาใส่รูป เดี๋ยววิเคราะห์ตัวเลขจริงให้</div>
+          <div className="msg" style={{ background: "#e4f4f3", color: "#2C8E8C", border: "1px dashed #9ad0ce", fontSize: 12.5 }}>{t("fm_newbie_note")}</div>
         </div>}
 
         {/* ===== ขั้น 4: STORY (ดาว) + optional + ส่ง ===== */}
         {step === 4 && <div>
           <div className="card" style={{ borderTop: "4px solid #e0b85b" }}>
-            <span style={{ display: "inline-block", background: "#fff7e6", color: "#8a6d1f", fontWeight: 800, fontSize: 11.5, padding: "3px 10px", borderRadius: 20, marginBottom: 8 }}>⭐ ข้อนี้สำคัญที่สุด</span>
-            <div className="field"><label style={{ fontSize: 15.5 }}>ทำไมถึงเริ่มทำช่องนี้? <span className="muted">(จุดเริ่มต้น/แรงบันดาลใจ)</span></label><textarea value={f.q_origin} onChange={upd("q_origin")} onFocus={() => setFocus(null)} style={{ minHeight: 90 }} placeholder="เล่าสั้นๆ เหมือนคุยกับเพื่อนก็พอค่ะ เช่น เคยเป็นสิวหนักมาก เสียเงินเป็นแสน จนเจอวิธีที่ใช่ เลยอยากช่วยคนงบน้อยให้ไม่เสียเงินเปล่าเหมือนเรา" /><div className="hint">💡 นี่คือสิ่งที่ทำให้เล่ม "เป็นคุณคนเดียว" — เรื่องของคุณที่ AI เดาแทนไม่ได้</div></div>
+            <span style={{ display: "inline-block", background: "#fff7e6", color: "#8a6d1f", fontWeight: 800, fontSize: 11.5, padding: "3px 10px", borderRadius: 20, marginBottom: 8 }}>{t("fm_most_important")}</span>
+            <div className="field"><label style={{ fontSize: 15.5 }}>{t("fm_why_start")} <span className="muted">{t("fm_why_start_tag")}</span></label><textarea value={f.q_origin} onChange={upd("q_origin")} onFocus={() => setFocus(null)} style={{ minHeight: 90 }} placeholder={t("fm_why_start_ph")} /><div className="hint">{t("fm_why_start_hint")}</div></div>
           </div>
 
           <div className="card" style={{ background: "#F4F8FD", border: "1px dashed #c5dcf3" }}>
             <button type="button" onClick={() => setShowExtra(s => !s)} style={{ width: "100%", background: "none", border: 0, cursor: "pointer", textAlign: "left", padding: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <span><span style={{ display: "inline-block", background: "#e8f5ee", color: "#1a7f43", fontWeight: 800, fontSize: 11.5, padding: "3px 10px", borderRadius: 20, marginBottom: 7 }}>ไม่บังคับ · ข้ามได้</span>
-                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>✨ อยากให้แม่นขึ้นอีก? เล่าเพิ่ม</div>
-                <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>จุดต่าง · ความฝัน · น้ำเสียงในสคริปต์ (ส่วนใหญ่แค่กดปุ่ม)</div></span>
-              <span style={{ fontSize: 15, color: "var(--blue)", fontWeight: 800, flexShrink: 0 }}>{showExtra ? "▲ ปิด" : "▼ เปิด"}</span>
+              <span><span style={{ display: "inline-block", background: "#e8f5ee", color: "#1a7f43", fontWeight: 800, fontSize: 11.5, padding: "3px 10px", borderRadius: 20, marginBottom: 7 }}>{t("fm_optional_skip")}</span>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)" }}>{t("fm_more_precise")}</div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{t("fm_more_sub")}</div></span>
+              <span style={{ fontSize: 15, color: "var(--blue)", fontWeight: 800, flexShrink: 0 }}>{showExtra ? t("fm_close") : t("fm_open")}</span>
             </button>
             {showExtra && <div style={{ marginTop: 18 }}>
-              <div className="field"><label>อะไรทำให้คุณต่างจากคนอื่นในสายเดียวกัน? <span className="muted">(จุดเด่น/ของดี)</span></label><textarea value={f.q_diff} onChange={upd("q_diff")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder="เช่น สอนแบบจับมือทำจริง / ใช้ของออร์แกนิกล้วน / ราคาเข้าถึงง่ายกว่าเจ้าอื่น" /></div>
-              <div className="field"><label>อยากให้ช่อง/ธุรกิจโตไปถึงไหน? <span className="muted">(ความฝันระยะยาว)</span></label><textarea value={f.q_vision} onChange={upd("q_vision")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder="เช่น อยากมีคอร์สเป็นของตัวเอง / เปิดร้านสาขา 2 / เป็นที่รู้จักทั่วประเทศ" /></div>
-              <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", margin: "4px 0 14px", fontSize: 12.5 }}>🎤 ตอบ 3 ข้อล่างนี้ ครูพี่คิมจะเขียนสคริปต์ให้พูดเหมือนเป็นคุณ</div>
-              <div className="field"><label>คุณแทนตัวเองว่าอะไร?</label><input value={f.self_term} onChange={upd("self_term")} onFocus={() => setFocus(null)} placeholder="เช่น เรา / ฉัน / พี่" />
-                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{["เรา", "ฉัน", "พี่"].map(t => <button key={t} type="button" onClick={() => setVal("self_term", t)} style={{ background: f.self_term === t ? "#EAF3FD" : "#fff", border: `1px solid ${f.self_term === t ? "var(--blue)" : "var(--border)"}`, color: f.self_term === t ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t}</button>)}</div>
+              <div className="field"><label>{t("fm_diff_q")} <span className="muted">{t("fm_diff_tag")}</span></label><textarea value={f.q_diff} onChange={upd("q_diff")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder={t("fm_diff_ph")} /></div>
+              <div className="field"><label>{t("fm_vision_q")} <span className="muted">{t("fm_vision_tag")}</span></label><textarea value={f.q_vision} onChange={upd("q_vision")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder={t("fm_vision_ph")} /></div>
+              <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", margin: "4px 0 14px", fontSize: 12.5 }}>{t("fm_voice_note")}</div>
+              <div className="field"><label>{t("fm_self_q")}</label><input value={f.self_term} onChange={upd("self_term")} onFocus={() => setFocus(null)} placeholder={t("fm_self_ph")} />
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{t("fm_self_chips").map(c => <button key={c} type="button" onClick={() => setVal("self_term", c)} style={{ background: f.self_term === c ? "#EAF3FD" : "#fff", border: `1px solid ${f.self_term === c ? "var(--blue)" : "var(--border)"}`, color: f.self_term === c ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{c}</button>)}</div>
               </div>
-              <div className="field"><label>เรียกคนดูว่าอะไร?</label><input value={f.audience_term} onChange={upd("audience_term")} onFocus={() => setFocus(null)} placeholder="เช่น ทุกคน / เพื่อนๆ / สาวๆ" />
-                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{["ทุกคน", "เพื่อนๆ", "สาวๆ", "คุณ"].map(t => <button key={t} type="button" onClick={() => setVal("audience_term", t)} style={{ background: f.audience_term === t ? "#EAF3FD" : "#fff", border: `1px solid ${f.audience_term === t ? "var(--blue)" : "var(--border)"}`, color: f.audience_term === t ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{t}</button>)}</div>
+              <div className="field"><label>{t("fm_aud_q")}</label><input value={f.audience_term} onChange={upd("audience_term")} onFocus={() => setFocus(null)} placeholder={t("fm_aud_ph")} />
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{t("fm_aud_chips").map(c => <button key={c} type="button" onClick={() => setVal("audience_term", c)} style={{ background: f.audience_term === c ? "#EAF3FD" : "#fff", border: `1px solid ${f.audience_term === c ? "var(--blue)" : "var(--border)"}`, color: f.audience_term === c ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{c}</button>)}</div>
               </div>
-              <div className="field"><label>คำติดปาก/สไตล์การพูด <span className="muted">(ถ้ามี)</span></label><textarea value={f.catchphrases} onChange={upd("catchphrases")} onFocus={() => setFocus(null)} style={{ minHeight: 56 }} placeholder="เช่น ติดคำว่า 'บอกเลย' / ลงท้ายด้วย 🩵 / พูดตรงๆ ไม่อ้อม" /></div>
-              <div className="field"><label>โทนที่อยากได้</label><ChipGroup options={TONES} value={f.tone} onChange={v => setVal("tone", v)} /></div>
+              <div className="field"><label>{t("fm_catch_q")} <span className="muted">{t("fm_optional")}</span></label><textarea value={f.catchphrases} onChange={upd("catchphrases")} onFocus={() => setFocus(null)} style={{ minHeight: 56 }} placeholder={t("fm_catch_ph")} /></div>
+              <div className="field"><label>{t("fm_tone_q")}</label><ChipGroup options={t("fm_tones")} value={f.tone} onChange={v => setVal("tone", v)} /></div>
             </div>}
           </div>
 
           <label className="row" style={{ alignItems: "flex-start", fontSize: 13, color: "var(--muted)", margin: "4px 2px 14px" }}>
             <input type="checkbox" style={{ width: 18, height: 18, marginTop: 3 }} checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-            <span>ฉันยินยอมให้ Babe House เก็บและใช้ข้อมูลที่กรอก (รวมถึงรูปสถิติ) เพื่อวิเคราะห์และสร้างแผนคอนเทนต์เฉพาะตัว ตาม <Link to="/privacy" target="_blank" className="link">นโยบายความเป็นส่วนตัว</Link></span>
+            <span>{t("fm_consent")} <Link to="/privacy" target="_blank" className="link">{t("fm_privacy_policy")}</Link></span>
           </label>
-          <button className="btn full" type="submit" disabled={busy}>{busy ? "กำลังไปหน้าสรุป..." : "ดูสรุป & ดำเนินการต่อ →"}</button>
-          <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>ราคาเต็ม <span style={{ textDecoration: "line-through" }}>1,590฿</span> · โปรเปิดตัว <b style={{ color: "var(--blue)" }}>490฿</b> · มีหน้าสรุป/ใส่โค้ดก่อนจ่าย กดแล้วยังไม่ตัดเงิน</p>
+          <button className="btn full" type="submit" disabled={busy}>{busy ? t("fm_going_summary") : t("fm_submit")}</button>
+          <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>{t("fm_price_line")} <span style={{ textDecoration: "line-through" }}>{t("price_full")}</span> {t("fm_price_line2")} <b style={{ color: "var(--blue)" }}>{t("price_promo")}</b> {t("fm_price_line3")}</p>
         </div>}
 
         {/* ===== ปุ่มนำทาง (ขั้น 1-3) ===== */}
         {step >= 1 && step <= 3 && <div className="row" style={{ gap: 10, marginTop: 16 }}>
-          <button type="button" className="btn ghost" onClick={goBack} style={{ flex: 1 }}>← ย้อนกลับ</button>
-          <button type="button" className="btn" onClick={goNext} style={{ flex: 2 }}>ถัดไป →</button>
+          <button type="button" className="btn ghost" onClick={goBack} style={{ flex: 1 }}>{t("fm_back")}</button>
+          <button type="button" className="btn" onClick={goNext} style={{ flex: 2 }}>{t("fm_next")}</button>
         </div>}
-        {step === 4 && <button type="button" className="btn ghost full" onClick={goBack} style={{ marginTop: 4 }}>← ย้อนกลับ</button>}
+        {step === 4 && <button type="button" className="btn ghost full" onClick={goBack} style={{ marginTop: 4 }}>{t("fm_back")}</button>}
 
       </form>
     </div>

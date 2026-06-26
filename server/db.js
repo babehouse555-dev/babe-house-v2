@@ -171,6 +171,27 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_req_cycle ON blueprint_requests(billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_bp_user_cycle ON blueprints(user_id, billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_orders_email ON blueprint_orders(email);
+    -- สร้างตารางทั้งหมดให้ครบก่อน ALTER/UPDATE (กัน DB เปล่า/staging พัง: ALTER อ้างตารางที่ยังไม่ถูกสร้าง)
+    CREATE TABLE IF NOT EXISTS credit_scripts (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      channel TEXT,
+      sponsor TEXT,
+      brief TEXT,
+      script_json TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_credit_scripts_email ON credit_scripts(email);
+    CREATE TABLE IF NOT EXISTS video_audits (
+      audit_id TEXT PRIMARY KEY,
+      order_id TEXT,
+      email TEXT,
+      status TEXT DEFAULT 'pending',
+      result_json TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_video_audits_order ON video_audits(order_id);
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS improve_count INTEGER DEFAULT 0;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS quality_flags_json TEXT;
@@ -186,27 +207,7 @@ export async function initDb() {
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS context TEXT;
     ALTER TABLE credit_scripts ADD COLUMN IF NOT EXISTS cycle TEXT;
     UPDATE credit_scripts SET cycle = to_char(created_at, 'FMMonth_YYYY') WHERE cycle IS NULL;
-    CREATE TABLE IF NOT EXISTS credit_scripts (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      channel TEXT,
-      sponsor TEXT,
-      brief TEXT,
-      script_json TEXT,
-      created_at TIMESTAMPTZ DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_credit_scripts_email ON credit_scripts(email);
     UPDATE blueprints SET content_status='ready' WHERE COALESCE(content_status,'pending') <> 'ready' AND blueprint_json LIKE '%"scripts":[{%';
-    CREATE TABLE IF NOT EXISTS video_audits (
-      audit_id TEXT PRIMARY KEY,
-      order_id TEXT,
-      email TEXT,
-      status TEXT DEFAULT 'pending',
-      result_json TEXT,
-      error TEXT,
-      created_at TIMESTAMPTZ DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_video_audits_order ON video_audits(order_id);
     CREATE TABLE IF NOT EXISTS reviews (
       review_id TEXT PRIMARY KEY,
       email TEXT NOT NULL,

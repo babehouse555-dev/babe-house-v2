@@ -10,7 +10,7 @@ const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%"
 const modH = { display: "flex", alignItems: "center", margin: 0 };
 
 export default function Dashboard() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const G_LABEL = t("db_glabel"), BEAT_LABEL = t("db_beat"), MONTHS_TH = t("db_months");
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
@@ -46,7 +46,7 @@ export default function Dashboard() {
     setGenState("generating");
     // ส่งค่า 6 ช่องที่ลูกค้าแก้เอง (ถ้ามี) → backend เอาไปอัปเดตบทวิเคราะห์ก่อนเจนคอนเทนต์ (ไม่ต้องเจนวิเคราะห์ใหม่)
     const snapshot_edits = Object.keys(snapEdits).length ? Object.entries(snapEdits).map(([i, value]) => ({ i: Number(i), value })) : null;
-    try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, snapshot_edits } }); pollContent(0); }
+    try { await api("/api/generate-content", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, snapshot_edits, lang } }); pollContent(0); }
     catch (e) { setGenState("error"); }
   }
   function pollContent(attempt) {
@@ -64,7 +64,7 @@ export default function Dashboard() {
   async function submitImprove() {
     if (demo) { setImproveErr(t("db_demo_improve")); return; }
     setImproving(true); setImproveErr("");
-    try { const images = ixFiles.length ? await filesToBase64([...ixFiles], 8) : []; await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix, images } }); pollAnalysis(0); }
+    try { const images = ixFiles.length ? await filesToBase64([...ixFiles], 8) : []; await api("/api/improve-blueprint", { method: "POST", body: { user_id: userId, billing_cycle: cycle, blueprint_id: bpId, extra: ix, images, lang } }); pollAnalysis(0); }
     catch (e) { setImproveErr(e.message || t("db_err_generic")); setImproving(false); }
   }
   function pollAnalysis(attempt) {

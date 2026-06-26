@@ -29,7 +29,7 @@ function AuditView({ a, blurred }) {
 }
 
 export default function VideoAudit() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const SAMPLE = t("va_sample");
   const [sp] = useSearchParams();
   const orderId = sp.get("order_id");
@@ -87,7 +87,7 @@ export default function VideoAudit() {
 
   async function startAnalysis() { // จ่ายแล้ว → สั่ง AI วิเคราะห์คลิปที่เก็บไว้
     setPhase("analyzing"); setErr("");
-    try { await api("/api/video-audit/analyze", { method: "POST", body: { order_id: orderId } }); poll(); }
+    try { await api("/api/video-audit/analyze", { method: "POST", body: { order_id: orderId, lang } }); poll(); }
     catch (e) { setErr(e.message || t("va_err_start")); }
   }
 

@@ -315,6 +315,7 @@ app.post("/api/video-audit/analyze", async (req, res) => {
     const video = String(req.body?.video || "") || (existing && existing.video_data) || "";
     const mime = req.body?.mime || (existing && existing.video_mime) || "video/mp4";
     const contextRaw = req.body?.context != null ? String(req.body.context) : (existing && existing.context) || "";
+    const langPref = req.body?.lang === "en" ? "en" : "th"; // ภาษาผลวิเคราะห์ตามที่ลูกค้าเลือก
     if (!video) return res.status(400).json({ ok: false, error: "NO_VIDEO", message: "ยังไม่ได้แนบวิดีโอค่ะ" });
     // มีแถว uploaded อยู่แล้ว → อัปเป็น analyzing (ไม่สร้างแถวใหม่) · ไม่งั้น insert ใหม่
     const auditId = existing && existing.status === "uploaded" ? existing.audit_id : uid("va");
@@ -324,7 +325,7 @@ app.post("/api/video-audit/analyze", async (req, res) => {
     const ctx = `บริบทจากเจ้าของคลิป (ถ้ามี): ${(contextRaw || "(ไม่ระบุ)").slice(0, 800)}\nช่วยตรวจคลิปนี้ละเอียดตามสเปก JSON`;
     (async () => {
       try {
-        const { audit, model, usage } = await analyzeVideo({ dataUrl: video, mimeType: mime, contextText: ctx });
+        const { audit, model, usage } = await analyzeVideo({ dataUrl: video, mimeType: mime, contextText: ctx, lang: langPref });
         await run(`UPDATE video_audits SET status='ready', result_json=$1, video_data=NULL WHERE audit_id=$2`, [JSON.stringify(audit), auditId]); // เคลียร์คลิปทิ้ง วิเคราะห์เสร็จแล้ว
         if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'video_audit',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
       } catch (e) { console.error("video analyze bg", e.message); await run(`UPDATE video_audits SET status='uploaded', error=$1 WHERE audit_id=$2`, [String(e.message).slice(0, 300), auditId]); } // คงคลิปไว้ให้ retry ได้
@@ -363,6 +364,7 @@ async function generateBlueprintForPayload(payload) {
   await acquireGen();
   try {
   const parsed = GenSchema.parse(normalizePayload(payload));
+  const lang = payload.lang === "en" ? "en" : "th"; // ภาษาที่ลูกค้าเลือก (เก็บไว้ให้ generate-content/improve ใช้ต่อ)
   const firstImg = parsed.insight_screenshot_base64 || (Array.isArray(parsed.insight_images) ? parsed.insight_images[0] : "") || "";
   const requestId = uid("req"), blueprintId = uid("bp");
   await upsertUser({ user_id: parsed.user_id, instagram_account: parsed.instagram_account, business_type: parsed.form_responses.business_type });
@@ -372,10 +374,10 @@ async function generateBlueprintForPayload(payload) {
     [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry]);
   // สเต็ป 1: เจน "บทวิเคราะห์" ก่อน (เร็ว) — ยังไม่เจน 30 สคริปต์ จนกว่าลูกค้าจะยืนยันว่าแม่น
   parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase.billing_cycle, parsed.instagram_account); // เดือน 2+ ต่อยอด แยกตามช่อง
-  const { analysis, model, usage } = await generateAnalysis(parsed);
+  const { analysis, model, usage } = await generateAnalysis(parsed, lang);
   await run(`INSERT INTO blueprints (blueprint_id,request_id,user_id,billing_cycle,blueprint_json,model,quality_flags_json,content_status,analysis_status) VALUES ($1,$2,$3,$4,$5,$6,'[]','pending','ready')`, [blueprintId, requestId, parsed.user_id, parsed.meta_purchase.billing_cycle, JSON.stringify(analysis), model]);
-  // ประหยัดดิสก์: รูป base64 ใช้แค่ตอนเจน — ลบทิ้งหลังเจนสำเร็จ (กัน DB เต็มเหมือนที่เคยล่ม) คงไว้แค่ form_responses
-  try { const lean = { ...parsed, insight_images: [], insight_screenshot_base64: null }; await run(`UPDATE blueprint_requests SET insight_screenshot_base64=NULL, insight_images_json='[]', raw_payload_json=$1 WHERE request_id=$2`, [JSON.stringify(lean), requestId]); } catch (e) { console.warn("strip imgs", e.message); }
+  // ประหยัดดิสก์: รูป base64 ใช้แค่ตอนเจน — ลบทิ้งหลังเจนสำเร็จ (กัน DB เต็มเหมือนที่เคยล่ม) คงไว้แค่ form_responses + lang
+  try { const lean = { ...parsed, lang, insight_images: [], insight_screenshot_base64: null }; await run(`UPDATE blueprint_requests SET insight_screenshot_base64=NULL, insight_images_json='[]', raw_payload_json=$1 WHERE request_id=$2`, [JSON.stringify(lean), requestId]); } catch (e) { console.warn("strip imgs", e.message); }
   if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'analysis',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
   await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,billing_cycle) DO NOTHING`, [uid("marathon"), parsed.user_id, parsed.instagram_account, parsed.meta_purchase.billing_cycle]);
   return { blueprintId, requestId, parsed, blueprint: analysis };
@@ -424,7 +426,9 @@ app.post("/api/improve-blueprint", async (req, res) => {
     if (!bp) return res.status(404).json({ ok: false, error: "BLUEPRINT_NOT_FOUND" });
     if ((bp.improve_count || 0) >= 1) return res.status(409).json({ ok: false, error: "IMPROVE_USED", message: "คุณใช้สิทธิ์เพิ่มข้อมูลฟรีของเล่มนี้ไปแล้วค่ะ 🩵" });
     const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
-    const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+    const raw = safeJson(reqRow?.raw_payload_json) || {};
+    const lang = (req.body?.lang === "en" || raw.lang === "en") ? "en" : "th"; // ภาษาปัจจุบัน (body) ทับที่เก็บไว้
+    const parsed = GenSchema.parse(normalizePayload(raw));
     const fr = parsed.form_responses;
     fr.starting_point = [fr.starting_point,
       extra.brand_info && `ข้อมูลแบรนด์เพิ่มเติม: ${extra.brand_info}`,
@@ -448,9 +452,9 @@ app.post("/api/improve-blueprint", async (req, res) => {
         await acquireGen();
         try {
           parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase?.billing_cycle, parsed.instagram_account);
-          const { analysis, model, usage } = await generateAnalysis(parsed);
+          const { analysis, model, usage } = await generateAnalysis(parsed, lang);
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(analysis), model, bpId]);
-          const lean = { ...parsed, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม)
+          const lean = { ...parsed, lang, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม) คง lang
           await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(lean), fr.starting_point, bp.request_id]).catch(() => {});
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
           // ส่งเมลแจ้งเมื่อแก้บทวิเคราะห์เสร็จ — ลูกค้าจะปิดหน้าไปก็ได้ ไม่ต้องนั่งรอ
@@ -486,9 +490,11 @@ app.post("/api/generate-content", async (req, res) => {
         await acquireGen();
         try {
           const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
-          const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+          const raw = safeJson(reqRow?.raw_payload_json) || {};
+          const lang = (req.body?.lang === "en" || raw.lang === "en") ? "en" : "th";
+          const parsed = GenSchema.parse(normalizePayload(raw));
           parsed.prev_context = await getPrevContext(parsed.email, cycle, parsed.instagram_account); // เดือน 2+ ห้ามซ้ำ แยกตามช่อง
-          const { content, model, usage } = await generateContent(parsed, current);
+          const { content, model, usage } = await generateContent(parsed, current, lang);
           const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
           const qualityFlags = checkBlueprintQuality(merged, true);
           if (qualityFlags.length) console.warn(`[quality] ${bpId}: ${qualityFlags.join(" · ")}`);
@@ -663,7 +669,7 @@ app.post("/api/credits/generate-script", async (req, res) => {
   if (ded.rowCount !== 1) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตไม่พอค่ะ" });
   try {
     await acquireGen();
-    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, files: briefFiles }); } finally { releaseGen(); }
+    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, files: briefFiles, lang: req.body?.lang === "en" ? "en" : "th" }); } finally { releaseGen(); }
     await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json,cycle) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script), cycle || null]).catch(() => {});
     if (result.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'credit_script',$2,$3,$4,$5)`, [uid("use"), result.model, result.usage.input || 0, result.usage.output || 0, result.usage.total || 0]).catch(() => {}); // เก็บ token ไว้ดูต้นทุนจริง
     const bal = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
@@ -752,10 +758,10 @@ app.get("/api/me/growth-analysis", async (req, res) => {
     const sponsors = await sponsorSummary(email, channel); // งานสปอนเซอร์ (สด ไม่ cache)
     const months = await getCustomerMonths(email, channel || undefined);
     if (months.length < 1) return res.json({ ok: true, analysis: null, count: 0, sponsors });
-    const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}`;
+    const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}:${req.query.lang === "en" ? "en" : "th"}`;
     const cached = await one(`SELECT signature, analysis_json, model FROM growth_analyses WHERE email=$1`, [email]);
     if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, sponsors, cached: true });
-    const { analysis, model } = await generateGrowthAnalysis(months);
+    const { analysis, model } = await generateGrowthAnalysis(months, req.query.lang === "en" ? "en" : "th");
     await run(`INSERT INTO growth_analyses (email,signature,analysis_json,model,created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (email) DO UPDATE SET signature=EXCLUDED.signature,analysis_json=EXCLUDED.analysis_json,model=EXCLUDED.model,created_at=now()`, [email, signature, JSON.stringify(analysis), model]);
     res.json({ ok: true, analysis, model, count: months.length, sponsors });
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GROWTH_FAILED", message: err.message }); }
@@ -1210,8 +1216,9 @@ async function retryStuckContent() {
         await acquireGen();
         try {
           const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [b.request_id]);
-          const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
-          const { content, model } = await generateContent(parsed, current);
+          const rawP = safeJson(reqRow?.raw_payload_json) || {};
+          const parsed = GenSchema.parse(normalizePayload(rawP));
+          const { content, model } = await generateContent(parsed, current, rawP.lang === "en" ? "en" : "th");
           const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(merged), model, b.blueprint_id]);
           console.log(`[retry-content] ${b.blueprint_id} สำเร็จ`);
@@ -1237,9 +1244,10 @@ async function regenContentForBp(bpId) {
     try {
       const current = safeJson(b.blueprint_json) || {};
       const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [b.request_id]);
-      const parsed = GenSchema.parse(normalizePayload(safeJson(reqRow?.raw_payload_json) || {}));
+      const raw = safeJson(reqRow?.raw_payload_json) || {};
+      const parsed = GenSchema.parse(normalizePayload(raw));
       parsed.prev_context = await getPrevContext(parsed.email, b.billing_cycle, parsed.instagram_account);
-      const { content, model } = await generateContent(parsed, current);
+      const { content, model } = await generateContent(parsed, current, raw.lang === "en" ? "en" : "th");
       const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
       const flags = checkBlueprintQuality(merged, true);
       await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(flags), bpId]);

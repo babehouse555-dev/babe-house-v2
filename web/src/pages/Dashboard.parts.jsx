@@ -25,7 +25,7 @@ function ScriptBlock({ s }) { // แสดงสคริปต์ 1 อัน (
   </>;
 }
 export function AddScript({ channel, cycle, demo, startOpen }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [credits, setCredits] = useState(null);
   const [open, setOpen] = useState(!!startOpen);
   const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
@@ -52,7 +52,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
     setBusy(true); setScript(null);
     try {
       const brief_files = [...files].length ? await filesToBase64([...files], 3) : [];
-      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, cycle, brief, sponsor, brief_files } });
+      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, cycle, brief, sponsor, brief_files, lang } });
       setScript(d.script); setCredits(d.credits);
       setHistory(h => [{ id: "new_" + Date.now(), script: d.script, sponsor, brief, created_at: new Date().toISOString() }, ...h]);
       setBrief(""); setSponsor(""); setFiles([]);

@@ -6,7 +6,7 @@ import { useI18n } from "../i18n.jsx";
 const pct = (a, b) => (a == null || b == null || a === 0) ? null : Math.round((b - a) / a * 1000) / 10;
 
 export default function Compare() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const METRICS = t("cmp_metrics");
   const nav = useNavigate();
   const [sp] = useSearchParams();
@@ -19,7 +19,7 @@ export default function Compare() {
   useEffect(() => {
     if (!session.token) { nav("/account"); return; }
     api("/api/me/blueprints", { token: session.token }).then(d => setMonths(channel ? (d.months || []).filter(m => String(m.instagram_account || "") === channel) : (d.months || []))).catch(() => { session.clear(); nav("/account"); });
-    api("/api/me/growth-analysis" + (channel ? `?channel=${encodeURIComponent(channel)}` : ""), { token: session.token }).then(d => { setCoach(d.analysis || null); setSponsors(d.sponsors || []); }).catch(() => setCoach(null));
+    api("/api/me/growth-analysis?" + new URLSearchParams({ ...(channel ? { channel } : {}), lang }), { token: session.token }).then(d => { setCoach(d.analysis || null); setSponsors(d.sponsors || []); }).catch(() => setCoach(null));
   }, []);
 
   if (!months) return <div className="wrap narrow page-pad center"><div className="spinner" /><p className="muted">{t("cmp_loading")}</p></div>;

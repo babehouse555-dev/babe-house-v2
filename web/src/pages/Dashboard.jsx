@@ -349,7 +349,7 @@ export default function Dashboard() {
               </div>
               <button type="button" onClick={() => selectDay(todayD)} style={{ width: "100%", padding: 13, borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: "var(--blue)", boxShadow: "0 6px 18px rgba(46,134,222,.28)" }}>{t("db_td_open")}</button>
               <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                <button type="button" onClick={() => !demo && toggleDay(todayD)} disabled={demo} style={{ flex: 1, padding: 9, borderRadius: 10, cursor: demo ? "default" : "pointer", fontSize: 13, fontWeight: 700, border: doneToday ? 0 : "1px solid var(--border)", background: doneToday ? "#e8f5ee" : "#fff", color: doneToday ? "#1a7f43" : "var(--ink)" }}>{doneToday ? t("db_td_marked") : t("db_td_mark")}</button>
+                <button type="button" onClick={() => toggleDay(todayD)} style={{ flex: 1, padding: 9, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: doneToday ? 0 : "1px solid var(--border)", background: doneToday ? "#e8f5ee" : "#fff", color: doneToday ? "#1a7f43" : "var(--ink)" }}>{doneToday ? t("db_td_marked") : t("db_td_mark")}</button>
                 {todayD < 30 && <button type="button" onClick={() => selectDay(todayD + 1)} style={{ flex: 1, padding: 9, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600, border: "1px solid var(--border)", background: "#fff", color: "var(--muted)" }}>{t("db_td_tmr")}</button>}
               </div>
               <div style={{ marginTop: 13 }}>

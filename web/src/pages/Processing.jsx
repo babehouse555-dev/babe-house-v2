@@ -10,6 +10,16 @@ export default function Processing() {
   const orderId = sp.get("order_id");
   const [state, setState] = useState({ phase: "checking", msg: "" });
   const polling = useRef(false);
+  // สเต็ปความคืบหน้า (จังหวะเวลาโดยประมาณ — ให้ลูกค้าเห็นว่าระบบเดินอยู่ ไม่ใช่ค้าง)
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (state.phase !== "working") return;
+    const iv = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(iv);
+  }, [state.phase]);
+  const STEP_AT = [0, 5, 14, 55, 100]; // วินาทีที่เริ่มแต่ละสเต็ป
+  const curStep = STEP_AT.filter(s => elapsed >= s).length - 1;
+  const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-(elapsed + 8) / 75))));
 
   useEffect(() => {
     let alive = true;
@@ -51,11 +61,25 @@ export default function Processing() {
       <div className="card">
         {state.phase === "checking" && <><div className="spinner" /><h1 className="page">{t("pr_checking")}</h1><p className="muted">{t("pr_wait")}</p></>}
         {state.phase === "working" && <>
-          <div style={{ width: 54, height: 54, borderRadius: "50%", background: "#E8F5EE", color: "#1a7f43", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, margin: "0 auto 16px" }}>✓</div>
-          <h1 className="page">{t("pr_done_title")}</h1>
-          <p className="muted">{t("pr_done_sub")}</p>
-          <div className="msg" style={{ background: "#F7F9FC", color: "var(--muted)", marginTop: 18 }}>{t("pr_email_note")}</div>
-          <Link className="btn ghost" to="/account" style={{ marginTop: 18 }}>{t("pr_go_account")}</Link>
+          <div className="spinner" />
+          <h1 className="page">{t("pr_working_title")}</h1>
+          <p className="muted" style={{ marginBottom: 20 }}>{t("pr_working_sub")}</p>
+          <div style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 10, marginBottom: 18, maxWidth: 380, marginLeft: "auto", marginRight: "auto" }}>
+            {t("pr_steps").map((s, i) => {
+              const done = i < curStep, active = i === curStep;
+              return <div key={i} className="row" style={{ gap: 10, alignItems: "center" }}>
+                {done
+                  ? <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#E8F5EE", color: "#1a7f43", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>✓</span>
+                  : active
+                    ? <span style={{ width: 22, height: 22, borderRadius: "50%", border: "3px solid #EDF5FD", borderTopColor: "var(--blue)", animation: "spin .8s linear infinite", flexShrink: 0, boxSizing: "border-box" }} />
+                    : <span style={{ width: 22, height: 22, borderRadius: "50%", border: "1.5px solid var(--border)", flexShrink: 0, boxSizing: "border-box" }} />}
+                <span style={{ fontSize: 14, fontWeight: active ? 700 : 400, color: active ? "var(--ink)" : done ? "var(--muted)" : "#b9c2cc" }}>{s}{active ? "…" : ""}</span>
+              </div>;
+            })}
+          </div>
+          <div style={{ height: 6, background: "var(--soft)", borderRadius: 20, overflow: "hidden", marginBottom: 16 }}><div style={{ width: `${pct}%`, height: "100%", background: "var(--blue)", borderRadius: 20, transition: "width 1s linear" }} /></div>
+          <div className="msg" style={{ background: "#EAF3FD", color: "#3F6BAE", textAlign: "left" }}>{t("pr_email_note")}</div>
+          <Link className="btn ghost" to="/account" style={{ marginTop: 14 }}>{t("pr_go_account")}</Link>
         </>}
         {state.phase === "error" && <><h1 className="page" style={{ color: "var(--down)" }}>{t("pr_error_title")}</h1><p className="muted">{state.msg}</p><Link className="btn" to="/form" style={{ marginTop: 18 }}>{t("pr_back_form")}</Link></>}
       </div>

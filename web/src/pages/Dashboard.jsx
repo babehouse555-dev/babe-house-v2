@@ -326,6 +326,38 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("db_go_confirm")}</button>
         </div>}
         {tab === "calendar" && contentReady && <>
+          {(() => {
+            // การ์ด "วันนี้ทำอะไร" — วันปัจจุบันนับจากวันเริ่มเล่ม (ตรรกะเดียวกับ Marathon), ลูกค้ารายวันหยิบสคริปต์ได้ใน 1 คลิก
+            const startMs = startedAt ? new Date(startedAt).getTime() : Date.now();
+            const todayD = Math.max(1, Math.min(30, Math.floor((Date.now() - startMs) / 86400000) + 1));
+            const c = (bp.calendar || []).find(x => Number(x.d) === todayD);
+            if (!c) return null;
+            let streak = 0, d0 = uploaded.has(todayD) ? todayD : todayD - 1;
+            while (d0 >= 1 && uploaded.has(d0)) { streak++; d0--; }
+            const doneToday = uploaded.has(todayD);
+            const st = t("db_td_streak"), pg = t("db_td_prog");
+            return <div className="card" style={{ border: "2px solid var(--blue)", marginBottom: 16 }}>
+              <div className="between" style={{ flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--blue)", background: "#EAF3FD", padding: "3px 11px", borderRadius: 20 }}>{t("db_td_badge")} {todayD}/30</span>
+                {streak > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6d1f", background: "#fff7e6", padding: "3px 11px", borderRadius: 20 }}>{st[0]}{streak}{st[1]}</span>}
+              </div>
+              <h3 style={{ margin: "0 0 6px", fontSize: 17, lineHeight: 1.4 }}>{c.t}</h3>
+              {c.h && <p className="muted" style={{ fontSize: 13, margin: "0 0 10px", lineHeight: 1.5 }}>💬 {c.h}</p>}
+              <div className="row" style={{ gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: G_COLORS[c.g] || "var(--muted)", background: "var(--soft)", padding: "2px 9px", borderRadius: 20 }}>{G_LABEL[c.g] || c.g}</span>
+                {c.f && <span style={{ fontSize: 11, color: "var(--muted)", background: "var(--soft)", padding: "2px 9px", borderRadius: 20 }}>{c.f}</span>}
+              </div>
+              <button type="button" onClick={() => selectDay(todayD)} style={{ width: "100%", padding: 13, borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: "var(--blue)", boxShadow: "0 6px 18px rgba(46,134,222,.28)" }}>{t("db_td_open")}</button>
+              <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                <button type="button" onClick={() => !demo && toggleDay(todayD)} disabled={demo} style={{ flex: 1, padding: 9, borderRadius: 10, cursor: demo ? "default" : "pointer", fontSize: 13, fontWeight: 700, border: doneToday ? 0 : "1px solid var(--border)", background: doneToday ? "#e8f5ee" : "#fff", color: doneToday ? "#1a7f43" : "var(--ink)" }}>{doneToday ? t("db_td_marked") : t("db_td_mark")}</button>
+                {todayD < 30 && <button type="button" onClick={() => selectDay(todayD + 1)} style={{ flex: 1, padding: 9, borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600, border: "1px solid var(--border)", background: "#fff", color: "var(--muted)" }}>{t("db_td_tmr")}</button>}
+              </div>
+              <div style={{ marginTop: 13 }}>
+                <div className="between" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}><span>{pg[0]}{uploaded.size}{pg[1]}</span><span>{uploaded.size}/30</span></div>
+                <div style={{ height: 6, background: "var(--soft)", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${Math.min(100, Math.round(uploaded.size / 30 * 100))}%`, height: "100%", background: "var(--blue)", borderRadius: 20 }} /></div>
+              </div>
+            </div>;
+          })()}
           {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>{t("db_cal_label")}</span>
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>

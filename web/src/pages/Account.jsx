@@ -8,7 +8,7 @@ const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_op
 const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("babe_opened") || "[]"); if (!a.includes(id)) { a.push(id); localStorage.setItem("babe_opened", JSON.stringify(a)); } } catch {} };
 
 export default function Account() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -36,7 +36,7 @@ export default function Account() {
   async function sendCode() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setMsg({ k: "err", t: t("ac_email_invalid") }); return; }
     setBusy(true); setMsg(null);
-    try { const d = await api("/api/auth/request-otp", { method: "POST", body: { email: email.trim().toLowerCase() } }); setDevCode(d.dev_code || ""); setStep("otp"); }
+    try { const d = await api("/api/auth/request-otp", { method: "POST", body: { email: email.trim().toLowerCase(), lang } }); setDevCode(d.dev_code || ""); setStep("otp"); }
     catch (e) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
   async function verify() {

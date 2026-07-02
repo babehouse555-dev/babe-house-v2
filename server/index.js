@@ -114,6 +114,16 @@ async function sendEmail(to, subject, html) {
 const wrap = (body) => `<div style="font-family:sans-serif;font-size:16px;line-height:1.8">${body}</div>`;
 const btn = (href, label) => `<a href="${href}" style="display:inline-block;background:#2E86DE;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
 const btnG = (href, label) => `<a href="${href}" style="display:inline-block;background:#06C755;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
+// ---------- อีเมล 2 ภาษา: เลือกตามภาษาที่ลูกค้าใช้ (payload.lang เก็บตอนกรอกฟอร์ม เฟส i18n) ----------
+const tr = (l, th, en) => (l === "en" ? en : th);
+const langOfPayload = (p) => (p?.lang === "en" ? "en" : "th");
+async function langOfEmail(email) {
+  // หา lang จากออเดอร์ล่าสุดของอีเมลนี้ (ใช้กับเมลที่ไม่มี payload ในมือ เช่น cron/referral)
+  try {
+    const r = await one(`SELECT order_payload_json FROM blueprint_orders WHERE email=$1 AND order_payload_json IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [normEmail(email)]);
+    return langOfPayload(safeJson(r?.order_payload_json));
+  } catch { return "th"; }
+}
 const LINE_ACADEMY_URL = process.env.LINE_ACADEMY_URL || "https://line.me/R/ti/p/%40babehouse_academy";
 const LINE_WORK_URL = process.env.LINE_WORK_URL || "https://line.me/ti/p/0yBlh9zXFl";
 
@@ -155,7 +165,14 @@ async function processReferralReward(orderId) {
   await run(`UPDATE customers SET referral_count=COALESCE(referral_count,0)+1 WHERE email=$1`, [ref.email]);
   const code = "THX" + Math.random().toString(36).slice(2, 7).toUpperCase();
   await run(`INSERT INTO promo_codes (code, note, max_uses, discount_percent) VALUES ($1,$2,1,$3)`, [code, "รางวัลแนะนำเพื่อน " + ref.email, REFERRAL_PERCENT]);
-  await sendEmail(ref.email, `เพื่อนของคุณสมัครแล้ว! รับโค้ดลด ${REFERRAL_PERCENT}% 🎁`, wrap(`ขอบคุณที่แนะนำ Babe House ค่ะ 🩵<br><br>โค้ดลด <b>${REFERRAL_PERCENT}%</b> สำหรับเดือนถัดไป:<br><div style="font-size:26px;font-weight:800;letter-spacing:3px;margin:14px 0;color:#2E86DE">${code}</div>ใช้ได้ 1 ครั้ง<br><br>${btn(appBaseUrl() + "/account", "ไปที่บัญชีของฉัน")}`)).catch(() => {});
+  const l = await langOfEmail(ref.email);
+  await sendEmail(ref.email,
+    tr(l, `เพื่อนของคุณสมัครแล้ว! รับโค้ดลด ${REFERRAL_PERCENT}% 🎁`, `Your friend just joined! Here's ${REFERRAL_PERCENT}% off 🎁`),
+    wrap(tr(l,
+      `ขอบคุณที่แนะนำ Babe House ค่ะ 🩵<br><br>โค้ดลด <b>${REFERRAL_PERCENT}%</b> สำหรับเดือนถัดไป:`,
+      `Thank you for sharing Babe House 🩵<br><br>Here's your <b>${REFERRAL_PERCENT}% off</b> code for next month:`) +
+      `<br><div style="font-size:26px;font-weight:800;letter-spacing:3px;margin:14px 0;color:#2E86DE">${code}</div>` +
+      tr(l, `ใช้ได้ 1 ครั้ง<br><br>${btn(appBaseUrl() + "/account", "ไปที่บัญชีของฉัน")}`, `Valid for one use<br><br>${btn(appBaseUrl() + "/account", "Go to my account")}`))).catch(() => {});
 }
 
 // ---------- schemas ----------
@@ -398,7 +415,11 @@ app.post("/api/start-generation", async (req, res) => {
         const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
         await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, o.order_id]);
         const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`;
-        if (o.email) await sendEmail(o.email, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, wrap(`ครูพี่คิมอ่านช่องของคุณเสร็จแล้วค่ะ!<br><br>กดเปิดดู <b>บทวิเคราะห์ช่อง</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · โอกาสโต) — ถ้าตรงแล้ว กดปุ่ม <b>"สร้างแผน 30 วัน"</b> ในเล่ม ครูพี่คิมจะเขียนสคริปต์พร้อมอัดให้ครบทั้งเดือนเลยค่ะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ของฉัน")}`)).catch(() => {});
+        if (o.email) { const l = langOfPayload(result.parsed); await sendEmail(o.email,
+          tr(l, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, `Your channel analysis is ready 🩵`),
+          wrap(tr(l,
+            `ครูพี่คิมอ่านช่องของคุณเสร็จแล้วค่ะ!<br><br>กดเปิดดู <b>บทวิเคราะห์ช่อง</b> (จุดแข็ง–จุดอ่อน · กลุ่มเป้าหมาย · โอกาสโต) — ถ้าตรงแล้ว กดปุ่ม <b>"สร้างแผน 30 วัน"</b> ในเล่ม ครูพี่คิมจะเขียนสคริปต์พร้อมอัดให้ครบทั้งเดือนเลยค่ะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ของฉัน")}`,
+            `Kim has finished reading your channel!<br><br>Open your <b>Channel Analysis</b> (strengths & weaknesses · audience · growth opportunities) — if it looks right, hit <b>"Create my 30-day plan"</b> inside and Kim will write a full month of ready-to-shoot scripts.<br><br>${btn(url, "Open my analysis")}`))).catch(() => {}); }
       } catch (e) { console.error("bg gen", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), o.order_id]); }
       finally { inFlightOrders.delete(o.order_id); }
     })();
@@ -458,7 +479,11 @@ app.post("/api/improve-blueprint", async (req, res) => {
           await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(lean), fr.starting_point, bp.request_id]).catch(() => {});
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
           // ส่งเมลแจ้งเมื่อแก้บทวิเคราะห์เสร็จ — ลูกค้าจะปิดหน้าไปก็ได้ ไม่ต้องนั่งรอ
-          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`; await sendEmail(parsed.email, `บทวิเคราะห์ของคุณอัปเดตแล้ว 🩵`, wrap(`ครูพี่คิมอ่านข้อมูลใหม่ของคุณแล้ว ปรับบทวิเคราะห์ให้แม่นขึ้นเรียบร้อยค่ะ!<br><br>เปิดดูได้เลย ถ้าตรงใจแล้วกด <b>"สร้างแผน 30 วัน"</b> ในเล่มได้เลยนะคะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ที่อัปเดตแล้ว")}`)).catch(() => {}); }
+          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`; const l = langOfPayload(parsed); await sendEmail(parsed.email,
+            tr(l, `บทวิเคราะห์ของคุณอัปเดตแล้ว 🩵`, `Your analysis has been updated 🩵`),
+            wrap(tr(l,
+              `ครูพี่คิมอ่านข้อมูลใหม่ของคุณแล้ว ปรับบทวิเคราะห์ให้แม่นขึ้นเรียบร้อยค่ะ!<br><br>เปิดดูได้เลย ถ้าตรงใจแล้วกด <b>"สร้างแผน 30 วัน"</b> ในเล่มได้เลยนะคะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ที่อัปเดตแล้ว")}`,
+              `Kim has read your new info and fine-tuned your analysis!<br><br>Take a look — if it feels right, hit <b>"Create my 30-day plan"</b> inside.<br><br>${btn(url, "Open my updated analysis")}`))).catch(() => {}); }
         } finally { releaseGen(); }
       } catch (e) { console.error("improve bg", e.message); await run(`UPDATE blueprints SET analysis_status='error' WHERE blueprint_id=$1`, [bpId]).catch(() => {}); }
       finally { inFlightBp.delete(bpId); }
@@ -501,7 +526,11 @@ app.post("/api/generate-content", async (req, res) => {
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(qualityFlags), bpId]);
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'content',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
           // ส่งเมลแจ้งเมื่อแผน 30 วันเจนเสร็จ — ลูกค้าปิดหน้าไปก็ได้ ไม่ต้องนั่งรอ
-          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`; await sendEmail(parsed.email, `แผนคอนเทนต์ 30 วันของคุณพร้อมแล้ว 🎉`, wrap(`ครูพี่คิมเขียนสคริปต์พร้อมอัดให้ครบทั้ง 30 วันแล้วค่ะ! 🩵<br><br>เปิดดูปฏิทิน 30 วัน + สคริปต์ + แคปชันพร้อมโพสต์ได้เลย แล้วเริ่มลงมือทำคอนเทนต์กันค่ะ<br><br>${btn(url, "เปิดดูแผน 30 วันของฉัน")}`)).catch(() => {}); }
+          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`; const l = langOfPayload(parsed); await sendEmail(parsed.email,
+            tr(l, `แผนคอนเทนต์ 30 วันของคุณพร้อมแล้ว 🎉`, `Your 30-day content plan is ready 🎉`),
+            wrap(tr(l,
+              `ครูพี่คิมเขียนสคริปต์พร้อมอัดให้ครบทั้ง 30 วันแล้วค่ะ! 🩵<br><br>เปิดดูปฏิทิน 30 วัน + สคริปต์ + แคปชันพร้อมโพสต์ได้เลย แล้วเริ่มลงมือทำคอนเทนต์กันค่ะ<br><br>${btn(url, "เปิดดูแผน 30 วันของฉัน")}`,
+              `Kim has written all 30 days of ready-to-shoot scripts! 🩵<br><br>Open your 30-day calendar + scripts + ready-to-post captions, and let's start creating.<br><br>${btn(url, "Open my 30-day plan")}`))).catch(() => {}); }
           console.log(`[gen-content] ${bpId} สำเร็จ`);
         } finally { releaseGen(); }
       } catch (e) { console.error("gen-content bg", e.message); await run(`UPDATE blueprints SET content_status='error' WHERE blueprint_id=$1`, [bpId]).catch(() => {}); }
@@ -561,14 +590,18 @@ app.post("/api/marathon/progress", async (req, res) => {
 });
 
 // ---------- auth (OTP) ----------
-async function sendOtp(email, code) { return sendEmail(email, `รหัสเข้าสู่ระบบ Babe House: ${code}`, wrap(`รหัสเข้าสู่ระบบของคุณคือ<br><div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0">${code}</div>ใช้ได้ภายใน 10 นาที`)); }
+async function sendOtp(email, code, l = "th") {
+  return sendEmail(email,
+    tr(l, `รหัสเข้าสู่ระบบ Babe House: ${code}`, `Your Babe House login code: ${code}`),
+    wrap(tr(l, `รหัสเข้าสู่ระบบของคุณคือ`, `Your login code is`) + `<br><div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0">${code}</div>` + tr(l, `ใช้ได้ภายใน 10 นาที`, `Valid for 10 minutes`)));
+}
 app.post("/api/auth/request-otp", async (req, res) => {
   try {
     const email = normEmail(req.body?.email);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ ok: false, error: "INVALID_EMAIL", message: "อีเมลไม่ถูกต้อง" });
     const code = String(Math.floor(100000 + Math.random() * 900000));
     await run(`INSERT INTO auth_otps (email,code,expires_at,attempts) VALUES ($1,$2,$3,0) ON CONFLICT (email) DO UPDATE SET code=EXCLUDED.code,expires_at=EXCLUDED.expires_at,attempts=0`, [email, code, Date.now() + 600000]);
-    let sent = false; try { sent = await sendOtp(email, code); } catch {}
+    let sent = false; try { sent = await sendOtp(email, code, req.body?.lang === "en" ? "en" : "th"); } catch {}
     res.json({ ok: true, sent, dev_code: EMAIL_ENABLED ? undefined : code });
   } catch (err) { res.status(500).json({ ok: false, error: "REQUEST_OTP_FAILED", message: err.message }); }
 });
@@ -930,7 +963,11 @@ app.post("/api/admin/regenerate", async (req, res) => {
       const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
       await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
       console.log(`[regenerate] order ${orderId} → ${result.blueprintId}`);
-      if (o.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`; await sendEmail(o.email, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, wrap(`ครูพี่คิมอ่านช่องของคุณเสร็จแล้วค่ะ!<br><br>กดเปิดดู <b>บทวิเคราะห์ช่อง</b> — ถ้าตรงแล้ว กดปุ่ม <b>"สร้างแผน 30 วัน"</b> ในเล่ม ครูพี่คิมจะเขียนสคริปต์ให้ครบทั้งเดือนค่ะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ของฉัน")}`)).catch(() => {}); }
+      if (o.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`; const l = langOfPayload(result.parsed); await sendEmail(o.email,
+        tr(l, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, `Your channel analysis is ready 🩵`),
+        wrap(tr(l,
+          `ครูพี่คิมอ่านช่องของคุณเสร็จแล้วค่ะ!<br><br>กดเปิดดู <b>บทวิเคราะห์ช่อง</b> — ถ้าตรงแล้ว กดปุ่ม <b>"สร้างแผน 30 วัน"</b> ในเล่ม ครูพี่คิมจะเขียนสคริปต์ให้ครบทั้งเดือนค่ะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ของฉัน")}`,
+          `Kim has finished reading your channel!<br><br>Open your <b>Channel Analysis</b> — if it looks right, hit <b>"Create my 30-day plan"</b> inside and Kim will write scripts for the whole month.<br><br>${btn(url, "Open my analysis")}`))).catch(() => {}); }
     } catch (e) { console.error("regenerate", e.message); await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), orderId]); }
     finally { inFlightOrders.delete(orderId); }
   })();
@@ -1097,7 +1134,11 @@ async function runMonthlyReminders(force = false) {
     const cycle = currentBillingCycle();
     const rows = await q(`SELECT DISTINCT email FROM blueprint_requests WHERE email IS NOT NULL AND email NOT IN (SELECT email FROM blueprint_requests WHERE billing_cycle=$1 AND email IS NOT NULL) AND email NOT IN (SELECT email FROM month_reminders WHERE cycle=$1) LIMIT 200`, [cycle]);
     let sent = 0;
-    for (const r of rows) { try { await sendEmail(r.email, "เดือนใหม่แล้ว มาต่อแผนคอนเทนต์กันค่ะ 🩵", wrap(`เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(`${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`)); } catch { continue; } await run(`INSERT INTO month_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
+    for (const r of rows) { try { const l = await langOfEmail(r.email); await sendEmail(r.email,
+      tr(l, "เดือนใหม่แล้ว มาต่อแผนคอนเทนต์กันค่ะ 🩵", "A new month begins — let's plan your content 🩵"),
+      wrap(tr(l,
+        `เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(`${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`,
+        `It's a new month! Time to continue with this month's 30-day plan.<br><br>${btn(`${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`, "Unlock this month's plan (฿490)")}`))); } catch { continue; } await run(`INSERT INTO month_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
     if (sent) console.log(`[reminders] ${cycle}: ${sent}`); return sent;
   } catch (e) { console.error("monthly", e.message); return 0; }
 }
@@ -1107,7 +1148,12 @@ async function runHomeworkReminders() {
     const cycle = currentBillingCycle();
     const rows = await q(`SELECT DISTINCT r.email, COALESCE(mp.uploaded_count,0) uploaded FROM blueprint_requests r JOIN marathon_progress mp ON mp.user_id=r.user_id AND mp.billing_cycle=r.billing_cycle WHERE r.billing_cycle=$1 AND r.email IS NOT NULL AND COALESCE(mp.uploaded_count,0)<$2 AND r.email NOT IN (SELECT email FROM homework_reminders WHERE cycle=$1) LIMIT 200`, [cycle, HOMEWORK_MIN_UPLOADS]);
     let sent = 0;
-    for (const r of rows) { try { await sendEmail(r.email, "อย่าลืมทำคอนเทนต์ตามแผนนะคะ 🩵", wrap(`เดือนนี้ทำไปแล้ว <b>${r.uploaded} วัน</b> สู้ๆ นะคะ! ความสม่ำเสมอคือกุญแจของการเติบโตค่ะ<br><br>${btn(`${appBaseUrl()}/account`, "เปิดแผนของฉัน ทำต่อ")}<br><br><b>ถ้าทำเองแล้วเริ่มเหนื่อย/ตัดต่อไม่ทัน — ครูพี่คิมมีตัวช่วยให้เป้าหมายคุณเป็นจริงค่ะ 🩵</b><br><br>🎓 อยากตัดต่อเองให้คล่อง เก่งขึ้นทุกคลิป:<br>${btn(LINE_ACADEMY_URL, "เรียนตัดต่อกับครูพี่คิม")}<br><br>🎬 ไม่มีเวลาทำเอง อยากให้มืออาชีพทำให้:<br>${btnG(LINE_WORK_URL, "ให้ทีม Babe House ทำให้")}`)); } catch { continue; } await run(`INSERT INTO homework_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
+    for (const r of rows) { try { const l = await langOfEmail(r.email); await sendEmail(r.email,
+      tr(l, "อย่าลืมทำคอนเทนต์ตามแผนนะคะ 🩵", "Keep going with your content plan 🩵"),
+      wrap(tr(l,
+        `เดือนนี้ทำไปแล้ว <b>${r.uploaded} วัน</b> สู้ๆ นะคะ! ความสม่ำเสมอคือกุญแจของการเติบโตค่ะ<br><br>${btn(`${appBaseUrl()}/account`, "เปิดแผนของฉัน ทำต่อ")}<br><br><b>ถ้าทำเองแล้วเริ่มเหนื่อย/ตัดต่อไม่ทัน — ครูพี่คิมมีตัวช่วยให้เป้าหมายคุณเป็นจริงค่ะ 🩵</b><br><br>🎓 อยากตัดต่อเองให้คล่อง เก่งขึ้นทุกคลิป:<br>${btn(LINE_ACADEMY_URL, "เรียนตัดต่อกับครูพี่คิม")}<br><br>🎬 ไม่มีเวลาทำเอง อยากให้มืออาชีพทำให้:<br>${btnG(LINE_WORK_URL, "ให้ทีม Babe House ทำให้")}`,
+        // EN: ตัด upsell LINE ออก (แชท LINE เป็นภาษาไทย ยังไม่รองรับลูกค้าต่างชาติ)
+        `You've done <b>${r.uploaded} days</b> this month — keep it up! Consistency is the key to growth.<br><br>${btn(`${appBaseUrl()}/account`, "Open my plan")}`))); } catch { continue; } await run(`INSERT INTO homework_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
     if (sent) console.log(`[homework] ${cycle}: ${sent}`); return sent;
   } catch (e) { console.error("homework", e.message); return 0; }
 }
@@ -1125,7 +1171,11 @@ async function runAbandonedFollowups() {
     let sent = 0;
     for (const r of rows) {
       const url = `${appBaseUrl()}/checkout?order_id=${encodeURIComponent(r.order_id)}`;
-      try { await sendEmail(r.email, "แผนคอนเทนต์ของคุณรอเปิดอยู่นะคะ 🩵", wrap(`เห็นว่าคุณเริ่มกรอกข้อมูลช่องไว้แล้ว แต่ยังไม่ได้เปิดดูแผนเต็มๆ เลยค่ะ<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> ไว้ให้แล้ว — กดปุ่มด้านล่างเพื่อดูสรุปและปลดล็อกได้เลยค่ะ<br><br>${btn(url, "ดูแผนของฉัน · ปลดล็อก 490฿")}<br><br><span style="color:#888;font-size:14px">โปรเปิดตัว 490฿ (จากเต็ม 1,590฿) มีจำนวนจำกัดนะคะ</span>`)); }
+      try { const l = await langOfEmail(r.email); await sendEmail(r.email,
+        tr(l, "แผนคอนเทนต์ของคุณรอเปิดอยู่นะคะ 🩵", "Your content plan is waiting for you 🩵"),
+        wrap(tr(l,
+          `เห็นว่าคุณเริ่มกรอกข้อมูลช่องไว้แล้ว แต่ยังไม่ได้เปิดดูแผนเต็มๆ เลยค่ะ<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> ไว้ให้แล้ว — กดปุ่มด้านล่างเพื่อดูสรุปและปลดล็อกได้เลยค่ะ<br><br>${btn(url, "ดูแผนของฉัน · ปลดล็อก 490฿")}<br><br><span style="color:#888;font-size:14px">โปรเปิดตัว 490฿ (จากเต็ม 1,590฿) มีจำนวนจำกัดนะคะ</span>`,
+          `We noticed you started filling in your channel info but haven't opened your full plan yet.<br><br>Kim has analyzed your channel and prepared a <b>30-day content plan + ready-to-use scripts</b> — tap below to see your summary and unlock it.<br><br>${btn(url, "See my plan · Unlock ฿490")}<br><br><span style="color:#888;font-size:14px">Launch offer ฿490 (regular ฿1,590) — limited spots</span>`))); }
       catch { continue; }
       await run(`INSERT INTO abandoned_reminders (email,order_id) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING`, [r.email, r.order_id]);
       sent++;
@@ -1192,7 +1242,12 @@ async function retryStuckGenerations() {
         console.log(`[retry-gen] order ${o.order_id} สำเร็จ`);
         if (o.email) {
           const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`;
-          await sendEmail(o.email, `เล่ม Blueprint เดือน ${o.billing_cycle} พร้อมแล้ว 🩵`, wrap(`ครูพี่คิมวิเคราะห์เสร็จแล้ว เล่มแผน 30 วันพร้อมเปิดดูค่ะ<br><br>${btn(url, "เปิด Dashboard ของฉัน")}`)).catch(() => {});
+          const l = langOfPayload(result.parsed);
+          await sendEmail(o.email,
+            tr(l, `เล่ม Blueprint เดือน ${o.billing_cycle} พร้อมแล้ว 🩵`, `Your ${o.billing_cycle} Blueprint is ready 🩵`),
+            wrap(tr(l,
+              `ครูพี่คิมวิเคราะห์เสร็จแล้ว เล่มแผน 30 วันพร้อมเปิดดูค่ะ<br><br>${btn(url, "เปิด Dashboard ของฉัน")}`,
+              `Kim has finished the analysis — your 30-day plan is ready to open.<br><br>${btn(url, "Open my dashboard")}`))).catch(() => {});
         }
       } catch (e) {
         console.error(`[retry-gen] order ${o.order_id} ยังไม่สำเร็จ:`, e.message);
@@ -1222,7 +1277,11 @@ async function retryStuckContent() {
           const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(merged), model, b.blueprint_id]);
           console.log(`[retry-content] ${b.blueprint_id} สำเร็จ`);
-          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(b.blueprint_id)}`; await sendEmail(parsed.email, `แผนคอนเทนต์ 30 วันของคุณพร้อมแล้ว 🎉`, wrap(`ครูพี่คิมเขียนสคริปต์พร้อมอัดให้ครบทั้ง 30 วันแล้วค่ะ! 🩵<br><br>${btn(url, "เปิดดูแผน 30 วันของฉัน")}`)).catch(() => {}); }
+          if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(b.blueprint_id)}`; const l = langOfPayload(parsed); await sendEmail(parsed.email,
+            tr(l, `แผนคอนเทนต์ 30 วันของคุณพร้อมแล้ว 🎉`, `Your 30-day content plan is ready 🎉`),
+            wrap(tr(l,
+              `ครูพี่คิมเขียนสคริปต์พร้อมอัดให้ครบทั้ง 30 วันแล้วค่ะ! 🩵<br><br>${btn(url, "เปิดดูแผน 30 วันของฉัน")}`,
+              `Kim has written all 30 days of ready-to-shoot scripts! 🩵<br><br>${btn(url, "Open my 30-day plan")}`))).catch(() => {}); }
         } finally { releaseGen(); }
       } catch (e) { console.error(`[retry-content] ${b.blueprint_id}`, e.message); await run(`UPDATE blueprints SET content_status='error' WHERE blueprint_id=$1`, [b.blueprint_id]).catch(() => {}); }
       finally { inFlightBp.delete(b.blueprint_id); }

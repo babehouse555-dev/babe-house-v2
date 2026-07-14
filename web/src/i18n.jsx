@@ -70,7 +70,7 @@ const DICT = {
   cta_see_demo: { th: "ดูตัวอย่างผลลัพธ์ก่อน", en: "See a sample result" },
 
   // HERO
-  hero_badge: { th: "🩵 โปรเปิดตัว — กลุ่มแรกเท่านั้น", en: "🩵 Launch offer — first group only" },
+  hero_badge: { th: "🩵 โปรเปิดตัว — กลุ่มแรกเท่านั้น", en: "🩵 Launch offer — for our first members" },
   hero_title_a: { th: "ทำคอนเทนต์มานาน", en: "Posting for months," },
   hero_title_b: { th: "แต่ช่องไม่โตสักที?", en: "but not growing?" },
   hero_sub: { th: "ครูพี่คิมอ่าน Insight ของคุณ แล้ววางแผนคอนเทนต์ 30 วัน พร้อมสคริปต์และแคปชัน", en: "Kim reads your Insights and builds a 30-day content plan — scripts and captions included." },
@@ -139,12 +139,12 @@ const DICT = {
     "A 30-Day Marathon tracker for consistency",
     "Come back monthly to compare growth and sharpen the plan",
   ] },
-  offer_worth: { th: "ถ้าคุณเสียเวลาคิดคอนเทนต์ทั้งเดือนมากกว่า 1 ชั่วโมง โปรเปิดตัวนี้คุ้มมากค่ะ", en: "If planning a month of content costs you more than an hour, this launch offer pays for itself." },
+  offer_worth: { th: "ถ้าคุณเสียเวลาคิดคอนเทนต์ทั้งเดือนมากกว่า 1 ชั่วโมง โปรเปิดตัวนี้คุ้มมากค่ะ", en: "If a month of content planning takes you more than an hour, this launch offer more than pays for itself." },
   offer_cta: { th: "รับโปรเปิดตัว", en: "Get the launch offer" },
 
   // LAUNCH PRICE CARD
   launch_label: { th: "LAUNCH OFFER", en: "LAUNCH OFFER" },
-  launch_title: { th: "โปรเปิดตัว สำหรับกลุ่มแรก", en: "Launch offer for the first group" },
+  launch_title: { th: "โปรเปิดตัว สำหรับกลุ่มแรก", en: "Launch offer for our first members" },
   launch_save: { th: "ประหยัด 1,100฿ ในช่วงเปิดตัว", en: "Save ฿1,100 during launch" },
   card_includes: { th: [
     "วิเคราะห์ช่องจากข้อมูลจริงของคุณ",

@@ -1087,6 +1087,13 @@ app.get("/api/admin/revenue", async (req, res) => {
   res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
+// stopgap: admin ดูรหัส OTP ล่าสุดของอีเมลลูกค้า → บอกลูกค้าตรงๆ (ระหว่างอีเมลใช้ไม่ได้)
+app.get("/api/admin/peek-otp", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = normEmail(req.query?.email || "");
+  const row = await one(`SELECT code, expires_at, attempts FROM auth_otps WHERE email=$1`, [email]);
+  res.json({ ok: true, email, otp: row ? { code: row.code, expires_in_min: Math.max(0, Math.round((Number(row.expires_at) - Date.now()) / 60000)), attempts: row.attempts } : null });
+});
 // debug อีเมล: ยิงเทสต์ + คืน error ดิบจาก Resend (admin เท่านั้น) — ใช้ตอนอีเมลไม่ส่ง
 app.post("/api/admin/email-test", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

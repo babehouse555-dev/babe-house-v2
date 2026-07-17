@@ -106,10 +106,14 @@ async function usedFreeCodeBefore(email, code) {
 }
 
 // ---------- email (Resend) ----------
+let lastEmailError = null; // เก็บ error ล่าสุดจาก Resend ไว้ debug (admin)
 async function sendEmail(to, subject, html) {
   if (!EMAIL_ENABLED) { console.log(`[DEV EMAIL] -> ${to} | ${subject}`); return false; }
-  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: process.env.APP_FROM_EMAIL || "Babe House <onboarding@resend.dev>", to: [to], subject, html }) });
-  return r.ok;
+  try {
+    const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: process.env.APP_FROM_EMAIL || "Babe House <onboarding@resend.dev>", to: [to], subject, html }) });
+    if (!r.ok) { const body = await r.text().catch(() => ""); lastEmailError = { status: r.status, body: body.slice(0, 500), to, at: new Date().toISOString() }; console.error(`[EMAIL FAIL] ${r.status} -> ${to}: ${body.slice(0, 200)}`); }
+    return r.ok;
+  } catch (e) { lastEmailError = { status: "fetch_error", body: String(e.message).slice(0, 300), to, at: new Date().toISOString() }; console.error(`[EMAIL FAIL] fetch ${to}: ${e.message}`); return false; }
 }
 const wrap = (body) => `<div style="font-family:sans-serif;font-size:16px;line-height:1.8">${body}</div>`;
 const btn = (href, label) => `<a href="${href}" style="display:inline-block;background:#2E86DE;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
@@ -1083,6 +1087,14 @@ app.get("/api/admin/revenue", async (req, res) => {
   res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
+// debug อีเมล: ยิงเทสต์ + คืน error ดิบจาก Resend (admin เท่านั้น) — ใช้ตอนอีเมลไม่ส่ง
+app.post("/api/admin/email-test", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const to = String(req.body?.to || "").trim();
+  lastEmailError = null;
+  const ok = to ? await sendEmail(to, "Babe House · email test", wrap("email test ✓")) : false;
+  res.json({ ok: true, sent: ok, from: process.env.APP_FROM_EMAIL || "(default onboarding@resend.dev)", key_present: !!process.env.RESEND_API_KEY, key_prefix: String(process.env.RESEND_API_KEY || "").slice(0, 5), last_error: lastEmailError });
+});
 app.post("/api/admin/codes", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   let code = String(req.body?.code || "").trim().toUpperCase() || "BABE" + Math.random().toString(36).slice(2, 7).toUpperCase();

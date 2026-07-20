@@ -757,6 +757,8 @@ const DICT = {
   db_script_sub: { th: "🎬 บทพูดอัดคลิป — กดคัดลอกแล้วใช้ได้เลย", en: "🎬 Recording script — tap copy and go" },
   db_caption: { th: "แคปชั่น & แฮชแท็ก", en: "Caption & hashtags" },
   db_copy: { th: "คัดลอก 📋", en: "Copy 📋" },
+  db_copy_script: { th: "คัดลอกสคริปต์", en: "Copy script" },
+  db_copied: { th: "✓ คัดลอกแล้ว", en: "✓ Copied" },
   db_tip: { th: "💡 ทิปครูพี่คิม:", en: "💡 Kim's tip:" },
   db_done_yes: { th: "✓ ทำคลิปวันนี้แล้ว! เก่งมากค่ะ 🎉 (กดเพื่อยกเลิก)", en: "✓ Done for today! Great job 🎉 (tap to undo)" },
   db_td_badge: { th: "📍 วันนี้ · วันที่", en: "📍 Today · Day" },

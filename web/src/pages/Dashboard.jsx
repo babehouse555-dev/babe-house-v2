@@ -27,6 +27,8 @@ export default function Dashboard() {
   const [showDeep, setShowDeep] = useState(false);
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
+  const [copied, setCopied] = useState(""); // แสดง "คัดลอกแล้ว" ชั่วครู่หลังกดปุ่มคัดลอก
+  const copy = (txt, key) => { navigator.clipboard?.writeText(txt); setCopied(key); setTimeout(() => setCopied(c => (c === key ? "" : c)), 1800); };
   const [startedAt, setStartedAt] = useState(null);
   const [improveCount, setImproveCount] = useState(0);
   const [improveOpen, setImproveOpen] = useState(false);
@@ -374,18 +376,31 @@ export default function Dashboard() {
           </div>
           {script && (() => {
             const BEAT = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
-            const copy = (t) => navigator.clipboard?.writeText(t);
             const title = (bp.calendar.find(c => c.d === script.d) || {}).t;
+            // ข้อความสคริปต์ทั้งชุด (หัวข้อ + ทุกช่วง + ข้อความบนจอ/ภาพ + แคปชั่น) สำหรับก๊อปไปทำงานต่อ
+            const fullScript = [
+              `${title}`,
+              `${t("db_day")} ${script.d} · ${G_LABEL[script.g] || script.g}`,
+              "",
+              ...(script.beats || []).map(b => [`[${BEAT_LABEL[b.s] || b.s}] ${b.ts}`, b.say, b.ost && `📺 ${b.ost}`, b.vis && `🎥 ${b.vis}`, ""].filter(Boolean).join("\n")),
+              `${t("db_caption")}:`,
+              script.cap,
+            ].join("\n");
             return <div ref={scriptRef} className="card" style={{ scrollMarginTop: 70 }}>
               <div className="between" style={{ marginBottom: 8 }}><span className="tag" style={{ background: "var(--soft)", color: G_COLORS[script.g] }}>{t("db_day")} {script.d} · {G_LABEL[script.g] || script.g}</span><button className="link" onClick={scrollToCal} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer" }}>{t("db_pick_other_day")}</button></div>
               <h3 style={{ margin: "10px 0 4px" }}>{title}</h3>
-              <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>{t("db_script_sub")}</p>
+              <div className="between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                <p className="muted" style={{ fontSize: 13, margin: 0 }}>{t("db_script_sub")}</p>
+                <button type="button" onClick={() => copy(fullScript, "script")} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: copied === "script" ? "#e8f5ee" : "#fff", color: copied === "script" ? "#1a7f43" : "var(--blue)", border: `1px solid ${copied === "script" ? "#4caf7d" : "var(--border)"}`, borderRadius: 10, padding: "7px 13px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  {copied === "script" ? t("db_copied") : `📋 ${t("db_copy_script")}`}
+                </button>
+              </div>
               {(script.beats || []).map((b, i) => <div key={i} style={{ borderLeft: `4px solid ${BEAT[b.s] || "var(--blue)"}`, background: "var(--soft)", borderRadius: "0 12px 12px 0", padding: "12px 14px", marginBottom: 10 }}>
                 <div className="row" style={{ gap: 8, marginBottom: 6 }}><span style={{ background: BEAT[b.s] || "var(--blue)", color: "#fff", fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 20 }}>{BEAT_LABEL[b.s] || b.s}</span><span className="muted" style={{ fontSize: 12 }}>{b.ts}</span></div>
                 <p style={{ margin: "0 0 6px", fontSize: 15 }}>{b.say}</p>
                 <div className="row" style={{ gap: 6 }}>{b.ost && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>📺 {b.ost}</span>}{b.vis && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>🎥 {b.vis}</span>}</div>
               </div>)}
-              <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 4 }}><div className="between"><b style={{ fontSize: 13 }}>{t("db_caption")}</b><button className="link" onClick={() => copy(script.cap)} style={{ background: "none", border: 0, fontSize: 13 }}>{t("db_copy")}</button></div><p style={{ fontSize: 14, marginTop: 6 }}>{script.cap}</p></div>
+              <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 4 }}><div className="between"><b style={{ fontSize: 13 }}>{t("db_caption")}</b><button className="link" onClick={() => copy(script.cap, "cap")} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer", color: copied === "cap" ? "#1a7f43" : undefined }}>{copied === "cap" ? t("db_copied") : t("db_copy")}</button></div><p style={{ fontSize: 14, marginTop: 6 }}>{script.cap}</p></div>
               <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 8 }}>{t("db_tip")} {script.tip}</div>
               <button type="button" onClick={() => toggleDay(script.d)} style={{ width: "100%", marginTop: 14, padding: "14px", borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: uploaded.has(script.d) ? "#1a7f43" : "var(--blue)", boxShadow: uploaded.has(script.d) ? "0 6px 18px rgba(26,127,67,.28)" : "0 6px 18px rgba(46,134,222,.28)" }}>
                 {uploaded.has(script.d) ? t("db_done_yes") : t("db_done_no")}

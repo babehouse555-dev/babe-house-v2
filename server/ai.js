@@ -220,12 +220,13 @@ export async function getTrendBrief(niche, lang = "th") {
   const key = `${String(niche).slice(0, 80)}|${lang}|${new Date().toISOString().slice(0, 10)}`;
   if (trendCache.has(key)) return trendCache.get(key);
   try {
+    // ⚠️ ต้องสั้น: เทรนด์ยาวๆ ทำให้ prompt เจนเล่มบวม → เจนช้าขึ้นเกือบเท่าตัว (วัดแล้ว 2.5 → 4.5+ นาที) ลูกค้ารอไม่ไหว
     const q = lang === "en"
-      ? `Search the web: what short-form content trends (TikTok / Instagram Reels) are working RIGHT NOW (this month) for this niche: "${niche}". List 5-7 concrete current items — trending formats, sounds/memes, hook styles, hot topics — each with a one-line "how to apply". Only what is trending now, no evergreen advice.`
-      : `ค้นเว็บ: เทรนด์คอนเทนต์สั้น (TikTok / Instagram Reels) ที่กำลังมา "ช่วงนี้เดือนนี้" ในไทย สำหรับนิช: "${niche}" — ลิสต์ 5-7 ข้อที่เป็นกระแสจริงตอนนี้ (ฟอร์แมตที่กำลังดัง / เสียง-มีม / สไตล์ฮุก / หัวข้อร้อน) พร้อมวิธีปรับใช้สั้นๆ ต่อข้อ ⛔ เอาเฉพาะที่กำลังเป็นกระแสจริง ไม่เอาคำแนะนำทั่วไปที่ใช้ได้ทุกยุค`;
-    // ⚠️ ต้องให้โควตาพอ + ปิด thinking: งานนี้แค่ "ค้นแล้วสรุป" — ถ้า thinking กินโควตา คำตอบจะโดนตัด (MAX_TOKENS) เหลือแต่ย่อหน้าเกริ่น ทำให้เทรนด์ไร้ประโยชน์
-    const { resp } = await genContent({ contents: [{ role: "user", parts: [{ text: q }] }], config: { tools: [{ googleSearch: {} }], maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: 0 } }, retries: 1 });
-    const text = String(resp.text || "").trim().slice(0, 5000);
+      ? `Search the web: which short-form (TikTok/Reels) trends are hot RIGHT NOW for this niche: "${niche}". Answer as EXACTLY 5 bullet lines, each ≤20 words: "<trend name> — <how to apply in one short phrase>". No intro, no closing, no sub-bullets. Only what's trending now.`
+      : `ค้นเว็บ: เทรนด์คอนเทนต์สั้น (TikTok/Reels) ที่กำลังมาช่วงนี้ในไทย สำหรับนิช: "${niche}" — ตอบเป็น bullet 5 บรรทัดเท่านั้น บรรทัดละไม่เกิน 20 คำ รูปแบบ "ชื่อเทรนด์ — วิธีปรับใช้สั้นๆ" ⛔ ห้ามมีย่อหน้าเกริ่น/สรุป/หัวข้อย่อย เอาเฉพาะที่เป็นกระแสจริงตอนนี้`;
+    // ปิด thinking (แค่ค้นแล้วสรุป) — ถ้า thinking กินโควตา คำตอบจะโดนตัดเหลือแต่ย่อหน้าเกริ่น = เทรนด์ไร้ประโยชน์
+    const { resp } = await genContent({ contents: [{ role: "user", parts: [{ text: q }] }], config: { tools: [{ googleSearch: {} }], maxOutputTokens: 1200, thinkingConfig: { thinkingBudget: 0 } }, retries: 1 });
+    const text = String(resp.text || "").trim().slice(0, 800);
     if (text) { if (trendCache.size > 300) trendCache.clear(); trendCache.set(key, text); }
     return text;
   } catch (e) { console.warn("getTrendBrief:", e.message); return ""; } // ค้นไม่ได้ = ข้าม ไม่พังการเจนเล่ม
@@ -309,7 +310,7 @@ const usageOf = (resp) => { const u = resp.usageMetadata || {}; return { input: 
 // สเต็ป 1: บทวิเคราะห์เท่านั้น (เร็วกว่า เพราะไม่เจน 30 สคริปต์)
 export async function generateAnalysis(parsed, lang = "th") {
   if (!ai) { const { calendar, scripts, ...analysis } = buildFallbackBlueprint(parsed); return { analysis, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } }; }
-  await attachLiveTrends(parsed, lang); // ค้นเทรนด์สดตามนิชก่อนเจน (พลาด = ข้าม ไม่พัง)
+  // ไม่ค้นเทรนด์ในขั้นบทวิเคราะห์ — บทวิเคราะห์คือ "ช่องคุณเป็นยังไง" ไม่ต้องพึ่งกระแส และตัดเวลารอของลูกค้าลง
   const images = extractImages(parsed);
   const parts = [];
   for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });

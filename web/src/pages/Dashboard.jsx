@@ -24,7 +24,6 @@ export default function Dashboard() {
   const scrollToCal = () => calRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const [tab, setTab] = useState("strategy");
   const [view, setView] = useState("info");
-  const [showDeep, setShowDeep] = useState(false);
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
   const [copied, setCopied] = useState(""); // แสดง "คัดลอกแล้ว" ชั่วครู่หลังกดปุ่มคัดลอก
@@ -185,14 +184,8 @@ export default function Dashboard() {
               })}
             </div>
           </div>}
-          {!showDeep && <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 20, padding: "26px 22px", margin: "4px 0 28px", boxShadow: "0 16px 38px rgba(63,107,174,.36)" }}>
-            <div style={{ fontSize: 38, lineHeight: 1 }}>🔮</div>
-            <h3 style={{ margin: "10px 0 6px", color: "#fff", fontSize: 22, lineHeight: 1.35 }}>{t("db_teaser_title")}</h3>
-            <p style={{ fontSize: 15.5, margin: "0 auto 18px", maxWidth: 440, opacity: .96, lineHeight: 1.6 }}>{t("db_teaser_sub")}</p>
-            <button className="btn-pulse" onClick={() => { setShowDeep(true); setTimeout(() => deepRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "16px 30px", fontWeight: 800, fontSize: 17, cursor: "pointer" }}>{t("db_open_analysis")}</button>
-            <div style={{ fontSize: 12.5, opacity: .85, marginTop: 12 }}>{t("db_read_2min")} {contentReady ? t("db_has_plan") : t("db_then_plan")} 🩵</div>
-          </div>}
-          {(showDeep || !(bp.story?.length > 0)) && <>
+          {/* บทวิเคราะห์เต็มแสดงเลย ไม่ต้องกดเปิด (ลูกค้าไม่ต้องคลิกเพิ่ม) */}
+          {<>
           <div ref={deepRef} style={{ scrollMarginTop: 70 }} />
           {bp.story?.length > 0 && <div style={{ marginBottom: 18 }}>
             <p className="muted" style={{ fontSize: 14, marginBottom: 14 }}>{t("db_deep_intro")}</p>

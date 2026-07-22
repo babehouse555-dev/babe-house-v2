@@ -192,6 +192,12 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_video_audits_order ON video_audits(order_id);
+    CREATE TABLE IF NOT EXISTS trend_digest (
+      id SERIAL PRIMARY KEY,
+      content TEXT,
+      updated_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS improve_count INTEGER DEFAULT 0;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS quality_flags_json TEXT;

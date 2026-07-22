@@ -127,7 +127,10 @@ export default function Dashboard() {
         rows.push([cell(s.d, { align: "center", fontWeight: "bold" }), cell(topic, { fontWeight: "bold" }), cell(detail), cell(""), cell(s.cap)]);
       }
       const columns = [{ width: 6 }, { width: 30 }, { width: 75 }, { width: 24 }, { width: 45 }];
-      await writeXlsxFile(rows, { columns, fileName: `BabeHouse_${(bp.instagram_account || "content").replace(/[^\w@.-]/g, "")}_${cycle}_${t("db_xls_30d")}.xlsx`, sheet: t("db_xls_sheet") });
+      const fileName = `BabeHouse_${(bp.instagram_account || "content").replace(/[^\w@.-]/g, "")}_${cycle}_${t("db_xls_30d")}.xlsx`;
+      // v4 คืน object ที่ต้องเรียก .toFile(ชื่อไฟล์) ถึงจะดาวน์โหลด (v3 ดาวน์โหลดเองจาก option fileName) — รองรับทั้งสองแบบ
+      const out = writeXlsxFile(rows, { columns, sheet: t("db_xls_sheet"), fileName });
+      if (out && typeof out.toFile === "function") await out.toFile(fileName); else await out;
     } catch (e) { alert(t("db_download_fail")); console.error(e); }
     finally { setExporting(false); }
   }

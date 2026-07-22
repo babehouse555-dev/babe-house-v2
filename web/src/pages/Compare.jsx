@@ -73,7 +73,10 @@ export default function Compare() {
       rows.push(SEC(t("cmp_xls_plan"), "#E7EDF8"));
       rows.push(FULL(last.monthly_goal || "-"));
       const columns = [{ width: 30 }, { width: 24 }, { width: 24 }, { width: 20 }];
-      await writeXlsxFile(rows, { columns, fileName: `BabeHouse_${t("cmp_xls_sheet").replace(/\s/g, "_")}_${ch.replace(/[^\w@.-]/g, "")}.xlsx`, sheet: t("cmp_xls_sheet") });
+      const fileName = `BabeHouse_${t("cmp_xls_sheet").replace(/\s/g, "_")}_${ch.replace(/[^\w@.-]/g, "")}.xlsx`;
+      // v4 ต้องเรียก .toFile() ถึงจะดาวน์โหลด (ดู Dashboard.jsx) — รองรับทั้ง API เก่า/ใหม่
+      const out = writeXlsxFile(rows, { columns, sheet: t("cmp_xls_sheet"), fileName });
+      if (out && typeof out.toFile === "function") await out.toFile(fileName); else await out;
     } catch (e) { alert(t("cmp_export_fail")); console.error(e); }
     finally { setExporting(false); }
   }

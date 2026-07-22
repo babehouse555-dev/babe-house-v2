@@ -223,8 +223,9 @@ export async function getTrendBrief(niche, lang = "th") {
     const q = lang === "en"
       ? `Search the web: what short-form content trends (TikTok / Instagram Reels) are working RIGHT NOW (this month) for this niche: "${niche}". List 5-7 concrete current items — trending formats, sounds/memes, hook styles, hot topics — each with a one-line "how to apply". Only what is trending now, no evergreen advice.`
       : `ค้นเว็บ: เทรนด์คอนเทนต์สั้น (TikTok / Instagram Reels) ที่กำลังมา "ช่วงนี้เดือนนี้" ในไทย สำหรับนิช: "${niche}" — ลิสต์ 5-7 ข้อที่เป็นกระแสจริงตอนนี้ (ฟอร์แมตที่กำลังดัง / เสียง-มีม / สไตล์ฮุก / หัวข้อร้อน) พร้อมวิธีปรับใช้สั้นๆ ต่อข้อ ⛔ เอาเฉพาะที่กำลังเป็นกระแสจริง ไม่เอาคำแนะนำทั่วไปที่ใช้ได้ทุกยุค`;
-    const { resp } = await genContent({ contents: [{ role: "user", parts: [{ text: q }] }], config: { tools: [{ googleSearch: {} }], maxOutputTokens: 1600 }, retries: 1 });
-    const text = String(resp.text || "").trim().slice(0, 2500);
+    // ⚠️ ต้องให้โควตาพอ + ปิด thinking: งานนี้แค่ "ค้นแล้วสรุป" — ถ้า thinking กินโควตา คำตอบจะโดนตัด (MAX_TOKENS) เหลือแต่ย่อหน้าเกริ่น ทำให้เทรนด์ไร้ประโยชน์
+    const { resp } = await genContent({ contents: [{ role: "user", parts: [{ text: q }] }], config: { tools: [{ googleSearch: {} }], maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: 0 } }, retries: 1 });
+    const text = String(resp.text || "").trim().slice(0, 5000);
     if (text) { if (trendCache.size > 300) trendCache.clear(); trendCache.set(key, text); }
     return text;
   } catch (e) { console.warn("getTrendBrief:", e.message); return ""; } // ค้นไม่ได้ = ข้าม ไม่พังการเจนเล่ม
@@ -237,7 +238,10 @@ function trendsBlock(parsed) {
   const out = [];
   if (parsed._trends_live) out.push(`🔥 เทรนด์สดในนิชนี้ (ค้นจากเว็บวันนี้ — ใช้เลือกหัวข้อ/ฮุก/ฟอร์แมตให้ทันกระแส แต่ต้องกลมกลืนกับตัวตนช่อง ไม่ฝืน):\n${parsed._trends_live}`);
   if (curatedTrends.text && Date.now() - curatedTrends.at < CURATED_MAX_AGE) out.push(`📌 เทรนด์ประจำสัปดาห์จากทีม Babe House (มุมมองครูพี่คิม — ให้น้ำหนักสูง):\n${curatedTrends.text.slice(0, 2000)}`);
-  return out.length ? `\n\n${out.join("\n\n")}` : "";
+  if (!out.length) return "";
+  // บังคับให้ใช้จริง ไม่ใช่แค่รับรู้ผ่านๆ — ไม่งั้นโมเดลมักละเลยข้อมูลส่วนนี้
+  out.push(`⚡ วิธีใช้เทรนด์ (บังคับ): อย่างน้อย 8 จาก 30 วัน ต้องหยิบ "ฟอร์แมต/มุม/สไตล์ฮุก" จากเทรนด์ด้านบนมาใช้จริง โดยแปลงให้เข้ากับนิช+ตัวตนของช่องนี้ (ห้ามลอกดิบๆ ห้ามฝืนถ้าไม่เข้ากับแบรนด์) · วันที่ใช้เทรนด์ให้เขียนหัวข้อ/ฮุกที่สื่อถึงกระแสนั้นชัดเจน · ที่เหลือเป็นคอนเทนต์แกนหลักของช่องตามปกติ`);
+  return `\n\n${out.join("\n\n")}`;
 }
 async function attachLiveTrends(parsed, lang) {
   if (parsed._trends_live !== undefined) return; // เจนหลายสเต็ปในเล่มเดียว → ค้นครั้งเดียวพอ

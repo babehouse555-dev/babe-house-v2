@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -366,32 +366,18 @@ const inFlightBp = new Set();
 function acquireGen() { return new Promise(res => { if (activeGens < MAX_CONCURRENT_GENS) { activeGens++; res(); } else genQueue.push(res); }); }
 function releaseGen() { activeGens = Math.max(0, activeGens - 1); const next = genQueue.shift(); if (next) { activeGens++; next(); } }
 
-// ดึงบริบท "ทุกเดือนที่ผ่านมา" ของลูกค้าคนเดิม (จับคู่ด้วยอีเมล+ช่อง) → เดือน 2+ ต่อยอดจากผลจริง ไม่ซ้ำแม้แต่เดือนแรกๆ
+// ดึงบริบทเดือนก่อนของลูกค้าคนเดิม (จับคู่ด้วยอีเมล, คนละ billing_cycle) → ใช้เจนเดือน 2+ ให้ต่อยอด ไม่ซ้ำ
 async function getPrevContext(email, cycle, channel) {
   if (!email) return null;
   try {
     const params = [email, cycle]; let chFilter = "";
     if (channel) { params.push(channel); chFilter = ` AND regexp_replace(lower(r.instagram_account),'[@\\s._-]','','g')=regexp_replace(lower($3),'[@\\s._-]','','g')`; } // เทียบเฉพาะช่องเดียวกัน (normalize @/เว้นวรรค)
-    // เอาทุกเดือนย้อนหลัง (ล่าสุด 6 เล่ม) — เดือน 3 ต้องไม่ซ้ำกับเดือน 1 ด้วย ไม่ใช่แค่เดือนล่าสุด
-    const rows = await q(`SELECT b.blueprint_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2${chFilter} AND b.blueprint_json IS NOT NULL AND b.deleted_at IS NULL ORDER BY b.created_at DESC LIMIT 6`, params);
-    if (!rows.length) return null;
-    const latest = safeJson(rows[0].blueprint_json) || {};
-    const seen = new Set(); const topics = [];
-    for (const row of rows) {
-      const a = safeJson(row.blueprint_json) || {};
-      for (const c of (Array.isArray(a.calendar) ? a.calendar : [])) {
-        const t = c && c.t; if (t && !seen.has(t)) { seen.add(t); topics.push(t); }
-      }
-    }
-    // ผลจริงจากรายงานการเติบโตล่าสุด → AI รู้ว่าแนวไหนเวิร์ก/แป้ก ไม่ใช่ต่อยอดแบบเดาๆ
-    let growthGist = "";
-    try {
-      const g = await one(`SELECT analysis_json FROM growth_analyses WHERE lower(email)=lower($1)`, [email]);
-      const gj = safeJson(g?.analysis_json);
-      if (gj) growthGist = JSON.stringify(gj).slice(0, 900);
-    } catch {}
-    if (!latest.positioning && !latest.theme && !topics.length) return null;
-    return { theme: latest.theme, positioning: latest.positioning, prev_topics: topics.slice(0, 100), months: rows.length + 1, growth_gist: growthGist };
+    const r = await one(`SELECT b.blueprint_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2${chFilter} AND b.blueprint_json IS NOT NULL ORDER BY b.created_at DESC LIMIT 1`, params);
+    if (!r) return null;
+    const a = safeJson(r.blueprint_json) || {};
+    const topics = Array.isArray(a.calendar) ? a.calendar.map(c => c && c.t).filter(Boolean).slice(0, 30) : [];
+    if (!a.positioning && !a.theme && !topics.length) return null;
+    return { theme: a.theme, positioning: a.positioning, prev_topics: topics };
   } catch (e) { console.warn("getPrevContext", e.message); return null; }
 }
 
@@ -1101,21 +1087,6 @@ app.get("/api/admin/revenue", async (req, res) => {
   res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
-// เทรนด์ประจำสัปดาห์ (ทีม Babe curate) — เก็บเป็นประวัติ แถวล่าสุด = ตัวที่ใช้ · AI ใช้เฉพาะที่อายุ < 21 วัน
-app.get("/api/admin/trends", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const r = await one(`SELECT content, updated_by, created_at FROM trend_digest ORDER BY created_at DESC LIMIT 1`);
-  const ageDays = r ? Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000) : null;
-  res.json({ ok: true, trends: r || null, age_days: ageDays, active: r ? ageDays < 21 : false });
-});
-app.post("/api/admin/trends", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const content = String(req.body?.content || "").trim().slice(0, 8000);
-  if (!content) return res.status(400).json({ ok: false, error: "EMPTY" });
-  await run(`INSERT INTO trend_digest (content, updated_by) VALUES ($1,$2)`, [content, String(req.body?.updated_by || "admin").slice(0, 60)]);
-  setCuratedTrends(content, Date.now());
-  res.json({ ok: true });
-});
 // stopgap: admin ดูรหัส OTP ล่าสุดของอีเมลลูกค้า → บอกลูกค้าตรงๆ (ระหว่างอีเมลใช้ไม่ได้)
 app.get("/api/admin/peek-otp", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -1397,9 +1368,7 @@ async function runQualityWatch() {
 }
 
 const PORT = Number(process.env.PORT || 3000);
-initDb().then(async () => {
-  // โหลดเทรนด์ curated ล่าสุดเข้าหน่วยความจำ AI (แถวล่าสุดใน trend_digest)
-  try { const r = await one(`SELECT content, created_at FROM trend_digest ORDER BY created_at DESC LIMIT 1`); if (r) setCuratedTrends(r.content, new Date(r.created_at).getTime()); } catch {}
+initDb().then(() => {
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)

@@ -1101,20 +1101,25 @@ app.get("/api/admin/revenue", async (req, res) => {
   res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
-// เทรนด์ประจำสัปดาห์ (ทีม Babe curate) — เก็บเป็นประวัติ แถวล่าสุด = ตัวที่ใช้ · AI ใช้เฉพาะที่อายุ < 21 วัน
+// เทรนด์ประจำสัปดาห์ (ทีม Babe curate) แยกตามกลุ่มอาชีพ — เก็บเป็นประวัติ แถวล่าสุด/กลุ่ม = ตัวที่ใช้ · AI ใช้เฉพาะที่อายุ < 21 วัน
+const TREND_CATS = [...INDUSTRIES, "general"]; // "general" = ใช้ได้ทุกอาชีพ (fallback)
 app.get("/api/admin/trends", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const r = await one(`SELECT content, updated_by, created_at FROM trend_digest ORDER BY created_at DESC LIMIT 1`);
+  const cat = TREND_CATS.includes(req.query?.category) ? req.query.category : "general";
+  const r = await one(`SELECT content, category, updated_by, created_at FROM trend_digest WHERE COALESCE(category,'general')=$1 ORDER BY created_at DESC LIMIT 1`, [cat]);
   const ageDays = r ? Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000) : null;
-  res.json({ ok: true, trends: r || null, age_days: ageDays, active: r ? ageDays < 21 : false });
+  // สรุปว่ากลุ่มไหนมีเทรนด์แล้วบ้าง (ให้ admin เห็นภาพรวม)
+  const summary = await q(`SELECT COALESCE(category,'general') AS category, MAX(created_at) AS updated FROM trend_digest GROUP BY 1`);
+  res.json({ ok: true, category: cat, categories: TREND_CATS, trends: r || null, age_days: ageDays, active: r ? ageDays < 21 : false, summary });
 });
 app.post("/api/admin/trends", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const content = String(req.body?.content || "").trim().slice(0, 8000);
+  const cat = TREND_CATS.includes(req.body?.category) ? req.body.category : "general";
   if (!content) return res.status(400).json({ ok: false, error: "EMPTY" });
-  await run(`INSERT INTO trend_digest (content, updated_by) VALUES ($1,$2)`, [content, String(req.body?.updated_by || "admin").slice(0, 60)]);
-  setCuratedTrends(content, Date.now());
-  res.json({ ok: true });
+  await run(`INSERT INTO trend_digest (content, category, updated_by) VALUES ($1,$2,$3)`, [content, cat, String(req.body?.updated_by || "admin").slice(0, 60)]);
+  setCuratedTrends(cat, content, Date.now());
+  res.json({ ok: true, category: cat });
 });
 // stopgap: admin ดูรหัส OTP ล่าสุดของอีเมลลูกค้า → บอกลูกค้าตรงๆ (ระหว่างอีเมลใช้ไม่ได้)
 app.get("/api/admin/peek-otp", async (req, res) => {
@@ -1398,8 +1403,11 @@ async function runQualityWatch() {
 
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(async () => {
-  // โหลดเทรนด์ curated ล่าสุดเข้าหน่วยความจำ AI (แถวล่าสุดใน trend_digest)
-  try { const r = await one(`SELECT content, created_at FROM trend_digest ORDER BY created_at DESC LIMIT 1`); if (r) setCuratedTrends(r.content, new Date(r.created_at).getTime()); } catch {}
+  // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI
+  try {
+    const rows = await q(`SELECT DISTINCT ON (COALESCE(category,'general')) COALESCE(category,'general') AS category, content, created_at FROM trend_digest ORDER BY COALESCE(category,'general'), created_at DESC`);
+    for (const r of rows) setCuratedTrends(r.category, r.content, new Date(r.created_at).getTime());
+  } catch (e) { console.warn("load trends", e.message); }
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)

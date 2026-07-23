@@ -198,6 +198,7 @@ export async function initDb() {
       updated_by TEXT,
       created_at TIMESTAMPTZ DEFAULT now()
     );
+    ALTER TABLE trend_digest ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general';
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS live_mode BOOLEAN DEFAULT false;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS improve_count INTEGER DEFAULT 0;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS quality_flags_json TEXT;

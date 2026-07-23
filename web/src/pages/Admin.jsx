@@ -23,9 +23,10 @@ export default function Admin() {
   const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
-  const [trends, setTrends] = useState(null); // เทรนด์ curated ล่าสุด {trends, age_days, active}
+  const [trends, setTrends] = useState(null); // เทรนด์ curated ล่าสุด {trends, age_days, active, summary}
   const [trendDraft, setTrendDraft] = useState("");
   const [trendSaving, setTrendSaving] = useState(false);
+  const [trendCat, setTrendCat] = useState("general"); // กลุ่มอาชีพที่กำลังแก้เทรนด์
 
   useEffect(() => { if (key) tryLogin(key); }, []);
   async function tryLogin(k) { try { await api("/api/admin/overview", { adminKey: k }); localStorage.setItem("babe_admin_key", k); setAuthed(true); loadAll(k); } catch { setLoginErr("ADMIN_KEY ไม่ถูกต้อง"); } }
@@ -40,13 +41,14 @@ export default function Admin() {
     setCodes((await api("/api/admin/codes", { adminKey: k })).codes);
     loadIndustries(k); loadStudents(null, k); loadPresence(k); loadTrends(k);
   }
-  async function loadTrends(k = key) { try { const d = await api("/api/admin/trends", { adminKey: k }); setTrends(d); setTrendDraft(d.trends?.content || ""); } catch {} }
+  async function loadTrends(k = key, cat = trendCat) { try { const d = await api("/api/admin/trends?category=" + encodeURIComponent(cat), { adminKey: k }); setTrends(d); setTrendDraft(d.trends?.content || ""); } catch {} }
   async function saveTrends() {
     if (!trendDraft.trim()) { alert("พิมพ์เทรนด์ก่อนค่ะ"); return; }
     setTrendSaving(true);
-    try { await api("/api/admin/trends", { method: "POST", adminKey: key, body: { content: trendDraft, updated_by: "kim" } }); await loadTrends(); alert("บันทึกแล้ว — AI จะใช้เทรนด์ชุดนี้กับเล่มที่เจนต่อจากนี้ค่ะ 🔥"); }
+    try { await api("/api/admin/trends", { method: "POST", adminKey: key, body: { content: trendDraft, category: trendCat, updated_by: "kim" } }); await loadTrends(); alert(`บันทึกเทรนด์กลุ่ม "${trendCat}" แล้ว — AI จะใช้กับลูกค้ากลุ่มนี้ที่เจนต่อจากนี้ค่ะ 🔥`); }
     catch (e) { alert(e.message); } finally { setTrendSaving(false); }
   }
+  const CAT_LABEL = { general: "🌐 ทั่วไป (ทุกอาชีพ · ใช้เมื่อไม่มีของกลุ่มนั้น)" };
   async function loadPresence(k = key) { try { setPresence(await api("/api/admin/presence", { adminKey: k })); } catch {} }
   useEffect(() => { if (!authed) return; const t = setInterval(() => loadPresence(), 20000); return () => clearInterval(t); }, [authed]);
   async function regen(user_id, billing_cycle) {
@@ -178,9 +180,15 @@ export default function Admin() {
           <h3 style={{ margin: 0 }}>🔥 เทรนด์ประจำสัปดาห์ (ทีม Babe curate)</h3>
           {trends?.trends && <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: trends.active ? "#e8f5ee" : "#fdecea", color: trends.active ? "#1a7f43" : "#b3261e" }}>{trends.active ? `ใช้งานอยู่ · อัปเดต ${trends.age_days} วันก่อน` : `หมดอายุ (${trends.age_days} วัน) — อัปเดตด่วน`}</span>}
         </div>
-        <p className="muted" style={{ fontSize: 13, margin: "8px 0 10px" }}>วางเทรนด์ที่รวบรวมมา (บอก Claude "อัปเดตเทรนด์" ให้หาแล้ววางให้ก็ได้) — AI จะใช้ประกอบการเจนทุกเล่ม/สคริปต์ · <b>เกิน 21 วันไม่อัปเดต ระบบจะหยุดใช้อัตโนมัติ</b> (กันเทรนด์ค้าง) · นอกจากนี้ AI ยังค้นเทรนด์สดตามนิชลูกค้าเองอีกชั้นตอนเจนด้วย</p>
-        <textarea value={trendDraft} onChange={e => setTrendDraft(e.target.value)} rows={6} placeholder={"เช่น\n- ฟอร์แมต ... กำลังมาใน TikTok ไทย → ใช้กับคลิปแนะนำสินค้าได้\n- เสียง/เพลง ... กำลังไวรัล\n- ฮุกสไตล์ ..."} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px", fontSize: 14, fontFamily: "inherit", resize: "vertical" }} />
-        <button onClick={saveTrends} disabled={trendSaving} style={{ marginTop: 10, background: "var(--blue)", color: "#fff", border: 0, borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 700, cursor: trendSaving ? "default" : "pointer", opacity: trendSaving ? .6 : 1 }}>{trendSaving ? "กำลังบันทึก..." : "บันทึกเทรนด์ชุดนี้"}</button>
+        <p className="muted" style={{ fontSize: 13, margin: "8px 0 10px" }}>วางเทรนด์ <b>แยกตามกลุ่มอาชีพ</b> — ลูกค้ากรอกว่าทำอะไร ระบบจะจับกลุ่มแล้วใช้เทรนด์ที่ตรงกับเขา (ไม่มีของกลุ่มนั้น → ใช้ "ทั่วไป") · บอก Claude "อัปเดตเทรนด์ [กลุ่ม]" ให้หาแล้ววางให้ก็ได้ · <b>เกิน 21 วันไม่อัปเดต ระบบหยุดใช้อัตโนมัติ</b></p>
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>กลุ่มอาชีพ:</span>
+          <select value={trendCat} onChange={e => { setTrendCat(e.target.value); loadTrends(key, e.target.value); }} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", fontSize: 14, fontFamily: "inherit" }}>
+            {(trends?.categories || ["general"]).map(c => <option key={c} value={c}>{(c === "general" ? "🌐 ทั่วไป (ทุกอาชีพ)" : c) + ((trends?.summary || []).some(s => s.category === c) ? " ✓" : " (ยังว่าง)")}</option>)}
+          </select>
+        </div>
+        <textarea value={trendDraft} onChange={e => setTrendDraft(e.target.value)} rows={6} placeholder={"เทรนด์ของกลุ่มนี้ เช่น\n- ฟอร์แมต ... กำลังมาใน TikTok ไทย\n- ฮุกสไตล์ ...\n- หัวข้อร้อน ..."} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px", fontSize: 14, fontFamily: "inherit", resize: "vertical" }} />
+        <button onClick={saveTrends} disabled={trendSaving} style={{ marginTop: 10, background: "var(--blue)", color: "#fff", border: 0, borderRadius: 10, padding: "10px 18px", fontSize: 14, fontWeight: 700, cursor: trendSaving ? "default" : "pointer", opacity: trendSaving ? .6 : 1 }}>{trendSaving ? "กำลังบันทึก..." : `บันทึกเทรนด์กลุ่มนี้`}</button>
       </div>
 
       <div className="card"><div className="between"><h3 style={{ margin: 0 }}>🛠️ เครื่องมือ</h3></div>

@@ -232,13 +232,19 @@ export async function getTrendBrief(niche, lang = "th") {
   } catch (e) { console.warn("getTrendBrief:", e.message); return ""; } // ค้นไม่ได้ = ข้าม ไม่พังการเจนเล่ม
 }
 // เทรนด์ curated จากทีม (index.js โหลดจาก DB แล้ว set มาให้ตอน boot/ตอนแอดมินอัปเดต)
-let curatedTrends = { text: "", at: 0 };
-export function setCuratedTrends(text, atMs) { curatedTrends = { text: String(text || ""), at: Number(atMs) || 0 }; }
+// เทรนด์ curated แยกตามกลุ่มอาชีพ (category) — "general" = ใช้ได้ทุกอาชีพ (fallback)
+const curatedByCat = new Map(); // category -> { text, at }
+export const TREND_GENERAL = "general";
+export function setCuratedTrends(category, text, atMs) { curatedByCat.set(category || TREND_GENERAL, { text: String(text || ""), at: Number(atMs) || 0 }); }
 const CURATED_MAX_AGE = 21 * 86400000; // เกิน 21 วันไม่อัปเดต = ไม่ใช้ (กันเทรนด์ค้างหลอก AI)
+function pickCurated(cat) { const c = curatedByCat.get(cat); return (c && c.text && Date.now() - c.at < CURATED_MAX_AGE) ? c.text : ""; }
 function trendsBlock(parsed) {
   const out = [];
   if (parsed._trends_live) out.push(`🔥 เทรนด์สดในนิชนี้ (ค้นจากเว็บวันนี้ — ใช้เลือกหัวข้อ/ฮุก/ฟอร์แมตให้ทันกระแส แต่ต้องกลมกลืนกับตัวตนช่อง ไม่ฝืน):\n${parsed._trends_live}`);
-  if (curatedTrends.text && Date.now() - curatedTrends.at < CURATED_MAX_AGE) out.push(`📌 เทรนด์ประจำสัปดาห์จากทีม Babe House (มุมมองครูพี่คิม — ให้น้ำหนักสูง):\n${curatedTrends.text.slice(0, 2000)}`);
+  // เลือกเทรนด์ตามอาชีพลูกค้าก่อน (จาก business_type) — ไม่มีค่อยใช้ชุดทั่วไป
+  const cat = classifyKeyword(parsed?.form_responses?.business_type || "");
+  const curated = pickCurated(cat) || pickCurated(TREND_GENERAL);
+  if (curated) out.push(`📌 เทรนด์ประจำสัปดาห์จากทีม Babe House (สำหรับกลุ่ม "${cat}" — มุมมองครูพี่คิม ให้น้ำหนักสูง):\n${curated.slice(0, 2000)}`);
   if (!out.length) return "";
   // บังคับให้ใช้จริง ไม่ใช่แค่รับรู้ผ่านๆ — ไม่งั้นโมเดลมักละเลยข้อมูลส่วนนี้
   out.push(`⚡ วิธีใช้เทรนด์ (บังคับ): อย่างน้อย 8 จาก 30 วัน ต้องหยิบ "ฟอร์แมต/มุม/สไตล์ฮุก" จากเทรนด์ด้านบนมาใช้จริง โดยแปลงให้เข้ากับนิช+ตัวตนของช่องนี้ (ห้ามลอกดิบๆ ห้ามฝืนถ้าไม่เข้ากับแบรนด์) · วันที่ใช้เทรนด์ให้เขียนหัวข้อ/ฮุกที่สื่อถึงกระแสนั้นชัดเจน · ที่เหลือเป็นคอนเทนต์แกนหลักของช่องตามปกติ`);

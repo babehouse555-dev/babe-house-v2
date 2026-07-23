@@ -20,7 +20,7 @@ export default function Admin() {
   const [reviews, setReviews] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [presence, setPresence] = useState(null);
-  const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "" });
+  const [nc, setNc] = useState({ code: "", note: "", discount_percent: "", max_uses: "", credit_grant: "" });
   const [loginErr, setLoginErr] = useState("");
   const [remind, setRemind] = useState("");
   const [trends, setTrends] = useState(null); // เทรนด์ curated ล่าสุด {trends, age_days, active, summary}
@@ -61,7 +61,7 @@ export default function Admin() {
   async function loadStudents(ind = null, k = key) { const d = await api("/api/admin/students" + (ind ? "?industry=" + encodeURIComponent(ind) : ""), { adminKey: k }); setStudents(d.students); setFilter(ind); }
   async function classify() { await api("/api/admin/classify", { method: "POST", adminKey: key, body: {} }); loadIndustries(); loadStudents(filter); }
   async function aiInsight() { setInsight("loading"); try { const d = await api("/api/admin/ai-insight", { adminKey: key }); setInsight(d.insight); } catch { setInsight(null); } }
-  async function addCode() { try { await api("/api/admin/codes", { method: "POST", adminKey: key, body: nc }); setNc({ code: "", note: "", discount_percent: "", max_uses: "" }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); } catch (e) { alert(e.message); } }
+  async function addCode() { try { await api("/api/admin/codes", { method: "POST", adminKey: key, body: nc }); setNc({ code: "", note: "", discount_percent: "", max_uses: "", credit_grant: "" }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); } catch (e) { alert(e.message); } }
   async function toggleCode(c) { await api("/api/admin/codes/toggle", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
   async function deleteCode(c) { if (!window.confirm(`ลบโค้ด ${c} ถาวร? (ออเดอร์เก่าไม่กระทบ)`)) return; await api("/api/admin/codes/delete", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
   async function dismissQuality(bpId) { await api("/api/admin/quality/dismiss", { method: "POST", adminKey: key, body: { blueprint_id: bpId } }); setQual(await api("/api/admin/quality", { adminKey: key })); }
@@ -241,10 +241,11 @@ export default function Admin() {
           <input style={{ flex: 1, minWidth: 140 }} placeholder="หมายเหตุ" value={nc.note} onChange={e => setNc({ ...nc, note: e.target.value })} />
           <input style={{ width: 130 }} type="number" placeholder="ลด % (100=ฟรี)" value={nc.discount_percent} onChange={e => setNc({ ...nc, discount_percent: e.target.value })} />
           <input style={{ width: 150 }} type="number" placeholder="จำนวนครั้ง" value={nc.max_uses} onChange={e => setNc({ ...nc, max_uses: e.target.value })} />
+          <input style={{ width: 150 }} type="number" placeholder="แถมเครดิต (0=ไม่แถม)" value={nc.credit_grant} onChange={e => setNc({ ...nc, credit_grant: e.target.value })} />
           <button className="btn" onClick={addCode}>สร้าง</button>
         </div>
         <div className="scroll" style={{ marginTop: 14 }}><table><thead><tr><th>โค้ด</th><th>ส่วนลด</th><th>หมายเหตุ</th><th>ใช้/สูงสุด</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>{codes.length === 0 ? <tr><td colSpan={6} className="muted">ยังไม่มีโค้ด</td></tr> : codes.map(c => <tr key={c.code}><td><b>{c.code}</b></td><td>{dLabel(c)}</td><td>{c.note}</td><td>{c.used_count}/{c.max_uses == null ? "∞" : c.max_uses}</td><td><span className={`tag ${c.active ? "on" : "off"}`}>{c.active ? "เปิด" : "ปิด"}</span></td><td><div className="row" style={{ gap: 12 }}><button className="link" onClick={() => toggleCode(c.code)} style={{ background: "none", border: 0, cursor: "pointer" }}>{c.active ? "ปิด" : "เปิด"}</button><button className="link" onClick={() => deleteCode(c.code)} style={{ background: "none", border: 0, cursor: "pointer", color: "#b3261e" }}>ลบ</button></div></td></tr>)}</tbody>
+          <tbody>{codes.length === 0 ? <tr><td colSpan={6} className="muted">ยังไม่มีโค้ด</td></tr> : codes.map(c => <tr key={c.code}><td><b>{c.code}</b></td><td>{dLabel(c)}{Number(c.credit_grant) > 0 ? ` +${c.credit_grant}เครดิต` : ""}</td><td>{c.note}</td><td>{c.used_count}/{c.max_uses == null ? "∞" : c.max_uses}</td><td><span className={`tag ${c.active ? "on" : "off"}`}>{c.active ? "เปิด" : "ปิด"}</span></td><td><div className="row" style={{ gap: 12 }}><button className="link" onClick={() => toggleCode(c.code)} style={{ background: "none", border: 0, cursor: "pointer" }}>{c.active ? "ปิด" : "เปิด"}</button><button className="link" onClick={() => deleteCode(c.code)} style={{ background: "none", border: 0, cursor: "pointer", color: "#b3261e" }}>ลบ</button></div></td></tr>)}</tbody>
         </table></div>
       </div>
 

@@ -206,6 +206,7 @@ export async function initDb() {
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS analysis_status TEXT DEFAULT 'ready';
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS content_started_at TIMESTAMPTZ;
     ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS locked_email TEXT;
+    ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS credit_grant INTEGER DEFAULT 0;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 0;
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS credits_granted BOOLEAN DEFAULT false;

@@ -250,6 +250,12 @@ async function applyCode(req, res) {
   if (upd.rowCount !== 1) return res.status(400).json({ ok: false, error: "CODE_USED_UP", message: "โค้ดถูกใช้ครบแล้ว" });
   const finalAmount = Math.round(PRICE_SATANG * (100 - percent) / 100);
   await run(`UPDATE blueprint_orders SET discount_code=$1, discount_percent=$2, final_amount_satang=$3 WHERE order_id=$4`, [code, percent, finalAmount, orderId]);
+  // โค้ดที่แถมเครดิต (เช่น โค้ดทดลอง) → เติมเครดิตให้อีเมลนี้ตอนใช้โค้ด (1 ครั้ง/อีเมล จาก guard usedFreeCodeBefore ด้านบน)
+  if (Number(row.credit_grant) > 0 && o.email) {
+    await upsertCustomer(o.email, "").catch(() => {});
+    await run(`UPDATE customers SET credits=COALESCE(credits,0)+$1 WHERE lower(email)=lower($2)`, [Number(row.credit_grant), o.email]).catch(() => {});
+    console.log(`[credits] โค้ด ${code} +${row.credit_grant} → ${o.email}`);
+  }
   if (isFree || finalAmount <= 0) { await markOrderPaid(orderId, "code", code); return res.json({ ok: true, free: true, percent, redirect_url: `/processing?order_id=${encodeURIComponent(orderId)}` }); }
   res.json({ ok: true, free: false, percent, original_satang: PRICE_SATANG, final_satang: finalAmount });
 }
@@ -1144,8 +1150,11 @@ app.post("/api/admin/codes", async (req, res) => {
   let percent = req.body?.discount_percent == null || req.body?.discount_percent === "" ? 100 : parseInt(req.body.discount_percent, 10);
   percent = Math.max(1, Math.min(100, isNaN(percent) ? 100 : percent));
   const lockedEmail = req.body?.locked_email ? normEmail(req.body.locked_email) : null; // โค้ดล็อกเฉพาะอีเมล (ใช้ซ้ำได้)
-  try { await run(`INSERT INTO promo_codes (code,note,max_uses,discount_percent,locked_email) VALUES ($1,$2,$3,$4,$5)`, [code, note, maxUses, percent, lockedEmail]); }
-  catch { return res.status(400).json({ ok: false, error: "CODE_EXISTS", message: "โค้ดนี้มีอยู่แล้ว" }); }
+  const creditGrant = Math.max(0, parseInt(req.body?.credit_grant, 10) || 0); // แถมเครดิตให้เมื่อใช้โค้ด (0 = ไม่แถม)
+  // upsert: ถ้าโค้ดมีอยู่แล้ว → อัปเดตค่า (แก้/เพิ่มเครดิตแถมของโค้ดเดิมได้) · used_count คงเดิม
+  await run(`INSERT INTO promo_codes (code,note,max_uses,discount_percent,locked_email,credit_grant) VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (code) DO UPDATE SET note=EXCLUDED.note, max_uses=EXCLUDED.max_uses, discount_percent=EXCLUDED.discount_percent, locked_email=EXCLUDED.locked_email, credit_grant=EXCLUDED.credit_grant, active=1`,
+    [code, note, maxUses, percent, lockedEmail, creditGrant]);
   res.json({ ok: true, code: await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]) });
 });
 app.post("/api/admin/codes/toggle", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const code = String(req.body?.code || "").trim().toUpperCase(); await run(`UPDATE promo_codes SET active=1-active WHERE code=$1`, [code]); res.json({ ok: true, code: await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]) }); });

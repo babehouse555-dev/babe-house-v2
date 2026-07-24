@@ -1107,7 +1107,7 @@ app.get("/api/admin/revenue", async (req, res) => {
   res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
-// เทรนด์ประจำสัปดาห์ (ทีม Babe curate) แยกตามกลุ่มอาชีพ — เก็บเป็นประวัติ แถวล่าสุด/กลุ่ม = ตัวที่ใช้ · AI ใช้เฉพาะที่อายุ < 21 วัน
+// เทรนด์ประจำสัปดาห์ (ทีม Babe curate) แยกตามกลุ่มอาชีพ — เก็บเป็นประวัติ แถวล่าสุด/กลุ่ม = ตัวที่ใช้ · AI ใช้เฉพาะที่อายุ < 30 วัน (1 เดือน)
 const TREND_CATS = [...INDUSTRIES, "general"]; // "general" = ใช้ได้ทุกอาชีพ (fallback)
 app.get("/api/admin/trends", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -1116,7 +1116,7 @@ app.get("/api/admin/trends", async (req, res) => {
   const ageDays = r ? Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000) : null;
   // สรุปว่ากลุ่มไหนมีเทรนด์แล้วบ้าง (ให้ admin เห็นภาพรวม)
   const summary = await q(`SELECT COALESCE(category,'general') AS category, MAX(created_at) AS updated FROM trend_digest GROUP BY 1`);
-  res.json({ ok: true, category: cat, categories: TREND_CATS, trends: r || null, age_days: ageDays, active: r ? ageDays < 21 : false, summary });
+  res.json({ ok: true, category: cat, categories: TREND_CATS, trends: r || null, age_days: ageDays, active: r ? ageDays < 30 : false, summary });
 });
 app.post("/api/admin/trends", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

@@ -236,7 +236,7 @@ export async function getTrendBrief(niche, lang = "th") {
 const curatedByCat = new Map(); // category -> { text, at }
 export const TREND_GENERAL = "general";
 export function setCuratedTrends(category, text, atMs) { curatedByCat.set(category || TREND_GENERAL, { text: String(text || ""), at: Number(atMs) || 0 }); }
-const CURATED_MAX_AGE = 21 * 86400000; // เกิน 21 วันไม่อัปเดต = ไม่ใช้ (กันเทรนด์ค้างหลอก AI)
+const CURATED_MAX_AGE = 30 * 86400000; // เกิน 1 เดือนไม่อัปเดต = หยุดใช้ (เทรนด์เก่าเกินไป กันหลอก AI)
 function pickCurated(cat) { const c = curatedByCat.get(cat); return (c && c.text && Date.now() - c.at < CURATED_MAX_AGE) ? c.text : ""; }
 function trendsBlock(parsed) {
   const out = [];

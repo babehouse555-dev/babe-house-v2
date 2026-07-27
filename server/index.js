@@ -1071,24 +1071,66 @@ app.get("/api/admin/overview", async (req, res) => {
   const errorGen = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND COALESCE(tier,'') NOT LIKE 'Credits%' AND generation_status='error'`)).c);
   res.json({ ok: true, customers, blueprints, paid_orders: paid, pending_gen: pendingGen, error_gen: errorGen });
 });
-// สำรองข้อมูลทั้งหมด (ดาวน์โหลด JSON) — แอดมินกดเก็บเองได้ทุกเมื่อ (นอกเหนือจาก auto-backup ของ Railway)
-app.get("/api/admin/backup", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const TABLES = ["users", "customers", "blueprint_orders", "blueprint_requests", "blueprints", "marathon_progress", "growth_analyses", "promo_codes", "credit_scripts", "script_overrides", "video_audits", "reviews", "feedback", "trend_digest", "payment_events"]; // ตารางสำคัญ (ข้าม auth/presence/logs ชั่วคราว)
-  const STRIP = { // ตัดคอลัมน์ base64 รูป Insight (input อัปใหม่ได้ · ข้อมูลจริงอยู่คอลัมน์แยก + blueprint ที่เจนแล้ว) — กัน backup ใหญ่จนล่ม
+// สร้างก้อน backup (ตารางสำคัญ ตัดรูป base64 ออก) — ใช้ทั้งปุ่มดาวน์โหลด + auto-email รายสัปดาห์
+async function buildBackupDump() {
+  const TABLES = ["users", "customers", "blueprint_orders", "blueprint_requests", "blueprints", "marathon_progress", "growth_analyses", "promo_codes", "credit_scripts", "script_overrides", "video_audits", "reviews", "feedback", "trend_digest", "payment_events"]; // ข้าม auth/presence/logs ชั่วคราว
+  const STRIP = { // ตัดคอลัมน์ base64 รูป Insight (input อัปใหม่ได้ · ข้อมูลจริงอยู่คอลัมน์แยก + blueprint ที่เจนแล้ว)
     blueprint_orders: ["order_payload_json"],
     blueprint_requests: ["raw_payload_json", "insight_images_json", "insight_screenshot_base64"],
   };
   const dump = { exported_at: new Date().toISOString(), db: "babe-house-v2", note: "raw Insight image payloads excluded to keep size sane", tables: {} };
+  let rows = 0;
   for (const t of TABLES) { // ชื่อตาราง/คอลัมน์ hardcoded — ไม่มี injection
     const strip = STRIP[t];
-    dump.tables[t] = strip
+    const data = strip
       ? await q(`SELECT (to_jsonb(x) ${strip.map(c => `- '${c}'`).join(" ")}) AS r FROM ${t} x`).then(rs => rs.map(r => r.r)).catch(() => [])
       : await q(`SELECT * FROM ${t}`).catch(() => []);
+    dump.tables[t] = data; rows += data.length;
   }
+  return { dump, rows };
+}
+// สำรองข้อมูลทั้งหมด (ดาวน์โหลด JSON) — แอดมินกดเก็บเองได้ทุกเมื่อ
+app.get("/api/admin/backup", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const { dump } = await buildBackupDump();
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="babehouse-backup.json"`);
   res.send(JSON.stringify(dump));
+});
+// ส่ง backup เข้าอีเมลแอดมินเป็นไฟล์แนบ (auto-email ทุกสัปดาห์ — สำรองนอกเซิร์ฟเวอร์ ฟรี ไม่ต้อง Railway Pro)
+async function emailBackup() {
+  const { dump, rows } = await buildBackupDump();
+  const json = JSON.stringify(dump);
+  const b64 = Buffer.from(json, "utf-8").toString("base64");
+  const day = new Date().toISOString().slice(0, 10);
+  const to = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.APP_FROM_EMAIL || "Babe House <onboarding@resend.dev>", to: [to],
+      subject: `💾 Babe House backup อัตโนมัติ · ${day}`,
+      html: `<p>สำรองข้อมูลอัตโนมัติประจำสัปดาห์ค่ะ 🩵</p><p>ไฟล์แนบ: ข้อมูลลูกค้า · ออเดอร์ · เล่ม Blueprint · เครดิต · สคริปต์ ฯลฯ รวม <b>${rows}</b> แถว (~${Math.round(json.length / 1024)} KB) · ตัดรูป Insight ออกเพื่อลดขนาด</p><p>เก็บเมลนี้ไว้ = มีสำเนาข้อมูลนอกเซิร์ฟเวอร์ กันข้อมูลหายค่ะ</p>`,
+      attachments: [{ filename: `babehouse-backup-${day}.json`, content: b64 }],
+    }),
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error(`resend ${r.status} ${t.slice(0, 150)}`); }
+  await run(`INSERT INTO backup_log (id,rows,bytes) VALUES ($1,$2,$3)`, [uid("bk"), rows, json.length]).catch(() => {});
+  return { rows, bytes: json.length };
+}
+// ส่งถ้าครบกำหนด (ครั้งล่าสุด > 7 วัน) — เรียกจาก cron รายวัน เลยรอด deploy ที่รีเซ็ต timer
+async function emailWeeklyBackupIfDue() {
+  try {
+    const last = await one(`SELECT emailed_at FROM backup_log ORDER BY emailed_at DESC LIMIT 1`);
+    if (last && (Date.now() - new Date(last.emailed_at).getTime()) < 7 * 24 * 3600 * 1000) return; // ยังไม่ถึง 7 วัน
+    const r = await emailBackup();
+    console.log(`[backup] weekly backup emailed · ${r.rows} rows · ${Math.round(r.bytes / 1024)} KB`);
+  } catch (e) { console.error("weekly backup", e.message); }
+}
+// ส่ง backup เข้าเมลเดี๋ยวนี้ (ปุ่มทดสอบ/สั่งเอง)
+app.post("/api/admin/backup-email-now", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try { const r = await emailBackup(); res.json({ ok: true, ...r, to: process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com" }); }
+  catch (e) { res.status(500).json({ ok: false, error: "EMAIL_FAILED", message: e.message }); }
 });
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
 app.get("/api/admin/ai-usage", async (req, res) => {
@@ -1570,4 +1612,6 @@ initDb().then(async () => {
   setInterval(() => run(`UPDATE video_audits SET video_data=NULL WHERE status='uploaded' AND video_data IS NOT NULL AND created_at < now() - interval '24 hours' AND order_id IN (SELECT order_id FROM blueprint_orders WHERE payment_status NOT IN ('paid','mock_paid'))`).catch(e => console.error("va cleanup", e.message)), 3600 * 1000); // ทุก 1 ชม. ลบคลิปที่อัปแต่ไม่จ่ายเกิน 24 ชม.
   setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → เมลแจ้งแอดมิน
   setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
+  setTimeout(emailWeeklyBackupIfDue, 90000); // เช็กหลังสตาร์ท (ส่งถ้าครบ 7 วัน)
+  setInterval(emailWeeklyBackupIfDue, 12 * 3600 * 1000); // เช็กทุก 12 ชม. → ส่ง backup เข้าเมลแอดมินสัปดาห์ละครั้ง
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

@@ -182,6 +182,12 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_credit_scripts_email ON credit_scripts(email);
+    CREATE TABLE IF NOT EXISTS backup_log (
+      id TEXT PRIMARY KEY,
+      emailed_at TIMESTAMPTZ DEFAULT now(),
+      rows INTEGER,
+      bytes INTEGER
+    );
     CREATE TABLE IF NOT EXISTS script_overrides (
       scope TEXT NOT NULL,            -- 'plan' (แผน 30 วัน) | 'credit' (สคริปต์สปอนเซอร์)
       ref_id TEXT NOT NULL,           -- blueprint_id | credit_scripts.id

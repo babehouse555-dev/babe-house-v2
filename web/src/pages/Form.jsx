@@ -3,6 +3,28 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, filesToBase64, getRef, currentCycle, session, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 
+// กล่องอัปรูป Insight — เลือกไฟล์ หรือ "ลากวาง" ได้ (ไฮไลต์เขียวตอนลากทับ)
+function ImageDrop({ files, setFiles, onPick }) {
+  const { t } = useI18n();
+  const [drag, setDrag] = useState(false);
+  const onDrop = (e) => {
+    e.preventDefault(); setDrag(false);
+    const imgs = [...(e.dataTransfer?.files || [])].filter(f => /^image\//.test(f.type));
+    if (!imgs.length) return;
+    const dt = new DataTransfer(); imgs.slice(0, 8).forEach(f => dt.items.add(f)); setFiles(dt.files);
+  };
+  return <div
+    onDragOver={e => { e.preventDefault(); if (!drag) setDrag(true); }}
+    onDragEnter={e => e.preventDefault()}
+    onDragLeave={e => { if (e.currentTarget === e.target) setDrag(false); }}
+    onDrop={onDrop}
+    style={{ border: `2px dashed ${drag ? "#1a7f43" : "var(--blue)"}`, borderRadius: 14, padding: "20px 16px", textAlign: "center", background: drag ? "#eafaf0" : "#F4F8FD", transition: "background .15s, border-color .15s" }}>
+    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={onPick} onChange={e => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto", pointerEvents: "auto" }} />
+    <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>{drag ? t("fm_drop_now") : t("fm_drop_hint")}</div>
+    {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 6 }}>{t("fm_selected")} {Math.min(files.length, 8)} {t("fm_images_word")}</div>}
+  </div>;
+}
+
 // ไกด์ + ตัวอย่างการกรอกแต่ละช่อง (ใช้ Babe House Academy เป็นตัวอย่างจริง)
 // ยิ่งกรอกละเอียด AI ยิ่งวิเคราะห์ได้ลึก
 const GUIDE = {
@@ -303,10 +325,7 @@ export default function Form() {
         <div className="card" ref={imgRef}>
           <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>{t("fm_attach_insights")}</div>
           <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>{t("fm_attach_insights_sub")}</p>
-          <div style={{ border: "2px dashed var(--blue)", borderRadius: 14, padding: "18px 14px", textAlign: "center", background: "#F4F8FD" }}>
-            <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto" }} />
-            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>{t("fm_selected")} {Math.min(files.length, 8)} {t("fm_images_word")}</div>}
-          </div>
+          <ImageDrop files={files} setFiles={setFiles} />
         </div>
         <div className="card">
           <div className="field"><label>{t("fm_goal_month")} <span className="muted">{t("fm_multi_change")}</span></label><ChipGroup options={t("fm_goals")} value={renewGoal} onChange={setRenewGoal} multi /></div>
@@ -372,10 +391,7 @@ export default function Form() {
         {step === 3 && hasChannel && <div className="card" ref={imgRef}>
           <div style={{ fontWeight: 800, fontSize: 17, color: "var(--blue-d)", marginBottom: 4 }}>{t("fm_attach_stats")}</div>
           <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>{t("fm_attach_stats_sub")}</p>
-          <div style={{ border: "2px dashed var(--blue)", borderRadius: 14, padding: "20px 16px", textAlign: "center", background: "#F4F8FD" }}>
-            <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={() => setFocus("images")} onChange={(e) => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto" }} />
-            {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 8 }}>{t("fm_selected")} {Math.min(files.length, 8)} {t("fm_images_word")}</div>}
-          </div>
+          <ImageDrop files={files} setFiles={setFiles} onPick={() => setFocus("images")} />
           <div style={{ marginTop: 12 }}><InsightGuide /></div>
           <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>{t("fm_skip_note")}</div>
         </div>}

@@ -541,6 +541,8 @@ const DICT = {
   fm_attach_insights_sub: { th: "ตัวเลขล่าสุด = ครูพี่คิมเทียบการเติบโตจากเดือนก่อน แล้ววางแผนต่อยอด (ไม่ต้องแนบรูปเดือนเก่าซ้ำ)", en: "Latest numbers let Kim compare growth and plan ahead (no need to re-attach old months)." },
   fm_selected: { th: "✓ เลือกแล้ว", en: "✓ Selected" },
   fm_images_word: { th: "รูป", en: "images" },
+  fm_drop_hint: { th: "หรือลากรูปมาวางตรงนี้ได้เลย 🖼️", en: "or drag & drop your images here 🖼️" },
+  fm_drop_now: { th: "วางรูปได้เลย! ✨", en: "Drop them here! ✨" },
   fm_goal_month: { th: "เป้าหมายเดือนนี้", en: "This month's goal" },
   fm_multi_change: { th: "(เลือกได้หลายข้อ · เปลี่ยนได้)", en: "(choose multiple · editable)" },
   fm_any_update: { th: "มีอะไรอัปเดต/เปลี่ยนไหม?", en: "Anything new or changed?" },

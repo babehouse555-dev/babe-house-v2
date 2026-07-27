@@ -12,6 +12,8 @@ export function ScriptEditor({ script, scope, refId, day, lang, demo, onChange }
   const [draft, setDraft] = useState(null);   // { beats:[{...}], cap }
   const [busy, setBusy] = useState("");        // "save" | "revert" | "regen"
   const [err, setErr] = useState("");
+  const [regenOpen, setRegenOpen] = useState(false); // แผงเจนใหม่ (บอกสิ่งที่อยากปรับ)
+  const [note, setNote] = useState("");
   if (!script) return null;
 
   const label = (s) => (t("db_beat") && t("db_beat")[s]) || s;
@@ -39,10 +41,9 @@ export function ScriptEditor({ script, scope, refId, day, lang, demo, onChange }
   const revert = async () => {
     try { const d = await call("/api/script/revert", {}, "revert"); if (d.script) onChange(d.script); setEditing(false); setDraft(null); } catch {}
   };
-  const regen = async () => {
-    if (script._regen_used || busy) return;
-    if (typeof confirm === "function" && !confirm(t("se_regen_confirm"))) return;
-    try { const d = await call("/api/script/regenerate", {}, "regen"); if (d.script) onChange(d.script); } catch {}
+  const openRegen = () => { if (script._regen_used || busy) return; setErr(""); setNote(""); setRegenOpen(true); };
+  const doRegen = async () => {
+    try { const d = await call("/api/script/regenerate", { note: note.trim() || undefined }, "regen"); if (d.script) onChange(d.script); setRegenOpen(false); setNote(""); } catch {}
   };
 
   // ── โหมดแก้ไข ───────────────────────────────────────────────
@@ -72,7 +73,17 @@ export function ScriptEditor({ script, scope, refId, day, lang, demo, onChange }
     {canEdit && <div className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 8 }}>
       {script._edited && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#8a6d1f", background: "#fff7e6", border: "1px solid #f0deb0", borderRadius: 20, padding: "3px 10px" }}>✏️ {t("se_edited_tag")}</span>}
       <button onClick={startEdit} style={{ background: "#fff", color: "var(--blue)", border: "1px solid var(--border)", borderRadius: 10, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>✏️ {t("se_edit")}</button>
-      <button onClick={regen} disabled={script._regen_used || !!busy} title={script._regen_used ? t("se_regen_used") : ""} style={{ background: script._regen_used ? "#f2f2f2" : "#fff", color: script._regen_used ? "var(--muted)" : "var(--blue)", border: "1px solid var(--border)", borderRadius: 10, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: script._regen_used ? "default" : "pointer" }}>{busy === "regen" ? t("se_regening") : (script._regen_used ? `✓ ${t("se_regen_used")}` : `🔄 ${t("se_regen")}`)}</button>
+      <button onClick={openRegen} disabled={script._regen_used || !!busy} title={script._regen_used ? t("se_regen_used") : ""} style={{ background: script._regen_used ? "#f2f2f2" : (regenOpen ? "#eef4fb" : "#fff"), color: script._regen_used ? "var(--muted)" : "var(--blue)", border: `1px solid ${regenOpen ? "var(--blue)" : "var(--border)"}`, borderRadius: 10, padding: "6px 12px", fontSize: 12.5, fontWeight: 700, cursor: script._regen_used ? "default" : "pointer" }}>{busy === "regen" ? t("se_regening") : (script._regen_used ? `✓ ${t("se_regen_used")}` : `🔄 ${t("se_regen")}`)}</button>
+    </div>}
+    {regenOpen && !script._regen_used && <div style={{ marginBottom: 12, background: "#eef4fb", border: "1px solid #cfe0f3", borderRadius: 12, padding: "12px 14px" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🔄 {t("se_regen_title")}</div>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{t("se_regen_hint")}</div>
+      <textarea value={note} onChange={e => setNote(e.target.value)} maxLength={500} rows={3} placeholder={t("se_regen_ph")} style={{ width: "100%", fontSize: 13.5, lineHeight: 1.5, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--border)", resize: "vertical", fontFamily: "inherit" }} />
+      {err && <div style={{ color: "#c0392b", fontSize: 12.5, marginTop: 6 }}>{err}</div>}
+      <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <button onClick={doRegen} disabled={busy === "regen"} style={{ background: "var(--blue)", color: "#fff", border: 0, borderRadius: 10, padding: "9px 16px", fontSize: 13.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? .6 : 1 }}>{busy === "regen" ? t("se_regening") : t("se_regen_go")}</button>
+        <button onClick={() => { setRegenOpen(false); setNote(""); }} disabled={busy === "regen"} style={{ background: "none", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>{t("se_cancel")}</button>
+      </div>
     </div>}
     {hooks.length > 1 && <div style={{ marginBottom: 12, background: "#eef4fb", borderRadius: 10, padding: "10px 12px" }}>
       <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2E86DE", marginBottom: 7 }}>🎣 {t("dp_hooks_label")}</div>

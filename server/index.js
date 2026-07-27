@@ -834,6 +834,7 @@ app.post("/api/script/regenerate", async (req, res) => {
   const cur = await one(`SELECT regen_count FROM script_overrides WHERE scope=$1 AND ref_id=$2 AND day=$3`, [g.scope, g.refId, g.day]);
   if ((cur?.regen_count || 0) >= 1) return res.status(409).json({ ok: false, error: "REGEN_USED", message: "เจนใหม่ฟรีได้ 1 ครั้ง/สคริปต์ (ใช้ไปแล้ว)" });
   const lang = req.body?.lang === "en" ? "en" : "th";
+  const note = String(req.body?.note || "").trim().slice(0, 500); // สิ่งที่ลูกค้าอยากปรับในรอบเจนใหม่ (ไม่บังคับ)
   let parsed, analysis = {}, brief = "", sponsor = "";
   if (g.scope === "plan") {
     analysis = safeJson(g.owner.blueprint_json) || {};
@@ -847,6 +848,7 @@ app.post("/api/script/regenerate", async (req, res) => {
     try { parsed = GenSchema.parse(normalizePayload(safeJson(bpRow?.raw_payload_json) || {})); } catch { parsed = { form_responses: {}, instagram_account: c.channel || "", meta_purchase: { tier: "", billing_cycle: "" } }; }
     brief = String(c.brief || ""); sponsor = c.sponsor || "";
   }
+  if (note) brief += `\n\n🙋 สิ่งที่เจ้าของช่องอยากปรับในรอบเจนใหม่นี้ (สำคัญมาก — ต้องทำตามให้ชัด): ${note}`;
   try {
     await acquireGen();
     let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, lang }); } finally { releaseGen(); }

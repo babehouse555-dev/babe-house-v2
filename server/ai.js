@@ -369,12 +369,13 @@ export async function generateContent(parsed, analysis, lang = "th") {
 const SINGLE_PROMPT = `คุณคือ "ครูพี่คิม" เขียนสคริปต์คลิป "1 อัน" สำหรับงานเฉพาะกิจที่เจ้าของช่องสั่ง (เช่น งานสปอนเซอร์/คอนเทนต์ด่วน) — อิงตัวตน/น้ำเสียง/กลุ่มลูกค้าของช่องนี้ + บรีฟงานที่ให้มา
 ⚠️ บทพูด (beats.say) = เจ้าของช่องพูดเองหน้ากล้องในน้ำเสียงแบรนด์เขา (บุคคลที่ 1) — ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ยกเว้นเจ้าของช่องตั้ง self_term="คิม")
 กฎ: 1.ตอบ JSON object ล้วน 2.บทพูดต้องเนียนกับงาน/สปอนเซอร์ในบรีฟ + ตรงสไตล์ช่อง 3.🗣️ ภาษาบ้านๆ ห้ามศัพท์การตลาด/อังกฤษในบทพูด 4.HOOK เปิดด้วยปม/เรื่องจริงใน 3 วิแรก, BODY เล่าเต็มมีจังหวะ (ถ้าเป็นงานสปอนเซอร์ ต้องเล่าถึงแบรนด์/สินค้าให้เนียนน่าเชื่อ ไม่แข็ง), CTA ปิดด้วยคำเชิญ/คำถามปลายเปิด · say รวม ~150–220 คำ
+5. ⭐⭐ สำคัญสุด — ห้ามทำสคริปต์กลางๆ ที่ช่องไหนก็ใช้ได้: ต้อง "หลอมบรีฟให้เข้ากับช่องนี้โดยเฉพาะ" — หาสะพานเชื่อมระหว่างสินค้า/สปอนเซอร์ กับ (ก)นิช/เรื่องที่ช่องนี้ทำประจำ (ข)ปัญหา/ความอยากของกลุ่มคนดูเขา (ค)เรื่องราว/มุมมองเฉพาะตัวของเจ้าของช่อง · ยกตัวอย่าง/สถานการณ์ที่คนดูช่องนี้อินจริง · ถ้าสินค้าไม่เกี่ยวกับนิชตรงๆ ให้หามุมเชื่อมที่เนียน (เช่น สินค้าสุขภาพ→ช่องแม่ลูก = มุมดูแลตัวเองของแม่) · เป้าหมาย: บรีฟเดียวกันถ้าเอาไปให้ 2 ช่องต่างนิช ต้องได้สคริปต์คนละแบบชัดเจน
 ส่ง JSON: { "title": string(หัวข้อคลิปสั้นๆ), "g": "Awareness"|"Conversion"|"Branding", "beats": [ {"ts":string,"s":"HOOK"|"BODY"|"CTA","say":string,"ost":string,"vis":string} x3-4 เริ่มHOOK จบCTA ], "cap": string(แคปชั่น+แฮชแท็ก), "tip": string(ทิปถ่าย/โพสต์) }`;
 export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
   const a = analysis || {};
   if (!ai) return { script: { title: "สคริปต์ (ตัวอย่าง)", g: "Awareness", beats: [{ ts: "0:00", s: "HOOK", say: brief ? `วันนี้มาเล่าเรื่อง ${String(brief).slice(0, 40)}...` : "วันนี้มีเรื่องมาเล่า", ost: "หยุดดูก่อน", vis: "พูดหน้ากล้อง" }], cap: "#BabeHouse", tip: "ถ่ายในที่แสงสวย" }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
   await attachLiveTrends(parsed, opts.lang); // สคริปต์เดี่ยว/งานสปอนเซอร์ก็ทันเทรนด์ (ใช้ cache เดียวกัน แทบไม่มีต้นทุนเพิ่ม)
-  const ctx = `บทวิเคราะห์ช่อง (แกนตัวตน/น้ำเสียง):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, audience_summary: a.audience_summary, snapshot: a.snapshot, kim_insight: a.kim_insight, avatar: a.modules?.avatar })}`;
+  const ctx = `บทวิเคราะห์ช่องนี้ (ใช้เป็น "แกน" ในการหลอมบรีฟให้เข้ากับช่อง — ตัวตน/น้ำเสียง/นิช/กลุ่มคนดู):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, pillars: a.pillars, audience_summary: a.audience_summary, follower_insight: a.follower_insight, what_we_see: a.what_we_see, snapshot: a.snapshot, kim_insight: a.kim_insight, avatar: a.modules?.avatar })}`;
   // ไฟล์บรีฟที่แนบ (PDF/รูป) — Gemini อ่านได้โดยตรง
   const fileParts = [];
   for (const f of (opts.files || [])) {
@@ -382,7 +383,7 @@ export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
     if (m) fileParts.push({ inlineData: { mimeType: m[1], data: m[2] } });
     if (fileParts.length >= 3) break;
   }
-  const job = `\n\n🎯 บรีฟงานชิ้นนี้ (เขียนสคริปต์ 1 คลิปสำหรับงานนี้โดยเฉพาะ):\n${brief || "(ดูจากไฟล์บรีฟที่แนบ)"}${opts.sponsor ? `\nสปอนเซอร์/แบรนด์: ${opts.sponsor} (ทำให้เนียนเข้ากับช่อง)` : ""}${fileParts.length ? "\n📎 มีไฟล์บรีฟแนบมา (PDF/รูป) — อ่านให้ครบแล้วดึงรายละเอียด/ข้อความหลัก/CTA มาใช้เขียนสคริปต์" : ""}`;
+  const job = `\n\n🎯 บรีฟงานชิ้นนี้ (นี่คือ "โจทย์ดิบ" จากลูกค้า/สปอนเซอร์ — ห้ามใช้ดิบๆ ต้องหลอมเข้ากับช่องด้านบนก่อน):\n${brief || "(ดูจากไฟล์บรีฟที่แนบ)"}${opts.sponsor ? `\nสปอนเซอร์/แบรนด์: ${opts.sponsor}` : ""}${fileParts.length ? "\n📎 มีไฟล์บรีฟแนบมา (PDF/รูป) — อ่านให้ครบ ดึงข้อความหลัก/จุดขาย/CTA ของแบรนด์มาใช้" : ""}\n\n👉 ขั้นตอนคิด: (1)อ่านบรีฟ→จับจุดขายหลักของสินค้า (2)ดูช่องด้านบน→นิช/คนดู/ตัวตนคืออะไร (3)หา "มุมเชื่อม" ที่ทำให้สินค้านี้กลายเป็นเรื่องที่คนดูช่องนี้อยากดู แล้วเขียนสคริปต์จากมุมนั้น — ห้ามอ่านสเปกสินค้าดื้อๆ`;
   const parts = [...fileParts, { text: buildUserText(parsed) + `\n\n${ctx}${job}\n\nสร้าง JSON สคริปต์ 1 อันตามสเปก` }];
   const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: SINGLE_PROMPT + langSuffix(opts.lang), responseMimeType: "application/json", maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
   const raw = JSON.parse(resp.text);

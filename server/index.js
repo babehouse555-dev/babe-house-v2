@@ -740,7 +740,8 @@ app.post("/api/credits/generate-script", async (req, res) => {
   if (ded.rowCount !== 1) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตไม่พอค่ะ" });
   try {
     await acquireGen();
-    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, files: briefFiles, lang: req.body?.lang === "en" ? "en" : "th" }); } finally { releaseGen(); }
+    const ref = String(req.body?.ref || "").trim().slice(0, 3000); // ตัวอย่างแนวที่ทำประจำ (สคริปต์/แคปชั่นเก่า) → เลียนสไตล์
+    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, ref, files: briefFiles, lang: req.body?.lang === "en" ? "en" : "th" }); } finally { releaseGen(); }
     await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json,cycle) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script), cycle || null]).catch(() => {});
     if (result.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'credit_script',$2,$3,$4,$5)`, [uid("use"), result.model, result.usage.input || 0, result.usage.output || 0, result.usage.total || 0]).catch(() => {}); // เก็บ token ไว้ดูต้นทุนจริง
     const bal = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);

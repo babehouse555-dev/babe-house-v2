@@ -28,7 +28,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
   const { t, lang } = useI18n();
   const [credits, setCredits] = useState(null);
   const [open, setOpen] = useState(!!startOpen);
-  const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
+  const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]), [ref, setRef] = useState("");
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
   const [elapsed, setElapsed] = useState(0); // นับวินาทีระหว่างเจน → โชว์ขั้นตอนไม่ให้ดูค้าง
   useEffect(() => { if (!busy) { setElapsed(0); return; } const iv = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(iv); }, [busy]);
@@ -54,10 +54,10 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
     setBusy(true); setScript(null);
     try {
       const brief_files = [...files].length ? await filesToBase64([...files], 3) : [];
-      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, cycle, brief, sponsor, brief_files, lang } });
+      const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, cycle, brief, sponsor, ref, brief_files, lang } });
       setScript(d.script); setCredits(d.credits);
       setHistory(h => [{ id: "new_" + Date.now(), script: d.script, sponsor, brief, created_at: new Date().toISOString() }, ...h]);
-      setBrief(""); setSponsor(""); setFiles([]);
+      setBrief(""); setSponsor(""); setFiles([]); setRef("");
     } catch (e) { setErr(e.message || t("dp_err_gen")); } finally { setBusy(false); }
   }
   return <div className="card" style={{ borderTop: "4px solid #9A8458", margin: "24px 0 0" }}>
@@ -85,6 +85,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
         {[...files].length > 0 && <div className="hint" style={{ color: "#1a7f43" }}>{t("dp_attached")} {Math.min([...files].length, 3)} {t("dp_files_word")}</div>}
       </div>
       <div className="field"><label>{t("dp_sponsor_label")} <span className="muted">{t("dp_sponsor_sub")}</span></label><input value={sponsor} onChange={e => setSponsor(e.target.value)} placeholder={t("dp_sponsor_ph")} /></div>
+      <div className="field"><label>{t("dp_ref_label")} <span className="muted">{t("dp_ref_sub")}</span></label><textarea value={ref} onChange={e => setRef(e.target.value)} style={{ minHeight: 64 }} placeholder={t("dp_ref_ph")} /></div>
       {err && <div className="msg err">{err}</div>}
       {busy ? (() => {
         const steps = t("dp_gen_steps"); const at = [0, 4, 9, 16]; // วินาทีที่เริ่มแต่ละขั้น

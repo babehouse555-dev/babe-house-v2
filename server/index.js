@@ -704,7 +704,7 @@ app.get("/api/me/blueprints", async (req, res) => {
   const months = await getCustomerMonths(email);
   const channels = await getCustomerChannels(email);
   // ออเดอร์ที่จ่ายแล้วแต่เล่มยังไม่เสร็จ (กำลังสร้าง/ติดขัด) — โชว์สถานะให้ลูกค้ารู้ว่ากำลังทำอยู่
-  const pendRows = await q(`SELECT order_id, billing_cycle, created_at, COALESCE(generation_status,'pending') gs FROM blueprint_orders WHERE email=$1 AND payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' ORDER BY created_at DESC`, [normEmail(email)]);
+  const pendRows = await q(`SELECT order_id, billing_cycle, created_at, COALESCE(generation_status,'pending') gs FROM blueprint_orders WHERE email=$1 AND payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND COALESCE(tier,'') NOT LIKE 'Credits%' ORDER BY created_at DESC`, [normEmail(email)]);
   const pending = pendRows.map(r => ({ order_id: r.order_id, billing_cycle: r.billing_cycle, created_at: r.created_at, status: r.gs === "error" ? "error" : "generating" }));
   res.json({ ok: true, email, count: months.length, months, channels, pending });
 });
@@ -1067,8 +1067,8 @@ app.get("/api/admin/overview", async (req, res) => {
   const customers = Number((await one(`SELECT COUNT(*) c FROM customers`)).c);
   const blueprints = Number((await one(`SELECT COUNT(*) c FROM blueprints`)).c);
   const paid = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid')`)).c);
-  const pendingGen = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(generation_status,'pending') IN ('pending','generating')`)).c);
-  const errorGen = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND generation_status='error'`)).c);
+  const pendingGen = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND COALESCE(tier,'') NOT LIKE 'Credits%' AND COALESCE(generation_status,'pending') IN ('pending','generating')`)).c);
+  const errorGen = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND COALESCE(tier,'') NOT LIKE 'Credits%' AND generation_status='error'`)).c);
   res.json({ ok: true, customers, blueprints, paid_orders: paid, pending_gen: pendingGen, error_gen: errorGen });
 });
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
@@ -1132,7 +1132,7 @@ async function getStudents(industry) {
       FROM blueprint_requests rr WHERE rr.user_id = o.user_id AND rr.billing_cycle = o.billing_cycle
       ORDER BY rr.created_at DESC LIMIT 1
     ) r ON true
-    WHERE o.payment_status IN ('paid','mock_paid') AND o.email IS NOT NULL
+    WHERE o.payment_status IN ('paid','mock_paid') AND o.email IS NOT NULL AND COALESCE(o.tier,'') NOT LIKE 'Video%' AND COALESCE(o.tier,'') NOT LIKE 'Credits%'
     ORDER BY o.email, o.billing_cycle, o.created_at DESC
   `);
   let students = rows.map(o => {
@@ -1414,7 +1414,7 @@ app.use((err, req, res, next) => { console.error("Unhandled:", err?.message); if
 async function retryStuckGenerations() {
   try {
     // กู้: (ก) error (ข) ค้าง 'generating' >8 นาที (โดน deploy ตัด) (ค) 'pending'/ยังไม่เริ่มเจน >2 นาที (จ่ายแล้วแต่ไม่ได้เข้าหน้า processing เช่นปิดแท็บ) — ยกเว้นออเดอร์ Video Audit
-    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND (generation_status='error' OR (generation_status='generating' AND paid_at < now() - interval '8 minutes') OR (COALESCE(generation_status,'pending')='pending' AND paid_at < now() - interval '2 minutes')) AND paid_at > now() - interval '24 hours' LIMIT 5`);
+    const rows = await q(`SELECT order_id, email, billing_cycle, order_payload_json FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND COALESCE(tier,'') NOT LIKE 'Credits%' AND (generation_status='error' OR (generation_status='generating' AND paid_at < now() - interval '8 minutes') OR (COALESCE(generation_status,'pending')='pending' AND paid_at < now() - interval '2 minutes')) AND paid_at > now() - interval '24 hours' LIMIT 5`);
     for (const o of rows) {
       if (inFlightOrders.has(o.order_id)) continue; // กำลังเจน/เข้าคิวอยู่แล้วใน process นี้ — อย่าเจนซ้ำ
       const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND COALESCE(generation_status,'pending') IN ('pending','error','generating')`, [o.order_id]);

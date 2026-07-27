@@ -124,10 +124,11 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
 
 // 🧰 เครื่องมือ (AI ช่วยทำเอง) + 🎁 บริการ (คนทำให้/เรียน) — รวมเป็นโครงเดียว ลดความรก
 // เครื่องมือ = ไทล์เล็ก 4 อัน (กดขยายในที่ หรือพาไปหน้าอื่น) · บริการ = แถบบางเห็นตลอด
-export function ToolsAndServices({ channel, cycle, demo }) {
+export function ToolsAndServices({ channel, cycle, demo, openScript }) {
   const { t } = useI18n();
   const [panel, setPanel] = useState(null); // "script" | "shoot" | null
   useEffect(() => { if (typeof location !== "undefined" && location.search.includes("topup=ok")) setPanel("script"); }, []); // กลับจากซื้อเครดิต → เปิดแผงสคริปต์เลย
+  useEffect(() => { if (openScript) setPanel("script"); }, [openScript]); // กด "จัดการงานสปอนเซอร์" จากภาพรวม → เปิดแผงสคริปต์
   const tileSt = (on) => ({ display: "flex", alignItems: "center", gap: 9, border: on ? "1.5px solid #9A8458" : "1px solid var(--border)", background: on ? "#fbf9f3" : "#fff", borderRadius: 12, padding: "11px 13px", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textDecoration: "none", width: "100%", textAlign: "left" });
   const toggle = (p) => setPanel(panel === p ? null : p);
   return <div style={{ marginTop: 24 }}>

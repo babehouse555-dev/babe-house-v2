@@ -29,8 +29,9 @@ export default function Dashboard() {
   const [uploaded, setUploaded] = useState(new Set());
   const [credits, setCredits] = useState(null);   // ภาพรวม: เครดิตเหลือ + งานสปอนเซอร์ที่สร้างไว้
   const [sponsors, setSponsors] = useState([]);
-  // ไปที่เครื่องมือ (แผงเพิ่มสคริปต์สปอนเซอร์) จากหน้าภาพรวม
-  const goTools = () => { setTab("calendar"); setTimeout(() => document.getElementById("tools-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); };
+  const [openScriptSignal, setOpenScriptSignal] = useState(0); // กด "จัดการงานสปอนเซอร์" → สั่งเปิดแผงเพิ่มสคริปต์
+  // ไปที่แผงเพิ่มสคริปต์สปอนเซอร์ (เปิดแผงให้เลย + เลื่อนไปหา)
+  const goTools = () => { setOpenScriptSignal(n => n + 1); setTab("calendar"); setTimeout(() => document.getElementById("tools-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); };
   const [copied, setCopied] = useState(""); // แสดง "คัดลอกแล้ว" ชั่วครู่หลังกดปุ่มคัดลอก
   const copy = (txt, key) => { navigator.clipboard?.writeText(txt); setCopied(key); setTimeout(() => setCopied(c => (c === key ? "" : c)), 1800); };
   const [startedAt, setStartedAt] = useState(null);
@@ -406,7 +407,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
-          <div id="tools-anchor" style={{ scrollMarginTop: 70 }}><ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} /></div>
+          <div id="tools-anchor" style={{ scrollMarginTop: 70 }}><ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} openScript={openScriptSignal} /></div>
         </>}
 
         {tab === "marathon" && contentReady && (() => {

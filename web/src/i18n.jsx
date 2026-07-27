@@ -721,6 +721,7 @@ const DICT = {
   db_start_content: { th: "📅 มาเริ่มทำคอนเทนต์กันเลย →", en: "📅 Let's start creating →" },
   db_gen_title: { th: "ครูพี่คิมกำลังสร้างแผน 30 วัน + สคริปต์ให้... 🩵", en: "Kim is building your 30-day plan + scripts… 🩵" },
   db_gen_sub: { th: "ใช้เวลาประมาณ 1–2 นาที · อยู่หน้านี้รอได้เลย พอเสร็จเด้งเข้าตารางเอง — หรือปิดหน้าไปก่อนก็ได้ค่ะ เดี๋ยวส่งเมลแจ้งเมื่อพร้อม 📧", en: "About 1–2 minutes · stay here and it'll open automatically — or close the page and we'll email you when it's ready 📧" },
+  db_gen_steps: { th: ["📸 อ่านรูป Insight + วิเคราะห์ช่องคุณ", "🧠 วางกลยุทธ์ + ธีมคอนเทนต์ 30 วัน", "✍️ เขียนสคริปต์ครบ 30 วัน + แคปชั่น", "✨ เช็กความสดใหม่ ไม่ให้ซ้ำ"], en: ["📸 Reading your Insights + analyzing your channel", "🧠 Planning strategy + 30-day theme", "✍️ Writing all 30 scripts + captions", "✨ Checking freshness, no repeats"] },
   db_gen_err_title: { th: "เอ๊ะ สะดุดนิดหน่อย", en: "Hmm, a small hiccup" },
   db_gen_err_sub: { th: "ลองกดสร้างใหม่อีกครั้งนะคะ (เงินไม่หาย บทวิเคราะห์ยังอยู่ครบ)", en: "Tap to try again (your payment is safe, the analysis is intact)" },
   db_gen_retry: { th: "ลองสร้างแผน 30 วันอีกครั้ง", en: "Try generating the 30-day plan again" },

@@ -39,6 +39,8 @@ export default function Dashboard() {
   // โหมดแยก 2 สเต็ป: contentReady = สร้างแผน 30 วันแล้วหรือยัง · genState = สถานะปุ่มสร้างแผน
   const [contentReady, setContentReady] = useState(demo);
   const [genState, setGenState] = useState("idle"); // idle | generating | error
+  const [genElapsed, setGenElapsed] = useState(0);  // นับวินาทีตอนสร้างแผน 30 วัน → โชว์ % + ขั้นตอน
+  useEffect(() => { if (genState !== "generating") { setGenElapsed(0); return; } const iv = setInterval(() => setGenElapsed(e => e + 1), 1000); return () => clearInterval(iv); }, [genState]);
   const [snapEdits, setSnapEdits] = useState({}); // แก้ค่า 6 ช่องตรงๆ (index→value ใหม่) ไม่ต้องเจนใหม่
   const [editTile, setEditTile] = useState(null);  // ช่องที่กำลังแก้
   const latestUrl = `/api/blueprints/latest?user_id=${encodeURIComponent(userId || "")}&billing_cycle=${encodeURIComponent(cycle || "")}&blueprint_id=${encodeURIComponent(bpId || "")}`;
@@ -266,11 +268,27 @@ export default function Dashboard() {
             <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>{t("db_strat_cta_sub")}</p>
             <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_start_content")}</button>
           </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, marginBottom: 28, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
-            {genState === "generating" ? <>
-              <div className="spinner" style={{ border: "4px solid rgba(255,255,255,.35)", borderTopColor: "#fff", margin: "0 auto 14px" }} />
-              <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 6px" }}>{t("db_gen_title")}</h3>
-              <p style={{ opacity: .95, fontSize: 14.5 }}>{t("db_gen_sub")}</p>
-            </> : genState === "error" ? <>
+            {genState === "generating" ? (() => {
+              const steps = t("db_gen_steps"); const at = [0, 20, 55, 120];
+              const cur = at.filter(s => genElapsed >= s).length - 1;
+              const pct = Math.min(96, Math.round((1 - Math.exp(-(genElapsed + 4) / 70)) * 100));
+              return <>
+                <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 4px" }}>{t("db_gen_title")}</h3>
+                <p style={{ opacity: .9, fontSize: 13.5, marginBottom: 16 }}>{t("db_gen_sub")}</p>
+                <div style={{ maxWidth: 440, margin: "0 auto", textAlign: "left" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 14 }}>
+                    {steps.map((s, i) => { const done = i < cur, active = i === cur; return <div key={i} className="row" style={{ gap: 10, alignItems: "center" }}>
+                      {done ? <span style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,.92)", color: "#3F6BAE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>✓</span>
+                        : active ? <span className="spinner" style={{ width: 20, height: 20, border: "3px solid rgba(255,255,255,.35)", borderTopColor: "#fff", flexShrink: 0, margin: 0 }} />
+                        : <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,.45)", flexShrink: 0, boxSizing: "border-box" }} />}
+                      <span style={{ fontSize: 14, fontWeight: active ? 700 : 400, color: "#fff", opacity: done ? .75 : active ? 1 : .55 }}>{s}{active ? "…" : ""}</span>
+                    </div>; })}
+                  </div>
+                  <div style={{ height: 8, background: "rgba(255,255,255,.28)", borderRadius: 20, overflow: "hidden" }}><div style={{ width: pct + "%", height: "100%", background: "#fff", borderRadius: 20, transition: "width 1s linear" }} /></div>
+                  <div style={{ fontSize: 12.5, opacity: .9, marginTop: 6, textAlign: "right" }}>{pct}% · {genElapsed}s</div>
+                </div>
+              </>;
+            })() : genState === "error" ? <>
               <div style={{ fontSize: 30 }}>🥺</div>
               <h3 style={{ color: "#fff", fontSize: 19, margin: "4px 0 6px" }}>{t("db_gen_err_title")}</h3>
               <p style={{ opacity: .95, fontSize: 14.5, marginBottom: 14 }}>{t("db_gen_err_sub")}</p>

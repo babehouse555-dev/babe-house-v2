@@ -421,7 +421,7 @@ async function pregenGrowthAnalysis(email, channel) {
     const months = await getCustomerMonths(email, channel || undefined);
     if (months.length < 2) return; // เดือนเดียว = baseline instant อยู่แล้ว
     const lang = "th";
-    const signature = `${channel || ""}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`;
+    const signature = `g2:${channel || ""}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`;
     const cached = await one(`SELECT signature FROM growth_analyses WHERE email=$1`, [email]);
     if (cached && cached.signature === signature) return; // มี cache ตรงแล้ว
     const { analysis, model } = await generateGrowthAnalysis(months, lang);
@@ -956,7 +956,7 @@ app.get("/api/me/growth-analysis", async (req, res) => {
     const months = await getCustomerMonths(email, channel || undefined);
     if (months.length < 1) return res.json({ ok: true, analysis: null, count: 0, sponsors });
     const lang = req.query.lang === "en" ? "en" : "th";
-    const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`;
+    const signature = `g2:${channel}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`; // g2 = เวอร์ชันใหม่ (baseline ซื่อสัตย์ + กันแต่งเลข) → cache เก่าที่มั่วถูก bust
     const cached = await one(`SELECT signature, analysis_json, model FROM growth_analyses WHERE email=$1`, [email]);
     if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, sponsors, cached: true });
     // เดือนเดียว = ยังเทียบการโตไม่ได้ → ใช้ baseline ซื่อสัตย์ (ไม่เรียก AI กัน AI แต่งเดือนก่อนที่ไม่มีจริง)

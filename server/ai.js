@@ -387,7 +387,10 @@ export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
   }
   const job = `\n\n🎯 บรีฟงานชิ้นนี้ (นี่คือ "โจทย์ดิบ" จากลูกค้า/สปอนเซอร์ — ห้ามใช้ดิบๆ ต้องหลอมเข้ากับช่องด้านบนก่อน):\n${brief || "(ดูจากไฟล์บรีฟที่แนบ)"}${opts.sponsor ? `\nสปอนเซอร์/แบรนด์: ${opts.sponsor}` : ""}${fileParts.length ? "\n📎 มีไฟล์บรีฟแนบมา (PDF/รูป) — อ่านให้ครบ ดึงข้อความหลัก/จุดขาย/CTA ของแบรนด์มาใช้" : ""}\n\n👉 ขั้นตอนคิด: (1)อ่านบรีฟ→จับจุดขายหลักของสินค้า (2)ดูช่องด้านบน→นิช/คนดู/ตัวตนคืออะไร (3)หา "มุมเชื่อม" ที่ทำให้สินค้านี้กลายเป็นเรื่องที่คนดูช่องนี้อยากดู แล้วเขียนสคริปต์จากมุมนั้น — ห้ามอ่านสเปกสินค้าดื้อๆ${opts.ref ? `\n\n📼 ตัวอย่างแนวที่เจ้าของช่องทำประจำ (ref) — เลียน "โครงเล่า/จังหวะ/สไตล์ฮุก/โทนคำพูด" จากตัวอย่างนี้ให้เหมือนเป็นคลิปของเขาเอง แต่เปลี่ยนเนื้อหาเป็นงานบรีฟใหม่ (ห้ามลอกเนื้อหาเดิม เอาแค่สไตล์):\n${String(opts.ref).slice(0, 3000)}` : ""}`;
   const parts = [...fileParts, { text: buildUserText(parsed) + `\n\n${ctx}${job}\n\nสร้าง JSON สคริปต์ 1 อันตามสเปก` }];
-  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: SINGLE_PROMPT + langSuffix(opts.lang), responseMimeType: "application/json", maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
+  // maxOutputTokens ต้องใหญ่กว่า thinking budget มากๆ ไม่งั้น thinking กินโควตาหมด → JSON ถูกตัด → parse พัง
+  // (สคริปต์ 1 อัน + ฮุก 3 แบบ ใช้ ~1.5k tok · ให้ headroom 8k + จำกัด thinking พอประมาณ)
+  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: SINGLE_PROMPT + langSuffix(opts.lang), responseMimeType: "application/json", maxOutputTokens: 8000, thinkingConfig: { thinkingBudget: 1024 } }, retries: 2 });
+  if (!resp.text || !resp.text.trim()) throw new Error(`empty response (finishReason=${resp.candidates?.[0]?.finishReason || "?"})`); // เจอตัดกลางคัน = โยน error ชัดๆ
   const raw = JSON.parse(resp.text);
   const one = raw.script || raw;
   const clean = sanitizeScripts(maybeJargon({ scripts: [one] }, opts.lang), usesKim(parsed));

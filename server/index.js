@@ -1071,6 +1071,16 @@ app.get("/api/admin/overview", async (req, res) => {
   const errorGen = Number((await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND COALESCE(tier,'') NOT LIKE 'Video%' AND COALESCE(tier,'') NOT LIKE 'Credits%' AND generation_status='error'`)).c);
   res.json({ ok: true, customers, blueprints, paid_orders: paid, pending_gen: pendingGen, error_gen: errorGen });
 });
+// สำรองข้อมูลทั้งหมด (ดาวน์โหลด JSON) — แอดมินกดเก็บเองได้ทุกเมื่อ (นอกเหนือจาก auto-backup ของ Railway)
+app.get("/api/admin/backup", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const TABLES = ["users", "customers", "blueprint_orders", "blueprint_requests", "blueprints", "marathon_progress", "growth_analyses", "promo_codes", "credit_scripts", "script_overrides", "video_audits", "reviews", "feedback", "trend_digest", "payment_events"]; // ตารางสำคัญ (ข้าม auth/presence/logs ชั่วคราว)
+  const dump = { exported_at: new Date().toISOString(), db: "babe-house-v2", tables: {} };
+  for (const t of TABLES) { dump.tables[t] = await q(`SELECT * FROM ${t}`).catch(() => []); } // ชื่อตาราง hardcoded — ไม่มี injection
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="babehouse-backup.json"`);
+  res.send(JSON.stringify(dump));
+});
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
 app.get("/api/admin/ai-usage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

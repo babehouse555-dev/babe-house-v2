@@ -185,9 +185,9 @@ export default function Dashboard() {
           return <div className="card">
             <div className="between" style={{ marginBottom: 14 }}><h3 style={{ margin: 0 }}>{t("ov_title")}</h3><span className="muted" style={{ fontSize: 13 }}>{(cycle || "").replace("_", " ")}</span></div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 14 }}>
-              {stat(t("ov_posted"), done, `/ ${total} ${t("db_day")}`)}
+              {stat(t("ov_posted"), done, `/ ${total} ${lang === "en" ? "days" : "วัน"}`)}
               {stat(t("ov_sponsors"), sponsors.length)}
-              {stat(t("ov_credits"), credits == null ? "…" : credits)}
+              {stat(t("ov_credits"), credits == null ? (demo ? "—" : "…") : credits)}
             </div>
             <div style={{ height: 8, borderRadius: 6, background: "var(--soft)", overflow: "hidden" }}><div style={{ height: "100%", width: pct + "%", background: "var(--blue)", borderRadius: 6, transition: "width .5s ease" }} /></div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 6, marginBottom: 16 }}>{pct}% · {t("ov_remaining").replace("{n}", Math.max(0, total - done))}</div>

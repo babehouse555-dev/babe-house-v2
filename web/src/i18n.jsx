@@ -581,7 +581,7 @@ const DICT = {
   fm_multi: { th: "(เลือกได้หลายข้อ)", en: "(choose multiple)" },
   fm_attach_stats: { th: "📊 แนบรูปสถิติหลังบ้าน", en: "📊 Attach your Insights/analytics" },
   fm_attach_stats_sub: { th: "นี่คือ ตัวช่วยวิเคราะห์ที่สำคัญที่สุด — AI อ่านตัวเลขจริง (คนเข้าถึง · คนเข้าโปรไฟล์ · เพศ-อายุคนดู) ทำให้เล่มแม่นขึ้นมาก", en: "This is the most important input — the AI reads real numbers (reach · profile visits · audience gender/age), making your book far sharper." },
-  fm_skip_note: { th: "ยังไม่มีรูปตอนนี้? กด \"ถัดไป\" ข้ามได้ แต่เล่มจะแม่นน้อยลงนิดนึงค่ะ", en: "No screenshots right now? Tap \"Next\" to skip, but your book will be a bit less precise." },
+  fm_skip_note: { th: "จำเป็นต้องแนบรูป Insight อย่างน้อย 1 รูปนะคะ 📊 — ครูพี่คิมใช้ตัวเลขจริงในการวิเคราะห์ ถ้าไม่มีรูป เล่มจะไม่แม่นค่ะ", en: "At least 1 Insights screenshot is required 📊 — Kim analyzes your real numbers, so without it the book won't be accurate." },
   fm_who_watch: { th: "อยากให้ใครดูช่องคุณ?", en: "Who do you want watching your channel?" },
   fm_who_tag: { th: "(กลุ่มคนที่อยากได้ — เลือกได้หลายข้อ)", en: "(your target — choose multiple)" },
   fm_type_own: { th: "พิมพ์เอง เช่น คนเลี้ยงแมว / เด็กมหาลัยปี 1", en: "Type your own, e.g. cat owners / college freshmen" },

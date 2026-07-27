@@ -1,7 +1,7 @@
 :root{--blue:#2E86DE;--blue-d:#1B6FC4;--ink:#16202b;--muted:#6b7787;--bg:#fff;--soft:#F4F8FD;--border:#e7eef6;--cream:#FBF9F4;--up:#1a7f43;--down:#b3261e}
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{font-family:"Noto Sans Thai",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;overflow-x:hidden;overflow-wrap:break-word}
+body{font-family:"Noto Sans Thai",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;overflow-x:clip;overflow-wrap:break-word}
 #root{overflow-x:clip}
 img{max-width:100%}
 a{text-decoration:none;color:inherit}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
-import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript } from "./Dashboard.parts.jsx";
+import { ToolsAndServices, ReviewCard, FeedbackCard } from "./Dashboard.parts.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 
@@ -27,8 +27,6 @@ export default function Dashboard() {
   const [view, setView] = useState("info");
   const [sel, setSel] = useState(1);
   const [uploaded, setUploaded] = useState(new Set());
-  const [credits, setCredits] = useState(null);   // ภาพรวม: เครดิตเหลือ + งานสปอนเซอร์ที่สร้างไว้
-  const [sponsors, setSponsors] = useState([]);
   const [copied, setCopied] = useState(""); // แสดง "คัดลอกแล้ว" ชั่วครู่หลังกดปุ่มคัดลอก
   const copy = (txt, key) => { navigator.clipboard?.writeText(txt); setCopied(key); setTimeout(() => setCopied(c => (c === key ? "" : c)), 1800); };
   const [startedAt, setStartedAt] = useState(null);
@@ -44,12 +42,6 @@ export default function Dashboard() {
   const [snapEdits, setSnapEdits] = useState({}); // แก้ค่า 6 ช่องตรงๆ (index→value ใหม่) ไม่ต้องเจนใหม่
   const [editTile, setEditTile] = useState(null);  // ช่องที่กำลังแก้
   const latestUrl = `/api/blueprints/latest?user_id=${encodeURIComponent(userId || "")}&billing_cycle=${encodeURIComponent(cycle || "")}&blueprint_id=${encodeURIComponent(bpId || "")}`;
-  // ดึงเครดิต + งานสปอนเซอร์ มาโชว์ในหน้าภาพรวม (เมื่อแผนพร้อมแล้ว)
-  useEffect(() => {
-    if (!contentReady || demo || !bp?.instagram_account) return;
-    const qs = new URLSearchParams({ channel: bp.instagram_account, ...(cycle ? { cycle } : {}) });
-    api(`/api/me/credits?${qs}`, { token: session.token }).then(d => { setCredits(d.credits); setSponsors(d.scripts || []); }).catch(() => {});
-  }, [contentReady, demo, bp?.instagram_account, cycle]);
 
   // สเต็ป 2: ลูกค้ายืนยันบทวิเคราะห์แม่น → สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง + poll จนเสร็จ)
   async function startContentGen() {
@@ -335,25 +327,7 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("db_go_confirm")}</button>
         </div>}
         {tab === "calendar" && contentReady && <>
-          {(() => {
-            const total = (bp.calendar || []).length || 30, done = uploaded.size, pct = Math.round(done / total * 100);
-            const stat = (label, val, sub) => <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px" }}>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{label}</div>
-              <div style={{ fontSize: 23, fontWeight: 800, marginTop: 2 }}>{val}{sub && <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}> {sub}</span>}</div>
-            </div>;
-            return <div className="card" style={{ marginBottom: 16 }}>
-              <div className="between" style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 16 }}>{t("ov_title")}</h3><span className="muted" style={{ fontSize: 13 }}>{(cycle || "").replace("_", " ")}</span></div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10 }}>
-                {stat(t("ov_posted"), done, `/ ${total} ${lang === "en" ? "days" : "วัน"}`)}
-                {stat(t("ov_sponsors"), sponsors.length)}
-                {stat(t("ov_credits"), credits == null ? (demo ? "—" : "…") : credits)}
-              </div>
-              <div style={{ height: 8, borderRadius: 6, background: "var(--soft)", overflow: "hidden", marginTop: 12 }}><div style={{ height: "100%", width: pct + "%", background: "var(--blue)", borderRadius: 6, transition: "width .5s ease" }} /></div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{pct}% · {t("ov_remaining").replace("{n}", Math.max(0, total - done))}</div>
-            </div>;
-          })()}
-          <AddScript channel={bp.instagram_account} cycle={cycle} demo={demo} />
-          {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "24px 0 14px" }}>
+          {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>{t("db_cal_label")}</span>
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               {uploaded.size > 0 && <button onClick={clearAllMarathon} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 13px", fontSize: 13, fontWeight: 600, color: "var(--muted)", cursor: "pointer" }}>{t("db_clear_all")}</button>}

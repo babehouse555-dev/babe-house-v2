@@ -84,9 +84,9 @@ export default function Compare() {
   return (
     <div className="wrap narrow page-pad">
       <div className="between"><span className="brand">BABE HOUSE · ACADEMY</span><Link className="link" to="/account">{t("cmp_back_account")}</Link></div>
-      <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+      <div className="between" style={{ flexWrap: "wrap", gap: 10, alignItems: "center", margin: "0 0 18px" }}>
         <h1 className="page" style={{ margin: 0 }}>{t("cmp_h1")}</h1>
-        <button onClick={exportGrowthXLSX} disabled={exporting} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? t("cmp_exporting") : t("cmp_export")}</button>
+        <button onClick={exportGrowthXLSX} disabled={exporting} style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? t("cmp_exporting") : t("cmp_export")}</button>
       </div>
 
       {single ? <>

@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -415,8 +415,23 @@ async function getPrevContext(email, cycle, channel) {
   } catch (e) { console.warn("getPrevContext", e.message); return null; }
 }
 
+// pre-gen บทวิเคราะห์การเติบโต (เดือน 2+) แล้ว cache ไว้ → หน้าเทียบโหลดทันที ไม่ต้องรอเจนตอนเปิด
+async function pregenGrowthAnalysis(email, channel) {
+  try {
+    const months = await getCustomerMonths(email, channel || undefined);
+    if (months.length < 2) return; // เดือนเดียว = baseline instant อยู่แล้ว
+    const lang = "th";
+    const signature = `${channel || ""}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`;
+    const cached = await one(`SELECT signature FROM growth_analyses WHERE email=$1`, [email]);
+    if (cached && cached.signature === signature) return; // มี cache ตรงแล้ว
+    const { analysis, model } = await generateGrowthAnalysis(months, lang);
+    await run(`INSERT INTO growth_analyses (email,signature,analysis_json,model,created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (email) DO UPDATE SET signature=EXCLUDED.signature,analysis_json=EXCLUDED.analysis_json,model=EXCLUDED.model,created_at=now()`, [email, signature, JSON.stringify(analysis), model]);
+    console.log(`[growth] pre-generated for ${maskEmail(email)} (${months.length} months)`);
+  } catch (e) { console.error("pregen growth", e.message); }
+}
 async function generateBlueprintForPayload(payload) {
   await acquireGen();
+  let out;
   try {
   const parsed = GenSchema.parse(normalizePayload(payload));
   const lang = payload.lang === "en" ? "en" : "th"; // ภาษาที่ลูกค้าเลือก (เก็บไว้ให้ generate-content/improve ใช้ต่อ)
@@ -435,8 +450,11 @@ async function generateBlueprintForPayload(payload) {
   try { const lean = { ...parsed, lang, insight_images: [], insight_screenshot_base64: null }; await run(`UPDATE blueprint_requests SET insight_screenshot_base64=NULL, insight_images_json='[]', raw_payload_json=$1 WHERE request_id=$2`, [JSON.stringify(lean), requestId]); } catch (e) { console.warn("strip imgs", e.message); }
   if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'analysis',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
   await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,billing_cycle) DO NOTHING`, [uid("marathon"), parsed.user_id, parsed.instagram_account, parsed.meta_purchase.billing_cycle]);
-  return { blueprintId, requestId, parsed, blueprint: analysis };
+  out = { blueprintId, requestId, parsed, blueprint: analysis };
   } finally { releaseGen(); }
+  // เดือน 2+ : pre-gen บทวิเคราะห์การเติบโตเบื้องหลัง (ไม่ await) → ลูกค้าเปิดหน้าเทียบไม่ต้องรอเจน
+  if (out.parsed.email) pregenGrowthAnalysis(out.parsed.email, out.parsed.instagram_account).catch(() => {});
+  return out;
 }
 
 app.post("/api/start-generation", async (req, res) => {
@@ -937,10 +955,14 @@ app.get("/api/me/growth-analysis", async (req, res) => {
     const sponsors = await sponsorSummary(email, channel); // งานสปอนเซอร์ (สด ไม่ cache)
     const months = await getCustomerMonths(email, channel || undefined);
     if (months.length < 1) return res.json({ ok: true, analysis: null, count: 0, sponsors });
-    const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}:${req.query.lang === "en" ? "en" : "th"}`;
+    const lang = req.query.lang === "en" ? "en" : "th";
+    const signature = `${channel}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`;
     const cached = await one(`SELECT signature, analysis_json, model FROM growth_analyses WHERE email=$1`, [email]);
     if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, sponsors, cached: true });
-    const { analysis, model } = await generateGrowthAnalysis(months, req.query.lang === "en" ? "en" : "th");
+    // เดือนเดียว = ยังเทียบการโตไม่ได้ → ใช้ baseline ซื่อสัตย์ (ไม่เรียก AI กัน AI แต่งเดือนก่อนที่ไม่มีจริง)
+    const { analysis, model } = months.length < 2
+      ? { analysis: buildBaselineGrowth(months[months.length - 1], lang), model: "baseline" }
+      : await generateGrowthAnalysis(months, lang);
     await run(`INSERT INTO growth_analyses (email,signature,analysis_json,model,created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (email) DO UPDATE SET signature=EXCLUDED.signature,analysis_json=EXCLUDED.analysis_json,model=EXCLUDED.model,created_at=now()`, [email, signature, JSON.stringify(analysis), model]);
     res.json({ ok: true, analysis, model, count: months.length, sponsors });
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GROWTH_FAILED", message: err.message }); }

@@ -453,9 +453,35 @@ function metricsText(months) { return months.map(m => { const x = m.metrics || {
 
 export async function generateGrowthAnalysis(months, lang = "th") {
   if (!ai) return { analysis: buildFallbackGrowth(months), model: "fallback-local" };
-  const sys = `คุณคือ "ครูพี่คิม" โค้ชคอนเทนต์ วิเคราะห์การเติบโตจากสถิติหลายเดือนด้วยน้ำเสียงอบอุ่น จริงใจ ตรงไปตรงมา ทำให้ลูกค้าเห็นตัวเอง พูดทั้งข้อดีข้อเสีย next_focus ทำได้จริง coach_message จบด้วยชวนไปต่อเดือนหน้า อ้างอิงตัวเลขจริง`;
+  const sys = `คุณคือ "ครูพี่คิม" โค้ชคอนเทนต์ วิเคราะห์การเติบโตจากสถิติหลายเดือนด้วยน้ำเสียงอบอุ่น จริงใจ ตรงไปตรงมา ทำให้ลูกค้าเห็นตัวเอง พูดทั้งข้อดีข้อเสีย next_focus ทำได้จริง coach_message จบด้วยชวนไปต่อเดือนหน้า
+⛔ กฎเหล็ก: ใช้เฉพาะตัวเลข/เดือนที่มีในข้อมูลที่ให้มาเท่านั้น — ห้ามแต่ง ห้ามเดา ห้ามอ้างเดือนหรือตัวเลขที่ไม่มีในข้อมูลเด็ดขาด (เช่น ถ้าไม่มีข้อมูลเดือนก่อน ห้ามพูดว่า "เพิ่มจาก X เป็น Y"). อ้างเฉพาะตัวเลขจริงที่เห็น`;
   const resp = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: `ข้อมูลรายเดือน (เก่า→ใหม่):\n${metricsText(months)}\nธุรกิจ: ${months[months.length-1].business_type || "-"}\nจำนวนเดือน: ${months.length}` }] }], config: { systemInstruction: sys + langSuffix(lang), responseMimeType: "application/json", responseSchema: GROWTH_SCHEMA, maxOutputTokens: 4000 } });
   return { analysis: JSON.parse(resp.text), model: MODEL };
+}
+// เดือนเดียว = ยังเทียบการโตไม่ได้ → baseline ซื่อสัตย์ (ไม่เรียก AI ไม่แต่งตัวเลข ใช้เฉพาะเลขจริงเดือนนี้)
+export function buildBaselineGrowth(month, lang = "th") {
+  const m = (month && month.metrics) || {}, en = lang === "en";
+  const cyc = String((month && month.billing_cycle) || "").replace("_", " ");
+  const nf = (v) => v == null ? "—" : Number(v).toLocaleString("en-US");
+  const eng = m.engagement_rate != null ? `${m.engagement_rate}%` : "—";
+  return {
+    headline: en ? `This is your starting point · ${cyc} 🌱` : `นี่คือจุดเริ่มต้นของคุณ · ${cyc} 🌱`,
+    growth_drivers: en
+      ? [`Baseline this month — followers ${nf(m.followers)}, reach ${nf(m.reach)}, engagement ${eng}. These are your real starting numbers.`, `Next month Kim compares against these and shows your growth in real figures.`]
+      : [`ฐานตั้งต้นเดือนนี้ — ผู้ติดตาม ${nf(m.followers)} · การเข้าถึง ${nf(m.reach)} · Engagement ${eng} (ตัวเลขจริงของคุณ)`, `เดือนหน้าครูพี่คิมจะเทียบกับเดือนนี้ แล้วโชว์การเติบโตเป็นตัวเลขจริงให้เห็นค่ะ`],
+    strengths: en
+      ? [`You now have a clean baseline to measure against — every next move is trackable.`, `Following the 30-day plan consistently is what turns these numbers up.`]
+      : [`ตอนนี้มีฐานข้อมูลตั้งต้นที่ชัดเจนแล้ว — ทำอะไรต่อก็วัดผลได้`, `ทำตามแผน 30 วันสม่ำเสมอ คือสิ่งที่จะดันตัวเลขพวกนี้ขึ้นค่ะ`],
+    watchouts: en
+      ? [`Only one month of data so far — no growth comparison yet. Add next month's Insights to unlock the real trend.`]
+      : [`ยังมีข้อมูลเดือนเดียว จึงยังเทียบการโตไม่ได้ — อัปสถิติเดือนหน้าเพื่อปลดล็อกเทรนด์จริงค่ะ`],
+    next_focus: en
+      ? [`Post consistently through the 30-day plan.`, `Save your best clips to repeat what works.`, `Next month, upload fresh Insights so Kim can compare your growth.`]
+      : [`โพสต์สม่ำเสมอตามแผน 30 วัน`, `เก็บคลิปที่ยอดดีไว้ทำซ้ำสูตรเดิม`, `เดือนหน้าอัปรูป Insight ใหม่ ครูพี่คิมจะได้เทียบการโตให้`],
+    coach_message: en
+      ? `This month is your starting line 🩵 Do one more month and you'll see your growth in real numbers — let's go!`
+      : `เดือนนี้คือเส้นสตาร์ทค่ะ 🩵 พอทำอีกเดือน ครูพี่คิมจะเทียบให้เห็นการโตเป็นตัวเลขจริงเลย มาลุยต่อกันนะคะ`,
+  };
 }
 export function buildFallbackGrowth(months) {
   const first = months[0], last = months[months.length - 1], fm = first.metrics || {}, lm = last.metrics || {}, n = months.length;

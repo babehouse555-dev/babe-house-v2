@@ -135,9 +135,23 @@ const LINE_WORK_URL = process.env.LINE_WORK_URL || "https://line.me/ti/p/0yBlh9z
 async function markOrderPaid(orderId, provider = "mock", sid = "") {
   // live_mode = จ่ายด้วย Stripe จริง (คีย์ sk_live_) เท่านั้น = เงินเข้าจริง; mock/code/test = false
   const liveMode = provider === "stripe" && String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live_");
-  await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4`, [provider, sid || null, liveMode, orderId]);
+  // flip เฉพาะตอนยังไม่ paid → rowCount บอกว่า "เพิ่งจ่ายครั้งแรก" (กัน webhook ยิงซ้ำแล้วแจ้งเตือนซ้ำ)
+  const upd = await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4 AND payment_status<>'paid'`, [provider, sid || null, liveMode, orderId]);
   grantCreditsIfCreditOrder(orderId).catch(e => console.error("grant-credits", e.message));
   processReferralReward(orderId).catch(e => console.error("referral", e.message));
+  if (upd.rowCount === 1) notifyAdminPurchase(orderId, provider, liveMode).catch(() => {}); // แจ้งเตือน "มีคนซื้อ"
+}
+// แจ้งเตือนแอดมินเมื่อมีคนซื้อจริง (มีเงินเข้า) — ข้ามโค้ดฟรี/amount=0 กันสแปมจากทดลองฟรี
+async function notifyAdminPurchase(orderId, provider, liveMode) {
+  const o = await getOrder(orderId); if (!o) return;
+  const amt = Number(o.final_amount_satang || 0);
+  if (amt <= 0) return; // ฟรี/โค้ด 100% ไม่ใช่การซื้อ → ไม่แจ้ง
+  const baht = (amt / 100).toLocaleString("th-TH");
+  const kind = String(o.tier || "").startsWith("Credits") ? "แพ็กเครดิต" : String(o.tier || "").startsWith("Video") ? "บริการตรวจคลิป" : "เล่ม Blueprint";
+  const when = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+  const via = liveMode ? "Stripe (เงินเข้าจริง 💵)" : `${provider}${provider === "code" ? " (ใช้โค้ดลด)" : ""}`;
+  await sendEmail(ADMIN_ALERT_EMAIL, `💰 มีคนซื้อ! ฿${baht} · ${o.email || "-"}`,
+    wrap(`<b>มีลูกค้าซื้อเข้ามาค่ะ 🎉</b><br><br>📧 อีเมล: <b>${o.email || "-"}</b><br>🛒 สินค้า: ${kind}<br>💵 ยอด: <b>฿${baht}</b><br>📱 ช่อง: ${o.instagram_account || "-"}<br>🕐 เวลา: ${when}<br>ช่องทาง: ${via}`)).catch(() => {});
 }
 // ออเดอร์ซื้อเครดิต (tier Credits_N) จ่ายแล้ว → เติมเครดิต (idempotent กัน webhook ยิงซ้ำ)
 async function grantCreditsIfCreditOrder(orderId) {

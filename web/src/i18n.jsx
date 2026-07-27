@@ -816,6 +816,8 @@ const DICT = {
   dp_sponsor_sub: { th: "(ถ้ามี — เก็บไว้นับในรายงาน)", en: "(if any — counted in your report)" },
   dp_sponsor_ph: { th: "เช่น แบรนด์ X", en: "e.g. Brand X" },
   dp_writing: { th: "กำลังเขียน...", en: "Writing…" },
+  dp_gen_working: { th: "ครูพี่คิมกำลังเขียนสคริปต์ให้ค่ะ", en: "Kim is writing your script" },
+  dp_gen_steps: { th: ["อ่านบรีฟ + ไฟล์ที่แนบ", "ดูสไตล์/ตัวตนของช่องคุณ", "หามุมเชื่อมบรีฟกับช่อง", "เขียนสคริปต์ + ช็อตลิสต์"], en: ["Reading your brief + files", "Studying your channel's style", "Finding the angle that fits your channel", "Writing the script + shot list"] },
   dp_gen_btn: { th: "สร้างสคริปต์ (ใช้ 1 เครดิต)", en: "Generate script (1 credit)" },
   dp_close: { th: "ปิด", en: "Close" },
   dp_no_credits: { th: "เครดิตหมดแล้วค่ะ — กดซื้อแพ็กเครดิตด้านบนได้เลย (หรือทักทีมเติมให้ได้)", en: "Out of credits — buy a pack above (or message the team to top up)" },

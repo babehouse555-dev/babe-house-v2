@@ -30,6 +30,8 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
   const [open, setOpen] = useState(!!startOpen);
   const [brief, setBrief] = useState(""), [sponsor, setSponsor] = useState(""), [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [script, setScript] = useState(null);
+  const [elapsed, setElapsed] = useState(0); // นับวินาทีระหว่างเจน → โชว์ขั้นตอนไม่ให้ดูค้าง
+  useEffect(() => { if (!busy) { setElapsed(0); return; } const iv = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(iv); }, [busy]);
   const [history, setHistory] = useState([]), [openId, setOpenId] = useState(null);
   const [buying, setBuying] = useState(false), [buyBusy, setBuyBusy] = useState(false);
   const loadCredits = () => api("/api/me/credits?" + new URLSearchParams({ ...(channel ? { channel } : {}), ...(cycle ? { cycle } : {}) }), { token: session.token }).then(d => { setCredits(d.credits); setHistory(d.scripts || []); }).catch(() => setCredits(0));
@@ -84,10 +86,26 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
       </div>
       <div className="field"><label>{t("dp_sponsor_label")} <span className="muted">{t("dp_sponsor_sub")}</span></label><input value={sponsor} onChange={e => setSponsor(e.target.value)} placeholder={t("dp_sponsor_ph")} /></div>
       {err && <div className="msg err">{err}</div>}
-      <div className="row" style={{ gap: 10 }}>
-        <button className="btn" disabled={busy || credits < 1} onClick={gen} style={{ background: "#9A8458", opacity: (busy || credits < 1) ? .6 : 1 }}>{busy ? t("dp_writing") : t("dp_gen_btn")}</button>
+      {busy ? (() => {
+        const steps = t("dp_gen_steps"); const at = [0, 4, 9, 16]; // วินาทีที่เริ่มแต่ละขั้น
+        const cur = at.filter(s => elapsed >= s).length - 1;
+        const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-(elapsed + 3) / 22))));
+        return <div style={{ background: "#fbf9f3", border: "1px solid #e7dfc5", borderRadius: 14, padding: "16px 18px", marginTop: 4 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: "#7a663f", marginBottom: 12 }}>⚡ {t("dp_gen_working")}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 14 }}>
+            {steps.map((s, i) => { const done = i < cur, active = i === cur; return <div key={i} className="row" style={{ gap: 10, alignItems: "center" }}>
+              {done ? <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#e8f5ee", color: "#1a7f43", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>✓</span>
+                : active ? <span style={{ width: 20, height: 20, borderRadius: "50%", border: "3px solid #ece3cc", borderTopColor: "#9A8458", animation: "spin .8s linear infinite", flexShrink: 0, boxSizing: "border-box" }} />
+                : <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #d8cba8", flexShrink: 0, boxSizing: "border-box" }} />}
+              <span style={{ fontSize: 13.5, fontWeight: active ? 700 : 400, color: active ? "var(--ink)" : done ? "var(--muted)" : "#c3b590" }}>{s}{active ? "…" : ""}</span>
+            </div>; })}
+          </div>
+          <div style={{ height: 6, background: "#ece3cc", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "#9A8458", borderRadius: 20, transition: "width 1s linear" }} /></div>
+        </div>;
+      })() : <div className="row" style={{ gap: 10 }}>
+        <button className="btn" disabled={credits < 1} onClick={gen} style={{ background: "#9A8458", opacity: credits < 1 ? .6 : 1 }}>{t("dp_gen_btn")}</button>
         <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => { setOpen(false); setScript(null); setErr(""); }}>{t("dp_close")}</button>
-      </div>
+      </div>}
       {credits < 1 && credits != null && <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 10, fontSize: 13 }}>{t("dp_no_credits")}</div>}
     </div>}
     {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}><div style={{ fontSize: 11.5, fontWeight: 700, color: "#1a7f43", marginBottom: 6 }}>{t("dp_created_saved")}</div><ScriptBlock s={script} /></div>}

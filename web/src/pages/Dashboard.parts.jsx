@@ -58,24 +58,24 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
       setBrief(""); setSponsor(""); setFiles([]); setRef("");
     } catch (e) { setErr(e.message || t("dp_err_gen")); } finally { setBusy(false); }
   }
-  return <div className="card" style={{ borderTop: "4px solid #9A8458", margin: "24px 0 0" }}>
+  return <div className="card" style={{ borderTop: "4px solid #2E86DE", margin: "24px 0 0" }}>
     <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
       <div><div style={{ fontWeight: 800, fontSize: 16 }}>{t("dp_as_title")}</div><div className="muted" style={{ fontSize: 12.5 }}>{t("dp_as_sub")}</div></div>
       <div className="row" style={{ gap: 8, alignItems: "center" }}>
         <span style={{ background: credits > 0 ? "#e8f5ee" : "#fdeaea", color: credits > 0 ? "#1a7f43" : "#b3261e", fontWeight: 800, fontSize: 13, padding: "5px 12px", borderRadius: 20 }}>{t("dp_credits")} {credits == null ? "…" : credits}</span>
-        <button onClick={() => setBuying(b => !b)} className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#9A8458" }}>{t("dp_buy_credits")}</button>
+        <button onClick={() => setBuying(b => !b)} className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#2E86DE" }}>{t("dp_buy_credits")}</button>
       </div>
     </div>
-    {buying && <div style={{ marginTop: 12, background: "#fbf9f3", border: "1px solid #e7dfc5", borderRadius: 12, padding: "12px 14px" }}>
+    {buying && <div style={{ marginTop: 12, background: "#eef4fb", border: "1px solid #cfe0f3", borderRadius: 12, padding: "12px 14px" }}>
       <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>{t("dp_pick_pack")}</div>
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
         {t("dp_packs").map(([p, lbl, price]) =>
-          <button key={p} disabled={buyBusy} onClick={() => buyPack(p)} style={{ flex: "1 1 120px", border: "1.5px solid #9A8458", background: "#fff", borderRadius: 12, padding: "12px 10px", cursor: buyBusy ? "default" : "pointer", opacity: buyBusy ? .6 : 1, textAlign: "center" }}>
-            <div style={{ fontWeight: 800, fontSize: 14, color: "#9A8458" }}>{lbl}</div><div className="muted" style={{ fontSize: 12.5 }}>{price}</div></button>)}
+          <button key={p} disabled={buyBusy} onClick={() => buyPack(p)} style={{ flex: "1 1 120px", border: "1.5px solid #2E86DE", background: "#fff", borderRadius: 12, padding: "12px 10px", cursor: buyBusy ? "default" : "pointer", opacity: buyBusy ? .6 : 1, textAlign: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#2E86DE" }}>{lbl}</div><div className="muted" style={{ fontSize: 12.5 }}>{price}</div></button>)}
       </div>
       <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>{buyBusy ? t("dp_going_pay") : t("dp_pay_note")}</div>
     </div>}
-    {!open && <button onClick={() => setOpen(true)} className="btn full" style={{ marginTop: 12, background: "#9A8458" }}>{t("dp_write_new")}</button>}
+    {!open && <button onClick={() => setOpen(true)} className="btn full" style={{ marginTop: 12, background: "#2E86DE" }}>{t("dp_write_new")}</button>}
     {open && <div style={{ marginTop: 14 }}>
       <div className="field"><label>{t("dp_brief_label")}</label><textarea value={brief} onChange={e => setBrief(e.target.value)} style={{ minHeight: 80 }} placeholder={t("dp_brief_ph")} /></div>
       <div className="field"><label>{t("dp_attach_label")} <span className="muted">{t("dp_attach_sub")}</span></label>
@@ -89,25 +89,25 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
         const steps = t("dp_gen_steps"); const at = [0, 4, 9, 16]; // วินาทีที่เริ่มแต่ละขั้น
         const cur = at.filter(s => elapsed >= s).length - 1;
         const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-(elapsed + 3) / 22))));
-        return <div style={{ background: "#fbf9f3", border: "1px solid #e7dfc5", borderRadius: 14, padding: "16px 18px", marginTop: 4 }}>
-          <div style={{ fontWeight: 800, fontSize: 15, color: "#7a663f", marginBottom: 12 }}>⚡ {t("dp_gen_working")}</div>
+        return <div style={{ background: "#eef4fb", border: "1px solid #cfe0f3", borderRadius: 14, padding: "16px 18px", marginTop: 4 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: "#1B6FC4", marginBottom: 12 }}>⚡ {t("dp_gen_working")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 14 }}>
             {steps.map((s, i) => { const done = i < cur, active = i === cur; return <div key={i} className="row" style={{ gap: 10, alignItems: "center" }}>
               {done ? <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#e8f5ee", color: "#1a7f43", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>✓</span>
-                : active ? <span style={{ width: 20, height: 20, borderRadius: "50%", border: "3px solid #ece3cc", borderTopColor: "#9A8458", animation: "spin .8s linear infinite", flexShrink: 0, boxSizing: "border-box" }} />
-                : <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #d8cba8", flexShrink: 0, boxSizing: "border-box" }} />}
-              <span style={{ fontSize: 13.5, fontWeight: active ? 700 : 400, color: active ? "var(--ink)" : done ? "var(--muted)" : "#c3b590" }}>{s}{active ? "…" : ""}</span>
+                : active ? <span style={{ width: 20, height: 20, borderRadius: "50%", border: "3px solid #dce7f4", borderTopColor: "#2E86DE", animation: "spin .8s linear infinite", flexShrink: 0, boxSizing: "border-box" }} />
+                : <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid #c9d9ec", flexShrink: 0, boxSizing: "border-box" }} />}
+              <span style={{ fontSize: 13.5, fontWeight: active ? 700 : 400, color: active ? "var(--ink)" : done ? "var(--muted)" : "#9fb4cc" }}>{s}{active ? "…" : ""}</span>
             </div>; })}
           </div>
-          <div style={{ height: 6, background: "#ece3cc", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "#9A8458", borderRadius: 20, transition: "width 1s linear" }} /></div>
+          <div style={{ height: 6, background: "#dce7f4", borderRadius: 20, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "#2E86DE", borderRadius: 20, transition: "width 1s linear" }} /></div>
         </div>;
       })() : <div className="row" style={{ gap: 10 }}>
-        <button className="btn" disabled={credits < 1} onClick={gen} style={{ background: "#9A8458", opacity: credits < 1 ? .6 : 1 }}>{t("dp_gen_btn")}</button>
+        <button className="btn" disabled={credits < 1} onClick={gen} style={{ background: "#2E86DE", opacity: credits < 1 ? .6 : 1 }}>{t("dp_gen_btn")}</button>
         <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => { setOpen(false); setScript(null); setErr(""); }}>{t("dp_close")}</button>
       </div>}
       {credits < 1 && credits != null && <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 10, fontSize: 13 }}>{t("dp_no_credits")}</div>}
     </div>}
-    {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}><div style={{ fontSize: 11.5, fontWeight: 700, color: "#1a7f43", marginBottom: 6 }}>{t("dp_created_saved")}</div><ScriptBlock s={script} refId={script?._id} lang={lang} demo={demo} onChange={setScript} /></div>}
+    {script && <div className="card" style={{ marginTop: 14, background: "#eef4fb", border: "1px solid #cfe0f3" }}><div style={{ fontSize: 11.5, fontWeight: 700, color: "#1a7f43", marginBottom: 6 }}>{t("dp_created_saved")}</div><ScriptBlock s={script} refId={script?._id} lang={lang} demo={demo} onChange={setScript} /></div>}
 
     {history.length > 0 && <div style={{ marginTop: 16 }}>
       <div className="muted" style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t("dp_history_title")} ({history.length}) {t("dp_history_sub")}</div>
@@ -127,7 +127,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
 export function ToolsAndServices({ channel, cycle, demo }) {
   const { t } = useI18n();
   const [panel, setPanel] = useState(null); // "shoot" | null (แผงเพิ่มสคริปต์เป็นแผงเดี่ยวนอกเครื่องมือแล้ว)
-  const tileSt = (on) => ({ display: "flex", alignItems: "center", gap: 9, border: on ? "1.5px solid #9A8458" : "1px solid var(--border)", background: on ? "#fbf9f3" : "#fff", borderRadius: 12, padding: "11px 13px", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textDecoration: "none", width: "100%", textAlign: "left" });
+  const tileSt = (on) => ({ display: "flex", alignItems: "center", gap: 9, border: on ? "1.5px solid #2E86DE" : "1px solid var(--border)", background: on ? "#eef4fb" : "#fff", borderRadius: 12, padding: "11px 13px", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textDecoration: "none", width: "100%", textAlign: "left" });
   const toggle = (p) => setPanel(panel === p ? null : p);
   return <div style={{ marginTop: 24 }}>
     <div className="card" style={{ marginTop: 0 }}>

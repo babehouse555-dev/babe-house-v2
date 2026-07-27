@@ -92,7 +92,7 @@ export default function Compare() {
       </div>
 
       {single ? <>
-        <div style={{ background: "linear-gradient(135deg,#6E63A6,#2C8E8C)", color: "#fff", borderRadius: 22, padding: "26px 24px", boxShadow: "0 16px 38px rgba(110,99,166,.32)" }}>
+        <div style={{ background: "linear-gradient(135deg,#6E63A6,#2C8E8C)", color: "#fff", borderRadius: 22, padding: "26px 24px", boxShadow: "0 16px 38px rgba(110,99,166,.32)", marginBottom: 16 }}>
           <div style={{ fontSize: 30 }}>🌱</div>
           <div style={{ fontSize: 23, fontWeight: 800, marginTop: 4 }}>{t("cmp_start_title")}</div>
           <div style={{ opacity: .95, fontSize: 14.5, marginTop: 6, lineHeight: 1.6 }}>{t("cmp_start_sub")}</div>
@@ -104,7 +104,7 @@ export default function Compare() {
         </div>
         <Link className="btn full" to={renewLink} style={{ marginBottom: 16 }}>{t("cmp_unlock_next")}</Link>
       </> : <>
-        <div style={{ background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 22, padding: "28px 24px", textAlign: "center", boxShadow: "0 16px 38px rgba(63,107,174,.34)" }}>
+        <div style={{ background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 22, padding: "28px 24px", textAlign: "center", boxShadow: "0 16px 38px rgba(63,107,174,.34)", marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, opacity: .9, letterSpacing: 1 }}>{t("cmp_grew_from_first")}</div>
           <div style={{ fontSize: 52, fontWeight: 800, lineHeight: 1.1, margin: "4px 0" }}>{flw == null ? "—" : (flw >= 0 ? "▲ +" : "▼ ") + flw + "%"}</div>
           <div style={{ opacity: .95, fontSize: 14.5 }}>{t("cmp_from")} <b>{fmt(first.metrics?.followers)}</b> → <b>{fmt(last.metrics?.followers)}</b> {t("cmp_in")} {months.length} {t("cmp_months_with")}</div>

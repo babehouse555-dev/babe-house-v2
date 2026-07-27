@@ -168,6 +168,7 @@ function sanitizeScripts(bp, keepKim) {
   if (bp && Array.isArray(bp.scripts)) {
     for (const sc of bp.scripts) {
       if (Array.isArray(sc.beats)) for (const b of sc.beats) b.say = deKim(b.say, keepKim);
+      if (Array.isArray(sc.hooks)) sc.hooks = sc.hooks.map(h => deKim(h, keepKim)).filter(Boolean);
       sc.cap = deKim(sc.cap, keepKim);
     }
   }
@@ -370,7 +371,8 @@ const SINGLE_PROMPT = `คุณคือ "ครูพี่คิม" เข�
 ⚠️ บทพูด (beats.say) = เจ้าของช่องพูดเองหน้ากล้องในน้ำเสียงแบรนด์เขา (บุคคลที่ 1) — ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ยกเว้นเจ้าของช่องตั้ง self_term="คิม")
 กฎ: 1.ตอบ JSON object ล้วน 2.บทพูดต้องเนียนกับงาน/สปอนเซอร์ในบรีฟ + ตรงสไตล์ช่อง 3.🗣️ ภาษาบ้านๆ ห้ามศัพท์การตลาด/อังกฤษในบทพูด 4.HOOK เปิดด้วยปม/เรื่องจริงใน 3 วิแรก, BODY เล่าเต็มมีจังหวะ (ถ้าเป็นงานสปอนเซอร์ ต้องเล่าถึงแบรนด์/สินค้าให้เนียนน่าเชื่อ ไม่แข็ง), CTA ปิดด้วยคำเชิญ/คำถามปลายเปิด · say รวม ~150–220 คำ
 5. ⭐⭐ สำคัญสุด — ห้ามทำสคริปต์กลางๆ ที่ช่องไหนก็ใช้ได้: ต้อง "หลอมบรีฟให้เข้ากับช่องนี้โดยเฉพาะ" — หาสะพานเชื่อมระหว่างสินค้า/สปอนเซอร์ กับ (ก)นิช/เรื่องที่ช่องนี้ทำประจำ (ข)ปัญหา/ความอยากของกลุ่มคนดูเขา (ค)เรื่องราว/มุมมองเฉพาะตัวของเจ้าของช่อง · ยกตัวอย่าง/สถานการณ์ที่คนดูช่องนี้อินจริง · ถ้าสินค้าไม่เกี่ยวกับนิชตรงๆ ให้หามุมเชื่อมที่เนียน (เช่น สินค้าสุขภาพ→ช่องแม่ลูก = มุมดูแลตัวเองของแม่) · เป้าหมาย: บรีฟเดียวกันถ้าเอาไปให้ 2 ช่องต่างนิช ต้องได้สคริปต์คนละแบบชัดเจน
-ส่ง JSON: { "title": string(หัวข้อคลิปสั้นๆ), "g": "Awareness"|"Conversion"|"Branding", "beats": [ {"ts":string,"s":"HOOK"|"BODY"|"CTA","say":string,"ost":string,"vis":string} x3-4 เริ่มHOOK จบCTA ], "cap": string(แคปชั่น+แฮชแท็ก), "tip": string(ทิปถ่าย/โพสต์) }`;
+🎣 hooks: ให้ฮุกเปิด (3 วิแรก) มา "3 แบบให้เลือก" สไตล์ต่างกันชัดเจน เช่น (ก)ตั้งคำถามสะดุด (ข)ปม/ช็อก/สถิติ (ค)เล่าเรื่องตัวเอง/ปมคนดู — ทั้ง 3 ต้องเข้ากับช่อง+งานบรีฟ · อันแรก (hooks[0]) ต้องตรงกับ say ของ beat HOOK
+ส่ง JSON: { "title": string(หัวข้อคลิปสั้นๆ), "g": "Awareness"|"Conversion"|"Branding", "hooks": [string x3 ฮุกเปิด 3 แบบ], "beats": [ {"ts":string,"s":"HOOK"|"BODY"|"CTA","say":string,"ost":string,"vis":string} x3-4 เริ่มHOOK จบCTA ], "cap": string(แคปชั่น+แฮชแท็ก), "tip": string(ทิปถ่าย/โพสต์) }`;
 export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
   const a = analysis || {};
   if (!ai) return { script: { title: "สคริปต์ (ตัวอย่าง)", g: "Awareness", beats: [{ ts: "0:00", s: "HOOK", say: brief ? `วันนี้มาเล่าเรื่อง ${String(brief).slice(0, 40)}...` : "วันนี้มีเรื่องมาเล่า", ost: "หยุดดูก่อน", vis: "พูดหน้ากล้อง" }], cap: "#BabeHouse", tip: "ถ่ายในที่แสงสวย" }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };

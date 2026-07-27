@@ -816,6 +816,8 @@ const DICT = {
   dp_ref_label: { th: "ตัวอย่างแนวที่ทำประจำ (ref)", en: "Your usual style (ref)" },
   dp_ref_sub: { th: "ถ้ามี — วางสคริปต์/แคปชั่นคลิปเก่าที่เคยทำ ระบบจะเลียนสไตล์ให้เหมือนเป็นคลิปของคุณ", en: "Optional — paste a past script/caption; we'll match that style" },
   dp_ref_ph: { th: "วางสคริปต์หรือแคปชั่นคลิปเก่าที่สไตล์แบบที่คุณอยากได้...", en: "Paste an old script or caption in the style you want…" },
+  dp_hooks_label: { th: "เลือกฮุกเปิด (3 วิแรก) — กดสลับได้", en: "Pick your opening hook (first 3s) — tap to switch" },
+  dp_hook_using: { th: "ใช้อันนี้", en: "using this" },
   dp_sponsor_sub: { th: "(ถ้ามี — เก็บไว้นับในรายงาน)", en: "(if any — counted in your report)" },
   dp_sponsor_ph: { th: "เช่น แบรนด์ X", en: "e.g. Brand X" },
   dp_writing: { th: "กำลังเขียน...", en: "Writing…" },

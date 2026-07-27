@@ -12,10 +12,20 @@ const SL = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
 const copyTxt = (txt) => navigator.clipboard?.writeText(txt);
 function ScriptBlock({ s }) { // แสดงสคริปต์ 1 อัน (ใช้ทั้งอันที่เพิ่งสร้าง + ประวัติ)
   const { t } = useI18n();
+  const hooks = Array.isArray(s?.hooks) ? s.hooks.filter(Boolean) : [];
+  const [pick, setPick] = useState(0);           // ฮุกที่เลือกอยู่
   if (!s) return null;
+  // สลับ say ของ beat HOOK ให้ตรงกับฮุกที่เลือก
+  const beats = (s.beats || []).map(b => (b.s === "HOOK" && hooks[pick]) ? { ...b, say: hooks[pick] } : b);
   return <>
-    <div className="between"><div style={{ fontWeight: 800, fontSize: 15 }}>{s.title || t("dp_script")}</div><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13 }} onClick={() => copyTxt([...(s.beats || []).map(b => b.say), s.cap].filter(Boolean).join("\n\n"))}>{t("dp_copy")}</button></div>
-    {(s.beats || []).map((b, i) => <div key={i} style={{ marginTop: 10 }}>
+    <div className="between"><div style={{ fontWeight: 800, fontSize: 15 }}>{s.title || t("dp_script")}</div><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13 }} onClick={() => copyTxt([...beats.map(b => b.say), s.cap].filter(Boolean).join("\n\n"))}>{t("dp_copy")}</button></div>
+    {hooks.length > 1 && <div style={{ marginTop: 10, background: "#eef4fb", borderRadius: 10, padding: "10px 12px" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2E86DE", marginBottom: 7 }}>🎣 {t("dp_hooks_label")}</div>
+      {hooks.map((h, i) => <button key={i} onClick={() => setPick(i)} style={{ display: "block", width: "100%", textAlign: "left", cursor: "pointer", marginTop: i ? 6 : 0, border: pick === i ? "2px solid #2E86DE" : "1px solid #d5e2f0", background: pick === i ? "#fff" : "transparent", borderRadius: 8, padding: "8px 10px", fontSize: 13.5, lineHeight: 1.5, color: "#1a2a3a" }}>
+        <b style={{ color: "#2E86DE" }}>{i + 1}.</b> {h} {pick === i && <span style={{ fontSize: 11, color: "#1a7f43", fontWeight: 700 }}>✓ {t("dp_hook_using")}</span>}
+      </button>)}
+    </div>}
+    {beats.map((b, i) => <div key={i} style={{ marginTop: 10 }}>
       <span style={{ background: SL[b.s] || "#888", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 10 }}>{t("db_beat")[b.s] || b.s}</span>
       <div style={{ fontSize: 14, lineHeight: 1.6, marginTop: 5 }}>{b.say}</div>
       {b.vis && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🎬 {b.vis}</div>}

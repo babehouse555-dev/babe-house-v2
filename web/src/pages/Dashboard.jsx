@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
-import { ToolsAndServices, ReviewCard, FeedbackCard } from "./Dashboard.parts.jsx";
+import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript } from "./Dashboard.parts.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 
@@ -29,9 +29,6 @@ export default function Dashboard() {
   const [uploaded, setUploaded] = useState(new Set());
   const [credits, setCredits] = useState(null);   // ภาพรวม: เครดิตเหลือ + งานสปอนเซอร์ที่สร้างไว้
   const [sponsors, setSponsors] = useState([]);
-  const [openScriptSignal, setOpenScriptSignal] = useState(0); // กด "จัดการงานสปอนเซอร์" → สั่งเปิดแผงเพิ่มสคริปต์
-  // ไปที่แผงเพิ่มสคริปต์สปอนเซอร์ (เปิดแผงให้เลย + เลื่อนไปหา)
-  const goTools = () => { setOpenScriptSignal(n => n + 1); setTab("calendar"); setTimeout(() => document.getElementById("tools-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); };
   const [copied, setCopied] = useState(""); // แสดง "คัดลอกแล้ว" ชั่วครู่หลังกดปุ่มคัดลอก
   const copy = (txt, key) => { navigator.clipboard?.writeText(txt); setCopied(key); setTimeout(() => setCopied(c => (c === key ? "" : c)), 1800); };
   const [startedAt, setStartedAt] = useState(null);
@@ -353,19 +350,10 @@ export default function Dashboard() {
               </div>
               <div style={{ height: 8, borderRadius: 6, background: "var(--soft)", overflow: "hidden", marginTop: 12 }}><div style={{ height: "100%", width: pct + "%", background: "var(--blue)", borderRadius: 6, transition: "width .5s ease" }} /></div>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{pct}% · {t("ov_remaining").replace("{n}", Math.max(0, total - done))}</div>
-              {sponsors.length > 0 && <div style={{ marginTop: 16 }}>
-                <div className="between" style={{ marginBottom: 8 }}><div style={{ fontWeight: 700, fontSize: 13.5 }}>{t("ov_sponsor_section")} <span className="muted">({sponsors.length})</span></div><button className="link" onClick={goTools} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer", color: "var(--blue)" }}>{t("ov_manage_sponsor")} →</button></div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {sponsors.slice(0, 6).map(it => <button key={it.id} onClick={goTools} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--border)", borderRadius: 10, padding: "9px 12px", background: "#fff", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                    <span style={{ color: "#b8860b", flexShrink: 0 }}>⚡</span>
-                    <span style={{ flex: 1, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(it.script && it.script.title) || it.brief || t("dp_script")}</span>
-                    {it.sponsor && <span style={{ fontSize: 11, color: "#8a6d1f", background: "#fff7e6", border: "1px solid #f0deb0", borderRadius: 20, padding: "2px 9px", flexShrink: 0 }}>{it.sponsor}</span>}
-                  </button>)}
-                </div>
-              </div>}
             </div>;
           })()}
-          {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
+          <AddScript channel={bp.instagram_account} cycle={cycle} demo={demo} />
+          {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "24px 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>{t("db_cal_label")}</span>
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               {uploaded.size > 0 && <button onClick={clearAllMarathon} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 13px", fontSize: 13, fontWeight: 600, color: "var(--muted)", cursor: "pointer" }}>{t("db_clear_all")}</button>}
@@ -407,7 +395,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
-          <div id="tools-anchor" style={{ scrollMarginTop: 70 }}><ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} openScript={openScriptSignal} /></div>
+          <ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} />
         </>}
 
         {tab === "marathon" && contentReady && (() => {

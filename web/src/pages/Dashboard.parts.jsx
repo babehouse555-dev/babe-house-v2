@@ -124,11 +124,9 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
 
 // 🧰 เครื่องมือ (AI ช่วยทำเอง) + 🎁 บริการ (คนทำให้/เรียน) — รวมเป็นโครงเดียว ลดความรก
 // เครื่องมือ = ไทล์เล็ก 4 อัน (กดขยายในที่ หรือพาไปหน้าอื่น) · บริการ = แถบบางเห็นตลอด
-export function ToolsAndServices({ channel, cycle, demo, openScript }) {
+export function ToolsAndServices({ channel, cycle, demo }) {
   const { t } = useI18n();
-  const [panel, setPanel] = useState(null); // "script" | "shoot" | null
-  useEffect(() => { if (typeof location !== "undefined" && location.search.includes("topup=ok")) setPanel("script"); }, []); // กลับจากซื้อเครดิต → เปิดแผงสคริปต์เลย
-  useEffect(() => { if (openScript) setPanel("script"); }, [openScript]); // กด "จัดการงานสปอนเซอร์" จากภาพรวม → เปิดแผงสคริปต์
+  const [panel, setPanel] = useState(null); // "shoot" | null (แผงเพิ่มสคริปต์ย้ายไปไว้บนแท็บ 30 วันแล้ว)
   const tileSt = (on) => ({ display: "flex", alignItems: "center", gap: 9, border: on ? "1.5px solid #9A8458" : "1px solid var(--border)", background: on ? "#fbf9f3" : "#fff", borderRadius: 12, padding: "11px 13px", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textDecoration: "none", width: "100%", textAlign: "left" });
   const toggle = (p) => setPanel(panel === p ? null : p);
   return <div style={{ marginTop: 24 }}>
@@ -136,13 +134,11 @@ export function ToolsAndServices({ channel, cycle, demo, openScript }) {
       <div style={{ fontWeight: 800, fontSize: 15.5 }}>{t("dp_tools")}</div>
       <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>{t("dp_tools_sub")}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}>
-        <button style={tileSt(panel === "script")} onClick={() => toggle("script")}><span style={{ fontSize: 19 }}>⚡</span> {t("dp_t_addscript")}</button>
         <Link to="/video-audit" style={tileSt(false)}><span style={{ fontSize: 19 }}>🤖</span> {t("dp_t_audit")}</Link>
         <Link to="/account" style={tileSt(false)}><span style={{ fontSize: 19 }}>📺</span> {t("dp_t_channel")}</Link>
         <button style={tileSt(panel === "shoot")} onClick={() => toggle("shoot")}><span style={{ fontSize: 19 }}>🎬</span> {t("dp_t_examples")}</button>
       </div>
     </div>
-    {panel === "script" && <AddScript channel={channel} cycle={cycle} demo={demo} startOpen />}
     {panel === "shoot" && <div style={{ marginTop: 14 }}><ShootingGuide startOpen /></div>}
     <ServicesBlock />
   </div>;

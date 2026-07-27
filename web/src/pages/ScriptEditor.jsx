@@ -1,6 +1,6 @@
 // ตัวแสดง/แก้ไขสคริปต์ 1 อัน — ใช้ร่วมทั้งแผน 30 วัน (scope="plan") และสคริปต์สปอนเซอร์ (scope="credit")
 // ฟีเจอร์: เลือกฮุก 3 แบบ · แก้คำพูดเอง (เซฟถาวร) · คืนค่าต้นฉบับ AI · เจนใหม่ฟรี 1 ครั้ง/สคริปต์
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api, session } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 
@@ -14,6 +14,8 @@ export function ScriptEditor({ script, scope, refId, day, lang, demo, onChange }
   const [err, setErr] = useState("");
   const [regenOpen, setRegenOpen] = useState(false); // แผงเจนใหม่ (บอกสิ่งที่อยากปรับ)
   const [note, setNote] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => { if (busy !== "regen") { setElapsed(0); return; } const iv = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(iv); }, [busy]);
   if (!script) return null;
 
   const label = (s) => (t("db_beat") && t("db_beat")[s]) || s;
@@ -78,12 +80,20 @@ export function ScriptEditor({ script, scope, refId, day, lang, demo, onChange }
     {regenOpen && !script._regen_used && <div style={{ marginBottom: 12, background: "#eef4fb", border: "1px solid #cfe0f3", borderRadius: 12, padding: "12px 14px" }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🔄 {t("se_regen_title")}</div>
       <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{t("se_regen_hint")}</div>
-      <textarea value={note} onChange={e => setNote(e.target.value)} maxLength={500} rows={3} placeholder={t("se_regen_ph")} style={{ width: "100%", fontSize: 13.5, lineHeight: 1.5, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--border)", resize: "vertical", fontFamily: "inherit" }} />
+      <textarea value={note} onChange={e => setNote(e.target.value)} maxLength={500} rows={3} disabled={busy === "regen"} placeholder={t("se_regen_ph")} style={{ width: "100%", fontSize: 13.5, lineHeight: 1.5, padding: "9px 11px", borderRadius: 10, border: "1px solid var(--border)", resize: "vertical", fontFamily: "inherit", opacity: busy === "regen" ? .6 : 1 }} />
       {err && <div style={{ color: "#c0392b", fontSize: 12.5, marginTop: 6 }}>{err}</div>}
-      <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <button onClick={doRegen} disabled={busy === "regen"} style={{ background: "var(--blue)", color: "#fff", border: 0, borderRadius: 10, padding: "9px 16px", fontSize: 13.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? .6 : 1 }}>{busy === "regen" ? t("se_regening") : t("se_regen_go")}</button>
-        <button onClick={() => { setRegenOpen(false); setNote(""); }} disabled={busy === "regen"} style={{ background: "none", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>{t("se_cancel")}</button>
-      </div>
+      {busy === "regen" ? (() => {
+        const steps = t("se_regen_steps") || [];
+        const at = [0, 6, 13]; let si = 0; for (let k = 0; k < at.length; k++) if (elapsed >= at[k]) si = k;
+        const pct = Math.min(96, Math.round((1 - Math.exp(-elapsed / 10)) * 100));
+        return <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--blue)", marginBottom: 7 }}>{steps[si] || t("se_regening")} <span className="muted" style={{ fontWeight: 400 }}>({elapsed}s)</span></div>
+          <div style={{ height: 8, borderRadius: 6, background: "#dce7f4", overflow: "hidden" }}><div style={{ height: "100%", width: pct + "%", background: "var(--blue)", borderRadius: 6, transition: "width .6s ease" }} /></div>
+        </div>;
+      })() : <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <button onClick={doRegen} style={{ background: "var(--blue)", color: "#fff", border: 0, borderRadius: 10, padding: "9px 16px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{t("se_regen_go")}</button>
+        <button onClick={() => { setRegenOpen(false); setNote(""); }} style={{ background: "none", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 14px", fontSize: 13, cursor: "pointer" }}>{t("se_cancel")}</button>
+      </div>}
     </div>}
     {hooks.length > 1 && <div style={{ marginBottom: 12, background: "#eef4fb", borderRadius: 10, padding: "10px 12px" }}>
       <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2E86DE", marginBottom: 7 }}>🎣 {t("dp_hooks_label")}</div>

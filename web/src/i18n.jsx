@@ -833,6 +833,7 @@ const DICT = {
   se_regen_hint: { th: "บอกสิ่งที่อยากปรับ/ไม่ชอบตรงไหน จะได้ตรงใจขึ้น — ไม่ใส่ก็ได้ (= ขออีกมุมใหม่)", en: "Tell us what to change or what you don't like — optional (blank = just a fresh take)" },
   se_regen_ph: { th: "เช่น ฮุกแรงกว่านี้ · เล่าเป็นเรื่องเล่าตัวเอง อย่าขายตรงๆ · ตัด CTA ขายของออก · เพิ่มตัวเลข/สถิติให้น่าเชื่อ", en: "e.g. stronger hook · tell it as a personal story · drop the hard sell · add stats" },
   se_regen_go: { th: "🔄 เจนใหม่เลย", en: "🔄 Regenerate now" },
+  se_regen_steps: { th: ["📖 กำลังอ่านโจทย์ที่คุณบอก...", "💡 หามุมเล่าใหม่ให้ตรงใจ...", "✍️ เขียนสคริปต์ + ฮุก 3 แบบ..."], en: ["📖 Reading your request...", "💡 Finding a fresh angle...", "✍️ Writing the script + 3 hooks..."] },
   dp_sponsor_sub: { th: "(ถ้ามี — เก็บไว้นับในรายงาน)", en: "(if any — counted in your report)" },
   dp_sponsor_ph: { th: "เช่น แบรนด์ X", en: "e.g. Brand X" },
   dp_writing: { th: "กำลังเขียน...", en: "Writing…" },

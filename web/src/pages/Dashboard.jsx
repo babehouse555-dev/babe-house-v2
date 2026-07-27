@@ -55,7 +55,7 @@ export default function Dashboard() {
 
   // สเต็ป 2: ลูกค้ายืนยันบทวิเคราะห์แม่น → สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง + poll จนเสร็จ)
   async function startContentGen() {
-    if (demo) { setTab("overview"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (demo) { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     setGenState("generating");
     // ส่งค่า 6 ช่องที่ลูกค้าแก้เอง (ถ้ามี) → backend เอาไปอัปเดตบทวิเคราะห์ก่อนเจนคอนเทนต์ (ไม่ต้องเจนวิเคราะห์ใหม่)
     const snapshot_edits = Object.keys(snapEdits).length ? Object.entries(snapEdits).map(([i, value]) => ({ i: Number(i), value })) : null;
@@ -95,7 +95,7 @@ export default function Dashboard() {
     if (demo) return;
     if (!userId || !cycle) { setErr(t("db_err_nobook")); return; }
     api(latestUrl, { token: session.token, adminKey: localStorage.getItem("babe_admin_key") || undefined })
-      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); const ready = d.content_status === "ready"; setContentReady(ready); if (ready) setTab("overview"); /* นักเรียนเก่ากลับมา = เห็นภาพรวมเดือนนี้ก่อน */ })
+      .then(d => { setBp(d.blueprint); setUploaded(new Set(d.marathon || [])); setStartedAt(d.started_at || null); setImproveCount(d.improve_count || 0); const ready = d.content_status === "ready"; setContentReady(ready); if (ready) setTab("calendar"); /* นักเรียนเก่ากลับมา = เห็นแผน 30 วัน (มีภาพรวมอยู่หัวแท็บ) */ })
       .catch((e) => { if (e.code === "NOT_OWNER") setErr(`${t("db_err_notowner_a")} ${e.data?.owner_hint || ""} ${t("db_err_notowner_b")}`); else setErr(t("db_err_load")); });
   }, [userId, cycle]);
 
@@ -169,53 +169,9 @@ export default function Dashboard() {
         <p className="muted" style={{ marginBottom: 16 }}>✓ {bp.instagram_account} · {bp.market_tier || "Premium"} · {bp.theme}</p>
 
         <div className="row" style={{ marginBottom: 18, background: "var(--soft)", borderRadius: 14, padding: 6 }}>
-          {[["overview", t("db_tab_overview")], ["strategy", t("db_tab_strategy")], ["calendar", t("db_tab_30")], ["marathon", t("db_tab_marathon")]].map(([k, l]) =>
+          {[["strategy", t("db_tab_strategy")], ["calendar", t("db_tab_30")], ["marathon", t("db_tab_marathon")]].map(([k, l]) =>
             <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "10px", border: 0, borderRadius: 10, fontWeight: 700, cursor: "pointer", background: tab === k ? "#fff" : "transparent", color: tab === k ? "var(--blue)" : "var(--muted)", boxShadow: tab === k ? "0 2px 8px rgba(0,0,0,.06)" : "none" }}>{l}</button>)}
         </div>
-
-        {tab === "overview" && contentReady && (() => {
-          const cal = bp.calendar || [];
-          const total = cal.length || 30;
-          const done = uploaded.size;
-          const pct = Math.round(done / total * 100);
-          const stat = (label, val, sub) => <div style={{ background: "var(--soft)", borderRadius: 12, padding: "14px 16px" }}>
-            <div className="muted" style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</div>
-            <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>{val}{sub && <span style={{ fontSize: 14, color: "var(--muted)", fontWeight: 600 }}> {sub}</span>}</div>
-          </div>;
-          return <div className="card">
-            <div className="between" style={{ marginBottom: 14 }}><h3 style={{ margin: 0 }}>{t("ov_title")}</h3><span className="muted" style={{ fontSize: 13 }}>{(cycle || "").replace("_", " ")}</span></div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 14 }}>
-              {stat(t("ov_posted"), done, `/ ${total} ${lang === "en" ? "days" : "วัน"}`)}
-              {stat(t("ov_sponsors"), sponsors.length)}
-              {stat(t("ov_credits"), credits == null ? (demo ? "—" : "…") : credits)}
-            </div>
-            <div style={{ height: 8, borderRadius: 6, background: "var(--soft)", overflow: "hidden" }}><div style={{ height: "100%", width: pct + "%", background: "var(--blue)", borderRadius: 6, transition: "width .5s ease" }} /></div>
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 6, marginBottom: 16 }}>{pct}% · {t("ov_remaining").replace("{n}", Math.max(0, total - done))}</div>
-
-            <div className="row" style={{ gap: 14, fontSize: 12, color: "var(--muted)", marginBottom: 10, flexWrap: "wrap" }}>
-              {Object.entries(G_LABEL).map(([k, v]) => <span key={k}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: G_COLORS[k], marginRight: 4, verticalAlign: "middle" }} />{v}</span>)}
-              <span><span style={{ color: "#1a7f43", fontWeight: 800 }}>✓</span> {t("ov_posted")}</span>
-            </div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{t("ov_plan30")}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(46px,1fr))", gap: 6, marginBottom: 20 }}>
-              {cal.map(c => { const dn = uploaded.has(c.d); return <button key={c.d} onClick={() => { setTab("calendar"); setTimeout(() => selectDay(c.d), 80); }} style={{ position: "relative", border: "1px solid var(--border)", borderRadius: 10, padding: "7px 4px", background: dn ? "#e8f5ee" : "#fff", cursor: "pointer" }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: dn ? "#1a7f43" : "inherit" }}>{c.d}</div>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: G_COLORS[c.g] || "#888", margin: "3px auto 0" }} />
-                {dn && <span style={{ position: "absolute", top: 2, right: 4, fontSize: 11, color: "#1a7f43", fontWeight: 800 }}>✓</span>}
-              </button>; })}
-            </div>
-
-            <div className="between" style={{ marginBottom: 8 }}><div style={{ fontWeight: 700, fontSize: 14 }}>{t("ov_sponsor_section")} {sponsors.length > 0 && <span className="muted">({sponsors.length})</span>}</div><button className="link" onClick={goTools} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer", color: "var(--blue)" }}>{t("ov_manage_sponsor")} →</button></div>
-            {sponsors.length === 0 ? <div className="muted" style={{ fontSize: 13 }}>{t("ov_none_sponsor")}</div> :
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {sponsors.slice(0, 8).map(it => <button key={it.id} onClick={goTools} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", background: "#fff", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                  <span style={{ color: "#b8860b", flexShrink: 0 }}>⚡</span>
-                  <span style={{ flex: 1, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(it.script && it.script.title) || it.brief || t("dp_script")}</span>
-                  {it.sponsor && <span style={{ fontSize: 11, color: "#8a6d1f", background: "#fff7e6", border: "1px solid #f0deb0", borderRadius: 20, padding: "2px 9px", flexShrink: 0 }}>{it.sponsor}</span>}
-                </button>)}
-              </div>}
-          </div>;
-        })()}
 
         {tab === "strategy" && <>
           <div style={{ background: "linear-gradient(135deg,#ECEAF6,#E4F4F3)", border: "1px solid #d9d3ec", borderRadius: 18, padding: "18px 20px", lineHeight: 1.65, marginBottom: 16, fontSize: 15 }}><span style={{ fontSize: 22, marginRight: 6 }}>🩵</span>{bp.greeting}</div>
@@ -381,6 +337,33 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("db_go_confirm")}</button>
         </div>}
         {tab === "calendar" && contentReady && <>
+          {(() => {
+            const total = (bp.calendar || []).length || 30, done = uploaded.size, pct = Math.round(done / total * 100);
+            const stat = (label, val, sub) => <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px" }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{label}</div>
+              <div style={{ fontSize: 23, fontWeight: 800, marginTop: 2 }}>{val}{sub && <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}> {sub}</span>}</div>
+            </div>;
+            return <div className="card" style={{ marginBottom: 16 }}>
+              <div className="between" style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 16 }}>{t("ov_title")}</h3><span className="muted" style={{ fontSize: 13 }}>{(cycle || "").replace("_", " ")}</span></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10 }}>
+                {stat(t("ov_posted"), done, `/ ${total} ${lang === "en" ? "days" : "วัน"}`)}
+                {stat(t("ov_sponsors"), sponsors.length)}
+                {stat(t("ov_credits"), credits == null ? (demo ? "—" : "…") : credits)}
+              </div>
+              <div style={{ height: 8, borderRadius: 6, background: "var(--soft)", overflow: "hidden", marginTop: 12 }}><div style={{ height: "100%", width: pct + "%", background: "var(--blue)", borderRadius: 6, transition: "width .5s ease" }} /></div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{pct}% · {t("ov_remaining").replace("{n}", Math.max(0, total - done))}</div>
+              {sponsors.length > 0 && <div style={{ marginTop: 16 }}>
+                <div className="between" style={{ marginBottom: 8 }}><div style={{ fontWeight: 700, fontSize: 13.5 }}>{t("ov_sponsor_section")} <span className="muted">({sponsors.length})</span></div><button className="link" onClick={goTools} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer", color: "var(--blue)" }}>{t("ov_manage_sponsor")} →</button></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {sponsors.slice(0, 6).map(it => <button key={it.id} onClick={goTools} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--border)", borderRadius: 10, padding: "9px 12px", background: "#fff", cursor: "pointer", textAlign: "left", width: "100%" }}>
+                    <span style={{ color: "#b8860b", flexShrink: 0 }}>⚡</span>
+                    <span style={{ flex: 1, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(it.script && it.script.title) || it.brief || t("dp_script")}</span>
+                    {it.sponsor && <span style={{ fontSize: 11, color: "#8a6d1f", background: "#fff7e6", border: "1px solid #f0deb0", borderRadius: 20, padding: "2px 9px", flexShrink: 0 }}>{it.sponsor}</span>}
+                  </button>)}
+                </div>
+              </div>}
+            </div>;
+          })()}
           {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>{t("db_cal_label")}</span>
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>

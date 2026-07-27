@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
-import { ToolsAndServices, ReviewCard, FeedbackCard } from "./Dashboard.parts.jsx";
+import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript } from "./Dashboard.parts.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 
@@ -369,6 +369,7 @@ export default function Dashboard() {
             </div>;
           })()}
 
+          <AddScript channel={bp.instagram_account} cycle={cycle} demo={demo} />
           <ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} />
         </>}
 

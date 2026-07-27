@@ -4,6 +4,8 @@ import { api, session, fmt } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 
 const pct = (a, b) => (a == null || b == null || a === 0) ? null : Math.round((b - a) / a * 1000) / 10;
+// รวมช่องเดียวกันที่เก็บต่างแบบ (@babehouse_academy = "babe house academy ") — ให้ตรงกับ chKey ฝั่งเซิร์ฟเวอร์
+const chKey = (s) => String(s || "").toLowerCase().replace(/^@/, "").replace(/[\s._-]/g, "").trim();
 
 export default function Compare() {
   const { t, lang } = useI18n();
@@ -18,7 +20,7 @@ export default function Compare() {
 
   useEffect(() => {
     if (!session.token) { nav("/account"); return; }
-    api("/api/me/blueprints", { token: session.token }).then(d => setMonths(channel ? (d.months || []).filter(m => String(m.instagram_account || "") === channel) : (d.months || []))).catch(() => { session.clear(); nav("/account"); });
+    api("/api/me/blueprints", { token: session.token }).then(d => { const all = channel ? (d.months || []).filter(m => chKey(m.instagram_account) === chKey(channel)) : (d.months || []); all.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); setMonths(all); }).catch(() => { session.clear(); nav("/account"); });
     api("/api/me/growth-analysis?" + new URLSearchParams({ ...(channel ? { channel } : {}), lang }), { token: session.token }).then(d => { setCoach(d.analysis || null); setSponsors(d.sponsors || []); }).catch(() => setCoach(null));
   }, []);
 

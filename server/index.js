@@ -1075,11 +1075,15 @@ app.get("/api/admin/overview", async (req, res) => {
 app.get("/api/admin/backup", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const TABLES = ["users", "customers", "blueprint_orders", "blueprint_requests", "blueprints", "marathon_progress", "growth_analyses", "promo_codes", "credit_scripts", "script_overrides", "video_audits", "reviews", "feedback", "trend_digest", "payment_events"]; // ตารางสำคัญ (ข้าม auth/presence/logs ชั่วคราว)
-  const HEAVY = { blueprint_orders: "order_payload_json", blueprint_requests: "raw_payload_json" }; // ตัดคอลัมน์ payload ที่มี base64 รูป (input อัปใหม่ได้ · ข้อมูลจริงอยู่คอลัมน์แยกแล้ว) — กัน backup ใหญ่จนล่ม
-  const dump = { exported_at: new Date().toISOString(), db: "babe-house-v2", note: "raw image payloads excluded to keep size sane", tables: {} };
+  const STRIP = { // ตัดคอลัมน์ base64 รูป Insight (input อัปใหม่ได้ · ข้อมูลจริงอยู่คอลัมน์แยก + blueprint ที่เจนแล้ว) — กัน backup ใหญ่จนล่ม
+    blueprint_orders: ["order_payload_json"],
+    blueprint_requests: ["raw_payload_json", "insight_images_json", "insight_screenshot_base64"],
+  };
+  const dump = { exported_at: new Date().toISOString(), db: "babe-house-v2", note: "raw Insight image payloads excluded to keep size sane", tables: {} };
   for (const t of TABLES) { // ชื่อตาราง/คอลัมน์ hardcoded — ไม่มี injection
-    dump.tables[t] = HEAVY[t]
-      ? await q(`SELECT (to_jsonb(x) - '${HEAVY[t]}') AS r FROM ${t} x`).then(rs => rs.map(r => r.r)).catch(() => [])
+    const strip = STRIP[t];
+    dump.tables[t] = strip
+      ? await q(`SELECT (to_jsonb(x) ${strip.map(c => `- '${c}'`).join(" ")}) AS r FROM ${t} x`).then(rs => rs.map(r => r.r)).catch(() => [])
       : await q(`SELECT * FROM ${t}`).catch(() => []);
   }
   res.setHeader("Content-Type", "application/json; charset=utf-8");

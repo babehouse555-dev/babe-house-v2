@@ -625,6 +625,7 @@ const DICT = {
   fm_v_channel2: { th: "ช่วยกรอกชื่อช่อง/แฮนเดิล (⭐) ให้หน่อยนะคะ — ที่เหลือไม่บังคับค่ะ", en: "Please enter your channel name/handle (⭐) — the rest is optional" },
   fm_v_consent: { th: "กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ", en: "Please accept the privacy policy first" },
   fm_confirm_noimg: { th: "ยังไม่ได้แนบรูปสถิติเลยค่ะ 📊\n\nรูป Insight ช่วยให้วิเคราะห์ตัวเลขจริงได้แม่นขึ้นเยอะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบ\nกด \"ยกเลิก\" = กลับไปแนบรูป", en: "No stats attached yet 📊\n\nInsights make the analysis much more accurate.\n\n\"OK\" = continue without\n\"Cancel\" = go back and attach", en_ok: true },
+  fm_v_noimg: { th: "กรุณาแนบรูป Insight หลังบ้านอย่างน้อย 1 รูปก่อนนะคะ 📊 — ครูพี่คิมใช้ตัวเลขจริงในการวิเคราะห์ ถ้าไม่มีรูป บทวิเคราะห์จะไม่แม่นค่ะ", en: "Please attach at least 1 Insights screenshot first 📊 — Kim analyzes your real numbers; without it the analysis won't be accurate." },
   fm_confirm_noimg_renew: { th: "ยังไม่ได้แนบรูป Insight เดือนนี้เลยค่ะ 📊\n\nรูปเดือนล่าสุดคือสิ่งที่ทำให้ครูพี่คิมเห็น 'การเติบโต' จากเดือนก่อน — แนบก่อนดีกว่าไหมคะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบ", en: "No Insights for this month yet 📊\n\nThis month's numbers are how Kim sees your growth — attach first?\n\n\"OK\" = continue without" },
   fm_exists: { th: "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ — เปิดเล่มเดิมให้นะคะ (1 อีเมล สร้างได้ 1 เล่ม/เดือน)", en: "This email already has a book for this month — opening it (1 email = 1 book/month)" },
   fm_exists2: { th: "อีเมลนี้มีเล่มของเดือนนี้แล้วค่ะ", en: "This email already has a book for this month" },

@@ -214,7 +214,7 @@ export default function Form() {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email")); return; }
       if (!f.instagram_account.trim()) { setErr(t("fm_v_channel")); return; }
     }
-    if (step === 3 && hasChannel && ![...files].length && !window.confirm(t("fm_confirm_noimg"))) return;
+    if (step === 3 && hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); return; } // บังคับแนบรูป Insight — ไม่มีรูป บทวิเคราะห์จะมั่ว
     setStep(s => s + 1); toTop();
   };
 
@@ -254,7 +254,7 @@ export default function Form() {
   // เดือน 2+ : ส่งต่อแผนโดยใช้โปรไฟล์เดิม + รูปเดือนใหม่ (ไม่ต้องกรอกซ้ำ)
   async function submitRenew() {
     if (!consent) { setErr(t("fm_v_consent")); return; }
-    if (![...files].length && !window.confirm(t("fm_confirm_noimg_renew"))) return;
+    if (![...files].length) { setErr(t("fm_v_noimg")); return; } // ต่อเดือนใหม่ก็ต้องมีรูป Insight เดือนล่าสุด
     setBusy(true); setErr("");
     try {
       const images = await filesToBase64([...files], 8);

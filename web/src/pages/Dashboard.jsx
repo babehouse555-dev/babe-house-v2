@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
 import { ToolsAndServices, ReviewCard, FeedbackCard } from "./Dashboard.parts.jsx";
+import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
@@ -140,6 +141,8 @@ export default function Dashboard() {
 
   const m = bp.modules || {};
   const script = (bp.scripts || []).find(s => s.d === sel) || (bp.scripts || [])[0];
+  // อัปเดตสคริปต์ 1 วัน (จากแก้เอง/คืนค่า/เจนใหม่) — คง d,g เดิม
+  const updateScript = (d, ns) => setBp(prev => prev ? { ...prev, scripts: (prev.scripts || []).map(s => Number(s.d) === Number(d) ? { ...ns, d: s.d, g: s.g } : s) } : prev);
 
   return (
     <div>
@@ -359,13 +362,7 @@ export default function Dashboard() {
                   {copied === "script" ? t("db_copied") : `📋 ${t("db_copy_script")}`}
                 </button>
               </div>
-              {(script.beats || []).map((b, i) => <div key={i} style={{ borderLeft: `4px solid ${BEAT[b.s] || "var(--blue)"}`, background: "var(--soft)", borderRadius: "0 12px 12px 0", padding: "12px 14px", marginBottom: 10 }}>
-                <div className="row" style={{ gap: 8, marginBottom: 6 }}><span style={{ background: BEAT[b.s] || "var(--blue)", color: "#fff", fontWeight: 700, fontSize: 11, padding: "2px 10px", borderRadius: 20 }}>{BEAT_LABEL[b.s] || b.s}</span><span className="muted" style={{ fontSize: 12 }}>{b.ts}</span></div>
-                <p style={{ margin: "0 0 6px", fontSize: 15 }}>{b.say}</p>
-                <div className="row" style={{ gap: 6 }}>{b.ost && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>📺 {b.ost}</span>}{b.vis && <span style={{ fontSize: 11, background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "3px 8px" }}>🎥 {b.vis}</span>}</div>
-              </div>)}
-              <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 4 }}><div className="between"><b style={{ fontSize: 13 }}>{t("db_caption")}</b><button className="link" onClick={() => copy(script.cap, "cap")} style={{ background: "none", border: 0, fontSize: 13, cursor: "pointer", color: copied === "cap" ? "#1a7f43" : undefined }}>{copied === "cap" ? t("db_copied") : t("db_copy")}</button></div><p style={{ fontSize: 14, marginTop: 6 }}>{script.cap}</p></div>
-              <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 8 }}>{t("db_tip")} {script.tip}</div>
+              <ScriptEditor script={script} scope="plan" refId={bpId} day={script.d} lang={lang} demo={demo} onChange={ns => updateScript(script.d, ns)} />
               <button type="button" onClick={() => toggleDay(script.d)} style={{ width: "100%", marginTop: 14, padding: "14px", borderRadius: 12, border: 0, cursor: "pointer", fontWeight: 800, fontSize: 15, color: "#fff", background: uploaded.has(script.d) ? "#1a7f43" : "var(--blue)", boxShadow: uploaded.has(script.d) ? "0 6px 18px rgba(26,127,67,.28)" : "0 6px 18px rgba(46,134,222,.28)" }}>
                 {uploaded.has(script.d) ? t("db_done_yes") : t("db_done_no")}
               </button>

@@ -597,6 +597,7 @@ app.get("/api/blueprints/latest", async (req, res) => {
   }
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
   const bpData = safeJson(row.blueprint_json);
+  if (bpData && Array.isArray(bpData.scripts) && bpData.scripts.length) bpData.scripts = await mergePlanOverrides(row.blueprint_id, bpData.scripts); // ทับด้วยฉบับที่ลูกค้าแก้/เจนใหม่
   const contentReady = row.content_status === "ready" || (bpData && Array.isArray(bpData.scripts) && bpData.scripts.length > 0);
   res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, improve_count: row.improve_count || 0, content_status: contentReady ? "ready" : (row.content_status || "pending"), analysis_status: row.analysis_status || "ready", blueprint: bpData, marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
 });
@@ -717,7 +718,8 @@ app.get("/api/me/credits", async (req, res) => {
   if (channel) { params.push(channel); where += ` AND regexp_replace(lower(channel),'[@\\s._-]','','g')=regexp_replace(lower($${params.length}),'[@\\s._-]','','g')`; }
   if (cycle) { params.push(cycle); where += ` AND cycle = $${params.length}`; }
   const scripts = await q(`SELECT id, channel, sponsor, brief, script_json, created_at FROM credit_scripts WHERE lower(email)=lower($1)${where} ORDER BY created_at DESC LIMIT 50`, params).catch(() => []);
-  res.json({ ok: true, credits: (c && c.credits) || 0, scripts: scripts.map(s => ({ id: s.id, channel: s.channel, sponsor: s.sponsor, brief: s.brief, script: safeJson(s.script_json), created_at: s.created_at })) });
+  const items = await applyCreditOverrides(scripts.map(s => ({ id: s.id, channel: s.channel, sponsor: s.sponsor, brief: s.brief, script: safeJson(s.script_json), created_at: s.created_at }))); // ทับด้วยฉบับที่แก้/เจนใหม่
+  res.json({ ok: true, credits: (c && c.credits) || 0, scripts: items });
 });
 app.post("/api/credits/generate-script", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -742,15 +744,118 @@ app.post("/api/credits/generate-script", async (req, res) => {
     await acquireGen();
     const ref = String(req.body?.ref || "").trim().slice(0, 3000); // ตัวอย่างแนวที่ทำประจำ (สคริปต์/แคปชั่นเก่า) → เลียนสไตล์
     let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, ref, files: briefFiles, lang: req.body?.lang === "en" ? "en" : "th" }); } finally { releaseGen(); }
-    await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json,cycle) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [uid("cs"), normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script), cycle || null]).catch(() => {});
+    const csId = uid("cs");
+    await run(`INSERT INTO credit_scripts (id,email,channel,sponsor,brief,script_json,cycle) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [csId, normEmail(email), channel || parsed.instagram_account || "", sponsor || null, brief, JSON.stringify(result.script), cycle || null]).catch(() => {});
     if (result.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'credit_script',$2,$3,$4,$5)`, [uid("use"), result.model, result.usage.input || 0, result.usage.output || 0, result.usage.total || 0]).catch(() => {}); // เก็บ token ไว้ดูต้นทุนจริง
     const bal = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
-    res.json({ ok: true, script: result.script, credits: (bal && bal.credits) || 0 });
+    res.json({ ok: true, id: csId, script: { ...result.script, _id: csId, _edited: false, _regen_used: false }, credits: (bal && bal.credits) || 0 });
   } catch (e) {
     await run(`UPDATE customers SET credits=credits+1 WHERE lower(email)=lower($1)`, [email]).catch(() => {}); // คืนเครดิตถ้าเจนพลาด
     console.error("gen-single", e.message);
     res.status(500).json({ ok: false, error: "GEN_FAILED", message: "สร้างไม่สำเร็จ คืนเครดิตให้แล้ว ลองใหม่นะคะ" });
   }
+});
+// ── แก้ไข/เจนใหม่ "ทีละสคริปต์" (เก็บลง script_overrides แบบ overlay — ไม่แตะต้นฉบับ AI) ──
+// เจ้าของ: plan = เจ้าของ blueprint · credit = เจ้าของ credit_scripts
+async function scriptOwner(scope, refId) {
+  if (scope === "plan") {
+    const r = await one(`SELECT b.blueprint_id, b.blueprint_json, rq.email, rq.raw_payload_json FROM blueprints b LEFT JOIN blueprint_requests rq ON b.request_id=rq.request_id WHERE b.blueprint_id=$1 AND b.deleted_at IS NULL`, [refId]);
+    return r ? { email: r.email ? normEmail(r.email) : "", blueprint_json: r.blueprint_json, raw_payload_json: r.raw_payload_json } : null;
+  }
+  const r = await one(`SELECT email, channel, sponsor, brief, script_json FROM credit_scripts WHERE id=$1`, [refId]);
+  return r ? { email: normEmail(r.email), credit: r } : null;
+}
+function baseScriptOf(scope, owner, day) {
+  if (scope === "plan") { const bp = safeJson(owner.blueprint_json) || {}; return (bp.scripts || []).find(s => Number(s.d) === Number(day)) || null; }
+  return safeJson(owner.credit.script_json) || null;
+}
+// merge overrides ทับ scripts ของแผน 30 วัน (ตอน serve) — สะท้อน edit/regen + ธง _edited/_regen_used
+async function mergePlanOverrides(refId, scripts) {
+  if (!Array.isArray(scripts) || !scripts.length) return scripts;
+  const rows = await q(`SELECT day, ai_json, edited_json, regen_count FROM script_overrides WHERE scope='plan' AND ref_id=$1`, [refId]).catch(() => []);
+  if (!rows.length) return scripts;
+  const byDay = new Map(rows.map(r => [Number(r.day), r]));
+  return scripts.map(s => {
+    const ov = byDay.get(Number(s.d)); if (!ov) return s;
+    const use = safeJson(ov.edited_json) || safeJson(ov.ai_json);
+    const m = use ? { ...s, ...use, d: s.d, g: s.g } : { ...s };
+    m._edited = !!ov.edited_json; m._regen_used = (ov.regen_count || 0) >= 1;
+    return m;
+  });
+}
+// merge overrides ให้ประวัติสคริปต์สปอนเซอร์ (แต่ละอันมี id ของตัวเอง)
+async function applyCreditOverrides(items) {
+  const ids = items.map(i => i.id).filter(Boolean); if (!ids.length) return items;
+  const rows = await q(`SELECT ref_id, ai_json, edited_json, regen_count FROM script_overrides WHERE scope='credit' AND ref_id = ANY($1)`, [ids]).catch(() => []);
+  const byId = new Map(rows.map(r => [r.ref_id, r]));
+  return items.map(it => {
+    const ov = byId.get(it.id); if (!ov || !it.script) return it;
+    const use = safeJson(ov.edited_json) || safeJson(ov.ai_json);
+    const script = use ? { ...it.script, ...use } : it.script;
+    return { ...it, script: { ...script, _edited: !!ov.edited_json, _regen_used: (ov.regen_count || 0) >= 1 } };
+  });
+}
+async function ownScriptOr403(req, res) { // คืน {email, scope, refId, day, owner} ถ้าผ่าน · ไม่งั้น null (ส่ง response แล้ว)
+  const email = await authEmail(req); if (!email) { res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); return null; }
+  const scope = req.body?.scope === "credit" ? "credit" : "plan";
+  const refId = String(req.body?.ref_id || "").trim();
+  const day = scope === "plan" ? Math.max(1, Math.min(30, parseInt(req.body?.day, 10) || 0)) : 0;
+  if (!refId || (scope === "plan" && !day)) { res.status(400).json({ ok: false, error: "BAD_INPUT" }); return null; }
+  const owner = await scriptOwner(scope, refId);
+  if (!owner) { res.status(404).json({ ok: false, error: "NOT_FOUND" }); return null; }
+  if (owner.email && !isAdmin(req) && normEmail(email) !== owner.email) { res.status(403).json({ ok: false, error: "NOT_OWNER" }); return null; }
+  return { email, scope, refId, day, owner };
+}
+// บันทึกสคริปต์ที่ลูกค้าแก้เอง (ฟรี ไม่จำกัด)
+app.post("/api/script/save", async (req, res) => {
+  const g = await ownScriptOr403(req, res); if (!g) return;
+  const s = req.body?.script; if (!s || !Array.isArray(s.beats)) return res.status(400).json({ ok: false, error: "BAD_INPUT" });
+  const clean = {
+    title: String(s.title || "").slice(0, 200), g: ["Awareness", "Conversion", "Branding"].includes(s.g) ? s.g : undefined, d: s.d,
+    beats: s.beats.slice(0, 8).map(b => ({ ts: String(b.ts || "").slice(0, 40), s: ["HOOK", "BODY", "CTA"].includes(b.s) ? b.s : "BODY", say: String(b.say || "").slice(0, 1500), ost: String(b.ost || "").slice(0, 200), vis: String(b.vis || "").slice(0, 300) })),
+    cap: String(s.cap || "").slice(0, 2000), tip: String(s.tip || "").slice(0, 500),
+    hooks: Array.isArray(s.hooks) ? s.hooks.slice(0, 3).map(h => String(h).slice(0, 300)) : undefined,
+  };
+  await run(`INSERT INTO script_overrides (scope,ref_id,day,edited_json,updated_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (scope,ref_id,day) DO UPDATE SET edited_json=$4, updated_at=now()`, [g.scope, g.refId, g.day, JSON.stringify(clean)]);
+  res.json({ ok: true });
+});
+// คืนค่าต้นฉบับ AI (ลบ edit) — คืน baseline (เวอร์ชัน regen ถ้ามี ไม่งั้นต้นฉบับ) ให้ client อัปเดตทันที
+app.post("/api/script/revert", async (req, res) => {
+  const g = await ownScriptOr403(req, res); if (!g) return;
+  await run(`UPDATE script_overrides SET edited_json=NULL, updated_at=now() WHERE scope=$1 AND ref_id=$2 AND day=$3`, [g.scope, g.refId, g.day]);
+  const ov = await one(`SELECT ai_json, regen_count FROM script_overrides WHERE scope=$1 AND ref_id=$2 AND day=$3`, [g.scope, g.refId, g.day]);
+  let script = (ov && safeJson(ov.ai_json)) || baseScriptOf(g.scope, g.owner, g.day);
+  if (script) script = { ...script, _edited: false, _regen_used: (ov?.regen_count || 0) >= 1 };
+  res.json({ ok: true, script });
+});
+// เจนใหม่ทีละสคริปต์ (ฟรี 1 ครั้ง/สคริปต์)
+app.post("/api/script/regenerate", async (req, res) => {
+  const g = await ownScriptOr403(req, res); if (!g) return;
+  const cur = await one(`SELECT regen_count FROM script_overrides WHERE scope=$1 AND ref_id=$2 AND day=$3`, [g.scope, g.refId, g.day]);
+  if ((cur?.regen_count || 0) >= 1) return res.status(409).json({ ok: false, error: "REGEN_USED", message: "เจนใหม่ฟรีได้ 1 ครั้ง/สคริปต์ (ใช้ไปแล้ว)" });
+  const lang = req.body?.lang === "en" ? "en" : "th";
+  let parsed, analysis = {}, brief = "", sponsor = "";
+  if (g.scope === "plan") {
+    analysis = safeJson(g.owner.blueprint_json) || {};
+    try { parsed = GenSchema.parse(normalizePayload(safeJson(g.owner.raw_payload_json) || {})); } catch { parsed = { form_responses: {}, instagram_account: analysis.instagram_account || "", meta_purchase: { tier: "", billing_cycle: "" } }; }
+    const cal = (analysis.calendar || []).find(c => Number(c.d) === Number(g.day)) || {};
+    brief = `หัวข้อวันที่ ${g.day} ในแผน 30 วัน: "${cal.t || ""}"\nแนวฮุกเดิม: ${cal.h || "-"}\nฟอร์แมต: ${cal.f || "-"}\nเป้าหมายคอนเทนต์: ${cal.g || "Awareness"}\n👉 เขียนสคริปต์ใหม่สำหรับ "หัวข้อเดิมนี้" มุมเล่าใหม่ให้สดกว่าเดิม ไม่ซ้ำของเก่า แต่ยังตรงหัวข้อและเข้ากับช่อง`;
+  } else {
+    const c = g.owner.credit;
+    const bpRow = await one(`SELECT b.blueprint_json, r.raw_payload_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.deleted_at IS NULL ORDER BY b.created_at DESC LIMIT 1`, [g.email]);
+    analysis = safeJson(bpRow?.blueprint_json) || {};
+    try { parsed = GenSchema.parse(normalizePayload(safeJson(bpRow?.raw_payload_json) || {})); } catch { parsed = { form_responses: {}, instagram_account: c.channel || "", meta_purchase: { tier: "", billing_cycle: "" } }; }
+    brief = String(c.brief || ""); sponsor = c.sponsor || "";
+  }
+  try {
+    await acquireGen();
+    let result; try { result = await generateSingleScript(parsed, analysis, brief, { sponsor, lang }); } finally { releaseGen(); }
+    let ns = result.script;
+    if (g.scope === "plan") { const cal = (analysis.calendar || []).find(c => Number(c.d) === Number(g.day)) || {}; ns = { ...ns, d: Number(g.day), g: cal.g || ns.g }; }
+    await run(`INSERT INTO script_overrides (scope,ref_id,day,ai_json,edited_json,regen_count,updated_at) VALUES ($1,$2,$3,$4,NULL,1,now()) ON CONFLICT (scope,ref_id,day) DO UPDATE SET ai_json=$4, edited_json=NULL, regen_count=script_overrides.regen_count+1, updated_at=now()`, [g.scope, g.refId, g.day, JSON.stringify(ns)]);
+    if (result.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'regen_script',$2,$3,$4,$5)`, [uid("use"), result.model, result.usage.input || 0, result.usage.output || 0, result.usage.total || 0]).catch(() => {});
+    res.json({ ok: true, script: { ...ns, _edited: false, _regen_used: true } });
+  } catch (e) { console.error("regen", e.message); res.status(500).json({ ok: false, error: "GEN_FAILED", message: "เจนใหม่ไม่สำเร็จ ลองใหม่นะคะ" }); }
 });
 // ซื้อแพ็กเครดิต — สร้างออเดอร์ + ไป Stripe (จ่ายเสร็จ markOrderPaid เติมเครดิตให้)
 const CREDIT_PACKS = { "1": [1, 5000], "10": [10, 45000], "30": [30, 120000] }; // [จำนวนเครดิต, satang]

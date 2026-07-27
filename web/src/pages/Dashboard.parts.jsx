@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { useI18n } from "../i18n.jsx";
+import { ScriptEditor } from "./ScriptEditor.jsx";
 
 const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%40babehouse_academy" };
 const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
@@ -10,28 +11,15 @@ const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x18
 // ⚡ เพิ่มสคริปต์เดี่ยว (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) — ใช้ 1 เครดิต/สคริปต์
 const SL = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
 const copyTxt = (txt) => navigator.clipboard?.writeText(txt);
-function ScriptBlock({ s }) { // แสดงสคริปต์ 1 อัน (ใช้ทั้งอันที่เพิ่งสร้าง + ประวัติ)
+function ScriptBlock({ s, refId, lang, demo, onChange }) { // แสดง/แก้ไขสคริปต์ 1 อัน (ใช้ทั้งอันที่เพิ่งสร้าง + ประวัติ)
   const { t } = useI18n();
-  const hooks = Array.isArray(s?.hooks) ? s.hooks.filter(Boolean) : [];
-  const [pick, setPick] = useState(0);           // ฮุกที่เลือกอยู่
   if (!s) return null;
-  // สลับ say ของ beat HOOK ให้ตรงกับฮุกที่เลือก
-  const beats = (s.beats || []).map(b => (b.s === "HOOK" && hooks[pick]) ? { ...b, say: hooks[pick] } : b);
+  const beats = (s.beats || []); // copy-all ใช้ค่าปัจจุบัน (รวมฮุกที่เลือกไว้แล้ว)
   return <>
     <div className="between"><div style={{ fontWeight: 800, fontSize: 15 }}>{s.title || t("dp_script")}</div><button className="link" style={{ background: "none", border: 0, cursor: "pointer", fontSize: 13 }} onClick={() => copyTxt([...beats.map(b => b.say), s.cap].filter(Boolean).join("\n\n"))}>{t("dp_copy")}</button></div>
-    {hooks.length > 1 && <div style={{ marginTop: 10, background: "#eef4fb", borderRadius: 10, padding: "10px 12px" }}>
-      <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2E86DE", marginBottom: 7 }}>🎣 {t("dp_hooks_label")}</div>
-      {hooks.map((h, i) => <button key={i} onClick={() => setPick(i)} style={{ display: "block", width: "100%", textAlign: "left", cursor: "pointer", marginTop: i ? 6 : 0, border: pick === i ? "2px solid #2E86DE" : "1px solid #d5e2f0", background: pick === i ? "#fff" : "transparent", borderRadius: 8, padding: "8px 10px", fontSize: 13.5, lineHeight: 1.5, color: "#1a2a3a" }}>
-        <b style={{ color: "#2E86DE" }}>{i + 1}.</b> {h} {pick === i && <span style={{ fontSize: 11, color: "#1a7f43", fontWeight: 700 }}>✓ {t("dp_hook_using")}</span>}
-      </button>)}
-    </div>}
-    {beats.map((b, i) => <div key={i} style={{ marginTop: 10 }}>
-      <span style={{ background: SL[b.s] || "#888", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 10 }}>{t("db_beat")[b.s] || b.s}</span>
-      <div style={{ fontSize: 14, lineHeight: 1.6, marginTop: 5 }}>{b.say}</div>
-      {b.vis && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>🎬 {b.vis}</div>}
-    </div>)}
-    {s.cap && <div style={{ marginTop: 12, fontSize: 13.5, background: "#fff", borderRadius: 8, padding: "10px 12px" }}><b>{t("dp_caption")}</b> {s.cap}</div>}
-    {s.tip && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>💡 {s.tip}</div>}
+    <div style={{ marginTop: 10 }}>
+      <ScriptEditor script={s} scope="credit" refId={refId} day={0} lang={lang} demo={demo} onChange={onChange || (() => {})} />
+    </div>
   </>;
 }
 export function AddScript({ channel, cycle, demo, startOpen }) {
@@ -66,7 +54,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
       const brief_files = [...files].length ? await filesToBase64([...files], 3) : [];
       const d = await api("/api/credits/generate-script", { method: "POST", token: session.token, body: { channel, cycle, brief, sponsor, ref, brief_files, lang } });
       setScript(d.script); setCredits(d.credits);
-      setHistory(h => [{ id: "new_" + Date.now(), script: d.script, sponsor, brief, created_at: new Date().toISOString() }, ...h]);
+      setHistory(h => [{ id: d.id || ("new_" + Date.now()), script: d.script, sponsor, brief, created_at: new Date().toISOString() }, ...h]);
       setBrief(""); setSponsor(""); setFiles([]); setRef("");
     } catch (e) { setErr(e.message || t("dp_err_gen")); } finally { setBusy(false); }
   }
@@ -119,7 +107,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
       </div>}
       {credits < 1 && credits != null && <div className="msg" style={{ background: "#fff7e6", color: "#8a6d1f", marginTop: 10, fontSize: 13 }}>{t("dp_no_credits")}</div>}
     </div>}
-    {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}><div style={{ fontSize: 11.5, fontWeight: 700, color: "#1a7f43", marginBottom: 6 }}>{t("dp_created_saved")}</div><ScriptBlock s={script} /></div>}
+    {script && <div className="card" style={{ marginTop: 14, background: "#fbf9f3", border: "1px solid #e7dfc5" }}><div style={{ fontSize: 11.5, fontWeight: 700, color: "#1a7f43", marginBottom: 6 }}>{t("dp_created_saved")}</div><ScriptBlock s={script} refId={script?._id} lang={lang} demo={demo} onChange={setScript} /></div>}
 
     {history.length > 0 && <div style={{ marginTop: 16 }}>
       <div className="muted" style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t("dp_history_title")} ({history.length}) {t("dp_history_sub")}</div>
@@ -128,7 +116,7 @@ export function AddScript({ channel, cycle, demo, startOpen }) {
           <span><span style={{ fontWeight: 700, fontSize: 14 }}>{(it.script && it.script.title) || t("dp_script")}</span>{it.sponsor && <span style={{ marginLeft: 8, fontSize: 11, background: "#ECEAF6", color: "#6E63A6", borderRadius: 10, padding: "2px 8px", fontWeight: 700 }}>🤝 {it.sponsor}</span>}<div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{String(it.created_at || "").slice(0, 10)}</div></span>
           <span style={{ color: "var(--blue)", fontSize: 13, flexShrink: 0 }}>{openId === it.id ? t("dp_close2") : t("dp_open")}</span>
         </button>
-        {openId === it.id && <div style={{ marginTop: 12 }}><ScriptBlock s={it.script} /></div>}
+        {openId === it.id && <div style={{ marginTop: 12 }}><ScriptBlock s={it.script} refId={it.id} lang={lang} demo={demo} onChange={ns => setHistory(h => h.map(x => x.id === it.id ? { ...x, script: ns } : x))} /></div>}
       </div>)}
     </div>}
   </div>;

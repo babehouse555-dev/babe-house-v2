@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends, enrichDirections } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -1153,6 +1153,25 @@ app.post("/api/admin/backup-email-now", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try { const r = await emailBackup(); res.json({ ok: true, ...r, to: process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com" }); }
   catch (e) { res.status(500).json({ ok: false, error: "EMAIL_FAILED", message: e.message }); }
+});
+// เติม "ข้อความขึ้นจอ + วิธีถ่าย" (ost/vis) ให้เล่มเก่าที่ถูกเจนตอน prompt ยังไม่บังคับ (คง say เดิม 100%)
+app.post("/api/admin/enrich-directions", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  if (!bpId) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const row = await one(`SELECT blueprint_id, blueprint_json FROM blueprints WHERE blueprint_id=$1 AND deleted_at IS NULL`, [bpId]);
+  if (!row) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const bp = safeJson(row.blueprint_json) || {};
+  if (!Array.isArray(bp.scripts) || !bp.scripts.length) return res.json({ ok: false, error: "NO_SCRIPTS" });
+  const totalBeats = bp.scripts.reduce((n, s) => n + (s.beats || []).length, 0);
+  const hadVis = bp.scripts.reduce((n, s) => n + (s.beats || []).filter(b => b.vis && String(b.vis).trim()).length, 0);
+  await acquireGen();
+  let result;
+  try { result = await enrichDirections(bp.scripts, bp, req.body?.lang === "en" ? "en" : "th"); }
+  finally { releaseGen(); }
+  bp.scripts = result.scripts;
+  await run(`UPDATE blueprints SET blueprint_json=$1 WHERE blueprint_id=$2`, [JSON.stringify(bp), bpId]);
+  res.json({ ok: true, blueprint_id: bpId, total_beats: totalBeats, had_vis_before: hadVis, filled: result.filled, model: result.model });
 });
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
 app.get("/api/admin/ai-usage", async (req, res) => {

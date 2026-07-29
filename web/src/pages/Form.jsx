@@ -189,7 +189,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", phone: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -261,7 +261,7 @@ export default function Form() {
           experience: f.experience, goal_primary: (f.goal_primary || []).join(", "),
           monthly_goal: `${(f.goal_primary || []).join(" + ") || "(ไม่ได้ระบุ — ให้ครูพี่คิมวิเคราะห์เป้าหมายที่เหมาะสมจากช่อง/รูป Insight)"}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
           starting_point: [f.q_origin && `จุดเริ่มต้น/ทำไมถึงทำ: ${f.q_origin}`, f.q_diff && `จุดที่ต่างจากคนอื่น: ${f.q_diff}`, f.q_vision && `อยากโต/เป้าหมายระยะยาว: ${f.q_vision}`].filter(Boolean).join("\n"),
-          competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name,
+          competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name, phone: f.phone.trim(),
           self_term: f.self_term.trim(), audience_term: f.audience_term.trim(), catchphrases: f.catchphrases.trim(), tone: f.tone
         },
         insight_images: images, insight_screenshot_base64: images[0] || null
@@ -378,6 +378,7 @@ export default function Form() {
             <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>{t("fm_multi_hint")}</div>
           </div>
           <div className="field"><label>{t("fm_call_you")} <span className="muted">{t("fm_optional")}</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="Namo / Mint" /><div className="hint">{t("fm_call_you_hint")}</div></div>
+          <div className="field"><label>{t("fm_phone_label")} <span className="muted">{t("fm_optional")}</span></label><input type="tel" value={f.phone} onChange={upd("phone")} onFocus={() => setFocus(null)} placeholder="08x-xxx-xxxx" /><div className="hint">{t("fm_phone_hint")}</div></div>
         </div>}
 
         {/* ===== ขั้น 2: เกี่ยวกับช่อง + เป้าหมาย ===== */}

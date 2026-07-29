@@ -574,6 +574,8 @@ const DICT = {
   fm_multi_hint: { th: "💡 ดูแลหลายช่อง? (ช่องตัวเอง · ช่องลูก · ช่องลูกค้า) ทำทีละช่องได้เลย — แต่ละช่องเป็นเล่มแยก รวมอยู่ในอีเมลเดียว เพิ่มทีหลังในหน้าบัญชีก็ได้", en: "💡 Manage multiple channels? (yours · sub-channels · clients) Do them one at a time — each is its own book, all under one email. Add more later in your account." },
   fm_call_you: { th: "ชื่อที่อยากให้ครูพี่คิมเรียก", en: "What should Kim call you?" },
   fm_call_you_hint: { th: "เว้นว่างได้ จะเรียก \"คุณ\" แทนค่ะ", en: "Leave blank and we'll just say \"you\"." },
+  fm_phone_label: { th: "เบอร์โทร", en: "Phone" },
+  fm_phone_hint: { th: "เผื่อเล่มมีปัญหา ครูพี่คิมจะโทรไปช่วยแก้ให้ค่ะ 🩵", en: "If anything's off with your book, Kim can call to help fix it 🩵" },
   fm_about_q: { th: "ช่องของคุณเกี่ยวกับอะไร?", en: "What's your channel about?" },
   fm_about_q_new: { th: "อยากทำคอนเทนต์แนวไหน?", en: "What kind of content do you want to make?" },
   fm_about_tag: { th: "(แนวที่อยากทำ)", en: "(the niche you want)" },

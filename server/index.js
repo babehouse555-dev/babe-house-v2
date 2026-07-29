@@ -1222,6 +1222,7 @@ async function getStudents(industry) {
     const p = safeJson(o.order_payload_json) || {}, fr = p.form_responses || {};
     return {
       created_at: o.created_at, email: o.email, user_id: o.user_id, billing_cycle: o.billing_cycle,
+      phone: fr.phone || "",
       instagram_account: o.instagram_account || p.instagram_account || "",
       business_type: o.business_type || fr.business_type || "",
       starting_point: o.starting_point || fr.starting_point || "",

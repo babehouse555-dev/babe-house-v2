@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -452,6 +452,15 @@ async function generateBlueprintForPayload(payload) {
   await run(`INSERT INTO marathon_progress (progress_id,user_id,instagram_account,billing_cycle) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,billing_cycle) DO NOTHING`, [uid("marathon"), parsed.user_id, parsed.instagram_account, parsed.meta_purchase.billing_cycle]);
   out = { blueprintId, requestId, parsed, blueprint: analysis };
   } finally { releaseGen(); }
+  // 🛡️ ยามตรวจความหมาย: แผนตรงกับช่องลูกค้าไหม + ตัวเลขสมเหตุผลไหม — fire-and-forget (ไม่หน่วงลูกค้า) fail-safe → เจอปัญหาค่อยเมลเตือนคิม (คิมไม่ต้องนั่งเช็กทุกเล่ม)
+  auditBlueprintMatch(out.parsed, out.blueprint, payload.lang === "en" ? "en" : "th").then(async (auditFlags) => {
+    if (!auditFlags || !auditFlags.length) return;
+    // merge กับธงที่มีอยู่ (เผื่อ generate-content เพิ่งเขียนธงรูปแบบลงไประหว่างที่ audit กำลังรัน) — ไม่ทับของเดิม
+    const cur = safeJson((await one(`SELECT quality_flags_json FROM blueprints WHERE blueprint_id=$1`, [out.blueprintId]))?.quality_flags_json) || [];
+    const merged = [...new Set([...cur, ...auditFlags])];
+    await run(`UPDATE blueprints SET quality_flags_json=$1 WHERE blueprint_id=$2`, [JSON.stringify(merged), out.blueprintId]).catch(() => {});
+    await alertQualityIfNeeded(auditFlags, out.parsed, out.blueprintId);
+  }).catch((e) => console.warn("audit gen", e.message));
   // เดือน 2+ : pre-gen บทวิเคราะห์การเติบโตเบื้องหลัง (ไม่ await) → ลูกค้าเปิดหน้าเทียบไม่ต้องรอเจน
   if (out.parsed.email) pregenGrowthAnalysis(out.parsed.email, out.parsed.instagram_account).catch(() => {});
   return out;
@@ -564,7 +573,7 @@ app.post("/api/improve-blueprint", async (req, res) => {
 });
 
 // เตือนคิมทางเมล "เฉพาะตอนเจอปัญหาจริง" — คิมไม่ต้องนั่งเช็กเล่มเอง (ระบบเจนซ้ำอัตโนมัติแล้วยังไม่หาย ค่อยเตือน)
-const SERIOUS_QUALITY_RE = /สั้น|placeholder|อังกฤษ|ไม่ครบ|ว่าง|ซ้ำ|หลุด|แต่งตัวเลข/;
+const SERIOUS_QUALITY_RE = /สั้น|placeholder|อังกฤษ|ไม่ครบ|ว่าง|ซ้ำ|หลุด|แต่งตัวเลข|ไม่ตรง|สลับ/;
 async function alertQualityIfNeeded(flags, parsed, bpId) {
   try {
     const serious = (flags || []).filter(f => SERIOUS_QUALITY_RE.test(f));
@@ -609,7 +618,10 @@ app.post("/api/generate-content", async (req, res) => {
           const merged = { ...current, calendar: content.calendar, scripts: content.scripts };
           const qualityFlags = checkBlueprintQuality(merged, true);
           if (qualityFlags.length) console.warn(`[quality] ${bpId}: ${qualityFlags.join(" · ")}`);
-          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(qualityFlags), bpId]);
+          // คงธง "ยามตรวจความหมาย" (🎯 นิช / 🔢 ตัวเลข) ที่ตั้งไว้ตอนวิเคราะห์ ไม่ให้ถูกเช็กรูปแบบเขียนทับหาย (เมลนิชเตือนไปแล้วตอนวิเคราะห์ ไม่เตือนซ้ำ)
+          const priorAudit = (safeJson(bp.quality_flags_json) || []).filter(f => /🎯|🔢/.test(String(f)));
+          const allFlags = [...new Set([...priorAudit, ...qualityFlags])];
+          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(allFlags), bpId]);
           await alertQualityIfNeeded(qualityFlags, parsed, bpId); // เตือนคิมทางเมลถ้าระบบเจนซ้ำแล้วยังมีจุดต้องดู (คิมไม่ต้องนั่งเช็กเอง)
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'content',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
           // ส่งเมลแจ้งเมื่อแผน 30 วันเจนเสร็จ — ลูกค้าปิดหน้าไปก็ได้ ไม่ต้องนั่งรอ

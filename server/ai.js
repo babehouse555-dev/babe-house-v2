@@ -56,6 +56,7 @@ const KIM_PROMPT = `คุณคือ "ครูพี่คิม" ซีอ�
 หน้าที่: อ่านข้อมูลฟอร์ม + รูปสถิติหลังบ้าน Instagram/TikTok แล้วสร้าง Blueprint เฉพาะตัวสำหรับเสียบ Dashboard
 
 ⚠️ สำคัญสุด — มุมมองของ "สคริปต์": บทพูดในสคริปต์ (beats.say) คือบทที่ **เจ้าของช่อง (ลูกค้า) พูดเองหน้ากล้อง** ในน้ำเสียงและตัวตนของแบรนด์ลูกค้า (อ้างอิงจาก instagram_account + business_type ที่ส่งมา) ครูพี่คิมเป็นแค่ "คนเบื้องหลังที่วางแผน/วิเคราะห์" เท่านั้น — **ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ผู้สอน) ในบทสคริปต์** (ยกเว้นเจ้าของช่องตั้ง self_term/ชื่อตัวเองว่า "คิม" ให้ใช้ได้ปกติ) สคริปต์ต้องเป็นมุมของลูกค้าพูดถึงธุรกิจ/สินค้าของลูกค้าเอง (ส่วน greeting / kim_insight / coach เท่านั้นที่เป็นเสียงครูพี่คิมพูดกับลูกค้า)
+⛔⛔ ห้ามใส่ "Babe House / Babe House Academy / เบ๊บเฮาส์" ในบทพูด (say)/แคปชัน (cap)/ฮุก (hooks) ของลูกค้าเด็ดขาด — Babe House คือแพลตฟอร์มเบื้องหลังของเรา ไม่ใช่แบรนด์ลูกค้า. ถ้าต้องอ้างถึงแบรนด์/ทีมของลูกค้า (รีวิว/ที่มาแบรนด์) ให้ใช้ชื่อแบรนด์ลูกค้าถ้ามี ถ้าไม่มีใช้ชื่อเจ้าของช่องหรือคำกลางๆ เช่น "ที่นี่/ทีมของเรา/ร้านของเรา" — ห้ามแต่งชื่อแบรนด์เอง และห้ามหยิบ Babe House มาใส่ (Babe House ใช้ได้แค่ใน greeting/story/kim_insight ที่เป็นเสียงครูพี่คิม)
 
 กฎ:
 1. ตอบกลับเป็น JSON object ล้วนเท่านั้น (ไม่มีข้อความอื่น ไม่มี markdown)
@@ -130,6 +131,16 @@ const deKim = (s, keepKim) => {
   s = s.replace(/ครูพี่คิม|พี่คิม/g, "เรา");
   return keepKim ? s : s.replace(/คิม/g, "เรา");
 };
+// กันแบรนด์ "เรา" (Babe House) หลุดเข้าไปในสคริปต์ลูกค้า — Babe House คือแพลตฟอร์มเบื้องหลัง ไม่ใช่แบรนด์ลูกค้า
+// (ใช้กับ beats.say/hooks/cap ที่เป็น "เสียงลูกค้า" เท่านั้น — ไม่แตะ greeting/story/kim_insight ที่เป็นเสียงครูพี่คิมซึ่งพูดถึง Babe House ได้)
+const deBrand = (s) => {
+  if (typeof s !== "string") return s;
+  return s
+    .replace(/(?:ที่|จาก|ของ)\s*Babe\s*House(?:\s*Academy)?/gi, "ที่นี่") // "ที่ Babe House Academy" → "ที่นี่"
+    .replace(/กับ\s*Babe\s*House(?:\s*Academy)?/gi, "กับเรา")            // "กับ Babe House" → "กับเรา"
+    .replace(/Babe\s*House(?:\s*Academy)?|เบ๊บเฮาส์/gi, "ที่นี่")          // ที่เหลือ → "ที่นี่"
+    .replace(/ที่นี่\s*ที่นี่/g, "ที่นี่");
+};
 const usesKim = (parsed) => { const fr = (parsed && parsed.form_responses) || {}; return /คิม/.test(`${fr.self_term || ""} ${fr.display_name || ""}`); };
 
 // แปลงศัพท์การตลาด/อังกฤษ → คำไทยบ้านๆ (เจอหลุดถึงลูกค้าซ้ำหลายเล่ม — กรองหลังบ้านให้ชัวร์ ไม่หวังให้ AI จำกฎ)
@@ -168,9 +179,9 @@ const maybeJargon = (obj, lang) => lang === "en" ? obj : deepJargon(obj);
 function sanitizeScripts(bp, keepKim) {
   if (bp && Array.isArray(bp.scripts)) {
     for (const sc of bp.scripts) {
-      if (Array.isArray(sc.beats)) for (const b of sc.beats) b.say = deKim(b.say, keepKim);
-      if (Array.isArray(sc.hooks)) sc.hooks = sc.hooks.map(h => deKim(h, keepKim)).filter(Boolean);
-      sc.cap = deKim(sc.cap, keepKim);
+      if (Array.isArray(sc.beats)) for (const b of sc.beats) b.say = deBrand(deKim(b.say, keepKim));
+      if (Array.isArray(sc.hooks)) sc.hooks = sc.hooks.map(h => deBrand(deKim(h, keepKim))).filter(Boolean);
+      sc.cap = deBrand(deKim(sc.cap, keepKim));
     }
   }
   return bp;
@@ -295,6 +306,7 @@ const ANALYSIS_PROMPT = `คุณคือ "ครูพี่คิม" ซี
 
 const CONTENT_PROMPT = `คุณคือ "ครูพี่คิม" ผู้ก่อตั้ง Babe House Academy วางแผนคอนเทนต์ให้เจ้าของช่อง
 ⚠️ มุมมองสคริปต์: บทพูด (beats.say) คือบทที่ "เจ้าของช่อง (ลูกค้า) พูดเองหน้ากล้อง" ในน้ำเสียง/ตัวตนแบรนด์ลูกค้า — ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ผู้สอน/AI เบื้องหลัง) · 🔸ยกเว้น: ถ้าเจ้าของช่องระบุ self_term หรือชื่อตัวเองว่า "คิม" ให้ใช้ "คิม" ตามนั้นได้ปกติ (เขาชื่อคิมจริงๆ ไม่ใช่ผู้สอน)
+⛔⛔ ห้ามใส่ชื่อ "Babe House" / "Babe House Academy" / "เบ๊บเฮาส์" ในบทพูด (say) / แคปชัน (cap) / ฮุก (hooks) ของลูกค้าเด็ดขาด — Babe House คือแพลตฟอร์ม/ผู้สอนเบื้องหลังของเรา ไม่ใช่แบรนด์ของลูกค้า. เมื่อสคริปต์ต้องอ้างถึงธุรกิจ/แบรนด์/ทีมงานของลูกค้า (เช่น รีวิวลูกค้าขอบคุณ, เล่าที่มาแบรนด์, "เปิดธุรกิจนี้เพราะ..."): ใช้ชื่อแบรนด์/ร้านของลูกค้าถ้ามีระบุ · ถ้าไม่มีชื่อแบรนด์ให้ใช้ชื่อเจ้าของช่อง (display_name/@handle) หรือคำกลางๆ เช่น "ที่นี่" / "ทีมของเรา" / "เอเจนซี่ของเรา" / "ร้านของเรา" — ⛔ ห้ามแต่งชื่อแบรนด์ให้ลูกค้าเอง และห้ามหยิบ "Babe House" มาใส่โดยเด็ดขาด (Babe House พูดถึงได้เฉพาะใน greeting/story/kim_insight ที่เป็นเสียงครูพี่คิมเท่านั้น)
 คุณจะได้รับ "บทวิเคราะห์ช่อง" ที่ลูกค้ายืนยันว่าตรงแล้ว → สร้างปฏิทิน + สคริปต์ 30 วันที่สอดคล้องกับบทวิเคราะห์นั้น (ตัวตน/จุดยืน/กลุ่มลูกค้า/ปมที่ต้องแก้/คลังฮุก)
 
 กฎ:
@@ -400,7 +412,7 @@ export async function generateContent(parsed, analysis, lang = "th") {
 
 // ===== สคริปต์เดี่ยว on-demand (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) — ใช้โปรไฟล์ช่องเดิม + บรีฟใหม่ =====
 const SINGLE_PROMPT = `คุณคือ "ครูพี่คิม" เขียนสคริปต์คลิป "1 อัน" สำหรับงานเฉพาะกิจที่เจ้าของช่องสั่ง (เช่น งานสปอนเซอร์/คอนเทนต์ด่วน) — อิงตัวตน/น้ำเสียง/กลุ่มลูกค้าของช่องนี้ + บรีฟงานที่ให้มา
-⚠️ บทพูด (beats.say) = เจ้าของช่องพูดเองหน้ากล้องในน้ำเสียงแบรนด์เขา (บุคคลที่ 1) — ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ยกเว้นเจ้าของช่องตั้ง self_term="คิม")
+⚠️ บทพูด (beats.say) = เจ้าของช่องพูดเองหน้ากล้องในน้ำเสียงแบรนด์เขา (บุคคลที่ 1) — ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ยกเว้นเจ้าของช่องตั้ง self_term="คิม") · ⛔ ห้ามใส่ "Babe House/Babe House Academy" ในบทพูด/แคปชัน (เป็นแพลตฟอร์มเบื้องหลัง ไม่ใช่แบรนด์ลูกค้า) — ถ้าต้องอ้างแบรนด์ลูกค้าใช้ชื่อลูกค้าเองหรือ "ที่นี่/ทีมของเรา"
 กฎ: 1.ตอบ JSON object ล้วน 2.บทพูดต้องเนียนกับงาน/สปอนเซอร์ในบรีฟ + ตรงสไตล์ช่อง 3.🗣️ ภาษาบ้านๆ ห้ามศัพท์การตลาด/อังกฤษในบทพูด 4.HOOK เปิดด้วยปม/เรื่องจริงใน 3 วิแรก, BODY เล่าเต็มมีจังหวะ (ถ้าเป็นงานสปอนเซอร์ ต้องเล่าถึงแบรนด์/สินค้าให้เนียนน่าเชื่อ ไม่แข็ง), CTA ปิดด้วยคำเชิญ/คำถามปลายเปิด · say รวม ~150–220 คำ
 5. ⭐⭐ สำคัญสุด — ห้ามทำสคริปต์กลางๆ ที่ช่องไหนก็ใช้ได้: ต้อง "หลอมบรีฟให้เข้ากับช่องนี้โดยเฉพาะ" — หาสะพานเชื่อมระหว่างสินค้า/สปอนเซอร์ กับ (ก)นิช/เรื่องที่ช่องนี้ทำประจำ (ข)ปัญหา/ความอยากของกลุ่มคนดูเขา (ค)เรื่องราว/มุมมองเฉพาะตัวของเจ้าของช่อง · ยกตัวอย่าง/สถานการณ์ที่คนดูช่องนี้อินจริง · ถ้าสินค้าไม่เกี่ยวกับนิชตรงๆ ให้หามุมเชื่อมที่เนียน (เช่น สินค้าสุขภาพ→ช่องแม่ลูก = มุมดูแลตัวเองของแม่) · เป้าหมาย: บรีฟเดียวกันถ้าเอาไปให้ 2 ช่องต่างนิช ต้องได้สคริปต์คนละแบบชัดเจน
 6. ⛔ ห้ามคำคุณค่าลอยๆ แบบโฆษณา (คุณภาพ/ความจริงใจ/ใส่ใจ/ตั้งใจ/มืออาชีพ/เชี่ยวชาญ/ประสบการณ์/เรียนจากต่างประเทศ) โดยไม่มีของจริงพิสูจน์ทันที — ทุกสคริปต์ต้องมี "จุดจับต้องได้" อย่างน้อย 1 อย่าง = เทคนิค/ขั้นตอนจริง · ตัวเลข/ผลลัพธ์จริง · เคส/โมเมนต์จริงที่เฉพาะ · หรือปมลูกค้าที่เจาะจง (❌ "เราเน้นคุณภาพ" → ✅ ระบุของจริงที่ทำให้ดีทันที)
@@ -743,6 +755,10 @@ export function checkBlueprintQuality(bp, hasImage) {
   if (found.length) flags.push(`ศัพท์เทคนิคหลุด: ${[...new Set(found)].join(", ")}`);
   // "คิม" หลุดในบทพูดสคริปต์ (ควรถูก sanitize แล้ว)
   if (scripts.some(s => (s.beats || []).some(b => /คิม/.test(String(b.say || ""))))) flags.push('มี "คิม" หลุดในสคริปต์');
+  // "Babe House" หลุดในสคริปต์/แคปชันลูกค้า (แบรนด์เรา ไม่ใช่แบรนด์ลูกค้า — ควรถูก sanitize แล้ว)
+  const brandRe = /babe\s*house|เบ๊บเฮาส์/i;
+  const brandN = scripts.reduce((n, s) => n + (s.beats || []).filter(b => brandRe.test(String(b.say || ""))).length + (brandRe.test(String(s.cap || "")) ? 1 : 0) + (s.hooks || []).filter(h => brandRe.test(String(h))).length, 0);
+  if (brandN > 0) flags.push(`${brandN} จุดมี "Babe House" หลุดในสคริปต์ลูกค้า (แบรนด์เราไม่ใช่ของลูกค้า)`);
   // ตัวเลข metrics ทั้งที่ไม่มีรูป = เสี่ยงแต่งตัวเลข
   const m = bp.metrics || {};
   const hasNums = m && Object.values(m).some(v => typeof v === "number" && v > 0);
@@ -754,4 +770,61 @@ export function checkBlueprintQuality(bp, hasImage) {
   // ชิ้นส่วนหลักหาย
   for (const [k, label] of [["greeting", "คำทักทาย"], ["kim_insight", "อินไซต์ครูพี่คิม"], ["swot", "SWOT"], ["modules", "5 โมดูล"]]) if (!bp[k]) flags.push(`ขาด ${label}`);
   return flags;
+}
+
+// ===== ยามตรวจ "ความหมาย" (semantic self-audit) — AI ตรวจงานตัวเองว่า "แผนตรงกับช่องลูกค้าจริงไหม + ตัวเลขสมเหตุผลไหม" =====
+// checkBlueprintQuality เช็ก "รูปแบบ" (สั้น/ครบ/ภาษา) — ตัวนี้เช็ก "เนื้อใน" ที่ระบบเดิมจับไม่ได้: วิเคราะห์ผิดนิช / ตัวเลขสลับ
+// คืน string[] (ว่าง = ผ่าน) · fail-safe: error ใดๆ คืน [] เพื่อไม่บล็อกเล่มลูกค้า
+const AUDIT_SCHEMA = { type: Type.OBJECT, properties: {
+  niche_match: { type: Type.BOOLEAN },       // แผนตรงกับแนวคอนเทนต์ช่องจริงไหม
+  real_niche_guess: { type: Type.STRING },   // ช่องนี้ "น่าจะ" ทำคอนเทนต์แนวไหนจริง (จาก handle/คนดู/คู่แข่ง)
+  niche_reason: { type: Type.STRING },       // เหตุผลสั้นๆ ไทย
+  metrics_ok: { type: Type.BOOLEAN },        // ตัวเลขสถิติสมเหตุผล/ไม่สลับ label ไหม
+  metrics_reason: { type: Type.STRING },     // เหตุผลสั้นๆ ไทย (ถ้าปัญหา)
+  confidence: { type: Type.NUMBER }          // 0-1 มั่นใจแค่ไหนว่า "มีปัญหา" จริง
+}, required: ["niche_match", "real_niche_guess", "niche_reason", "metrics_ok", "metrics_reason", "confidence"] };
+
+const AUDIT_PROMPT = `คุณคือ "ผู้ตรวจสอบคุณภาพ" ของ Babe House ที่เข้มงวดแต่ยุติธรรม หน้าที่: ตรวจว่าแผนคอนเทนต์ที่ทีมสร้างให้ลูกค้า "ตรงกับช่องจริงของเขา" และ "ตัวเลขสถิติสมเหตุผล" ไหม เพื่อไม่ให้ส่งของผิดถึงมือลูกค้า
+
+⚠️ จุดพลาดที่ต้องจับให้ได้ (เคยเกิดจริง):
+1. **ลูกค้าเขียน "อาชีพ/บริการที่ขาย" แทน "แนวคอนเทนต์ช่อง"** → แผนเลยหลุดนิช. เช่น ช่องความงาม แต่ลูกค้ากรอกว่า "สอน AI, รับทำ CapCut, เอเจนซี่" (= บริการที่เขาขาย) → ทีมไปทำแผนสาย AI ทั้งที่ช่องจริงคือบิวตี้. **สัญญาณของนิชจริง = ชื่อ @handle + กลุ่มคนดู + คู่แข่งที่ลูกค้าอ้างอิง** (คนมักตามคู่แข่งที่ทำคอนเทนต์แนวเดียวกับตัวเอง). ถ้าแผน (theme/positioning) สร้างรอบ "บริการที่ขาย" แต่สัญญาณเหล่านี้ชี้ไปคนละแนวชัดเจน = niche_match:false
+2. **ตัวเลขสถิติสลับ label / ผิดปกติ** เช่น reach < followers มากผิดปกติ, engagement_rate สูง/ต่ำเกินจริง (ปกติ 1-10%), profile_visits มากกว่า followers, ตัวเลขที่ดูสลับกัน = metrics_ok:false
+
+⛔ กันเตือนพร่ำเพรื่อ (สำคัญมาก): ค่า default คือ **niche_match:true / metrics_ok:true** — ให้ผ่านไว้ก่อน. ตอบ false **เฉพาะเมื่อขัดแย้งกันชัดเจนจริงๆ** เท่านั้น. ถ้าแผนกว้างๆ ครอบคลุมได้ / ไม่แน่ใจ / เป็นแค่มุมมองต่างเล็กน้อย → ให้ผ่าน (true) และ confidence ต่ำ. confidence = ความมั่นใจว่า "มีปัญหาจริง" (สูง = มั่นใจว่าผิดจริง). อย่าเดานิชจากเพศ/ชื่อคน. ตอบ JSON เท่านั้น`;
+
+export async function auditBlueprintMatch(parsed, analysis, lang = "th") {
+  try {
+    if (!ai || !parsed || !analysis) return [];
+    const fr = parsed.form_responses || {};
+    const a = analysis || {};
+    const m = a.metrics || {};
+    const hasNums = Object.values(m).some(v => typeof v === "number" && v > 0);
+    const signal = [
+      `@handle: ${parsed.instagram_account || "-"}`,
+      `ลูกค้ากรอก business_type (อาจเป็นอาชีพ/บริการ ไม่ใช่แนวช่อง): ${fr.business_type || "-"}`,
+      `บทบาท/สถานะ (work_style): ${fr.work_style || "-"}`,
+      `กลุ่มคนดู (audience): ${fr.audience || "-"}`,
+      `เป้าหมายเดือนนี้: ${fr.goal_primary || fr.monthly_goal || "-"}`,
+      `คู่แข่ง/ช่องอ้างอิง: ${[fr.competitor_1, fr.competitor_2].filter(Boolean).join(", ") || "-"}`,
+      `เรื่องราวตัวตน: ${String(fr.starting_point || "-").slice(0, 400)}`
+    ].join("\n");
+    const plan = [
+      `theme: ${a.theme || "-"}`,
+      `positioning: ${a.positioning || "-"}`,
+      `pillars: ${(Array.isArray(a.pillars) ? a.pillars : []).map(p => (p && (p.name || p.title || p)) || p).filter(Boolean).join(" / ").slice(0, 300) || "-"}`,
+      `what_we_see: ${(Array.isArray(a.what_we_see) ? a.what_we_see : []).join(" · ").slice(0, 300) || "-"}`,
+      `metrics: ${hasNums ? JSON.stringify(m) : "(ไม่มีตัวเลข — ข้ามการตรวจ metrics ให้ metrics_ok:true)"}`
+    ].join("\n");
+    const resp = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: `=== สัญญาณช่องจริงของลูกค้า ===\n${signal}\n\n=== แผนที่ทีมสร้างให้ (ตรวจว่าตรงกับช่องข้างบนไหม) ===\n${plan}` }] }], config: { systemInstruction: AUDIT_PROMPT, responseMimeType: "application/json", responseSchema: AUDIT_SCHEMA, maxOutputTokens: 1500, thinkingConfig: { thinkingBudget: 1024 } } });
+    const r = JSON.parse(resp.text);
+    const flags = [];
+    // เตือนเรื่องนิชเฉพาะเมื่อ AI มั่นใจพอ (≥0.6) — กันเตือนพร่ำเพรื่อจน "เมลเตือน" ไม่น่าเชื่อถือ
+    if (r.niche_match === false && Number(r.confidence) >= 0.6) {
+      flags.push(`🎯 แผนอาจไม่ตรงกับช่อง: ${String(r.niche_reason || "").slice(0, 200)}${r.real_niche_guess ? ` (ช่องน่าจะเป็นแนว "${String(r.real_niche_guess).slice(0, 60)}")` : ""}`);
+    }
+    if (hasNums && r.metrics_ok === false && Number(r.confidence) >= 0.6) {
+      flags.push(`🔢 ตัวเลขสถิติอาจสลับ/ผิด: ${String(r.metrics_reason || "").slice(0, 200)}`);
+    }
+    return flags;
+  } catch (e) { console.warn("auditBlueprintMatch", e.message); return []; }
 }

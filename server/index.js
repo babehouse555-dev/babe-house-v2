@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends, enrichDirections, complianceNote } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -645,8 +645,9 @@ app.get("/api/blueprints/latest", async (req, res) => {
     if (!viewer || normEmail(viewer) !== ownerEmail) return res.status(403).json({ ok: false, error: "NOT_OWNER", owner_hint: maskEmail(row.owner_email) });
   }
   const mp = await one(`SELECT uploaded_days_json FROM marathon_progress WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
-  const bpData = safeJson(row.blueprint_json);
+  let bpData = safeJson(row.blueprint_json);
   if (bpData && Array.isArray(bpData.scripts) && bpData.scripts.length) bpData.scripts = await mergePlanOverrides(row.blueprint_id, bpData.scripts); // ทับด้วยฉบับที่ลูกค้าแก้/เจนใหม่
+  if (bpData) bpData = politeKimBlueprint(bpData); // แก้ "จ้ะ" → "ค่ะ/คะ" ในน้ำเสียงครูพี่คิม (เว้นสคริปต์ลูกค้า) — แก้เล่มเก่าที่มีจ้ะทันที
   if (bpData) bpData.compliance = complianceNote(classifyKeyword(row.business_type || "")); // ป้ายเตือนกฎโฆษณาตามวงการ (สุขภาพ/ความงาม/การเงิน)
   const contentReady = row.content_status === "ready" || (bpData && Array.isArray(bpData.scripts) && bpData.scripts.length > 0);
   res.json({ ok: true, blueprint_id: row.blueprint_id, user_id: row.user_id, billing_cycle: row.billing_cycle, model: row.model, started_at: row.created_at, improve_count: row.improve_count || 0, content_status: contentReady ? "ready" : (row.content_status || "pending"), analysis_status: row.analysis_status || "ready", blueprint: bpData, marathon: mp ? safeJson(mp.uploaded_days_json) : [] });
@@ -990,13 +991,13 @@ app.get("/api/me/growth-analysis", async (req, res) => {
     const lang = req.query.lang === "en" ? "en" : "th";
     const signature = `g2:${channel}:${months.length}:${months[months.length - 1].blueprint_id}:${lang}`; // g2 = เวอร์ชันใหม่ (baseline ซื่อสัตย์ + กันแต่งเลข) → cache เก่าที่มั่วถูก bust
     const cached = await one(`SELECT signature, analysis_json, model FROM growth_analyses WHERE email=$1`, [email]);
-    if (cached && cached.signature === signature) return res.json({ ok: true, analysis: safeJson(cached.analysis_json), model: cached.model, count: months.length, sponsors, cached: true });
+    if (cached && cached.signature === signature) return res.json({ ok: true, analysis: politeKimBlueprint(safeJson(cached.analysis_json)), model: cached.model, count: months.length, sponsors, cached: true });
     // เดือนเดียว = ยังเทียบการโตไม่ได้ → ใช้ baseline ซื่อสัตย์ (ไม่เรียก AI กัน AI แต่งเดือนก่อนที่ไม่มีจริง)
     const { analysis, model } = months.length < 2
       ? { analysis: buildBaselineGrowth(months[months.length - 1], lang), model: "baseline" }
       : await generateGrowthAnalysis(months, lang);
     await run(`INSERT INTO growth_analyses (email,signature,analysis_json,model,created_at) VALUES ($1,$2,$3,$4,now()) ON CONFLICT (email) DO UPDATE SET signature=EXCLUDED.signature,analysis_json=EXCLUDED.analysis_json,model=EXCLUDED.model,created_at=now()`, [email, signature, JSON.stringify(analysis), model]);
-    res.json({ ok: true, analysis, model, count: months.length, sponsors });
+    res.json({ ok: true, analysis: politeKimBlueprint(analysis), model, count: months.length, sponsors });
   } catch (err) { console.error(err); res.status(500).json({ ok: false, error: "GROWTH_FAILED", message: err.message }); }
 });
 

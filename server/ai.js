@@ -52,7 +52,7 @@ async function genContent({ contents, config, retries = 2 }) {
 
 // ===== System Prompt: ครูพี่คิม + สเปก JSON ที่ dashboard ต้องการ =====
 const KIM_PROMPT = `คุณคือ "ครูพี่คิม" ซีอีโอและผู้ก่อตั้ง Babe House Academy แบรนด์สอนทำคอนเทนต์ระดับพรีเมียมของไทย
-บุคลิก: อบอุ่น เป็นกันเอง แบบพี่สาวลูกคุณหนูโกอินเตอร์ วิเคราะห์ธุรกิจและจิตวิทยาการปิดการขายเฉียบคม ภาษาไทยสวย มีน้ำหนัก
+บุคลิก: อบอุ่น เป็นกันเอง แบบพี่สาวลูกคุณหนูโกอินเตอร์ วิเคราะห์ธุรกิจและจิตวิทยาการปิดการขายเฉียบคม ภาษาไทยสวย มีน้ำหนัก · 🗣️ ครูพี่คิมพูดกับลูกค้าลงท้ายด้วย "ค่ะ/คะ/นะคะ" เสมอ ⛔ ห้ามใช้ "จ้ะ/จ๊ะ/จ๋า/นะจ๊ะ" เด็ดขาด (ไม่สุภาพกับลูกค้า)
 หน้าที่: อ่านข้อมูลฟอร์ม + รูปสถิติหลังบ้าน Instagram/TikTok แล้วสร้าง Blueprint เฉพาะตัวสำหรับเสียบ Dashboard
 
 ⚠️ สำคัญสุด — มุมมองของ "สคริปต์": บทพูดในสคริปต์ (beats.say) คือบทที่ **เจ้าของช่อง (ลูกค้า) พูดเองหน้ากล้อง** ในน้ำเสียงและตัวตนของแบรนด์ลูกค้า (อ้างอิงจาก instagram_account + business_type ที่ส่งมา) ครูพี่คิมเป็นแค่ "คนเบื้องหลังที่วางแผน/วิเคราะห์" เท่านั้น — **ห้ามพูดแทน "ครูพี่คิม/พี่คิม" (ผู้สอน) ในบทสคริปต์** (ยกเว้นเจ้าของช่องตั้ง self_term/ชื่อตัวเองว่า "คิม" ให้ใช้ได้ปกติ) สคริปต์ต้องเป็นมุมของลูกค้าพูดถึงธุรกิจ/สินค้าของลูกค้าเอง (ส่วน greeting / kim_insight / coach เท่านั้นที่เป็นเสียงครูพี่คิมพูดกับลูกค้า)
@@ -260,7 +260,7 @@ async function attachLiveTrends(parsed, lang) {
 }
 
 // ===== โหมดแยก 2 สเต็ป: บทวิเคราะห์ก่อน → ลูกค้ายืนยัน → ค่อยสร้างคอนเทนต์ 30 วัน =====
-const ANALYSIS_PROMPT = `คุณคือ "ครูพี่คิม" ซีอีโอผู้ก่อตั้ง Babe House Academy แบรนด์สอนทำคอนเทนต์พรีเมียมของไทย บุคลิกอบอุ่นแบบพี่สาว วิเคราะห์ธุรกิจ+จิตวิทยาการขายเฉียบคม ภาษาไทยสวยมีน้ำหนัก
+const ANALYSIS_PROMPT = `คุณคือ "ครูพี่คิม" ซีอีโอผู้ก่อตั้ง Babe House Academy แบรนด์สอนทำคอนเทนต์พรีเมียมของไทย บุคลิกอบอุ่นแบบพี่สาว วิเคราะห์ธุรกิจ+จิตวิทยาการขายเฉียบคม ภาษาไทยสวยมีน้ำหนัก · 🗣️ พูดกับลูกค้าลงท้าย "ค่ะ/คะ/นะคะ" เสมอ ⛔ ห้ามใช้ "จ้ะ/จ๊ะ/จ๋า/นะจ๊ะ" เด็ดขาด (ไม่สุภาพกับลูกค้า)
 หน้าที่รอบนี้: อ่านข้อมูลฟอร์ม + รูปสถิติหลังบ้าน แล้วสร้าง "บทวิเคราะห์ช่อง" เฉพาะตัว (ยังไม่ต้องทำปฏิทิน/สคริปต์)
 
 กฎ:
@@ -521,7 +521,7 @@ function metricsText(months) { return months.map(m => { const x = m.metrics || {
 
 export async function generateGrowthAnalysis(months, lang = "th") {
   if (!ai) return { analysis: buildFallbackGrowth(months), model: "fallback-local" };
-  const sys = `คุณคือ "ครูพี่คิม" โค้ชคอนเทนต์ วิเคราะห์การเติบโตจากสถิติหลายเดือนด้วยน้ำเสียงอบอุ่น จริงใจ ตรงไปตรงมา ทำให้ลูกค้าเห็นตัวเอง พูดทั้งข้อดีข้อเสีย next_focus ทำได้จริง coach_message จบด้วยชวนไปต่อเดือนหน้า
+  const sys = `คุณคือ "ครูพี่คิม" โค้ชคอนเทนต์ วิเคราะห์การเติบโตจากสถิติหลายเดือนด้วยน้ำเสียงอบอุ่น จริงใจ ตรงไปตรงมา ทำให้ลูกค้าเห็นตัวเอง พูดทั้งข้อดีข้อเสีย next_focus ทำได้จริง coach_message จบด้วยชวนไปต่อเดือนหน้า · 🗣️ ลงท้าย "ค่ะ/คะ/นะคะ" เสมอ ⛔ ห้าม "จ้ะ/จ๊ะ/จ๋า" (ไม่สุภาพ)
 ⛔ กฎเหล็ก: ใช้เฉพาะตัวเลข/เดือนที่มีในข้อมูลที่ให้มาเท่านั้น — ห้ามแต่ง ห้ามเดา ห้ามอ้างเดือนหรือตัวเลขที่ไม่มีในข้อมูลเด็ดขาด (เช่น ถ้าไม่มีข้อมูลเดือนก่อน ห้ามพูดว่า "เพิ่มจาก X เป็น Y"). อ้างเฉพาะตัวเลขจริงที่เห็น`;
   const resp = await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: `ข้อมูลรายเดือน (เก่า→ใหม่):\n${metricsText(months)}\nธุรกิจ: ${months[months.length-1].business_type || "-"}\nจำนวนเดือน: ${months.length}` }] }], config: { systemInstruction: sys + langSuffix(lang), responseMimeType: "application/json", responseSchema: GROWTH_SCHEMA, maxOutputTokens: 4000 } });
   return { analysis: JSON.parse(resp.text), model: MODEL };
@@ -622,6 +622,19 @@ export function complianceNote(category) {
     },
   };
   return N[category] || null;
+}
+// แทน "จ้ะ/จ๊ะ/จ๋า" → "ค่ะ/คะ" ในน้ำเสียงครูพี่คิม (กัน AI หลุด + แก้เล่มเก่าตอนแสดงผลทันที)
+export function politeKim(s) {
+  return typeof s === "string" ? s.replace(/นะจ๊ะ/g, "นะคะ").replace(/นะจ้ะ/g, "นะคะ").replace(/จ๊ะ/g, "คะ").replace(/จ้ะ/g, "ค่ะ").replace(/จ๋า/g, "คะ") : s;
+}
+// เดินทั้ง blueprint แทนที่ทุก field ยกเว้นใต้ "scripts" (บทพูดลูกค้า = เสียงของเขาเอง ห้ามแตะ)
+export function politeKimBlueprint(bp) {
+  const walk = (obj, skip) => {
+    if (Array.isArray(obj)) return obj.map(x => walk(x, skip));
+    if (obj && typeof obj === "object") { const o = {}; for (const k of Object.keys(obj)) o[k] = walk(obj[k], skip || k === "scripts"); return o; }
+    return skip ? obj : politeKim(obj);
+  };
+  return (bp && typeof bp === "object") ? walk(bp, false) : bp;
 }
 const CLASSIFY_SCHEMA = { type: Type.OBJECT, properties: { results: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { i: { type: Type.NUMBER }, industry: { type: Type.STRING, enum: INDUSTRIES } }, required: ["i", "industry"] } } }, required: ["results"] };
 export async function classifyIndustries(items) {

@@ -1152,6 +1152,14 @@ app.get("/api/admin/backup", async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="babehouse-backup.json"`);
   res.send(JSON.stringify(dump));
 });
+// ส่งอีเมลถึงลูกค้า (จาก Babe House ผ่าน Resend) — ใช้ตอนต้องแจ้ง/ขอโทษ/ดูแลลูกค้าเป็นรายคน
+app.post("/api/admin/send-email", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const to = String(req.body?.to || "").trim(), subject = String(req.body?.subject || "").trim(), body = String(req.body?.body || "");
+  if (!to || !subject || !body) return res.status(400).json({ ok: false, error: "MISSING" });
+  try { const sent = await sendEmail(to, subject, wrap(body)); res.json({ ok: true, to, subject, sent }); }
+  catch (e) { res.status(500).json({ ok: false, error: "SEND_FAILED", message: e.message }); }
+});
 // ส่ง backup เข้าอีเมลแอดมินเป็นไฟล์แนบ (auto-email ทุกสัปดาห์ — สำรองนอกเซิร์ฟเวอร์ ฟรี ไม่ต้อง Railway Pro)
 async function emailBackup() {
   const { dump, rows } = await buildBackupDump();

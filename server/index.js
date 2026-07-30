@@ -530,7 +530,12 @@ app.post("/api/improve-blueprint", async (req, res) => {
         try {
           parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase?.billing_cycle, parsed.instagram_account);
           const { analysis, model, usage } = await generateAnalysis(parsed, lang);
-          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(analysis), model, bpId]);
+          // ⛔ กันสคริปต์หาย: ถ้าเคยสร้างคอนเทนต์แล้ว (มี calendar/scripts) ต้องคงไว้ — ไม่งั้นเขียนทับด้วยบทวิเคราะห์ล้วน = หน้า 30 วันว่างทั้งที่ content_status=ready
+          const freshJson = safeJson((await one(`SELECT blueprint_json FROM blueprints WHERE blueprint_id=$1`, [bpId]))?.blueprint_json) || {};
+          const nextJson = { ...analysis };
+          if (Array.isArray(freshJson.calendar) && freshJson.calendar.length) nextJson.calendar = freshJson.calendar;
+          if (Array.isArray(freshJson.scripts) && freshJson.scripts.length) nextJson.scripts = freshJson.scripts;
+          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(nextJson), model, bpId]);
           const lean = { ...parsed, lang, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม) คง lang
           await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(lean), fr.starting_point, bp.request_id]).catch(() => {});
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
@@ -1173,6 +1178,33 @@ app.post("/api/admin/enrich-directions", async (req, res) => {
   bp.scripts = result.scripts;
   await run(`UPDATE blueprints SET blueprint_json=$1 WHERE blueprint_id=$2`, [JSON.stringify(bp), bpId]);
   res.json({ ok: true, blueprint_id: bpId, total_beats: totalBeats, had_vis_before: hadVis, filled: result.filled, model: result.model });
+});
+// หาเล่มที่ content_status=ready แต่สคริปต์หาย (โดนบั๊ก improve เขียนทับ) — ไว้ตรวจ+กู้
+app.get("/api/admin/broken-content", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, r.email, r.instagram_account FROM blueprints b LEFT JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.content_status='ready' AND b.deleted_at IS NULL AND b.blueprint_json NOT LIKE '%"scripts":[{%' ORDER BY b.created_at DESC`);
+  res.json({ ok: true, count: rows.length, books: rows });
+});
+// กู้เล่มที่สคริปต์หาย: สร้างคอนเทนต์ใหม่จากบทวิเคราะห์เดิม (bypass guard 'ready')
+app.post("/api/admin/regen-content", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  if (!bpId) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const bp = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND deleted_at IS NULL`, [bpId]);
+  if (!bp) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const current = safeJson(bp.blueprint_json) || {};
+  const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
+  const raw = safeJson(reqRow?.raw_payload_json) || {};
+  const lang = raw.lang === "en" ? "en" : "th";
+  const parsed = GenSchema.parse(normalizePayload(raw));
+  parsed.prev_context = await getPrevContext(parsed.email, bp.billing_cycle, parsed.instagram_account);
+  await acquireGen();
+  let result;
+  try { result = await generateContent(parsed, current, lang); }
+  finally { releaseGen(); }
+  const merged = { ...current, calendar: result.content.calendar, scripts: result.content.scripts };
+  await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(merged), result.model, bpId]);
+  res.json({ ok: true, blueprint_id: bpId, scripts: (result.content.scripts || []).length, calendar: (result.content.calendar || []).length });
 });
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
 app.get("/api/admin/ai-usage", async (req, res) => {

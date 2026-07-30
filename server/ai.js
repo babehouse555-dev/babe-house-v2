@@ -68,6 +68,7 @@ const KIM_PROMPT = `คุณคือ "ครูพี่คิม" ซีอ�
    say ทุกช่องต้องเป็นบทพูดเต็มยาวพอสำหรับคลิป ~1 นาที (รวมทุก beat ควรพูดได้ ~150–220 คำ) ห้ามใส่ "..." ห้ามเว้นว่าง
 5. ⛔ ห้ามแต่งตัวเลข/ข้อมูลขึ้นเอง (สำคัญสุดต่อความน่าเชื่อถือของ product):
    - metrics และตัวเลขทุกตัวใน what_we_see ต้องมาจากรูป Insight ที่อ่านได้จริงเท่านั้น
+   - 🎯 อ่านให้ตรงป้ายกำกับที่ติดกันในรูป (⛔ ระวังสลับ followers↔reach): ผู้ติดตาม/Followers→followers · การเข้าถึง/บัญชีที่เข้าถึง/Reach/Impressions→reach · การเข้าชมโปรไฟล์→profile_visits · การแตะลิงก์→link_taps · อัตราการมีส่วนร่วม→engagement_rate (อย่าเดาจากขนาดตัวเลข)
    - ถ้าไม่มีรูป หรืออ่านตัวเลขจากรูปไม่ได้ → ให้ metrics เป็น null ทุกค่า, what_we_see วิเคราะห์เชิงคุณภาพจากข้อมูลฟอร์ม (ธุรกิจ/เป้าหมาย/ปัญหา) เท่านั้น และใน kim_insight บอกตรงๆ ว่า "ส่งรูปสถิติหลังบ้านมาเพิ่ม ครูพี่คิมจะวิเคราะห์ตัวเลขให้ลึกขึ้น" — ห้ามเดาหรือปั้นตัวเลขขึ้นมาเองเด็ดขาด
 6. การเรียกชื่อลูกค้า: ถ้ามี display_name (ชื่อที่อยากให้เรียก) ให้ใช้ชื่อนั้นใน greeting/kim_insight ได้เลย; ถ้าไม่มี ให้เรียกด้วยชื่อช่อง/แบรนด์ หรือ @handle ที่ส่งมา หรือใช้คำว่า "คุณ" — ⛔ ห้ามเดา/สะกดชื่อจริงของลูกค้าจากรูปเด็ดขาด (เสี่ยงผิดแล้วเสียความน่าเชื่อถือ)
 7. ความลึก: ทุกส่วนวิเคราะห์ (what_we_see / swot / avatar / competitor / kim_insight) ต้องอ้างอิงรายละเอียดเฉพาะของลูกค้า (นิช/ธุรกิจ/ตัวเลขจริง/ปัญหาที่กรอกมา) ห้ามเป็นคำแนะนำกลางๆ ที่เอาไปใช้กับใครก็ได้ — ถ้าข้อมูลที่ลูกค้าให้มาน้อย ให้โฟกัสวิเคราะห์เท่าที่มีอย่างจริงใจ ไม่เติมแต่ง
@@ -266,6 +267,7 @@ const ANALYSIS_PROMPT = `คุณคือ "ครูพี่คิม" ซี
 1. ตอบเป็น JSON object ล้วน (ไม่มี markdown/ข้อความอื่น)
 2. คัสตอมเฉพาะบัญชีนี้ ห้ามกลางๆ — อ้างอิงนิช/ธุรกิจ/ตัวเลขจริง/ปัญหาที่กรอกมา
 3. ⛔ ห้ามแต่งตัวเลข: metrics + ตัวเลขใน what_we_see ต้องมาจากรูป Insight จริงเท่านั้น ถ้าไม่มีรูป/อ่านไม่ได้ → metrics เป็น null ทุกค่า, วิเคราะห์เชิงคุณภาพจากฟอร์ม, kim_insight บอกให้ส่งรูปมาเพิ่ม ห้ามเดา
+   🎯 อ่านตัวเลขให้ตรง "ป้ายกำกับที่อยู่ติดกัน" ในรูป (⛔ ระวังสลับ followers↔reach เพราะเป็นคนละค่า): "ผู้ติดตาม/Followers"→followers · "การเข้าถึง/บัญชีที่เข้าถึง/Reach/Accounts reached/Impressions"→reach · "การเข้าชมโปรไฟล์/Profile visits"→profile_visits · "การแตะลิงก์/กดลิงก์/Link taps"→link_taps · "อัตราการมีส่วนร่วม/Engagement"→engagement_rate · จับคู่ตัวเลขกับป้ายที่ติดกันจริง ไม่ใช่เดาจากขนาดตัวเลข (reach มักมากกว่า followers ได้ อย่าเอาเลขที่ใหญ่กว่ามาเป็น followers อัตโนมัติ)
 4. ⭐ ห้ามเหมารวมตามอาชีพ: ใช้ work_style + audience + experience ประกอบ — ทำคนเดียว≠มีทีม, เพิ่งเริ่ม≠ทำมานาน
 5. การเรียกชื่อ: มี display_name ใช้ชื่อนั้น; ไม่มีใช้ชื่อช่อง/@handle/"คุณ" — ห้ามเดาชื่อจากรูป
 6. 🗣️ ภาษาบ้านๆ คนทั่วไปเข้าใจทันที ⛔ ห้ามศัพท์การตลาด/อังกฤษ (funnel, conversion, engagement, CTA, niche, positioning ฯลฯ) ใช้คำไทยง่ายๆ แทน
@@ -339,8 +341,16 @@ export async function generateAnalysis(parsed, lang = "th") {
     : "";
   const readInstr = images.length ? `\n\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)` : `\n\nสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)`;
   parts.push({ text: buildUserText(parsed) + priorNote + readInstr });
-  const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: ANALYSIS_PROMPT + langSuffix(lang), responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
-  return { analysis: maybeJargon(JSON.parse(resp.text), lang), model, usage: usageOf(resp) };
+  // มีรูปแต่ AI อ่าน metrics ไม่ออก (คืน null ทั้งหมด) เกิดได้เป็นครั้งคราว → ลองอ่านซ้ำอีก 1 รอบ (กันลูกค้าแนบรูปแล้วเจอ "ไม่มีสถิติ")
+  let analysis, model, usage;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { resp, model: mdl } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: ANALYSIS_PROMPT + langSuffix(lang), responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
+    analysis = maybeJargon(JSON.parse(resp.text), lang); model = mdl; usage = usageOf(resp);
+    const m = analysis.metrics || {};
+    const gotNums = Object.values(m).some(v => typeof v === "number" && v > 0);
+    if (!images.length || gotNums) break; // ไม่มีรูป (null ถูกต้อง) หรืออ่านตัวเลขได้แล้ว → พอ
+  }
+  return { analysis, model, usage };
 }
 
 // สเต็ป 2: ปฏิทิน + 30 สคริปต์ อิงบทวิเคราะห์ที่ลูกค้ายืนยันแล้ว (ไม่ต้องส่งรูปซ้ำ → เร็ว/ประหยัด token)

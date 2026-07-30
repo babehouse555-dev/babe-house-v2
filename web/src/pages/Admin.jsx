@@ -16,6 +16,7 @@ export default function Admin() {
   const [usage, setUsage] = useState(null);
   const [custOv, setCustOv] = useState(null);
   const [showCustDetail, setShowCustDetail] = useState(false);
+  const [payerQ, setPayerQ] = useState("");
   const [qual, setQual] = useState(null);
   const [reviews, setReviews] = useState(null);
   const [feedback, setFeedback] = useState(null);
@@ -126,13 +127,23 @@ export default function Admin() {
           <span style={{ background: "#f3edfb", color: "#6b3fa0", fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>🧪 ทดสอบ (mock): {rev.test_count ?? 0}</span>
         </div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>* นับเฉพาะที่จ่ายผ่าน Stripe จริง (บัตร/PromptPay) มากกว่า 0฿ — ไม่รวมโค้ดฟรีและออเดอร์ทดสอบ</div>
-        {(rev.paid_orders || []).length > 0 && <div style={{ marginTop: 6 }}>
-          <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>ใครจ่ายบ้าง ({rev.paid_orders.length})</div>
-          {rev.paid_orders.map((o, i) => <div key={i} className="between" style={{ fontSize: 13, padding: "7px 0", borderTop: "1px solid var(--border)" }}>
-            <span><b>{o.email}</b> <span className="muted" style={{ fontSize: 11.5 }}>· {(o.tier || "").startsWith("Credits") ? "เครดิต" : (o.tier || "").startsWith("Video") ? "ตรวจคลิป" : "เล่ม Blueprint"}</span></span>
-            <span><b style={{ color: "var(--up)" }}>{o.baht}฿</b> <span className="muted" style={{ fontSize: 11.5 }}>{String(o.paid_at || "").slice(0, 10)}</span></span>
-          </div>)}
-        </div>}
+        {(rev.paid_orders || []).length > 0 && (() => {
+          const q = payerQ.trim().toLowerCase();
+          const filtered = q ? rev.paid_orders.filter(o => String(o.email || "").toLowerCase().includes(q)) : rev.paid_orders;
+          return <div style={{ marginTop: 6 }}>
+            <div className="between" style={{ marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>ใครจ่ายบ้าง ({q ? `${filtered.length}/${rev.paid_orders.length}` : rev.paid_orders.length})</div>
+              <input value={payerQ} onChange={e => setPayerQ(e.target.value)} placeholder="🔍 ค้นหาอีเมล" style={{ fontSize: 12.5, padding: "6px 10px", border: "1px solid var(--border)", borderRadius: 8, width: 180, maxWidth: "100%" }} />
+            </div>
+            <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 10, padding: "0 12px" }}>
+              {filtered.length === 0 ? <div className="muted" style={{ fontSize: 13, padding: "12px 2px" }}>ไม่พบอีเมลนี้</div> :
+               filtered.map((o, i) => <div key={i} className="between" style={{ fontSize: 13, padding: "7px 0", borderTop: i === 0 ? "none" : "1px solid var(--border)" }}>
+                <span><b>{o.email}</b> <span className="muted" style={{ fontSize: 11.5 }}>· {(o.tier || "").startsWith("Credits") ? "เครดิต" : (o.tier || "").startsWith("Video") ? "ตรวจคลิป" : "เล่ม Blueprint"}</span></span>
+                <span><b style={{ color: "var(--up)" }}>{o.baht}฿</b> <span className="muted" style={{ fontSize: 11.5 }}>{String(o.paid_at || "").slice(0, 10)}</span></span>
+              </div>)}
+            </div>
+          </div>;
+        })()}
         {rev.by_month.length >= 2 && <div style={{ marginTop: 6 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>รายได้แต่ละเดือน</div>{rev.by_month.map(m => { const max = Math.max(...rev.by_month.map(x => x.revenue), 1); return <div key={m.billing_cycle} style={{ margin: "9px 0" }}><div className="between" style={{ fontSize: 13, marginBottom: 4 }}><span>{m.billing_cycle.replace("_", " ")}</span><span className="muted">{baht(m.revenue)} · {m.c}</span></div><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(m.revenue / max * 100)}%` }} /></div></div>; })}</div>}</div>}
 
 

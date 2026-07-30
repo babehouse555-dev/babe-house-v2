@@ -344,9 +344,13 @@ export async function generateContent(parsed, analysis, lang = "th") {
   const ctx = `บทวิเคราะห์ช่อง (ลูกค้ายืนยันว่าตรงแล้ว — ใช้เป็นแกนวางคอนเทนต์ให้ตรงตัวตนเขา):\n${JSON.stringify({ theme: a.theme, positioning: a.positioning, pillars: a.pillars, snapshot: a.snapshot, what_we_see: a.what_we_see, swot: a.swot, audience_summary: a.audience_summary, kim_insight: a.kim_insight, story: a.story, avatar: a.modules?.avatar, archetype: a.modules?.archetype })}`;
   // เจนสูงสุด 2 รอบ: นับเป็น "รายวัน" (วันที่ 1-30 ที่มีสคริปต์เต็ม) — กันเคส 31 อันแต่มีวันซ้ำ/ว่าง
   const sayLen = (x) => (x?.beats || []).reduce((a, b) => a + String(b?.say || "").length, 0);
+  const hasPh = (x) => (x?.beats || []).some(b => /\[[^\]]{2,}\]/.test(String(b?.say || ""))); // placeholder วงเล็บ [..]
   const scoreContent = (c) => {
     const s = Array.isArray(c?.scripts) ? c.scripts : [];
-    const fullDays = new Set(s.filter(x => sayLen(x) >= 520 && Number(x.d) >= 1 && Number(x.d) <= 30).map(x => Number(x.d)));
+    const cal = Array.isArray(c?.calendar) ? c.calendar : [];
+    // เล่มไทย: หัวข้อที่เป็นอังกฤษล้วน = ยังไม่ "เต็ม" (บังคับเจนใหม่)
+    const engDays = lang === "en" ? new Set() : new Set(cal.filter(x => /[A-Za-z]/.test(String(x?.t || "")) && !/[฀-๿]/.test(String(x?.t || ""))).map(x => Number(x.d)));
+    const fullDays = new Set(s.filter(x => sayLen(x) >= 520 && !hasPh(x) && !engDays.has(Number(x.d)) && Number(x.d) >= 1 && Number(x.d) <= 30).map(x => Number(x.d)));
     return { fullDays: fullDays.size, n: s.length };
   };
   // เลือกสคริปต์/ปฏิทินวันละ 1 อัน (วันที่ 1-30) เอาอันที่เต็มสุด เรียงตามวัน → เล่มสะอาดเสมอ
@@ -689,9 +693,18 @@ export function checkBlueprintQuality(bp, hasImage) {
   const calendar = Array.isArray(bp.calendar) ? bp.calendar : [];
   if (scripts.length < 30) flags.push(`สคริปต์ไม่ครบ 30 (มี ${scripts.length})`);
   if (calendar.length < 30) flags.push(`ปฏิทินไม่ครบ 30 (มี ${calendar.length})`);
-  // สคริปต์สั้นเกินไป (รวมทุก beat ควร > ~150 ตัวอักษร)
-  const shortN = scripts.filter(s => (s.beats || []).reduce((a, b) => a + String(b.say || "").length, 0) < 150).length;
+  // สคริปต์สั้นเกินไป (รวมทุก beat ควร ≥ 520 ตัวอักษร ≈ 180 คำ — เล่มดีอยู่ที่ ~600-800)
+  const shortN = scripts.filter(s => (s.beats || []).reduce((a, b) => a + String(b.say || "").length, 0) < 520).length;
   if (shortN > 0) flags.push(`${shortN} สคริปต์สั้นเกินไป`);
+  // placeholder วงเล็บเหลี่ยมค้าง เช่น [ชื่อสินค้า] (ดูไม่เสร็จ)
+  const phN = scripts.reduce((n, s) => n + (s.beats || []).filter(b => /\[[^\]]{2,}\]/.test(String(b.say || ""))).length, 0);
+  if (phN > 0) flags.push(`${phN} จุดมี placeholder วงเล็บ [..]`);
+  // หัวข้อปฏิทินเป็นภาษาอังกฤษทั้งที่เป็นเล่มไทย
+  const isThaiBook = /[฀-๿]/.test(String(bp.greeting || "") + String(bp.theme || ""));
+  if (isThaiBook) {
+    const engT = calendar.filter(c => /[A-Za-z]/.test(String(c.t || "")) && !/[฀-๿]/.test(String(c.t || ""))).length;
+    if (engT > 0) flags.push(`${engT} หัวข้อปฏิทินเป็นภาษาอังกฤษ`);
+  }
   // ศัพท์เทคนิค/อังกฤษที่ห้ามหลุดถึงลูกค้า (ไม่นับ label beat CTA)
   const prose = [bp.greeting, bp.kim_insight, bp.positioning, ...(bp.what_we_see || []), ...((bp.story || []).map(s => s && s.body)), ...scripts.flatMap(s => [...(s.beats || []).map(b => b && b.say), s && s.cap])].filter(Boolean).join(" ").toLowerCase();
   const jargon = ["funnel", "conversion", "micro-influencer", "micro influencer", "engagement", "positioning", "retention", "call to action", "awareness", "branding"];

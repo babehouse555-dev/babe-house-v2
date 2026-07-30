@@ -552,6 +552,20 @@ app.post("/api/improve-blueprint", async (req, res) => {
   } catch (err) { console.error("improve", err); res.status(500).json({ ok: false, error: "IMPROVE_FAILED", message: err.message }); }
 });
 
+// เตือนคิมทางเมล "เฉพาะตอนเจอปัญหาจริง" — คิมไม่ต้องนั่งเช็กเล่มเอง (ระบบเจนซ้ำอัตโนมัติแล้วยังไม่หาย ค่อยเตือน)
+const SERIOUS_QUALITY_RE = /สั้น|placeholder|อังกฤษ|ไม่ครบ|ว่าง|ซ้ำ|หลุด|แต่งตัวเลข/;
+async function alertQualityIfNeeded(flags, parsed, bpId) {
+  try {
+    const serious = (flags || []).filter(f => SERIOUS_QUALITY_RE.test(f));
+    if (!serious.length) return;
+    const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`;
+    await sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com",
+      `⚠️ เล่มอาจมีปัญหาคุณภาพ — ${parsed.instagram_account || bpId}`,
+      wrap(`เล่มเจนเสร็จแล้ว แต่ระบบตรวจเจอจุดที่ควรดู (เจนซ้ำอัตโนมัติแล้วยังเจอ):<br><br>• ${serious.join("<br>• ")}<br><br>ช่อง: <b>${parsed.instagram_account || "-"}</b><br><br>${btn(url, "เปิดดูเล่มนี้")}<br><br><span style="color:#999;font-size:12px">เมลนี้ส่งอัตโนมัติ "เฉพาะตอนเจอปัญหา" เท่านั้น — ไม่เจอปัญหาจะไม่ส่ง คิมไม่ต้องนั่งเช็กเองค่ะ</span>`)).catch(() => {});
+    console.warn(`[quality-alert] ${bpId}: ${serious.join(" · ")}`);
+  } catch (e) { console.warn("alertQualityIfNeeded", e.message); }
+}
+
 // สเต็ป 2: สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง) — เรียกเมื่อลูกค้ายืนยันว่าบทวิเคราะห์แม่นแล้ว
 app.post("/api/generate-content", async (req, res) => {
   try {
@@ -585,6 +599,7 @@ app.post("/api/generate-content", async (req, res) => {
           const qualityFlags = checkBlueprintQuality(merged, true);
           if (qualityFlags.length) console.warn(`[quality] ${bpId}: ${qualityFlags.join(" · ")}`);
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), model, JSON.stringify(qualityFlags), bpId]);
+          await alertQualityIfNeeded(qualityFlags, parsed, bpId); // เตือนคิมทางเมลถ้าระบบเจนซ้ำแล้วยังมีจุดต้องดู (คิมไม่ต้องนั่งเช็กเอง)
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'content',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
           // ส่งเมลแจ้งเมื่อแผน 30 วันเจนเสร็จ — ลูกค้าปิดหน้าไปก็ได้ ไม่ต้องนั่งรอ
           if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`; const l = langOfPayload(parsed); await sendEmail(parsed.email,

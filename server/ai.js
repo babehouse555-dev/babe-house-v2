@@ -331,7 +331,14 @@ export async function generateAnalysis(parsed, lang = "th") {
   const images = extractImages(parsed);
   const parts = [];
   for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
-  parts.push({ text: buildUserText(parsed) + `\n\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)` });
+  // ถ้าไม่มีรูปใหม่ แต่มีสถิติที่วิเคราะห์ไว้แล้วรอบก่อน (รูปถูกลบทิ้งเพื่อประหยัดดิสก์) → ให้ AI ใช้ตัวเลขเดิมต่อ อย่าบอกลูกค้าว่า "ไม่ได้แนบสถิติ"
+  const pm = parsed.prior_metrics;
+  const hasPrior = pm && typeof pm === "object" && Object.values(pm).some(v => typeof v === "number" && v > 0);
+  const priorNote = (!images.length && hasPrior)
+    ? `\n\n📊 สถิติหลังบ้านที่วิเคราะห์ไว้แล้ว (ลูกค้าแนบรูปมาแล้วรอบก่อน ระบบลบรูปทิ้งเพื่อประหยัดพื้นที่ แต่ตัวเลขนี้คือของจริง): ${JSON.stringify(pm)} — ⭐ ใช้ตัวเลขเหล่านี้ใส่ metrics + วิเคราะห์ what_we_see จากตัวเลขนี้ต่อได้เลย ⛔ ห้ามบอกลูกค้าว่า "ยังไม่ได้แนบสถิติ/ให้ส่งรูปมาเพิ่ม" เด็ดขาด เพราะลูกค้าแนบแล้ว`
+    : "";
+  const readInstr = images.length ? `\n\nโปรดอ่านรูปสถิติหลังบ้านที่แนบมา แล้วสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)` : `\n\nสร้าง "บทวิเคราะห์" JSON ครบทุก key (ยังไม่ต้องทำ calendar/scripts ในรอบนี้)`;
+  parts.push({ text: buildUserText(parsed) + priorNote + readInstr });
   const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: ANALYSIS_PROMPT + langSuffix(lang), responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
   return { analysis: maybeJargon(JSON.parse(resp.text), lang), model, usage: usageOf(resp) };
 }

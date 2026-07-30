@@ -519,6 +519,10 @@ app.post("/api/improve-blueprint", async (req, res) => {
     // รูป Insight ที่แนบใหม่ตอนรีเจน (เผื่อรอบแรกลืมใส่) → ใช้เจนใหม่ให้แม่นขึ้น
     const newImgs = Array.isArray(req.body?.images) ? req.body.images.filter(x => typeof x === "string" && x.startsWith("data:image")) : [];
     if (newImgs.length) { parsed.insight_images = newImgs.slice(0, 8); parsed.insight_screenshot_base64 = newImgs[0]; }
+    // รูป Insight เดิมถูกลบทิ้งหลังเจนรอบแรก (ประหยัดดิสก์) → ถ้าไม่แนบรูปใหม่รอบนี้ ส่ง "สถิติที่วิเคราะห์ไว้แล้ว" ให้ AI ใช้ต่อ (กัน metrics หาย = บอกลูกค้าว่าไม่ได้แนบทั้งที่แนบแล้ว)
+    const curBp = safeJson(bp.blueprint_json) || {};
+    const curHasNums = curBp.metrics && Object.values(curBp.metrics).some(v => typeof v === "number" && v > 0);
+    if (!newImgs.length && curHasNums) parsed.prior_metrics = curBp.metrics;
     // รีไฟน์ "บทวิเคราะห์" เท่านั้น (เร็ว) แบบ async — ตอบทันที แล้วเจนเบื้องหลัง หน้า Dashboard poll analysis_status
     if (inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" });
     inFlightBp.add(bpId);
@@ -535,6 +539,13 @@ app.post("/api/improve-blueprint", async (req, res) => {
           const nextJson = { ...analysis };
           if (Array.isArray(freshJson.calendar) && freshJson.calendar.length) nextJson.calendar = freshJson.calendar;
           if (Array.isArray(freshJson.scripts) && freshJson.scripts.length) nextJson.scripts = freshJson.scripts;
+          // กันสถิติหาย (belt+suspenders): ถ้าไม่แนบรูปใหม่ + รอบก่อนมีตัวเลขจริง แต่รอบนี้ AI ทำหลุด → คงของเดิมไว้
+          if (!newImgs.length && curHasNums) {
+            const newHasNums = nextJson.metrics && Object.values(nextJson.metrics).some(v => typeof v === "number" && v > 0);
+            if (!newHasNums) nextJson.metrics = curBp.metrics;
+            if ((!Array.isArray(nextJson.what_we_see) || !nextJson.what_we_see.length) && Array.isArray(curBp.what_we_see)) nextJson.what_we_see = curBp.what_we_see;
+            if (!nextJson.follower_insight && curBp.follower_insight) nextJson.follower_insight = curBp.follower_insight;
+          }
           await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(nextJson), model, bpId]);
           const lean = { ...parsed, lang, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม) คง lang
           await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(lean), fr.starting_point, bp.request_id]).catch(() => {});

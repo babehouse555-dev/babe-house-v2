@@ -245,6 +245,7 @@ export default function Form() {
     if (step !== 4) { goNext(); return; } // กด Enter ก่อนถึงขั้นสุดท้าย = ไปขั้นถัดไป ไม่ใช่ส่งฟอร์ม
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email2")); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); setStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock: มีช่องต้องมีรูป Insight เสมอ
     if (!consent) { setErr(t("fm_v_consent")); return; }
     setBusy(true); setErr("");
     try {
@@ -402,6 +403,12 @@ export default function Form() {
             {(showAudOther || f.audience_other) ? <input value={f.audience_other} onChange={upd("audience_other")} onFocus={() => setFocus(null)} autoFocus placeholder={t("fm_type_own")} style={{ marginTop: 10 }} /> : <button type="button" style={linkBtn} onClick={() => setShowAudOther(true)}>{t("fm_no_match")}</button>}
           </div>
           <div className="msg" style={{ background: "#e4f4f3", color: "#2C8E8C", border: "1px dashed #9ad0ce", fontSize: 12.5 }}>{t("fm_newbie_note")}</div>
+          {/* เผื่อคนมีช่องจริงแต่เผลอเลือกมือใหม่ — ให้แนบสถิติได้ (ไม่บังคับ) เพื่อให้วิเคราะห์ตัวเลขจริง */}
+          <div ref={imgRef} style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--blue-d)", marginBottom: 3 }}>{t("fm_newbie_stats_title")}</div>
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>{t("fm_newbie_stats_sub")}</p>
+            <ImageDrop files={files} setFiles={setFiles} onPick={() => setFocus("images")} />
+          </div>
         </div>}
 
         {/* ===== ขั้น 4: STORY (ดาว) + optional + ส่ง ===== */}

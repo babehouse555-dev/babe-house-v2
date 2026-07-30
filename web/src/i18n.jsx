@@ -593,6 +593,8 @@ const DICT = {
   fm_type_own: { th: "พิมพ์เอง เช่น คนเลี้ยงแมว / เด็กมหาลัยปี 1", en: "Type your own, e.g. cat owners / college freshmen" },
   fm_no_match: { th: "+ ไม่มีที่ตรง? พิมพ์เอง", en: "+ None fit? Type your own" },
   fm_newbie_note: { th: "🌱 มือใหม่ไม่ต้องมีรูปสถิติค่ะ — ครูพี่คิมจะวางแผนเริ่มต้นจากแนวที่อยากทำ + กลุ่มที่อยากได้ พอทำไป 1 เดือนค่อยกลับมาใส่รูป เดี๋ยววิเคราะห์ตัวเลขจริงให้", en: "🌱 Beginners don't need stats — Kim plans from your niche + target audience. After a month, come back with screenshots for real-number analysis." },
+  fm_newbie_stats_title: { th: "📊 มีสถิติหลังบ้านอยู่บ้างไหมคะ? (ถ้ามี แนบเลย)", en: "📊 Have any Insights already? (attach if you do)" },
+  fm_newbie_stats_sub: { th: "ถ้าช่องคุณเริ่มมีคนดู/ผู้ติดตามบ้างแล้ว แนบรูป Insight ได้เลยค่ะ ครูพี่คิมจะได้วิเคราะห์ตัวเลขจริงให้แม่นขึ้น · ไม่มีก็ข้ามได้", en: "If your channel already has some views/followers, attach your Insights so Kim can analyze real numbers · skip if you have none yet" },
   fm_most_important: { th: "⭐ ข้อนี้สำคัญที่สุด", en: "⭐ This one matters most" },
   fm_why_start: { th: "ทำไมถึงเริ่มทำช่องนี้?", en: "Why did you start this channel?" },
   fm_why_start_tag: { th: "(จุดเริ่มต้น/แรงบันดาลใจ)", en: "(your origin / inspiration)" },

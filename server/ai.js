@@ -142,6 +142,8 @@ const deBrand = (s) => {
     .replace(/ที่นี่\s*ที่นี่/g, "ที่นี่");
 };
 const usesKim = (parsed) => { const fr = (parsed && parsed.form_responses) || {}; return /คิม/.test(`${fr.self_term || ""} ${fr.display_name || ""}`); };
+// แบรนด์ของลูกค้า "คือ Babe House จริงๆ" (แอคของคิมเอง / ธุรกิจในเครือ babehouse) → อย่าไปกรอง Babe House ออกจากสคริปต์เขา
+const usesBabeHouse = (parsed) => { const fr = (parsed && parsed.form_responses) || {}; return /babe\s*house|เบ๊บเฮาส์/i.test(`${fr.business_type || ""} ${fr.self_term || ""} ${fr.display_name || ""} ${(parsed && parsed.instagram_account) || ""}`); };
 
 // แปลงศัพท์การตลาด/อังกฤษ → คำไทยบ้านๆ (เจอหลุดถึงลูกค้าซ้ำหลายเล่ม — กรองหลังบ้านให้ชัวร์ ไม่หวังให้ AI จำกฎ)
 const JARGON = [
@@ -176,12 +178,13 @@ const langSuffix = (lang) => lang === "en" ? EN_INSTRUCTION : "";
 // deepJargon แปลศัพท์การตลาด→ไทย — ข้ามเมื่อ EN (ไม่งั้นจะเอาคำไทยไปปนในข้อความอังกฤษ)
 const maybeJargon = (obj, lang) => lang === "en" ? obj : deepJargon(obj);
 
-function sanitizeScripts(bp, keepKim) {
+function sanitizeScripts(bp, keepKim, keepBrand) {
+  const db = keepBrand ? (s) => s : deBrand; // แบรนด์ลูกค้าคือ Babe House จริง → ไม่กรอง (แอคคิมเอง/ธุรกิจในเครือ)
   if (bp && Array.isArray(bp.scripts)) {
     for (const sc of bp.scripts) {
-      if (Array.isArray(sc.beats)) for (const b of sc.beats) b.say = deBrand(deKim(b.say, keepKim));
-      if (Array.isArray(sc.hooks)) sc.hooks = sc.hooks.map(h => deBrand(deKim(h, keepKim))).filter(Boolean);
-      sc.cap = deBrand(deKim(sc.cap, keepKim));
+      if (Array.isArray(sc.beats)) for (const b of sc.beats) b.say = db(deKim(b.say, keepKim));
+      if (Array.isArray(sc.hooks)) sc.hooks = sc.hooks.map(h => db(deKim(h, keepKim))).filter(Boolean);
+      sc.cap = db(deKim(sc.cap, keepKim));
     }
   }
   return bp;
@@ -199,7 +202,7 @@ export async function generateBlueprint(parsed) {
     config: { systemInstruction: KIM_PROMPT, responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } },
     retries: 2,
   });
-  const blueprint = sanitizeScripts(deepJargon(JSON.parse(resp.text)), usesKim(parsed));
+  const blueprint = sanitizeScripts(deepJargon(JSON.parse(resp.text)), usesKim(parsed), usesBabeHouse(parsed));
   const u = resp.usageMetadata || {};
   const usage = { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) };
   return { blueprint, model, usage };
@@ -400,7 +403,7 @@ export async function generateContent(parsed, analysis, lang = "th") {
     let content = null;
     try {
       const { resp, model } = await genContent({ contents: [{ role: "user", parts }], config: { systemInstruction: CONTENT_PROMPT + langSuffix(lang), responseMimeType: "application/json", maxOutputTokens: MAX_TOK, thinkingConfig: { thinkingBudget: THINK_BUDGET } }, retries: 2 });
-      content = sanitizeScripts(maybeJargon(JSON.parse(resp.text), lang), usesKim(parsed));
+      content = sanitizeScripts(maybeJargon(JSON.parse(resp.text), lang), usesKim(parsed), usesBabeHouse(parsed));
       const sc = scoreContent(content);
       const bestSc = best ? scoreContent(best) : { fullDays: -1, n: -1 };
       if (sc.fullDays > bestSc.fullDays) { best = content; bestModel = model; bestResp = resp; }
@@ -440,7 +443,7 @@ export async function generateSingleScript(parsed, analysis, brief, opts = {}) {
   if (!resp.text || !resp.text.trim()) throw new Error(`empty response (finishReason=${resp.candidates?.[0]?.finishReason || "?"})`); // เจอตัดกลางคัน = โยน error ชัดๆ
   const raw = JSON.parse(resp.text);
   const one = raw.script || raw;
-  const clean = sanitizeScripts(maybeJargon({ scripts: [one] }, opts.lang), usesKim(parsed));
+  const clean = sanitizeScripts(maybeJargon({ scripts: [one] }, opts.lang), usesKim(parsed), usesBabeHouse(parsed));
   return { script: clean.scripts[0], model, usage: usageOf(resp) };
 }
 
@@ -756,9 +759,13 @@ export function checkBlueprintQuality(bp, hasImage) {
   // "คิม" หลุดในบทพูดสคริปต์ (ควรถูก sanitize แล้ว)
   if (scripts.some(s => (s.beats || []).some(b => /คิม/.test(String(b.say || ""))))) flags.push('มี "คิม" หลุดในสคริปต์');
   // "Babe House" หลุดในสคริปต์/แคปชันลูกค้า (แบรนด์เรา ไม่ใช่แบรนด์ลูกค้า — ควรถูก sanitize แล้ว)
+  // ยกเว้นเล่มที่ "แบรนด์ลูกค้าคือ Babe House จริง" (แอคคิมเอง/ธุรกิจในเครือ — ดูจาก theme/positioning/greeting)
   const brandRe = /babe\s*house|เบ๊บเฮาส์/i;
-  const brandN = scripts.reduce((n, s) => n + (s.beats || []).filter(b => brandRe.test(String(b.say || ""))).length + (brandRe.test(String(s.cap || "")) ? 1 : 0) + (s.hooks || []).filter(h => brandRe.test(String(h))).length, 0);
-  if (brandN > 0) flags.push(`${brandN} จุดมี "Babe House" หลุดในสคริปต์ลูกค้า (แบรนด์เราไม่ใช่ของลูกค้า)`);
+  const ownBrand = brandRe.test(String(bp.theme || "") + String(bp.positioning || "") + String(bp.greeting || ""));
+  if (!ownBrand) {
+    const brandN = scripts.reduce((n, s) => n + (s.beats || []).filter(b => brandRe.test(String(b.say || ""))).length + (brandRe.test(String(s.cap || "")) ? 1 : 0) + (s.hooks || []).filter(h => brandRe.test(String(h))).length, 0);
+    if (brandN > 0) flags.push(`${brandN} จุดมี "Babe House" หลุดในสคริปต์ลูกค้า (แบรนด์เราไม่ใช่ของลูกค้า)`);
+  }
   // ตัวเลข metrics ทั้งที่ไม่มีรูป = เสี่ยงแต่งตัวเลข
   const m = bp.metrics || {};
   const hasNums = m && Object.values(m).some(v => typeof v === "number" && v > 0);

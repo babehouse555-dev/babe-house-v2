@@ -1205,6 +1205,14 @@ app.post("/api/admin/enrich-directions", async (req, res) => {
   await run(`UPDATE blueprints SET blueprint_json=$1 WHERE blueprint_id=$2`, [JSON.stringify(bp), bpId]);
   res.json({ ok: true, blueprint_id: bpId, total_beats: totalBeats, had_vis_before: hadVis, filled: result.filled, model: result.model });
 });
+// คืนสิทธิ์ "เพิ่มข้อมูลฟรี" (improve) ให้ลูกค้า — ใช้ตอนบั๊กฝั่งเราทำให้เขาเสียสิทธิ์ไปฟรีๆ
+app.post("/api/admin/reset-improve", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  if (!bpId) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const r = await run(`UPDATE blueprints SET improve_count=0 WHERE blueprint_id=$1 AND deleted_at IS NULL`, [bpId]);
+  res.json({ ok: true, blueprint_id: bpId, reset: true });
+});
 // หาเล่มที่ content_status=ready แต่สคริปต์หาย (โดนบั๊ก improve เขียนทับ) — ไว้ตรวจ+กู้
 app.get("/api/admin/broken-content", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

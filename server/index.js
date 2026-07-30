@@ -1240,8 +1240,9 @@ app.post("/api/admin/regen-content", async (req, res) => {
   try { result = await generateContent(parsed, current, lang); }
   finally { releaseGen(); }
   const merged = { ...current, calendar: result.content.calendar, scripts: result.content.scripts };
-  await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(merged), result.model, bpId]);
-  res.json({ ok: true, blueprint_id: bpId, scripts: (result.content.scripts || []).length, calendar: (result.content.calendar || []).length });
+  const flags = checkBlueprintQuality(merged, true); // คำนวณธงคุณภาพใหม่ → ธง "เล่มที่ควรเช็ค" จะอัปเดตเอง ไม่ค้างค่าเก่า
+  await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), result.model, JSON.stringify(flags), bpId]);
+  res.json({ ok: true, blueprint_id: bpId, scripts: (result.content.scripts || []).length, calendar: (result.content.calendar || []).length, flags });
 });
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
 app.get("/api/admin/ai-usage", async (req, res) => {

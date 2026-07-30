@@ -17,6 +17,7 @@ export default function Account() {
   const [data, setData] = useState(null);
   const [ref, setRef] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState({}); // ช่องไหนกางอยู่ (accordion) — หลายช่องจะพับไว้ กันหน้ายาว
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
@@ -99,14 +100,21 @@ export default function Account() {
         {(data.channels || []).length === 0 && (data.pending || []).length === 0 && <div className="card center muted">{t("ac_no_books")}</div>}
 
         {(data.channels || []).length > 0 && <div className="muted" style={{ fontSize: 13, fontWeight: 700, margin: "4px 0 8px" }}>{t("ac_my_channels")} ({(data.channels || []).length})</div>}
-        {(data.channels || []).map(ch => {
+        {(() => { const chs = data.channels || []; const singleCh = chs.length === 1;
+          const chOpen = (ch, idx) => (ch.channel in expanded) ? expanded[ch.channel] : (singleCh || idx === 0);
+          return chs.map((ch, ci) => {
           const months = ch.months.slice().reverse(); // ใหม่ → เก่า
           const anyFresh = months.some(m => !isOpened(m.blueprint_id));
+          const open = chOpen(ch, ci);
+          const latest = months[0];
           return <div key={ch.channel} className="card" style={anyFresh ? { borderTop: "4px solid #2C8E8C" } : undefined}>
-            <div className="row" style={{ gap: 11, alignItems: "center", marginBottom: 12 }}>
+            <button onClick={() => setExpanded(p => ({ ...p, [ch.channel]: !open }))} style={{ width: "100%", background: "none", border: 0, padding: 0, cursor: "pointer", display: "flex", gap: 11, alignItems: "center", marginBottom: open ? 12 : 0, textAlign: "left" }}>
               <span style={{ fontSize: 22 }}>📺</span>
-              <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 15.5 }}>{ch.channel}</div><div className="muted" style={{ fontSize: 12.5 }}>{ch.count} {t("ac_months_suffix")}</div></div>
-            </div>
+              <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 15.5 }}>{ch.channel}</div><div className="muted" style={{ fontSize: 12.5 }}>{ch.count} {t("ac_months_suffix")}{!open && latest ? ` · ${latest.billing_cycle.replace("_", " ")}` : ""}</div></div>
+              {!open && anyFresh && <span style={{ fontSize: 10.5, fontWeight: 800, background: "#2C8E8C", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>{t("ac_new_badge")}</span>}
+              <span style={{ color: "var(--muted)", fontSize: 17, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>›</span>
+            </button>
+            {open && <>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {months.map((m, i) => {
                 const fresh = !isOpened(m.blueprint_id);
@@ -124,8 +132,9 @@ export default function Account() {
               <Link className="btn" to={`/form?renew=1&email=${encodeURIComponent(data.email)}&channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>{t("ac_renew")}</Link>
               {ch.count >= 1 && <Link className="btn ghost" to={`/compare?channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>{t("ac_see_growth")}</Link>}
             </div>
+            </>}
           </div>;
-        })}
+        }); })()}
 
         <Link className="card center" to={`/form?email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block", border: "1.5px dashed var(--blue)", background: "#F4F8FD" }}>{t("ac_add_channel")}</Link>
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>

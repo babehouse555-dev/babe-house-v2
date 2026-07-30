@@ -345,6 +345,20 @@ export default function Dashboard() {
           <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("db_go_confirm")}</button>
         </div>}
         {tab === "calendar" && contentReady && <>
+          {bp.compliance && <div style={{ background: "#FFF8E6", border: "1px solid #F0D98C", borderRadius: 14, padding: "14px 16px", marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, fontSize: 14.5, color: "#8a6d1a", display: "flex", gap: 8, alignItems: "flex-start" }}><span style={{ fontSize: 18, lineHeight: 1 }}>{bp.compliance.icon}</span><span>{bp.compliance.title}</span></div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 10 }}>
+              <div style={{ flex: "1 1 200px" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#b3261e", marginBottom: 5 }}>⛔ เลี่ยงคำพวกนี้</div>
+                {(bp.compliance.avoid || []).map((x, i) => <div key={i} style={{ fontSize: 13, color: "#5f3f0e", marginBottom: 3 }}>• {x}</div>)}
+              </div>
+              <div style={{ flex: "1 1 200px" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#1a7f43", marginBottom: 5 }}>✅ ใช้แทน</div>
+                {(bp.compliance.use || []).map((x, i) => <div key={i} style={{ fontSize: 13, color: "#5f3f0e", marginBottom: 3 }}>• {x}</div>)}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: "#8a6d1a", marginTop: 8 }}>ℹ️ {bp.compliance.why}</div>
+          </div>}
           {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>{t("db_cal_label")}</span>
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>

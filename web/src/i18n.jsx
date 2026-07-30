@@ -320,6 +320,8 @@ const DICT = {
   ac_view_gen_status: { th: "ดูสถานะการสร้างเล่ม", en: "View generation status" },
   ac_no_books: { th: "ยังไม่มีเล่ม Blueprint ในบัญชีนี้", en: "No Blueprints in this account yet" },
   ac_my_channels: { th: "ช่องของฉัน", en: "My channels" },
+  ac_search_channel: { th: "🔍 ค้นหาช่อง", en: "🔍 Search channels" },
+  ac_no_channel_found: { th: "ไม่พบช่อง", en: "No channel found" },
   ac_months_suffix: { th: "เดือน", en: "months" },
   ac_latest: { th: " · ล่าสุด", en: " · latest" },
   ac_new_badge: { th: "ใหม่", en: "New" },

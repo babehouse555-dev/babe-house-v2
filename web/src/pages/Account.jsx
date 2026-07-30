@@ -18,6 +18,7 @@ export default function Account() {
   const [ref, setRef] = useState(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState({}); // ช่องไหนกางอยู่ (accordion) — หลายช่องจะพับไว้ กันหน้ายาว
+  const [chQ, setChQ] = useState(""); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
@@ -101,8 +102,13 @@ export default function Account() {
 
         {(data.channels || []).length > 0 && <div className="muted" style={{ fontSize: 13, fontWeight: 700, margin: "4px 0 8px" }}>{t("ac_my_channels")} ({(data.channels || []).length})</div>}
         {(() => { const chs = data.channels || []; const singleCh = chs.length === 1;
-          const chOpen = (ch, idx) => (ch.channel in expanded) ? expanded[ch.channel] : (singleCh || idx === 0);
-          return chs.map((ch, ci) => {
+          const q = chQ.trim().toLowerCase();
+          const filtered = q ? chs.filter(ch => String(ch.channel || "").toLowerCase().includes(q)) : chs;
+          const chOpen = (ch, idx) => (ch.channel in expanded) ? expanded[ch.channel] : (q ? true : (singleCh || idx === 0));
+          return <>
+          {chs.length > 3 && <input value={chQ} onChange={e => setChQ(e.target.value)} placeholder={t("ac_search_channel")} style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "11px 14px", border: "1px solid var(--border)", borderRadius: 12, marginBottom: 12 }} />}
+          {filtered.length === 0 && <div className="card center muted" style={{ fontSize: 14 }}>{t("ac_no_channel_found")} “{chQ}”</div>}
+          {filtered.map((ch, ci) => {
           const months = ch.months.slice().reverse(); // ใหม่ → เก่า
           const anyFresh = months.some(m => !isOpened(m.blueprint_id));
           const open = chOpen(ch, ci);
@@ -134,7 +140,9 @@ export default function Account() {
             </div>
             </>}
           </div>;
-        }); })()}
+        })}
+          </>;
+        })()}
 
         <Link className="card center" to={`/form?email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block", border: "1.5px dashed var(--blue)", background: "#F4F8FD" }}>{t("ac_add_channel")}</Link>
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>

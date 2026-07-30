@@ -1592,7 +1592,37 @@ async function runAbandonedFollowups() {
     if (sent) console.log(`[abandoned] ${sent}`); return sent;
   } catch (e) { console.error("abandoned", e.message); return 0; }
 }
-app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); res.json({ ok: true, sent, homework, abandoned, cycle: currentBillingCycle() }); });
+// เตือน "activation": ลูกค้าได้บทวิเคราะห์แล้ว แต่ยังไม่กด "สร้างแผน 30 วัน" เกิน 24 ชม. → เตือน 1 ครั้งต่อเล่ม (กันสแปมด้วย activation_reminded_at)
+async function runActivationReminders() {
+  try {
+    const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.blueprint_json, r.email
+      FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+      WHERE b.content_status='pending' AND COALESCE(b.analysis_status,'ready')='ready'
+        AND b.created_at < now() - interval '24 hours'
+        AND b.activation_reminded_at IS NULL
+        AND r.email IS NOT NULL AND b.deleted_at IS NULL
+        AND lower(r.email) <> lower($1)
+      ORDER BY b.created_at ASC LIMIT 100`, [process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com"]);
+    let sent = 0;
+    for (const r of rows) {
+      const bp = safeJson(r.blueprint_json) || {};
+      const nm = (String(bp.greeting || "").match(/คุณ\s*([^\sๆ,!.๐-๙]{1,20})/) || [])[1] || "";
+      const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(r.user_id)}&billing_cycle=${encodeURIComponent(r.billing_cycle)}&blueprint_id=${encodeURIComponent(r.blueprint_id)}`;
+      try {
+        const l = await langOfEmail(r.email);
+        await sendEmail(r.email,
+          tr(l, `แผน 30 วันของคุณ${nm} รออยู่แค่คลิกเดียวนะคะ 🩵`, `Your 30-day plan is one click away 🩵`),
+          wrap(tr(l,
+            `สวัสดีค่ะคุณ${nm} 🩵<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณเสร็จเรียบร้อยแล้ว แต่เห็นว่ายังไม่ได้กด <b>"สร้างแผน 30 วัน"</b> ต่อ ซึ่งอันนี้แหละคือหัวใจของเล่ม — <b>สคริปต์พร้อมอัด + แคปชันพร้อมโพสต์ ครบทั้ง 30 วัน</b> ที่ครูพี่คิมเขียนรอให้คุณอยู่เลยค่ะ<br><br>เหลือแค่ <b>คลิกเดียว</b>เองนะคะ 👇<br>เปิดเล่ม → กดปุ่ม <b>"สร้างแผน 30 วัน"</b> → เดี๋ยวครูพี่คิมเขียนให้ครบทั้งเดือนเลยค่ะ<br><br>${btn(url, "เปิดเล่ม + สร้างแผน 30 วัน")}<br><br>ถ้าติดตรงไหน หรืออยากปรับบทวิเคราะห์ให้ตรงใจก่อน ทักครูพี่คิมมาได้เลยนะคะ ยินดีดูแลเต็มที่ค่ะ 🩵<br><br>ด้วยรักและกำลังใจ<br><b>ครูพี่คิม · Babe House</b>`,
+            `Hi ${nm || "there"} 🩵<br><br>Kim finished analyzing your channel — but noticed you haven't tapped <b>"Create my 30-day plan"</b> yet. That's the heart of it: <b>30 days of ready-to-shoot scripts + captions</b>, all waiting for you.<br><br>Just <b>one click</b> away 👇<br>Open your book → tap <b>"Create my 30-day plan"</b> → Kim writes the whole month for you.<br><br>${btn(url, "Open + create my 30-day plan")}<br><br>Any questions, or want to fine-tune your analysis first — just reply. 🩵<br><br>With love,<br><b>Kim · Babe House</b>`)));
+      } catch { continue; }
+      await run(`UPDATE blueprints SET activation_reminded_at=now() WHERE blueprint_id=$1`, [r.blueprint_id]);
+      sent++;
+    }
+    if (sent) console.log(`[activation] ${sent}`); return sent;
+  } catch (e) { console.error("activation", e.message); return 0; }
+}
+app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, abandoned, activation, cycle: currentBillingCycle() }); });
 // ซ่อมเล่มเดียว: เจนคอนเทนต์ใหม่ในเล่มเดิม (สคริปต์ไม่ครบ/พัง)
 app.post("/api/admin/regen-content", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -1765,12 +1795,13 @@ initDb().then(async () => {
     for (const r of rows) setCuratedTrends(r.category, r.content, new Date(r.created_at).getTime());
   } catch (e) { console.warn("load trends", e.message); }
   app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
-  setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); }, 30000);
+  setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); runActivationReminders(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
   // ตอนสตาร์ท: คอนเทนต์/refine ที่ค้าง 'generating' = orphan จาก process เก่าแน่นอน → มาร์คให้ "เก่า" เพื่อให้ retryStuckContent กู้ทันที
   setTimeout(() => { run(`UPDATE blueprints SET content_started_at = now() - interval '10 minutes' WHERE (content_status='generating' OR analysis_status='generating') AND (content_started_at IS NULL OR content_started_at > now() - interval '8 minutes')`).then(() => retryStuckContent()).catch(() => {}); }, 50000);
   setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
   setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
+  setInterval(runActivationReminders, 6 * 3600 * 1000); // ทุก 6 ชม. เตือนคนได้บทวิเคราะห์แล้วยังไม่กดสร้างแผน 30 วัน (เกิน 24 ชม.)
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
   setInterval(() => run(`UPDATE video_audits SET video_data=NULL WHERE status='uploaded' AND video_data IS NOT NULL AND created_at < now() - interval '24 hours' AND order_id IN (SELECT order_id FROM blueprint_orders WHERE payment_status NOT IN ('paid','mock_paid'))`).catch(e => console.error("va cleanup", e.message)), 3600 * 1000); // ทุก 1 ชม. ลบคลิปที่อัปแต่ไม่จ่ายเกิน 24 ชม.

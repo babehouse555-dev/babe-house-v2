@@ -1195,8 +1195,10 @@ app.post("/api/admin/regen-content", async (req, res) => {
   const current = safeJson(bp.blueprint_json) || {};
   const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
   const raw = safeJson(reqRow?.raw_payload_json) || {};
-  const lang = raw.lang === "en" ? "en" : "th";
+  const lang = (req.body?.lang === "th" || req.body?.lang === "en") ? req.body.lang : (raw.lang === "en" ? "en" : "th"); // override ได้
   const parsed = GenSchema.parse(normalizePayload(raw));
+  const fr = parsed.form_responses || {};
+  if (req.body?.dry) return res.json({ ok: true, dry: true, raw_lang: raw.lang || null, will_use_lang: lang, self_term: fr.self_term || null, audience_term: fr.audience_term || null, tone: fr.tone || null, catchphrase: fr.catchphrase || null }); // peek โดยไม่เจน
   parsed.prev_context = await getPrevContext(parsed.email, bp.billing_cycle, parsed.instagram_account);
   await acquireGen();
   let result;

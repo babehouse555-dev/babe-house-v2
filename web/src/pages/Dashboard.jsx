@@ -146,6 +146,36 @@ export default function Dashboard() {
   // อัปเดตสคริปต์ 1 วัน (จากแก้เอง/คืนค่า/เจนใหม่) — คง d,g เดิม
   const updateScript = (d, ns) => setBp(prev => prev ? { ...prev, scripts: (prev.scripts || []).map(s => Number(s.d) === Number(d) ? { ...ns, d: s.d, g: s.g } : s) } : prev);
 
+  // กล่องม่วง + loader/error ตอนสร้างแผน 30 วัน — ใช้ร่วมทั้งแท็บกลยุทธ์และแท็บ 30 วัน (กดสร้างได้ทั้ง 2 ที่)
+  const purpleCard = { background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", boxShadow: "0 14px 34px rgba(110,99,166,.34)" };
+  const genLoaderInner = (() => {
+    const steps = t("db_gen_steps"); const at = [0, 20, 55, 120];
+    const cur = at.filter(s => genElapsed >= s).length - 1;
+    const pct = Math.min(96, Math.round((1 - Math.exp(-(genElapsed + 4) / 70)) * 100));
+    return <>
+      <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 4px" }}>{t("db_gen_title")}</h3>
+      <p style={{ opacity: .9, fontSize: 13.5, marginBottom: 16 }}>{t("db_gen_sub")}</p>
+      <div style={{ maxWidth: 440, margin: "0 auto", textAlign: "left" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 14 }}>
+          {steps.map((s, i) => { const done = i < cur, active = i === cur; return <div key={i} className="row" style={{ gap: 10, alignItems: "center" }}>
+            {done ? <span style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,.92)", color: "#3F6BAE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>✓</span>
+              : active ? <span className="spinner" style={{ width: 20, height: 20, border: "3px solid rgba(255,255,255,.35)", borderTopColor: "#fff", flexShrink: 0, margin: 0 }} />
+              : <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,.45)", flexShrink: 0, boxSizing: "border-box" }} />}
+            <span style={{ fontSize: 14, fontWeight: active ? 700 : 400, color: "#fff", opacity: done ? .75 : active ? 1 : .55 }}>{s}{active ? "…" : ""}</span>
+          </div>; })}
+        </div>
+        <div style={{ height: 8, background: "rgba(255,255,255,.28)", borderRadius: 20, overflow: "hidden" }}><div style={{ width: pct + "%", height: "100%", background: "#fff", borderRadius: 20, transition: "width 1s linear" }} /></div>
+        <div style={{ fontSize: 12.5, opacity: .9, marginTop: 6, textAlign: "right" }}>{pct}% · {genElapsed}s</div>
+      </div>
+    </>;
+  })();
+  const genErrorInner = <>
+    <div style={{ fontSize: 30 }}>🥺</div>
+    <h3 style={{ color: "#fff", fontSize: 19, margin: "4px 0 6px" }}>{t("db_gen_err_title")}</h3>
+    <p style={{ opacity: .95, fontSize: 14.5, marginBottom: 14 }}>{t("db_gen_err_sub")}</p>
+    <button className="btn-pulse" onClick={startContentGen} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "14px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_gen_retry")}</button>
+  </>;
+
   return (
     <div>
       {demo && <div style={{ background: "linear-gradient(135deg,var(--blue),var(--blue-d))", color: "#fff", padding: "10px 14px" }}>
@@ -268,32 +298,7 @@ export default function Dashboard() {
             <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>{t("db_strat_cta_sub")}</p>
             <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_start_content")}</button>
           </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, marginBottom: 28, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
-            {genState === "generating" ? (() => {
-              const steps = t("db_gen_steps"); const at = [0, 20, 55, 120];
-              const cur = at.filter(s => genElapsed >= s).length - 1;
-              const pct = Math.min(96, Math.round((1 - Math.exp(-(genElapsed + 4) / 70)) * 100));
-              return <>
-                <h3 style={{ color: "#fff", fontSize: 20, margin: "0 0 4px" }}>{t("db_gen_title")}</h3>
-                <p style={{ opacity: .9, fontSize: 13.5, marginBottom: 16 }}>{t("db_gen_sub")}</p>
-                <div style={{ maxWidth: 440, margin: "0 auto", textAlign: "left" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 14 }}>
-                    {steps.map((s, i) => { const done = i < cur, active = i === cur; return <div key={i} className="row" style={{ gap: 10, alignItems: "center" }}>
-                      {done ? <span style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,.92)", color: "#3F6BAE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>✓</span>
-                        : active ? <span className="spinner" style={{ width: 20, height: 20, border: "3px solid rgba(255,255,255,.35)", borderTopColor: "#fff", flexShrink: 0, margin: 0 }} />
-                        : <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,.45)", flexShrink: 0, boxSizing: "border-box" }} />}
-                      <span style={{ fontSize: 14, fontWeight: active ? 700 : 400, color: "#fff", opacity: done ? .75 : active ? 1 : .55 }}>{s}{active ? "…" : ""}</span>
-                    </div>; })}
-                  </div>
-                  <div style={{ height: 8, background: "rgba(255,255,255,.28)", borderRadius: 20, overflow: "hidden" }}><div style={{ width: pct + "%", height: "100%", background: "#fff", borderRadius: 20, transition: "width 1s linear" }} /></div>
-                  <div style={{ fontSize: 12.5, opacity: .9, marginTop: 6, textAlign: "right" }}>{pct}% · {genElapsed}s</div>
-                </div>
-              </>;
-            })() : genState === "error" ? <>
-              <div style={{ fontSize: 30 }}>🥺</div>
-              <h3 style={{ color: "#fff", fontSize: 19, margin: "4px 0 6px" }}>{t("db_gen_err_title")}</h3>
-              <p style={{ opacity: .95, fontSize: 14.5, marginBottom: 14 }}>{t("db_gen_err_sub")}</p>
-              <button className="btn-pulse" onClick={startContentGen} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "14px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_gen_retry")}</button>
-            </> : <>
+            {genState === "generating" ? genLoaderInner : genState === "error" ? genErrorInner : <>
               <div style={{ fontSize: 32 }}>📋</div>
               <h3 style={{ margin: "6px 0 6px", color: "#fff", fontSize: 21 }}>{t("db_confirm_title")}</h3>
               <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>{t("db_confirm_sub")}</p>
@@ -338,12 +343,19 @@ export default function Dashboard() {
           </Link>}
         </>}
 
-        {tab !== "strategy" && !contentReady && <div className="card center" style={{ padding: "30px 20px" }}>
-          <div style={{ fontSize: 32 }}>📋</div>
-          <h3 style={{ margin: "8px 0 4px" }}>{t("db_cal_empty_title")}</h3>
-          <p className="muted" style={{ fontSize: 14.5, maxWidth: 420, margin: "0 auto 14px" }}>{t("db_cal_empty_sub")}</p>
-          <button className="btn" onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("db_go_confirm")}</button>
-        </div>}
+        {tab !== "strategy" && !contentReady && (
+          genState === "generating" || genState === "error"
+            ? <div className="center" style={{ ...purpleCard, marginTop: 12 }}>{genState === "generating" ? genLoaderInner : genErrorInner}</div>
+            : <div className="card center" style={{ padding: "30px 20px" }}>
+              <div style={{ fontSize: 32 }}>📋</div>
+              <h3 style={{ margin: "8px 0 4px" }}>{t("db_cal_empty_title")}</h3>
+              <p className="muted" style={{ fontSize: 14.5, maxWidth: 420, margin: "0 auto 14px" }}>{t("db_cal_empty_sub")}</p>
+              <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn" onClick={startContentGen}>{t("db_gen_plan_now")}</button>
+                <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => { setTab("strategy"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("db_read_analysis_first")}</button>
+              </div>
+            </div>
+        )}
         {tab === "calendar" && contentReady && <>
           {!demo && <div className="between" style={{ flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
             <span className="muted" style={{ fontSize: 13 }}>{t("db_cal_label")}</span>

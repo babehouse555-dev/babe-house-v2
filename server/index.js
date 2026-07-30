@@ -1244,6 +1244,37 @@ app.post("/api/admin/regen-content", async (req, res) => {
   await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), result.model, JSON.stringify(flags), bpId]);
   res.json({ ok: true, blueprint_id: bpId, scripts: (result.content.scripts || []).length, calendar: (result.content.calendar || []).length, flags });
 });
+// วิเคราะห์ใหม่ทั้งเล่ม (analysis + content) ด้วย prompt ล่าสุด — ใช้ตอนบทวิเคราะห์จับนิชผิด (เช่น เอาบริการ/เครื่องมือมาเป็นแนวคอนเทนต์). ใส่ focus_hint ชี้แนวคอนเทนต์จริงได้
+app.post("/api/admin/reanalyze", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  if (!bpId) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const bp = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1 AND deleted_at IS NULL`, [bpId]);
+  if (!bp) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const current = safeJson(bp.blueprint_json) || {};
+  const reqRow = await one(`SELECT raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
+  const raw = safeJson(reqRow?.raw_payload_json) || {};
+  const lang = req.body?.lang === "en" ? "en" : (raw.lang === "en" ? "en" : "th");
+  const parsed = GenSchema.parse(normalizePayload(raw));
+  const hasNums = (m) => m && Object.values(m).some(v => typeof v === "number" && v > 0);
+  if (hasNums(current.metrics)) parsed.prior_metrics = current.metrics; // รูปถูกลบแล้ว → คงตัวเลขเดิม
+  const hint = String(req.body?.focus_hint || "").trim();
+  if (hint) parsed.form_responses.business_type = `${parsed.form_responses.business_type || ""}\n[หมายเหตุจากทีม: แนวคอนเทนต์หลักที่คนดูติดตามช่องนี้จริงๆ คือ "${hint.slice(0, 200)}" — ให้โฟกัสแนวนี้เป็นแกนของบทวิเคราะห์+คอนเทนต์ 30 วัน]`;
+  parsed.prev_context = await getPrevContext(parsed.email, bp.billing_cycle, parsed.instagram_account);
+  await acquireGen();
+  let out;
+  try {
+    const a = await generateAnalysis(parsed, lang);
+    const analysis = a.analysis;
+    if (hasNums(current.metrics) && !hasNums(analysis.metrics)) analysis.metrics = current.metrics;
+    const c = await generateContent(parsed, analysis, lang);
+    const merged = { ...analysis, calendar: c.content.calendar, scripts: c.content.scripts };
+    const flags = checkBlueprintQuality(merged, true);
+    await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`, [JSON.stringify(merged), c.model, JSON.stringify(flags), bpId]);
+    out = { theme: analysis.theme, positioning: analysis.positioning, scripts: (c.content.scripts || []).length, flags };
+  } finally { releaseGen(); }
+  res.json({ ok: true, blueprint_id: bpId, ...out });
+});
 // ต้นทุน token Gemini (เดือนนี้ + รวมทั้งหมด) สำหรับดูในหลังบ้าน
 app.get("/api/admin/ai-usage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

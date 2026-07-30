@@ -17,6 +17,7 @@ export default function Admin() {
   const [custOv, setCustOv] = useState(null);
   const [showCustDetail, setShowCustDetail] = useState(false);
   const [payerQ, setPayerQ] = useState("");
+  const [studentQ, setStudentQ] = useState("");
   const [qual, setQual] = useState(null);
   const [reviews, setReviews] = useState(null);
   const [feedback, setFeedback] = useState(null);
@@ -260,11 +261,15 @@ export default function Admin() {
         </table></div>
       </div>
 
-      <div className="card"><div className="between"><h3>ข้อมูลนักเรียน ({students.length}){filter && <span className="muted"> · กรอง: {filter}</span>}</h3><div className="row">{filter && <button className="link" onClick={() => loadStudents(null)} style={{ background: "none", border: 0 }}>ดูทั้งหมด</button>}<button className="btn ghost" onClick={csv} style={{ padding: "8px 14px" }}>⬇ CSV</button></div></div>
-        <div className="scroll" style={{ marginTop: 12 }}><table><thead><tr><th>วันที่</th><th>อีเมล</th><th>โทร</th><th>IG</th><th>ธุรกิจ</th><th>อุตสาหกรรม</th><th>เป้าหมาย</th><th>สถานะ</th><th>เล่ม</th></tr></thead>
-          <tbody>{students.length === 0 ? <tr><td colSpan={9} className="muted">ยังไม่มีข้อมูล</td></tr> : students.map((s, i) => <tr key={i}><td>{String(s.created_at || "").slice(0, 10)}</td><td>{s.email}</td><td style={{ whiteSpace: "nowrap" }}>{s.phone ? <a className="link" href={`tel:${s.phone}`}>📞 {s.phone}</a> : "-"}</td><td style={{ whiteSpace: "nowrap" }}>{s.instagram_account}</td><td style={{ maxWidth: 200 }} title={s.business_type}>{(s.business_type || "").slice(0, 45)}{(s.business_type || "").length > 45 ? "…" : ""}</td><td style={{ whiteSpace: "nowrap" }}>{s.industry || "-"}</td><td style={{ maxWidth: 160 }} title={s.monthly_goal}>{(s.monthly_goal || "").slice(0, 32)}{(s.monthly_goal || "").length > 32 ? "…" : ""}</td><td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>{s.stage || stBadge(s.status)}</td><td>{s.blueprint_id && s.user_id ? <a className="link" target="_blank" href={`/dashboard?user_id=${encodeURIComponent(s.user_id)}&billing_cycle=${encodeURIComponent(s.billing_cycle)}&blueprint_id=${encodeURIComponent(s.blueprint_id)}`}>เปิด ›</a> : "-"}</td></tr>)}</tbody>
+      {(() => { const sq = studentQ.trim().toLowerCase();
+        const sFiltered = sq ? students.filter(s => `${s.email || ""} ${s.instagram_account || ""} ${s.business_type || ""} ${s.monthly_goal || ""} ${s.industry || ""}`.toLowerCase().includes(sq)) : students;
+        return (
+      <div className="card"><div className="between" style={{ flexWrap: "wrap", gap: 8 }}><h3 style={{ margin: 0 }}>ข้อมูลนักเรียน ({sq ? `${sFiltered.length}/${students.length}` : students.length}){filter && <span className="muted"> · กรอง: {filter}</span>}</h3><div className="row" style={{ gap: 8, flexWrap: "wrap" }}><input value={studentQ} onChange={e => setStudentQ(e.target.value)} placeholder="🔍 ค้นหา อีเมล/IG/ธุรกิจ" style={{ fontSize: 12.5, padding: "7px 11px", border: "1px solid var(--border)", borderRadius: 8, width: 200, maxWidth: "100%" }} />{filter && <button className="link" onClick={() => loadStudents(null)} style={{ background: "none", border: 0 }}>ดูทั้งหมด</button>}<button className="btn ghost" onClick={csv} style={{ padding: "8px 14px" }}>⬇ CSV</button></div></div>
+        <div className="scroll" style={{ marginTop: 12, maxHeight: 520, overflowY: "auto" }}><table><thead><tr><th>วันที่</th><th>อีเมล</th><th>โทร</th><th>IG</th><th>ธุรกิจ</th><th>อุตสาหกรรม</th><th>เป้าหมาย</th><th>สถานะ</th><th>เล่ม</th></tr></thead>
+          <tbody>{sFiltered.length === 0 ? <tr><td colSpan={9} className="muted">{sq ? "ไม่พบนักเรียนที่ค้นหา" : "ยังไม่มีข้อมูล"}</td></tr> : sFiltered.map((s, i) =><tr key={i}><td>{String(s.created_at || "").slice(0, 10)}</td><td>{s.email}</td><td style={{ whiteSpace: "nowrap" }}>{s.phone ? <a className="link" href={`tel:${s.phone}`}>📞 {s.phone}</a> : "-"}</td><td style={{ whiteSpace: "nowrap" }}>{s.instagram_account}</td><td style={{ maxWidth: 200 }} title={s.business_type}>{(s.business_type || "").slice(0, 45)}{(s.business_type || "").length > 45 ? "…" : ""}</td><td style={{ whiteSpace: "nowrap" }}>{s.industry || "-"}</td><td style={{ maxWidth: 160 }} title={s.monthly_goal}>{(s.monthly_goal || "").slice(0, 32)}{(s.monthly_goal || "").length > 32 ? "…" : ""}</td><td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>{s.stage || stBadge(s.status)}</td><td>{s.blueprint_id && s.user_id ? <a className="link" target="_blank" href={`/dashboard?user_id=${encodeURIComponent(s.user_id)}&billing_cycle=${encodeURIComponent(s.billing_cycle)}&blueprint_id=${encodeURIComponent(s.blueprint_id)}`}>เปิด ›</a> : "-"}</td></tr>)}</tbody>
         </table></div>
       </div>
+        ); })()}
     </div>
   );
 }

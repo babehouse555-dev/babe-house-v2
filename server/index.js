@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import crypto from "node:crypto";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
@@ -80,6 +81,15 @@ app.use("/api/start-generation", rateLimit(60, M10));
 // ---------- helpers ----------
 const uid = (p) => `${p}_${crypto.randomUUID()}`;
 const safeJson = (t) => { try { return JSON.parse(String(t || "{}")); } catch { return {}; } };
+
+// 🖼️ รูปปกคอร์ส/รูปผู้สอน — เดิมลิงก์ตรงจากเซิร์ฟเวอร์ ZeroDesign (เว็บเก่า)
+// ถ้าเขาลบไฟล์หรือหยุดต่ออายุเซิร์ฟเวอร์ = รูปหายทั้งเว็บโดยเราคุมอะไรไม่ได้เลย
+// จึงโหลดมาเก็บไว้เองที่ web/public/academy-img แล้วสลับ URL ตอนส่งออก (ไม่ต้องแตะข้อมูลใน DB)
+// ถ้าเจอ URL ที่ไม่มีในรายการ (เช่น คิมเพิ่มคอร์สใหม่ทีหลัง) จะคืนของเดิมไป — ไม่พัง
+let ACADEMY_IMG = {};
+try { ACADEMY_IMG = JSON.parse(readFileSync(path.join(__dirname, "academy-images.json"), "utf8")); }
+catch (e) { console.warn("[img] โหลดรายการรูปคอร์สไม่ได้:", e.message); }
+const localImg = (u) => ACADEMY_IMG[String(u || "")] || u || "";
 const normEmail = (e) => String(e || "").trim().toLowerCase();
 const maskEmail = (e) => { const [u, d] = String(e || "").split("@"); return d ? `${u.slice(0, 2)}***@${d}` : "***"; };
 const appBaseUrl = () => (process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
@@ -1249,8 +1259,8 @@ app.get("/api/academy/catalog", async (req, res) => {
     for (const r of tutors) { const d = safeJson(r.data_json) || {}; tutMap[r.legacy_id] = { name: d.name || "", image: d.profileImage || "" }; }
     res.json({ ok: true, count: courses.length, courses: courses.map(c => ({
       id: c.legacy_id, name: c.name, price: Number(c.price || 0), price_sale: Number(c.price_sale || 0), flag_sale: c.flag_sale === "1",
-      category: catMap[c.category] || "อื่นๆ", instructor: (tutMap[c.instructor] || {}).name || "", instructor_image: (tutMap[c.instructor] || {}).image || "",
-      image: c.featured_image_url || "", lessons: Number(c.lessons || 0),
+      category: catMap[c.category] || "อื่นๆ", instructor: (tutMap[c.instructor] || {}).name || "", instructor_image: localImg((tutMap[c.instructor] || {}).image),
+      image: localImg(c.featured_image_url), lessons: Number(c.lessons || 0),
     })) });
   } catch (e) { console.error("academy catalog", e.message); res.status(500).json({ ok: false, error: "CATALOG_FAILED" }); }
 });
@@ -1263,7 +1273,7 @@ app.get("/api/academy/course/:id", async (req, res) => {
     const cat = safeJson((await one(`SELECT data_json FROM academy_categories WHERE legacy_id=$1`, [c.category]))?.data_json) || {};
     const tut = safeJson((await one(`SELECT data_json FROM academy_tutors WHERE legacy_id=$1`, [c.instructor]))?.data_json) || {};
     res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, price: Number(c.price || 0), price_sale: Number(c.price_sale || 0), flag_sale: c.flag_sale === "1",
-        image: c.featured_image_url, duration: c.duration, category: cat.name || "", instructor: tut.name || "", instructor_image: tut.profileImage || "", instructor_detail: tut.detail || "" },
+        image: localImg(c.featured_image_url), duration: c.duration, category: cat.name || "", instructor: tut.name || "", instructor_image: localImg(tut.profileImage), instructor_detail: tut.detail || "" },
       showcase: await q(`SELECT kind, url, caption, student_name FROM academy_showcase WHERE course_id=$1 AND active ORDER BY seq, created_at`, [id]),
       lessons: lines.map(l => ({ name: l.name, time: l.time })) });
   } catch (e) { res.status(500).json({ ok: false, error: "COURSE_FAILED" }); }
@@ -1295,7 +1305,7 @@ app.get("/api/academy/my-courses", async (req, res) => {
         (SELECT COUNT(*) FROM academy_progress p WHERE p.email = lower($2) AND p.course_id = c.legacy_id) AS done,
         (SELECT cert_id FROM academy_certificates ce WHERE lower(ce.email) = lower($2) AND ce.course_id = c.legacy_id LIMIT 1) AS cert_id
       FROM academy_courses c WHERE c.legacy_id = ANY($1)`, [ids, email]);
-    res.json({ ok: true, courses: courses.map(c => ({ id: c.legacy_id, name: c.name, image: c.featured_image_url, lessons: Number(c.lessons || 0), done: Number(c.done || 0), cert_id: c.cert_id || null })) });
+    res.json({ ok: true, courses: courses.map(c => ({ id: c.legacy_id, name: c.name, image: localImg(c.featured_image_url), lessons: Number(c.lessons || 0), done: Number(c.done || 0), cert_id: c.cert_id || null })) });
   } catch (e) { console.error("my-courses", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 app.get("/api/academy/learn/:id", async (req, res) => {

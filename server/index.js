@@ -199,7 +199,7 @@ const CheckoutSchema = z.object({
   payload: z.object({
     user_id: z.string().min(1), instagram_account: z.string().min(1), email: z.string().email().optional(), referred_by: z.string().optional(),
     meta_purchase: z.object({ tier: z.literal("Premium_490"), billing_cycle: z.string().min(1) }),
-    form_responses: z.object({ self_term: z.string().optional().default(""), audience_term: z.string().optional().default(""), catchphrases: z.string().optional().default(""), tone: z.string().optional().default(""), business_type: z.string().optional().default(""), gender: z.string().optional().default(""), age_range: z.string().optional().default(""), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default("") }),
+    form_responses: z.object({ self_term: z.string().optional().default(""), audience_term: z.string().optional().default(""), catchphrases: z.string().optional().default(""), tone: z.string().optional().default(""), business_type: z.string().optional().default(""), gender: z.string().optional().default(""), age_range: z.string().optional().default(""), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default(""), phone: z.string().optional().default("") }),
     insight_screenshot_base64: z.string().nullable().optional(), insight_images: z.array(z.string()).max(8).optional()
   })
 }).passthrough();
@@ -440,8 +440,8 @@ async function generateBlueprintForPayload(payload) {
   await upsertUser({ user_id: parsed.user_id, instagram_account: parsed.instagram_account, business_type: parsed.form_responses.business_type });
   await upsertCustomer(parsed.email, parsed.instagram_account);
   const industry = classifyKeyword(`${parsed.form_responses.business_type} ${parsed.form_responses.monthly_goal}`);
-  await run(`INSERT INTO blueprint_requests (request_id,user_id,instagram_account,email,billing_cycle,business_type,starting_point,monthly_goal,competitor_1,competitor_2,insight_screenshot_base64,insight_images_json,raw_payload_json,industry) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry]);
+  await run(`INSERT INTO blueprint_requests (request_id,user_id,instagram_account,email,billing_cycle,business_type,starting_point,monthly_goal,competitor_1,competitor_2,insight_screenshot_base64,insight_images_json,raw_payload_json,industry,phone) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    [requestId, parsed.user_id, parsed.instagram_account, parsed.email || null, parsed.meta_purchase.billing_cycle, parsed.form_responses.business_type, parsed.form_responses.starting_point, parsed.form_responses.monthly_goal, parsed.form_responses.competitor_1, parsed.form_responses.competitor_2, firstImg, JSON.stringify(parsed.insight_images || (firstImg ? [firstImg] : [])), JSON.stringify(parsed), industry, parsed.form_responses.phone || null]);
   // สเต็ป 1: เจน "บทวิเคราะห์" ก่อน (เร็ว) — ยังไม่เจน 30 สคริปต์ จนกว่าลูกค้าจะยืนยันว่าแม่น
   parsed.prev_context = await getPrevContext(parsed.email, parsed.meta_purchase.billing_cycle, parsed.instagram_account); // เดือน 2+ ต่อยอด แยกตามช่อง
   const { analysis, model, usage } = await generateAnalysis(parsed, lang);
@@ -1352,7 +1352,7 @@ async function getStudents(industry) {
     FROM blueprint_orders o
     LEFT JOIN blueprints b ON b.blueprint_id = o.blueprint_id
     LEFT JOIN LATERAL (
-      SELECT industry, business_type, starting_point, monthly_goal, competitor_1, competitor_2
+      SELECT industry, business_type, starting_point, monthly_goal, competitor_1, competitor_2, phone
       FROM blueprint_requests rr WHERE rr.user_id = o.user_id AND rr.billing_cycle = o.billing_cycle
       ORDER BY rr.created_at DESC LIMIT 1
     ) r ON true
@@ -1362,7 +1362,7 @@ async function getStudents(industry) {
   let students = rows.map(o => {
     return {
       created_at: o.created_at, email: o.email, user_id: o.user_id, billing_cycle: o.billing_cycle,
-      phone: "", // ตัดออกเพื่อความเร็ว — เดิมต้องอ่าน order_payload_json ทั้งก้อน (มี base64 รูป) แค่เพื่อ phone → ช้า/timeout ตอนโหลดสูง
+      phone: o.phone || "", // จากคอลัมน์ blueprint_requests.phone (เร็ว ไม่ต้องอ่าน payload ทั้งก้อน) — บังคับกรอกแล้วตั้งแต่ 31 ก.ค.
       instagram_account: o.instagram_account || "",
       business_type: o.business_type || "",
       starting_point: o.starting_point || "",

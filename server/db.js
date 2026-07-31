@@ -228,6 +228,7 @@ export async function initDb() {
     ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS credit_grant INTEGER DEFAULT 0;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS activation_reminded_at TIMESTAMPTZ;
+    ALTER TABLE blueprint_requests ADD COLUMN IF NOT EXISTS phone TEXT;
     -- seed ครั้งเดียว: @bibbidiibo ได้รับเมลเตือน activation แบบส่งมือไปแล้ว (31 ก.ค.) → กัน cron ส่งซ้ำ (idempotent ด้วย IS NULL)
     UPDATE blueprints SET activation_reminded_at=now() WHERE blueprint_id='bp_0132d190-6cf9-42c2-ba4a-a825a75c8d31' AND activation_reminded_at IS NULL;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 0;

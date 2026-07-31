@@ -235,6 +235,7 @@ export default function Form() {
     if (step === 1) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email")); return; }
       if (!f.instagram_account.trim()) { setErr(t("fm_v_channel")); return; }
+      if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); return; } // บังคับเบอร์ ≥9 หลัก — ครูพี่คิมต้องติดต่อได้ถ้าเล่มมีปัญหา
     }
     if (step === 3 && hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); return; } // บังคับแนบรูป Insight — ไม่มีรูป บทวิเคราะห์จะมั่ว
     setStep(s => s + 1); toTop();
@@ -245,6 +246,7 @@ export default function Form() {
     if (step !== 4) { goNext(); return; } // กด Enter ก่อนถึงขั้นสุดท้าย = ไปขั้นถัดไป ไม่ใช่ส่งฟอร์ม
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email2")); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock เบอร์โทร
     if (hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); setStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock: มีช่องต้องมีรูป Insight เสมอ
     if (!consent) { setErr(t("fm_v_consent")); return; }
     setBusy(true); setErr("");
@@ -379,7 +381,7 @@ export default function Form() {
             <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>{t("fm_multi_hint")}</div>
           </div>
           <div className="field"><label>{t("fm_call_you")} <span className="muted">{t("fm_optional")}</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="Namo / Mint" /><div className="hint">{t("fm_call_you_hint")}</div></div>
-          <div className="field"><label>{t("fm_phone_label")} <span className="muted">{t("fm_optional")}</span></label><input type="tel" value={f.phone} onChange={upd("phone")} onFocus={() => setFocus(null)} placeholder="08x-xxx-xxxx" /><div className="hint">{t("fm_phone_hint")}</div></div>
+          <div className="field"><label>{t("fm_phone_label")}</label><input type="tel" value={f.phone} onChange={upd("phone")} onFocus={() => setFocus(null)} placeholder="08x-xxx-xxxx" /><div className="hint">{t("fm_phone_hint")}</div></div>
         </div>}
 
         {/* ===== ขั้น 2: เกี่ยวกับช่อง + เป้าหมาย ===== */}

@@ -630,6 +630,7 @@ const DICT = {
   fm_v_email: { th: "ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่ม + เข้าดูย้อนหลัง", en: "Please enter a valid email — it's for sending your book + access" },
   fm_v_email2: { th: "ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่มให้ + เข้าดูย้อนหลังทุกเดือน", en: "Please enter a valid email — for your book + monthly access" },
   fm_v_channel: { th: "ช่วยกรอกชื่อช่อง/แฮนเดิลด้วยนะคะ", en: "Please enter your channel name/handle" },
+  fm_v_phone: { th: "ช่วยกรอกเบอร์โทรด้วยนะคะ 🩵 เผื่อเล่มมีปัญหา ครูพี่คิมจะได้ติดต่อไปช่วยแก้ให้ทันค่ะ", en: "Please add your phone number 🩵 so Kim can reach you quickly if your book needs a fix" },
   fm_v_channel2: { th: "ช่วยกรอกชื่อช่อง/แฮนเดิล (⭐) ให้หน่อยนะคะ — ที่เหลือไม่บังคับค่ะ", en: "Please enter your channel name/handle (⭐) — the rest is optional" },
   fm_v_consent: { th: "กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนค่ะ", en: "Please accept the privacy policy first" },
   fm_confirm_noimg: { th: "ยังไม่ได้แนบรูปสถิติเลยค่ะ 📊\n\nรูป Insight ช่วยให้วิเคราะห์ตัวเลขจริงได้แม่นขึ้นเยอะ\n\nกด \"ตกลง\" = ไปต่อโดยไม่แนบ\nกด \"ยกเลิก\" = กลับไปแนบรูป", en: "No stats attached yet 📊\n\nInsights make the analysis much more accurate.\n\n\"OK\" = continue without\n\"Cancel\" = go back and attach", en_ok: true },

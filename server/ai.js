@@ -220,10 +220,20 @@ export async function generateBlueprint(parsed) {
 }
 
 // ===== ข้อมูลผู้ใช้ (ใช้ร่วมทั้ง analysis + content) =====
+// บอก AI ว่า "วันนี้คือวันที่เท่าไหร่" — ไม่งั้นมันเดาปีจากข้อมูลที่เทรนมา (เคยเจนเป็น "เทรนด์ 2024" ทั้งที่ปี 2026)
+function todayBlock() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+  return `\n\n📅 *** วันนี้คือ ${d.getDate()} ${months[d.getMonth()]} ค.ศ. ${y} (พ.ศ. ${y + 543}) *** — ปีปัจจุบันคือ ${y}
+⛔⛔ ห้ามอ้างอิงปีเก่าเด็ดขาด (เช่น "เทรนด์ 2024", "อัปเดต 2023", "ปีนี้ 2024") เพราะจะทำให้คอนเทนต์ดูเก่าล้าสมัยทันที
+✅ วิธีที่ถูก: (ก) **ไม่ต้องใส่เลขปีเลย** ใช้คำว่า "ตอนนี้ / ปีนี้ / ช่วงนี้ / ล่าสุด" แทน (คอนเทนต์จะไม่เก่าเร็ว — ดีที่สุด) หรือ (ข) ถ้าจำเป็นต้องใส่จริงๆ ให้ใช้ ${y} เท่านั้น`;
+}
+
 function buildUserText(parsed) {
   const fr = parsed.form_responses;
   const voice = [fr.self_term && `แทนตัวเองว่า "${fr.self_term}"`, fr.audience_term && `เรียกคนดูว่า "${fr.audience_term}"`, fr.catchphrases && `คำติดปาก/สไตล์พูด: ${fr.catchphrases}`, fr.tone && `โทน: ${fr.tone}`].filter(Boolean).join(" · ") || "(ไม่ระบุ)";
-  return `ข้อมูลผู้ใช้:\ninstagram_account: ${parsed.instagram_account}\nชื่อที่อยากให้เรียก (display_name): ${fr.display_name || "(ไม่ระบุ — ใช้ชื่อช่อง/@handle หรือ 'คุณ' ห้ามเดาชื่อจากรูป)"}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\n🎤 น้ำเสียง/ตัวตนของเจ้าของช่อง (ใช้กับบทพูดในสคริปต์ให้เหมือนเขาพูดเอง): ${voice}\n\nคำตอบจากฟอร์ม:\nbusiness_type (ช่องเกี่ยวกับอะไร/ทำคอนเทนต์แนวไหน): ${fr.business_type || "(ไม่ระบุ — ให้วิเคราะห์จากรูป Insight + ข้อมูลที่เหลือ)"}\nเพศเจ้าของช่อง: ${fr.gender || "(ไม่ระบุ)"} · ช่วงอายุ: ${fr.age_range || "(ไม่ระบุ)"}\nwork_style (สถานะ/บทบาทของเจ้าของช่อง เช่น นักศึกษา/พนักงานประจำ/ฟรีแลนซ์/เจ้าของร้าน — ไม่จำเป็นต้องขายของ): ${fr.work_style || "(ไม่ระบุ)"}\naudience (คนดู/ผู้ติดตามหลัก): ${fr.audience || "(ไม่ระบุ)"}\nexperience (ทำมานานแค่ไหน): ${fr.experience || "(ไม่ระบุ)"}\ngoal_primary (เป้าหมายที่อยากได้เดือนนี้ อาจมีหลายข้อ): ${fr.goal_primary || "(ไม่ระบุ)"}\nเรื่องราว/ตัวตนของเจ้าของช่อง (จุดเริ่มต้น/จุดต่าง/เป้าหมายระยะยาว — สำคัญมากต่อความเป็นตัวเขา ให้ดึงมาใช้): ${fr.starting_point || "(ไม่ระบุ)"}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}\n\n⚠️ ต้องใช้ work_style + audience + experience กำหนดทิศทางให้ "ตรงตัวคนนี้จริงๆ" — อาชีพเดียวกันแต่ทำงานคนละแบบ/ลูกค้าคนละกลุ่ม ต้องได้แผนคนละแบบ ห้ามเหมารวม (เช่น ช่างทำผมฟรีแลนซ์ ≠ เจ้าของร้าน)${prevBlock(parsed)}${trendsBlock(parsed)}`;
+  return `ข้อมูลผู้ใช้:\ninstagram_account: ${parsed.instagram_account}\nชื่อที่อยากให้เรียก (display_name): ${fr.display_name || "(ไม่ระบุ — ใช้ชื่อช่อง/@handle หรือ 'คุณ' ห้ามเดาชื่อจากรูป)"}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\n🎤 น้ำเสียง/ตัวตนของเจ้าของช่อง (ใช้กับบทพูดในสคริปต์ให้เหมือนเขาพูดเอง): ${voice}\n\nคำตอบจากฟอร์ม:\nbusiness_type (ช่องเกี่ยวกับอะไร/ทำคอนเทนต์แนวไหน): ${fr.business_type || "(ไม่ระบุ — ให้วิเคราะห์จากรูป Insight + ข้อมูลที่เหลือ)"}\nเพศเจ้าของช่อง: ${fr.gender || "(ไม่ระบุ)"} · ช่วงอายุ: ${fr.age_range || "(ไม่ระบุ)"}\nwork_style (สถานะ/บทบาทของเจ้าของช่อง เช่น นักศึกษา/พนักงานประจำ/ฟรีแลนซ์/เจ้าของร้าน — ไม่จำเป็นต้องขายของ): ${fr.work_style || "(ไม่ระบุ)"}\naudience (คนดู/ผู้ติดตามหลัก): ${fr.audience || "(ไม่ระบุ)"}\nexperience (ทำมานานแค่ไหน): ${fr.experience || "(ไม่ระบุ)"}\ngoal_primary (เป้าหมายที่อยากได้เดือนนี้ อาจมีหลายข้อ): ${fr.goal_primary || "(ไม่ระบุ)"}\nเรื่องราว/ตัวตนของเจ้าของช่อง (จุดเริ่มต้น/จุดต่าง/เป้าหมายระยะยาว — สำคัญมากต่อความเป็นตัวเขา ให้ดึงมาใช้): ${fr.starting_point || "(ไม่ระบุ)"}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}\n\n⚠️ ต้องใช้ work_style + audience + experience กำหนดทิศทางให้ "ตรงตัวคนนี้จริงๆ" — อาชีพเดียวกันแต่ทำงานคนละแบบ/ลูกค้าคนละกลุ่ม ต้องได้แผนคนละแบบ ห้ามเหมารวม (เช่น ช่างทำผมฟรีแลนซ์ ≠ เจ้าของร้าน)${todayBlock()}${prevBlock(parsed)}${trendsBlock(parsed)}`;
 }
 
 // เดือน 2+ (ลูกค้าเก่า): ใส่บริบท "ทุกเดือนที่ผ่านมา" → ต่อยอดจากผลจริง ไม่ใช่เริ่มใหม่ + ห้ามคอนเทนต์ซ้ำทุกเดือนเก่า
@@ -770,6 +780,13 @@ export function checkBlueprintQuality(bp, hasImage) {
   const jargon = ["funnel", "conversion", "micro-influencer", "micro influencer", "engagement", "positioning", "retention", "call to action", "awareness", "branding"];
   const found = jargon.filter(w => prose.includes(w));
   if (found.length) flags.push(`ศัพท์เทคนิคหลุด: ${[...new Set(found)].join(", ")}`);
+  // อ้างอิงปีเก่า (เช่น "เทรนด์ 2024" ทั้งที่ปีนี้ 2026) = คอนเทนต์ดูล้าสมัยทันที
+  const nowY = new Date().getFullYear();
+  const oldYears = new Set();
+  const scanYear = (s) => { for (const m of String(s || "").matchAll(/\b(20[0-9]{2})\b/g)) { const y = Number(m[1]); if (y < nowY) oldYears.add(y); } };
+  scripts.forEach(s => { (s.beats || []).forEach(b => scanYear(b.say)); scanYear(s.cap); scanYear(s.title); });
+  calendar.forEach(c => { scanYear(c.t); scanYear(c.h); });
+  if (oldYears.size) flags.push(`อ้างอิงปีเก่า (${[...oldYears].sort().join(", ")}) ทั้งที่ปีนี้ ${nowY}`);
   // "คิม" หลุดในบทพูดสคริปต์ (ควรถูก sanitize แล้ว)
   if (scripts.some(s => (s.beats || []).some(b => /คิม/.test(String(b.say || ""))))) flags.push('มี "คิม" หลุดในสคริปต์');
   // "Babe House" หลุดในสคริปต์/แคปชันลูกค้า (แบรนด์เรา ไม่ใช่แบรนด์ลูกค้า — ควรถูก sanitize แล้ว)

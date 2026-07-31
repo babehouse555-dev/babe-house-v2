@@ -229,6 +229,53 @@ export async function initDb() {
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS activation_reminded_at TIMESTAMPTZ;
     ALTER TABLE blueprint_requests ADD COLUMN IF NOT EXISTS phone TEXT;
+    -- ===== Academy (เว็บเก่า babehouseacademy.com) — ข้อมูลนำเข้าจาก DB dump · แยกขาดจากระบบหลัก ลูกค้าไม่เห็น =====
+    -- ⚠️ ไม่นำเข้า password/salt เดิมโดยเจตนา (ระบบใหม่จะใช้ OTP อีเมลแทน = ปลอดภัยกว่า)
+    CREATE TABLE IF NOT EXISTS academy_users (
+      legacy_id TEXT PRIMARY KEY,
+      username TEXT, name TEXT, email TEXT, phone TEXT,
+      role TEXT, gender TEXT, age TEXT, province TEXT, education TEXT,
+      is_active TEXT, legacy_created TEXT,
+      imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_orders (
+      legacy_id TEXT PRIMARY KEY,
+      legacy_user_id TEXT, user_name TEXT,
+      course_id TEXT, course_name TEXT,
+      sub_total TEXT, total TEXT, qty TEXT, status TEXT,
+      legacy_created TEXT,
+      imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_order_lines (
+      legacy_id TEXT PRIMARY KEY,
+      order_id TEXT, course_id TEXT, course_name TEXT,
+      price TEXT, flag_sale TEXT, price_sale TEXT,
+      imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_courses (
+      legacy_id TEXT PRIMARY KEY,
+      name TEXT, course_code TEXT, detail TEXT,
+      price TEXT, price_sale TEXT, flag_sale TEXT,
+      category TEXT, instructor TEXT, featured_image_url TEXT,
+      duration TEXT, tag TEXT, material TEXT, is_active TEXT, legacy_created TEXT,
+      imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_course_lines (
+      legacy_id TEXT PRIMARY KEY,
+      course_id TEXT, name TEXT, time TEXT, url TEXT,
+      parent_line_id TEXT, seq TEXT,
+      imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_tutors (
+      legacy_id TEXT PRIMARY KEY, data_json TEXT, imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_categories (
+      legacy_id TEXT PRIMARY KEY, data_json TEXT, imported_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_academy_users_email ON academy_users(lower(email));
+    CREATE INDEX IF NOT EXISTS idx_academy_orders_user ON academy_orders(legacy_user_id);
+    CREATE INDEX IF NOT EXISTS idx_academy_order_lines_order ON academy_order_lines(order_id);
+    CREATE INDEX IF NOT EXISTS idx_academy_course_lines_course ON academy_course_lines(course_id);
     -- seed ครั้งเดียว: @bibbidiibo ได้รับเมลเตือน activation แบบส่งมือไปแล้ว (31 ก.ค.) → กัน cron ส่งซ้ำ (idempotent ด้วย IS NULL)
     UPDATE blueprints SET activation_reminded_at=now() WHERE blueprint_id='bp_0132d190-6cf9-42c2-ba4a-a825a75c8d31' AND activation_reminded_at IS NULL;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 0;

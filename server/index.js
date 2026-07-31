@@ -1172,6 +1172,49 @@ app.post("/api/admin/send-email", async (req, res) => {
   try { const sent = await sendEmail(to, subject, wrap(body)); res.json({ ok: true, to, subject, sent }); }
   catch (e) { res.status(500).json({ ok: false, error: "SEND_FAILED", message: e.message }); }
 });
+
+// ===== Academy import (เว็บเก่า) — รับข้อมูลจาก DB dump เป็น batch · upsert ด้วย legacy_id = รันซ้ำได้ไม่ซ้ำแถว =====
+const ACADEMY_COLS = {
+  academy_users: ["legacy_id", "username", "name", "email", "phone", "role", "gender", "age", "province", "education", "is_active", "legacy_created"],
+  academy_orders: ["legacy_id", "legacy_user_id", "user_name", "course_id", "course_name", "sub_total", "total", "qty", "status", "legacy_created"],
+  academy_order_lines: ["legacy_id", "order_id", "course_id", "course_name", "price", "flag_sale", "price_sale"],
+  academy_courses: ["legacy_id", "name", "course_code", "detail", "price", "price_sale", "flag_sale", "category", "instructor", "featured_image_url", "duration", "tag", "material", "is_active", "legacy_created"],
+  academy_course_lines: ["legacy_id", "course_id", "name", "time", "url", "parent_line_id", "seq"],
+  academy_tutors: ["legacy_id", "data_json"],
+  academy_categories: ["legacy_id", "data_json"],
+};
+app.post("/api/admin/academy-import", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const table = String(req.body?.table || "");
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  const cols = ACADEMY_COLS[table];
+  if (!cols) return res.status(400).json({ ok: false, error: "BAD_TABLE" });
+  if (!rows.length) return res.json({ ok: true, table, upserted: 0 });
+  let upserted = 0;
+  try {
+    for (const r of rows) {
+      if (!r || r.legacy_id == null || String(r.legacy_id) === "") continue;
+      const vals = cols.map(c => { const v = r[c]; return v == null || v === "" ? null : String(v); });
+      const sets = cols.slice(1).map(c => `${c}=EXCLUDED.${c}`).join(",");
+      await run(`INSERT INTO ${table} (${cols.join(",")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(",")}) ON CONFLICT (legacy_id) DO UPDATE SET ${sets}`, vals);
+      upserted++;
+    }
+    res.json({ ok: true, table, upserted });
+  } catch (e) { console.error("academy-import", e.message); res.status(500).json({ ok: false, error: "IMPORT_FAILED", message: e.message, upserted }); }
+});
+app.get("/api/admin/academy-stats", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const out = {};
+  for (const t of Object.keys(ACADEMY_COLS)) {
+    const r = await one(`SELECT COUNT(*) c FROM ${t}`).catch(() => ({ c: -1 }));
+    out[t] = Number(r.c);
+  }
+  const em = await one(`SELECT COUNT(DISTINCT lower(email)) c FROM academy_users WHERE email LIKE '%@%'`).catch(() => ({ c: -1 }));
+  out.unique_emails = Number(em.c);
+  const paid = await one(`SELECT COUNT(*) c, COALESCE(SUM(NULLIF(total,'')::numeric),0) rev FROM academy_orders WHERE status='Close'`).catch(() => ({ c: -1, rev: 0 }));
+  out.closed_orders = Number(paid.c); out.closed_revenue = Number(paid.rev);
+  res.json({ ok: true, stats: out });
+});
 // ส่ง backup เข้าอีเมลแอดมินเป็นไฟล์แนบ (auto-email ทุกสัปดาห์ — สำรองนอกเซิร์ฟเวอร์ ฟรี ไม่ต้อง Railway Pro)
 async function emailBackup() {
   const { dump, rows } = await buildBackupDump();

@@ -32,10 +32,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const orderId = session.metadata?.order_id;
     const claimed = await run(`INSERT INTO payment_events (provider_event_id, type, order_id) VALUES ($1,$2,$3) ON CONFLICT (provider_event_id) DO NOTHING`, [event.id, event.type, orderId || null]);
     if (claimed.rowCount !== 1) return res.json({ received: true, duplicate: true });
+    const academyPurchaseId = session.metadata?.academy_purchase_id;
     switch (event.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
-        if (orderId) await markOrderPaid(orderId, "stripe", session.id); break;
+        if (orderId) await markOrderPaid(orderId, "stripe", session.id);
+        if (academyPurchaseId) { const p = await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [academyPurchaseId]); if (p) await finalizeAcademyPurchase(p); }
+        break;
       case "checkout.session.async_payment_failed":
         if (orderId) await run(`UPDATE blueprint_orders SET payment_status='failed' WHERE order_id=$1`, [orderId]); break;
       case "checkout.session.expired":
@@ -1256,9 +1259,10 @@ app.get("/api/academy/my-courses", async (req, res) => {
     if (!ids.length) return res.json({ ok: true, courses: [] });
     const courses = await q(`SELECT c.legacy_id, c.name, c.featured_image_url, c.category,
         (SELECT COUNT(*) FROM academy_course_lines l WHERE l.course_id = c.legacy_id) AS lessons,
-        (SELECT COUNT(*) FROM academy_progress p WHERE p.email = lower($2) AND p.course_id = c.legacy_id) AS done
+        (SELECT COUNT(*) FROM academy_progress p WHERE p.email = lower($2) AND p.course_id = c.legacy_id) AS done,
+        (SELECT cert_id FROM academy_certificates ce WHERE lower(ce.email) = lower($2) AND ce.course_id = c.legacy_id LIMIT 1) AS cert_id
       FROM academy_courses c WHERE c.legacy_id = ANY($1)`, [ids, email]);
-    res.json({ ok: true, courses: courses.map(c => ({ id: c.legacy_id, name: c.name, image: c.featured_image_url, lessons: Number(c.lessons || 0), done: Number(c.done || 0) })) });
+    res.json({ ok: true, courses: courses.map(c => ({ id: c.legacy_id, name: c.name, image: c.featured_image_url, lessons: Number(c.lessons || 0), done: Number(c.done || 0), cert_id: c.cert_id || null })) });
   } catch (e) { console.error("my-courses", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 app.get("/api/academy/learn/:id", async (req, res) => {
@@ -1276,9 +1280,75 @@ app.get("/api/academy/learn/:id", async (req, res) => {
     const lines = await q(`SELECT legacy_id, name, time, url, seq FROM academy_course_lines WHERE course_id=$1 ORDER BY COALESCE(NULLIF(seq,'')::int, 999), legacy_id::int`, [id]);
     const doneRows = email ? await q(`SELECT lesson_id FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, id]) : [];
     const doneSet = new Set(doneRows.map(r => r.lesson_id));
-    res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, duration: c.duration },
+    const cert = email ? await one(`SELECT cert_id FROM academy_certificates WHERE lower(email)=lower($1) AND course_id=$2`, [email, id]) : null;
+    res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, duration: c.duration }, cert_id: cert?.cert_id || null,
       lessons: lines.map(l => ({ id: l.legacy_id, name: l.name, time: l.time, url: l.url, done: doneSet.has(l.legacy_id) })) });
   } catch (e) { console.error("learn", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+// ===== ซื้อคอร์สผ่าน Stripe (เฟส 3) — ลูกค้าจ่ายเอง เรียนได้ทันที ไม่ต้องรอแอดมิน =====
+async function finalizeAcademyPurchase(p) {
+  if (!p || p.status === "paid") return;
+  await run(`UPDATE academy_purchases SET status='paid', paid_at=now() WHERE purchase_id=$1 AND status<>'paid'`, [p.purchase_id]);
+  // ให้ ownership ผ่านท่อเดิม: มี user เก่าอีเมลนี้ใช้เลย ไม่มีก็สร้างแถวใหม่ → แล้วบันทึกออเดอร์ Close
+  let u = await one(`SELECT legacy_id FROM academy_users WHERE lower(email)=lower($1) LIMIT 1`, [p.email]);
+  if (!u) { const nid = "nw_" + p.purchase_id.slice(-10); await run(`INSERT INTO academy_users (legacy_id, email, role, legacy_created) VALUES ($1, lower($2), 'student', now()::text) ON CONFLICT DO NOTHING`, [nid, p.email]); u = { legacy_id: nid }; }
+  await run(`INSERT INTO academy_orders (legacy_id, legacy_user_id, user_name, course_id, course_name, total, qty, status, legacy_created)
+    VALUES ($1,$2,$3,$4,$5,$6,'1','Close',now()::text) ON CONFLICT (legacy_id) DO NOTHING`,
+    ["sp_" + p.purchase_id.slice(-12), u.legacy_id, p.email, p.course_id, p.course_name, String((p.amount_satang || 0) / 100), ]);
+  console.log(`[academy] purchase paid: ${p.email} → course ${p.course_id}`);
+}
+app.post("/api/academy/buy", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนซื้อคอร์สนะคะ" });
+    const courseId = String(req.body?.course_id || "");
+    const c = await one(`SELECT legacy_id, name, price, price_sale, flag_sale FROM academy_courses WHERE legacy_id=$1 AND is_active='0'`, [courseId]);
+    if (!c) return res.status(404).json({ ok: false, error: "COURSE_NOT_FOUND" });
+    const owned = await academyOwnedCourseIds(email);
+    if (owned.includes(courseId)) return res.status(409).json({ ok: false, error: "ALREADY_OWNED", message: "คุณมีคอร์สนี้อยู่แล้วค่ะ เข้าเรียนได้เลย" });
+    const baht = (c.flag_sale === "1" && Number(c.price_sale) > 0) ? Number(c.price_sale) : Number(c.price);
+    if (!(baht > 0)) return res.status(400).json({ ok: false, error: "BAD_PRICE" });
+    if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
+    const purchaseId = uid("apay");
+    const amountSatang = Math.round(baht * 100);
+    const origin = appBaseUrl();
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const s = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: (process.env.STRIPE_PAYMENT_METHODS || "card,promptpay").split(",").map(x => x.trim()).filter(Boolean),
+      customer_email: email,
+      line_items: [{ price_data: { currency: "thb", product_data: { name: `คอร์ส ${c.name} · Babe House Academy` }, unit_amount: amountSatang }, quantity: 1 }],
+      success_url: `${origin}/academy/paid?purchase_id=${encodeURIComponent(purchaseId)}`,
+      cancel_url: `${origin}/academy?payment=cancelled`,
+      metadata: { academy_purchase_id: purchaseId, course_id: courseId },
+    });
+    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id) VALUES ($1, lower($2), $3, $4, $5, $6)`,
+      [purchaseId, email, courseId, c.name, amountSatang, s.id]);
+    res.json({ ok: true, checkout_url: s.url, purchase_id: purchaseId });
+  } catch (e) { console.error("academy buy", e.message); res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
+});
+// เช็กสถานะ + self-finalize (กันเคส webhook หลุด — ถาม Stripe ตรงๆ)
+app.get("/api/academy/purchase/:id", async (req, res) => {
+  try {
+    const p = await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [String(req.params.id || "")]);
+    if (!p) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (p.status !== "paid" && p.provider_session_id && String(process.env.STRIPE_SECRET_KEY || "").trim()) {
+      try {
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const s = await stripe.checkout.sessions.retrieve(p.provider_session_id);
+        if (s && s.payment_status === "paid") { await finalizeAcademyPurchase(p); p.status = "paid"; }
+      } catch {}
+    }
+    res.json({ ok: true, status: p.status, course_id: p.course_id });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+// ===== ประกาศนียบัตร (สาธารณะ อ่านได้ด้วย cert_id — มีแค่ชื่อ+คอร์ส ไม่มีข้อมูลอ่อนไหว) =====
+app.get("/api/academy/certificate/:id", async (req, res) => {
+  const c = await one(`SELECT cert_id, course_name, student_name, issued_at FROM academy_certificates WHERE cert_id=$1`, [String(req.params.id || "")]);
+  if (!c) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  res.json({ ok: true, cert: c });
 });
 app.post("/api/academy/progress", async (req, res) => {
   try {
@@ -1292,7 +1362,21 @@ app.post("/api/academy/progress", async (req, res) => {
     else await run(`DELETE FROM academy_progress WHERE email=lower($1) AND course_id=$2 AND lesson_id=$3`, [email, courseId, lessonId]);
     const total = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE course_id=$1`, [courseId]);
     const doneN = await one(`SELECT COUNT(*) c FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, courseId]);
-    res.json({ ok: true, done: Number(doneN.c), total: Number(total.c) });
+    // 🎓 เรียนครบทุกบท → ออกประกาศนียบัตรอัตโนมัติ (ครั้งเดียวต่อคอร์ส) — งานที่แอดมินเคยต้องทำมือในแชทไลน์
+    let certId = null;
+    if (Number(total.c) > 0 && Number(doneN.c) >= Number(total.c)) {
+      const ex = await one(`SELECT cert_id FROM academy_certificates WHERE lower(email)=lower($1) AND course_id=$2`, [email, courseId]);
+      if (ex) certId = ex.cert_id;
+      else {
+        const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
+        const student = (u && (u.name || u.username)) || email.split("@")[0];
+        const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
+        certId = uid("cert");
+        await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`, [certId, email, courseId, cName, student]);
+        console.log(`[academy] 🎓 cert issued: ${email} → ${cName}`);
+      }
+    }
+    res.json({ ok: true, done: Number(doneN.c), total: Number(total.c), cert_id: certId });
   } catch (e) { console.error("progress", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 app.get("/api/admin/academy-stats", async (req, res) => {

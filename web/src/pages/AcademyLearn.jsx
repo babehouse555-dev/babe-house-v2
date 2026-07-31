@@ -38,8 +38,8 @@ export default function AcademyLearn() {
     if (adminKey && !session.token) return; // โหมดพรีวิวแอดมิน ไม่บันทึก progress
     setBusy(true);
     try {
-      await api("/api/academy/progress", { method: "POST", token: session.token, body: { course_id: courseId, lesson_id: lesson.id, done } });
-      setData(p => ({ ...p, lessons: p.lessons.map(l => l.id === lesson.id ? { ...l, done } : l) }));
+      const r = await api("/api/academy/progress", { method: "POST", token: session.token, body: { course_id: courseId, lesson_id: lesson.id, done } });
+      setData(p => ({ ...p, cert_id: r.cert_id || p.cert_id, lessons: p.lessons.map(l => l.id === lesson.id ? { ...l, done } : l) }));
     } catch {}
     setBusy(false);
   }
@@ -76,7 +76,8 @@ export default function AcademyLearn() {
         </div>
         {pct === 100 && lessons.length > 0 && (
           <div className="card" style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 14, textAlign: "center", fontWeight: 700, color: "#1a7f43" }}>
-            🎉 ยินดีด้วยค่ะ! คุณเรียนจบคอร์สนี้แล้ว — ประกาศนียบัตรอัตโนมัติกำลังมาในเฟสถัดไป
+            🎉 ยินดีด้วยค่ะ! คุณเรียนจบคอร์สนี้แล้ว
+            {data.cert_id && <div style={{ marginTop: 10 }}><Link className="btn" to={`/academy/certificate/${data.cert_id}`}>🎓 เปิดประกาศนียบัตรของฉัน</Link></div>}
           </div>
         )}
 

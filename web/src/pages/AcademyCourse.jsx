@@ -133,7 +133,8 @@ export default function AcademyCourse() {
           </div>
         </div>
       </div>
-      <style>{`@media (max-width: 900px){ .course-grid{ grid-template-columns: 1fr !important; } .course-grid > .card{ position: static !important; } }`}</style>
+      {/* มือถือ: ดันกล่องราคา+ปุ่มสมัครขึ้นมาไว้บนสุด ไม่งั้นต้องเลื่อนผ่านรายละเอียดยาวมากกว่าจะเจอปุ่มซื้อ */}
+      <style>{`@media (max-width: 900px){ .course-grid{ grid-template-columns: 1fr !important; } .course-grid > .card{ position: static !important; order: -1; } }`}</style>
     </div>
   );
 }

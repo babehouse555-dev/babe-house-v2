@@ -155,7 +155,8 @@ export default function WorkshopDetail() {
           </div>
         </div>
       </div>
-      <style>{`@media (max-width: 900px){ .ws-grid{ grid-template-columns: 1fr !important; } .ws-grid > .card{ position: static !important; } }`}</style>
+      {/* มือถือ: กล่องเลือกรอบ+จองต้องอยู่บนสุด — คนเข้ามาเพื่อดูว่า "เรียนได้วันไหน" ก่อนอ่านรายละเอียด */}
+      <style>{`@media (max-width: 900px){ .ws-grid{ grid-template-columns: 1fr !important; } .ws-grid > .card{ position: static !important; order: -1; } }`}</style>
     </div>
   );
 }

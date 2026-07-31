@@ -75,8 +75,10 @@ export default function Academy() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 16 }}>
           {list.map(c => (
             <div key={c.id} className="card" style={{ margin: 0, padding: 0, overflow: "hidden", borderRadius: 16, display: "flex", flexDirection: "column" }}>
-              <div style={{ aspectRatio: "16/9", background: "var(--soft)", overflow: "hidden" }}>
-                {c.image && <img src={c.image} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => { e.target.style.display = "none"; }} />}
+              {/* ปกคอร์สเป็นโปสเตอร์จัตุรัส/แนวตั้ง และ "มีชื่อคอร์สอยู่ในรูป" — ถ้าครอบแบบ cover ชื่อจะโดนตัดหาย
+                  ใช้ contain บนพื้นอ่อนแทน เห็นปกเต็มใบทุกคอร์ส แม้สัดส่วนรูปจะไม่เท่ากัน */}
+              <div style={{ aspectRatio: "4/3", background: "var(--soft)", overflow: "hidden" }}>
+                {c.image && <img src={c.image} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => { e.target.style.display = "none"; }} />}
               </div>
               <div style={{ padding: "13px 15px 15px", display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ fontSize: 12, color: BLUE, fontWeight: 700, marginBottom: 3 }}>{c.category}</div>

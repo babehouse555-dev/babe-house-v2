@@ -71,6 +71,8 @@ import AcademyLearn from "./pages/AcademyLearn.jsx";
 import AcademyCourse from "./pages/AcademyCourse.jsx";
 import AcademyPaid from "./pages/AcademyPaid.jsx";
 import AcademyCertificate from "./pages/AcademyCertificate.jsx";
+import Plans from "./pages/Plans.jsx";
+import ClubDemo from "./pages/ClubDemo.jsx";
 import Workshops from "./pages/Workshops.jsx";
 import WorkshopDetail from "./pages/WorkshopDetail.jsx";
 import WorkshopPaid from "./pages/WorkshopPaid.jsx";
@@ -100,6 +102,8 @@ createRoot(document.getElementById("root")).render(
       <Route path="/academy/learn" element={<AcademyLearn />} />
       <Route path="/academy/paid" element={<AcademyPaid />} />
       <Route path="/academy/certificate/:id" element={<AcademyCertificate />} />
+      <Route path="/plans" element={<Plans />} />
+      <Route path="/club" element={<ClubDemo />} />
       <Route path="/workshop" element={<Workshops />} />
       <Route path="/workshop/paid" element={<WorkshopPaid />} />
       <Route path="/workshop/:id" element={<WorkshopDetail />} />

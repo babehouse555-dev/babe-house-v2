@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import "./styles.css";
 import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
+import { ACADEMY_LIVE } from "./config.js";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
 if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
@@ -23,6 +24,9 @@ function TopBar() {
         <Link to="/" style={{ fontWeight: 800, fontSize: 17 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></Link>
         <div className="row" style={{ gap: 16, alignItems: "center" }}>
           <Link to="/" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>{tb("nav_home")}</Link>
+          {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
+          {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
+          {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
           <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>
           <LangToggle />
         </div>

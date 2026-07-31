@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
+import { ACADEMY_LIVE } from "../config.js";
 
 const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%40babehouse_academy" };
 const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
@@ -159,8 +160,16 @@ export function ServicesBlock() {
           <div><div style={{ fontWeight: 800, fontSize: 15 }}>{t("dp_academy")}</div><div className="muted" style={{ fontSize: 12.5 }}>{t("dp_academy_sub")}</div></div>
         </div>
         <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}>{t("dp_courses").map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-        <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{t("dp_scan")} {LINE_ACADEMY.id}</div></div>
-        <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">{t("dp_add_friend_course")}</a>
+        {/* เปิดตัวแล้ว = กดเข้าหน้าเรียนบนเว็บเลย · ยังไม่เปิด = QR ทักไลน์แบบเดิม (สลับที่ config.js ที่เดียว) */}
+        {ACADEMY_LIVE ? <>
+          <div style={{ margin: "auto 0 12px", fontSize: 13, lineHeight: 1.75 }}>
+            เลือกคอร์ส สมัครเรียน และเริ่มเรียนได้ทันทีบนเว็บ ไม่ต้องรอแอดมินค่ะ
+          </div>
+          <Link to="/academy" className="btn full">ดูคอร์สทั้งหมด →</Link>
+        </> : <>
+          <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{t("dp_scan")} {LINE_ACADEMY.id}</div></div>
+          <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">{t("dp_add_friend_course")}</a>
+        </>}
       </div>
       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px", display: "flex", flexDirection: "column" }}>
         <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>

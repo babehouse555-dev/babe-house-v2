@@ -1574,6 +1574,18 @@ app.get("/api/workshops", async (req, res) => {
     res.json({ ok: true, workshops: ws.map(w => ({ ...w, sessions: byWs[w.workshop_id] || [] })) });
   } catch (e) { console.error("workshops", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
+// ⚠️ ต้องประกาศก่อน "/api/workshops/:id" ไม่งั้น Express จะจับ "my" เป็น id แล้วตอบ NOT_FOUND
+// การจอง workshop ของฉัน + ไฟล์สรุปหลังเรียน (โหลดเองได้ ไม่ต้องทักแอดมิน)
+app.get("/api/workshops/my", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const rows = await q(`SELECT b.booking_id, b.qty, b.status, b.created_at, s.session_id, s.starts_at, s.location, s.summary_url, s.summary_note, w.name AS workshop_name, w.workshop_id
+      FROM workshop_bookings b JOIN workshop_sessions s ON s.session_id=b.session_id JOIN workshops w ON w.workshop_id=b.workshop_id
+      WHERE lower(b.email)=lower($1) AND b.status='paid' ORDER BY s.starts_at DESC`, [email]);
+    res.json({ ok: true, bookings: rows });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
+});
 app.get("/api/workshops/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -1666,17 +1678,6 @@ app.get("/api/workshops/booking/:id", async (req, res) => {
       } catch {}
     }
     res.json({ ok: true, status: b.status, workshop_id: b.workshop_id });
-  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
-});
-// การจอง workshop ของฉัน + ไฟล์สรุปหลังเรียน (โหลดเองได้ ไม่ต้องทักแอดมิน)
-app.get("/api/workshops/my", async (req, res) => {
-  try {
-    const email = await authEmail(req);
-    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
-    const rows = await q(`SELECT b.booking_id, b.qty, b.status, b.created_at, s.session_id, s.starts_at, s.location, s.summary_url, s.summary_note, w.name AS workshop_name, w.workshop_id
-      FROM workshop_bookings b JOIN workshop_sessions s ON s.session_id=b.session_id JOIN workshops w ON w.workshop_id=b.workshop_id
-      WHERE lower(b.email)=lower($1) AND b.status='paid' ORDER BY s.starts_at DESC`, [email]);
-    res.json({ ok: true, bookings: rows });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 

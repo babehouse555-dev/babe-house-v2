@@ -99,6 +99,10 @@ export default function ClubDemo() {
               <div><span style={{ fontWeight: 700, color: BLUE }}>ปิดท้าย:</span> "ใครแต่งเร็วกว่านี้คอมเมนต์บอกหน่อย 💬"</div>
               <div><span style={{ fontWeight: 700, color: BLUE }}>🎬 วิธีถ่าย:</span> ตั้งกล้องนิ่งมุมโต๊ะเครื่องแป้ง แสงหน้าต่าง อัดต่อเนื่องแล้วเร่งสปีด ใส่นาฬิกาจับเวลามุมจอ</div>
             </div>
+            {/* ตรงนี้แหละที่คนติด — อ่านวิธีถ่ายแล้วไม่รู้ว่าทำยังไง กดเรียนได้เลยไม่ต้องไปหาเอง */}
+            <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px dashed var(--border)", fontSize: 13.5 }}>
+              ทำไม่เป็นตรงไหนไหมคะ? <Link to="/academy/course/39" style={{ fontWeight: 700, color: BLUE }}>🎓 ดูวิธีเร่งสปีด + ใส่ตัวเลขบนจอ ในคอร์สตัดต่อมือถือ →</Link>
+            </div>
           </div>
         </div>
 

@@ -1346,7 +1346,7 @@ async function getStudents(industry) {
   // 1 อีเมล/รอบเดือน = 1 แถว (เอาออเดอร์ที่จ่ายแล้วล่าสุด) + สถานะการสร้างเล่ม + ข้อมูลฟอร์มจาก request ล่าสุด
   const rows = await q(`
     SELECT DISTINCT ON (o.email, o.billing_cycle)
-      o.created_at, o.email, o.user_id, o.billing_cycle, o.instagram_account, o.blueprint_id, o.generation_status, o.order_payload_json,
+      o.created_at, o.email, o.user_id, o.billing_cycle, o.instagram_account, o.blueprint_id, o.generation_status,
       b.content_status, b.analysis_status,
       r.industry, r.business_type, r.starting_point, r.monthly_goal, r.competitor_1, r.competitor_2
     FROM blueprint_orders o
@@ -1360,15 +1360,14 @@ async function getStudents(industry) {
     ORDER BY o.email, o.billing_cycle, o.created_at DESC
   `);
   let students = rows.map(o => {
-    const p = safeJson(o.order_payload_json) || {}, fr = p.form_responses || {};
     return {
       created_at: o.created_at, email: o.email, user_id: o.user_id, billing_cycle: o.billing_cycle,
-      phone: fr.phone || "",
-      instagram_account: o.instagram_account || p.instagram_account || "",
-      business_type: o.business_type || fr.business_type || "",
-      starting_point: o.starting_point || fr.starting_point || "",
-      monthly_goal: o.monthly_goal || fr.monthly_goal || "",
-      competitor_1: o.competitor_1 || fr.competitor_1 || "", competitor_2: o.competitor_2 || fr.competitor_2 || "",
+      phone: "", // ตัดออกเพื่อความเร็ว — เดิมต้องอ่าน order_payload_json ทั้งก้อน (มี base64 รูป) แค่เพื่อ phone → ช้า/timeout ตอนโหลดสูง
+      instagram_account: o.instagram_account || "",
+      business_type: o.business_type || "",
+      starting_point: o.starting_point || "",
+      monthly_goal: o.monthly_goal || "",
+      competitor_1: o.competitor_1 || "", competitor_2: o.competitor_2 || "",
       industry: o.industry || null, blueprint_id: o.blueprint_id,
       status: o.blueprint_id ? "ready" : (o.generation_status || "pending"),
       // สถานะรวมที่อ่านง่ายสำหรับแอดมิน: เจนบทวิเคราะห์ → รอยืนยัน → เจน 30 วัน → ครบ

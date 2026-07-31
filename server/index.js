@@ -1203,12 +1203,13 @@ app.post("/api/admin/academy-import", async (req, res) => {
   } catch (e) { console.error("academy-import", e.message); res.status(500).json({ ok: false, error: "IMPORT_FAILED", message: e.message, upserted }); }
 });
 // แคตตาล็อกคอร์ส (อ่านอย่างเดียว) — สำหรับหน้าพรีวิว /academy (ยังไม่ลิงก์จากเมนู ลูกค้าไม่เจอ)
+// ⚠️ ธง isActive ของระบบเก่ากลับด้าน: '0' = คอร์สที่แสดงบนเว็บจริง (ตรวจเทียบเว็บเก่า 21 คอร์สแล้ว) · '1' = ซ่อน/เวอร์ชันเก่า
 // ⛔ ไม่ส่ง url วิดีโอบทเรียนออกไปเด็ดขาด (เป็นคอนเทนต์ที่ลูกค้าจ่ายเงิน) — url ใช้เฉพาะฝั่งแอดมิน/ระบบเรียนในเฟสถัดไป
 app.get("/api/academy/catalog", async (req, res) => {
   try {
     const courses = await q(`SELECT c.legacy_id, c.name, c.price, c.price_sale, c.flag_sale, c.category, c.instructor, c.featured_image_url, c.duration,
         (SELECT COUNT(*) FROM academy_course_lines l WHERE l.course_id = c.legacy_id) AS lessons
-      FROM academy_courses c WHERE c.is_active = '1' ORDER BY c.legacy_id::int`);
+      FROM academy_courses c WHERE c.is_active = '0' ORDER BY c.legacy_id::int`);
     const cats = await q(`SELECT legacy_id, data_json FROM academy_categories`);
     const tutors = await q(`SELECT legacy_id, data_json FROM academy_tutors`);
     const catMap = {}, tutMap = {};
@@ -1224,7 +1225,7 @@ app.get("/api/academy/catalog", async (req, res) => {
 app.get("/api/academy/course/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
-    const c = await one(`SELECT * FROM academy_courses WHERE legacy_id=$1 AND is_active='1'`, [id]);
+    const c = await one(`SELECT * FROM academy_courses WHERE legacy_id=$1 AND is_active='0'`, [id]);
     if (!c) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     const lines = await q(`SELECT legacy_id, name, time, seq FROM academy_course_lines WHERE course_id=$1 ORDER BY COALESCE(NULLIF(seq,'')::int, 999), legacy_id::int`, [id]); // ⛔ ไม่ select url
     res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, price: Number(c.price || 0), image: c.featured_image_url, duration: c.duration },

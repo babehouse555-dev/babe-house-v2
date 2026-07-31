@@ -780,10 +780,20 @@ export function checkBlueprintQuality(bp, hasImage) {
   const jargon = ["funnel", "conversion", "micro-influencer", "micro influencer", "engagement", "positioning", "retention", "call to action", "awareness", "branding"];
   const found = jargon.filter(w => prose.includes(w));
   if (found.length) flags.push(`ศัพท์เทคนิคหลุด: ${[...new Set(found)].join(", ")}`);
-  // อ้างอิงปีเก่า (เช่น "เทรนด์ 2024" ทั้งที่ปีนี้ 2026) = คอนเทนต์ดูล้าสมัยทันที
+  // อ้างอิงปีเก่าแบบ "อ้างว่าเป็นปัจจุบัน" (เช่น "เทรนด์ 2024" ทั้งที่ปีนี้ 2026) = ดูล้าสมัย
+  // ⛔ ไม่นับปีที่เป็นเรื่องเล่าอดีตจริงของลูกค้า ("เมื่อปี 2019 เราไปเรียนต่อ") — ดูจากคำรอบๆ ว่าอ้างเป็นปัจจุบันไหม
   const nowY = new Date().getFullYear();
   const oldYears = new Set();
-  const scanYear = (s) => { for (const m of String(s || "").matchAll(/\b(20[0-9]{2})\b/g)) { const y = Number(m[1]); if (y < nowY) oldYears.add(y); } };
+  // มีคำบ่งอดีตชัดเจน = เป็นเรื่องเล่าจริงของลูกค้า ปล่อยผ่าน · นอกนั้นถือว่าอ้างเป็นปัจจุบัน = ผิด
+  const PAST_CONTEXT = /(เมื่อ|ตั้งแต่|ย้อน|อดีต|เคย|ก่อตั้ง|เปิดร้าน|เริ่มต้น|จบการศึกษา|ปีที่แล้ว|สมัย|ตอนนั้น)/;
+  const scanYear = (s) => {
+    const str = String(s || "");
+    for (const m of str.matchAll(/\b(20[0-9]{2})\b/g)) {
+      const y = Number(m[1]); if (y >= nowY) continue;
+      const before = str.slice(Math.max(0, m.index - 40), m.index);
+      if (!PAST_CONTEXT.test(before)) oldYears.add(y);
+    }
+  };
   scripts.forEach(s => { (s.beats || []).forEach(b => scanYear(b.say)); scanYear(s.cap); scanYear(s.title); });
   calendar.forEach(c => { scanYear(c.t); scanYear(c.h); });
   if (oldYears.size) flags.push(`อ้างอิงปีเก่า (${[...oldYears].sort().join(", ")}) ทั้งที่ปีนี้ ${nowY}`);

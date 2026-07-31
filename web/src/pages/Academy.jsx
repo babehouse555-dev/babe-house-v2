@@ -19,11 +19,6 @@ export default function Academy() {
   }, []);
 
   const ownedIds = new Set((mine || []).map(m => m.id));
-  async function buy(id) {
-    if (!session.token) { window.location.href = "/account"; return; }
-    try { const d = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id } }); window.location.href = d.checkout_url; }
-    catch (e) { alert(e.message || "ซื้อไม่สำเร็จ ลองใหม่อีกครั้งนะคะ"); }
-  }
   async function toggle(id) {
     if (open === id) { setOpen(null); return; }
     setOpen(id);
@@ -98,7 +93,7 @@ export default function Academy() {
                 <div style={{ marginTop: 10 }}>
                   {ownedIds.has(c.id)
                     ? <Link className="btn full" to={`/academy/learn?course=${c.id}`} style={{ textAlign: "center" }}>เข้าเรียน →</Link>
-                    : <button className="btn full" onClick={() => buy(c.id)}>ซื้อคอร์สนี้ · เรียนได้ทันที</button>}
+                    : <Link className="btn ghost full" to={`/academy/course/${c.id}`} style={{ textAlign: "center" }}>ดูรายละเอียดคอร์ส →</Link>}
                 </div>
                 {open === c.id && (
                   <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>

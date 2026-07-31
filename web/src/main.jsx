@@ -64,6 +64,7 @@ import VideoAudit from "./pages/VideoAudit.jsx";
 import Production from "./pages/Production.jsx";
 import Academy from "./pages/Academy.jsx";
 import AcademyLearn from "./pages/AcademyLearn.jsx";
+import AcademyCourse from "./pages/AcademyCourse.jsx";
 import AcademyPaid from "./pages/AcademyPaid.jsx";
 import AcademyCertificate from "./pages/AcademyCertificate.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -88,6 +89,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/video-audit" element={<VideoAudit />} />
       <Route path="/production" element={<Production />} />
       <Route path="/academy" element={<Academy />} />
+      <Route path="/academy/course/:id" element={<AcademyCourse />} />
       <Route path="/academy/learn" element={<AcademyLearn />} />
       <Route path="/academy/paid" element={<AcademyPaid />} />
       <Route path="/academy/certificate/:id" element={<AcademyCertificate />} />

@@ -1231,7 +1231,10 @@ app.get("/api/academy/course/:id", async (req, res) => {
     const c = await one(`SELECT * FROM academy_courses WHERE legacy_id=$1 AND is_active='0'`, [id]);
     if (!c) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     const lines = await q(`SELECT legacy_id, name, time, seq FROM academy_course_lines WHERE course_id=$1 ORDER BY COALESCE(NULLIF(seq,'')::int, 999), legacy_id::int`, [id]); // ⛔ ไม่ select url
-    res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, price: Number(c.price || 0), image: c.featured_image_url, duration: c.duration },
+    const cat = safeJson((await one(`SELECT data_json FROM academy_categories WHERE legacy_id=$1`, [c.category]))?.data_json) || {};
+    const tut = safeJson((await one(`SELECT data_json FROM academy_tutors WHERE legacy_id=$1`, [c.instructor]))?.data_json) || {};
+    res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, price: Number(c.price || 0), price_sale: Number(c.price_sale || 0), flag_sale: c.flag_sale === "1",
+        image: c.featured_image_url, duration: c.duration, category: cat.name || "", instructor: tut.name || "", instructor_image: tut.profileImage || "", instructor_detail: tut.detail || "" },
       lessons: lines.map(l => ({ name: l.name, time: l.time })) });
   } catch (e) { res.status(500).json({ ok: false, error: "COURSE_FAILED" }); }
 });

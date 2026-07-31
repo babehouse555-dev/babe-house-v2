@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { api } from "../api.js";
+import { Link } from "react-router-dom";
+import { api, session } from "../api.js";
 
 // หน้าแคตตาล็อกคอร์ส Academy (เฟส 2 — พรีวิวภายใน ยังไม่ลิงก์จากเมนูไหน ลูกค้าไม่เจอ)
 // ข้อมูลจริงจาก academy_* (นำเข้าจากเว็บเก่า) · ไม่มีลิงก์วิดีโอหลุดออกมา
@@ -10,8 +11,12 @@ export default function Academy() {
   const [cat, setCat] = useState("ทั้งหมด");
   const [open, setOpen] = useState(null);   // course id ที่กางรายละเอียด
   const [detail, setDetail] = useState({}); // id -> {course, lessons}
+  const [mine, setMine] = useState(null);   // คอร์สที่ล็อกอินแล้วเป็นเจ้าของ
 
-  useEffect(() => { api("/api/academy/catalog").then(setData).catch(() => setData({ ok: false })); }, []);
+  useEffect(() => {
+    api("/api/academy/catalog").then(setData).catch(() => setData({ ok: false }));
+    if (session.token) api("/api/academy/my-courses", { token: session.token }).then(d => setMine(d.courses || [])).catch(() => {});
+  }, []);
 
   async function toggle(id) {
     if (open === id) { setOpen(null); return; }
@@ -36,6 +41,29 @@ export default function Academy() {
       <div className="wrap" style={{ padding: "30px 0 60px" }}>
         <h1 className="serif" style={{ fontSize: "clamp(24px,4vw,32px)", fontWeight: 800, textAlign: "center", margin: "6px 0 4px" }}>คอร์สเรียน Babe House Academy</h1>
         <p className="muted" style={{ textAlign: "center", fontSize: 15, marginBottom: 22 }}>เรียนได้ทันทีหลังชำระเงิน · ติดตามความคืบหน้า · ประกาศนียบัตรอัตโนมัติ (เร็วๆ นี้)</p>
+
+        {mine && mine.length > 0 && (
+          <div className="card" style={{ borderRadius: 16, marginBottom: 24, border: `1.5px solid ${BLUE}` }}>
+            <h3 style={{ fontSize: 16.5, margin: "0 0 12px" }}>📚 คอร์สของฉัน</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {mine.map(m => {
+                const pct = m.lessons ? Math.round(m.done / m.lessons * 100) : 0;
+                return (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14.5 }}>{m.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <div style={{ flex: 1, height: 7, background: "var(--soft)", borderRadius: 5, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: BLUE }} /></div>
+                        <span className="muted" style={{ fontSize: 12 }}>{m.done}/{m.lessons} บท</span>
+                      </div>
+                    </div>
+                    <Link className="btn" to={`/academy/learn?course=${m.id}`} style={{ padding: "8px 16px", fontSize: 13.5 }}>{m.done > 0 ? "เรียนต่อ →" : "เริ่มเรียน →"}</Link>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginBottom: 24 }}>
           {cats.map(c => (

@@ -63,6 +63,7 @@ import Privacy from "./pages/Privacy.jsx";
 import VideoAudit from "./pages/VideoAudit.jsx";
 import Production from "./pages/Production.jsx";
 import Academy from "./pages/Academy.jsx";
+import AcademyLearn from "./pages/AcademyLearn.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 captureRef();
@@ -85,6 +86,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/video-audit" element={<VideoAudit />} />
       <Route path="/production" element={<Production />} />
       <Route path="/academy" element={<Academy />} />
+      <Route path="/academy/learn" element={<AcademyLearn />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
     </Shell>

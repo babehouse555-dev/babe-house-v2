@@ -272,6 +272,14 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS academy_categories (
       legacy_id TEXT PRIMARY KEY, data_json TEXT, imported_at TIMESTAMPTZ DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS academy_progress (
+      email TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      done_at TIMESTAMPTZ DEFAULT now(),
+      PRIMARY KEY (email, course_id, lesson_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_academy_progress_email ON academy_progress(email, course_id);
     CREATE INDEX IF NOT EXISTS idx_academy_users_email ON academy_users(lower(email));
     CREATE INDEX IF NOT EXISTS idx_academy_orders_user ON academy_orders(legacy_user_id);
     CREATE INDEX IF NOT EXISTS idx_academy_order_lines_order ON academy_order_lines(order_id);

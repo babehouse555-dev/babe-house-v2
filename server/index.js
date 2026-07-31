@@ -1232,6 +1232,69 @@ app.get("/api/academy/course/:id", async (req, res) => {
       lessons: lines.map(l => ({ name: l.name, time: l.time })) });
   } catch (e) { res.status(500).json({ ok: false, error: "COURSE_FAILED" }); }
 });
+// ===== ระบบเรียน (เฟส 2) — สิทธิ์ดูวิดีโอผูกกับ "ซื้อแล้วจริง" (ออเดอร์ Close ของอีเมลนั้น) · แอดมินดูได้ทุกคอร์ส (พรีวิว) =====
+async function academyOwnedCourseIds(email) {
+  // อีเมลลูกค้า → user เก่า (อาจหลายบัญชี) → ออเดอร์ Close → คอร์สที่ซื้อ (จาก order.course_id + order_lines)
+  const rows = await q(`
+    SELECT DISTINCT x.course_id FROM (
+      SELECT o.course_id FROM academy_orders o
+        JOIN academy_users u ON u.legacy_id = o.legacy_user_id
+        WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(o.course_id,'') <> ''
+      UNION
+      SELECT l.course_id FROM academy_order_lines l
+        JOIN academy_orders o ON o.legacy_id = l.order_id
+        JOIN academy_users u ON u.legacy_id = o.legacy_user_id
+        WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(l.course_id,'') <> ''
+    ) x`, [email]);
+  return rows.map(r => r.course_id);
+}
+app.get("/api/academy/my-courses", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const ids = await academyOwnedCourseIds(email);
+    if (!ids.length) return res.json({ ok: true, courses: [] });
+    const courses = await q(`SELECT c.legacy_id, c.name, c.featured_image_url, c.category,
+        (SELECT COUNT(*) FROM academy_course_lines l WHERE l.course_id = c.legacy_id) AS lessons,
+        (SELECT COUNT(*) FROM academy_progress p WHERE p.email = lower($2) AND p.course_id = c.legacy_id) AS done
+      FROM academy_courses c WHERE c.legacy_id = ANY($1)`, [ids, email]);
+    res.json({ ok: true, courses: courses.map(c => ({ id: c.legacy_id, name: c.name, image: c.featured_image_url, lessons: Number(c.lessons || 0), done: Number(c.done || 0) })) });
+  } catch (e) { console.error("my-courses", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+app.get("/api/academy/learn/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    const admin = isAdmin(req);
+    const email = admin ? null : await authEmail(req);
+    if (!admin && !email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "กรุณาเข้าสู่ระบบก่อนนะคะ" });
+    if (!admin) {
+      const owned = await academyOwnedCourseIds(email);
+      if (!owned.includes(id)) return res.status(403).json({ ok: false, error: "NOT_OWNED", message: "คุณยังไม่ได้ซื้อคอร์สนี้ค่ะ" });
+    }
+    const c = await one(`SELECT legacy_id, name, detail, duration, featured_image_url FROM academy_courses WHERE legacy_id=$1`, [id]);
+    if (!c) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const lines = await q(`SELECT legacy_id, name, time, url, seq FROM academy_course_lines WHERE course_id=$1 ORDER BY COALESCE(NULLIF(seq,'')::int, 999), legacy_id::int`, [id]);
+    const doneRows = email ? await q(`SELECT lesson_id FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, id]) : [];
+    const doneSet = new Set(doneRows.map(r => r.lesson_id));
+    res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, duration: c.duration },
+      lessons: lines.map(l => ({ id: l.legacy_id, name: l.name, time: l.time, url: l.url, done: doneSet.has(l.legacy_id) })) });
+  } catch (e) { console.error("learn", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+app.post("/api/academy/progress", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const courseId = String(req.body?.course_id || ""), lessonId = String(req.body?.lesson_id || ""), done = req.body?.done !== false;
+    if (!courseId || !lessonId) return res.status(400).json({ ok: false, error: "MISSING" });
+    const owned = await academyOwnedCourseIds(email);
+    if (!owned.includes(courseId)) return res.status(403).json({ ok: false, error: "NOT_OWNED" });
+    if (done) await run(`INSERT INTO academy_progress (email, course_id, lesson_id) VALUES (lower($1),$2,$3) ON CONFLICT DO NOTHING`, [email, courseId, lessonId]);
+    else await run(`DELETE FROM academy_progress WHERE email=lower($1) AND course_id=$2 AND lesson_id=$3`, [email, courseId, lessonId]);
+    const total = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE course_id=$1`, [courseId]);
+    const doneN = await one(`SELECT COUNT(*) c FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, courseId]);
+    res.json({ ok: true, done: Number(doneN.c), total: Number(total.c) });
+  } catch (e) { console.error("progress", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
+});
 app.get("/api/admin/academy-stats", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const out = {};

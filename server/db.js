@@ -171,6 +171,9 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_req_cycle ON blueprint_requests(billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_bp_user_cycle ON blueprints(user_id, billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_orders_email ON blueprint_orders(email);
+    -- เร่ง getStudents (หน้าแอดมิน): LATERAL หา request ล่าสุดต่อ user+cycle + DISTINCT ON orders — กันช้า/timeout ตอนโหลดสูง
+    CREATE INDEX IF NOT EXISTS idx_req_user_cycle_created ON blueprint_requests(user_id, billing_cycle, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_orders_email_cycle_created ON blueprint_orders(email, billing_cycle, created_at DESC);
     -- สร้างตารางทั้งหมดให้ครบก่อน ALTER/UPDATE (กัน DB เปล่า/staging พัง: ALTER อ้างตารางที่ยังไม่ถูกสร้าง)
     CREATE TABLE IF NOT EXISTS credit_scripts (
       id TEXT PRIMARY KEY,

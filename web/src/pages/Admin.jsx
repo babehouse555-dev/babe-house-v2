@@ -60,7 +60,13 @@ export default function Admin() {
   }
   async function setRvStatus(review_id, status) { await api("/api/admin/reviews/status", { method: "POST", adminKey: key, body: { review_id, status } }); setReviews(await api("/api/admin/reviews", { adminKey: key })); }
   async function loadIndustries(k = key) { setIndustries(await api("/api/admin/industries", { adminKey: k })); }
-  async function loadStudents(ind = null, k = key) { const d = await api("/api/admin/students" + (ind ? "?industry=" + encodeURIComponent(ind) : ""), { adminKey: k }); setStudents(d.students); setFilter(ind); }
+  async function loadStudents(ind = null, k = key) {
+    // ลองซ้ำ 1 ครั้งถ้า error/timeout (ตอนโหลดสูงวันขาย) — กันโชว์ "0" หลอกทั้งที่ข้อมูลมี
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { const d = await api("/api/admin/students" + (ind ? "?industry=" + encodeURIComponent(ind) : ""), { adminKey: k }); setStudents(d.students || []); setFilter(ind); return; }
+      catch (e) { if (attempt === 0) { await new Promise(r => setTimeout(r, 1500)); continue; } console.warn("loadStudents failed:", e.message); }
+    }
+  }
   async function classify() { await api("/api/admin/classify", { method: "POST", adminKey: key, body: {} }); loadIndustries(); loadStudents(filter); }
   async function aiInsight() { setInsight("loading"); try { const d = await api("/api/admin/ai-insight", { adminKey: key }); setInsight(d.insight); } catch { setInsight(null); } }
   async function addCode() { try { await api("/api/admin/codes", { method: "POST", adminKey: key, body: nc }); setNc({ code: "", note: "", discount_percent: "", max_uses: "", credit_grant: "" }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); } catch (e) { alert(e.message); } }

@@ -1608,6 +1608,10 @@ app.post("/api/workshops/book", async (req, res) => {
     const sessionId = String(req.body?.session_id || "");
     const qty = Math.max(1, Math.min(10, Number(req.body?.qty) || 1));
     const name = String(req.body?.name || "").trim(), phone = String(req.body?.phone || "").trim();
+    // ข้อมูลหน้างานที่แอดมินต้องใช้จริง (เดิมต้องไล่ถามในไลน์ทีละคน)
+    const food = String(req.body?.food_note || "").trim().slice(0, 300);
+    const parking = req.body?.needs_parking === true;
+    const note = String(req.body?.customer_note || "").trim().slice(0, 500);
     if (!sessionId || !name || !phone) return res.status(400).json({ ok: false, error: "MISSING", message: "กรอกชื่อและเบอร์โทรด้วยนะคะ" });
     const s = await one(`SELECT s.*, w.name AS ws_name, w.price AS ws_price FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [sessionId]);
     if (!s || s.status !== "open") return res.status(404).json({ ok: false, error: "SESSION_NOT_OPEN", message: "รอบนี้ปิดรับแล้วค่ะ" });
@@ -1627,8 +1631,8 @@ app.post("/api/workshops/book", async (req, res) => {
     const origin = appBaseUrl();
     // โค้ดส่วนลด 100% → ไม่ต้องผ่าน Stripe (ยอด 0 บาทสร้าง checkout ไม่ได้) บันทึกจองให้เลย
     if (amountSatang <= 0) {
-      await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, promo_code)
-        VALUES ($1,$2,$3,lower($4),$5,$6,$7,0,$8)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, promo.code || null]);
+      await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, promo_code, food_note, needs_parking, customer_note)
+        VALUES ($1,$2,$3,lower($4),$5,$6,$7,0,$8,$9,$10,$11)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, promo.code || null, food, parking, note]);
       await finalizeWorkshopBooking(await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [bookingId]));
       return res.json({ ok: true, free: true, booking_id: bookingId, redirect_url: `/workshop/paid?booking_id=${encodeURIComponent(bookingId)}` });
     }
@@ -1644,8 +1648,9 @@ app.post("/api/workshops/book", async (req, res) => {
       cancel_url: `${origin}/workshop/${encodeURIComponent(s.workshop_id)}?payment=cancelled`,
       metadata: { workshop_booking_id: bookingId, session_id: sessionId },
     });
-    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code)
-      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null]);
+    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code, food_note, needs_parking, customer_note)
+      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null, food, parking, note]);
     res.json({ ok: true, checkout_url: ck.url, booking_id: bookingId });
   } catch (e) { console.error("workshop book", e.message); res.status(500).json({ ok: false, error: "BOOK_FAILED", message: e.message }); }
 });
@@ -1663,7 +1668,10 @@ async function finalizeWorkshopBooking(b) {
     `หลังเรียนจบ ไฟล์สรุปและเอกสารประกอบจะขึ้นในบัญชีของคุณให้ดาวน์โหลดได้เองค่ะ<br><br>${btn(appBaseUrl() + "/account", "ดูการจองของฉัน")}<br><br>แล้วเจอกันในคลาสนะคะ<br>ครูพี่คิม · Babe House`
   )).catch(() => {});
   sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", `🎟️ จอง workshop ใหม่ — ${s?.ws_name || ""}`, wrap(
-    `<b>${b.name}</b> (${b.email} · ${b.phone})<br>จอง ${b.qty} ที่ · ${(b.amount_satang / 100).toLocaleString()} บาท<br>รอบ: ${when}<br><br>ที่นั่งเหลือรอบนี้: <b>${left?.left ?? "-"}</b> จาก ${left?.seats ?? "-"}`
+    `<b>${b.name}</b> (${b.email} · ${b.phone})<br>จอง ${b.qty} ที่ · ${(b.amount_satang / 100).toLocaleString()} บาท<br>รอบ: ${when}<br><br>` +
+    `🍽️ อาหาร: ${b.food_note || "ไม่ได้แจ้ง"}<br>🅿️ ที่จอดรถ: ${b.needs_parking ? "<b>ต้องการ</b>" : "ไม่ต้องการ"}<br>` +
+    (b.customer_note ? `📝 โน้ตจากลูกค้า: ${b.customer_note}<br>` : "") +
+    `<br>ที่นั่งเหลือรอบนี้: <b>${left?.left ?? "-"}</b> จาก ${left?.seats ?? "-"}`
   )).catch(() => {});
 }
 app.get("/api/workshops/booking/:id", async (req, res) => {
@@ -1893,6 +1901,8 @@ app.post("/api/admin/workshop/booking", async (req, res) => {
   try {
     const b = req.body || {};
     if (b.action === "attend") { await run(`UPDATE workshop_bookings SET attended=$2 WHERE booking_id=$1`, [String(b.booking_id), b.attended !== false]); return res.json({ ok: true }); }
+    if (b.action === "confirm") { await run(`UPDATE workshop_bookings SET confirmed=$2 WHERE booking_id=$1`, [String(b.booking_id), b.confirmed !== false]); return res.json({ ok: true }); }
+    if (b.action === "parking") { await run(`UPDATE workshop_bookings SET parking_notified=$2 WHERE booking_id=$1`, [String(b.booking_id), b.parking_notified !== false]); return res.json({ ok: true }); }
     if (b.action === "cancel") { await run(`UPDATE workshop_bookings SET status='cancelled' WHERE booking_id=$1`, [String(b.booking_id)]); return res.json({ ok: true }); }
     const s = await one(`SELECT s.*, w.price FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [String(b.session_id || "")]);
     if (!s) return res.status(404).json({ ok: false, error: "SESSION_NOT_FOUND" });

@@ -12,7 +12,7 @@ export default function WorkshopDetail() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(false);
   const [pick, setPick] = useState(null);
-  const [form, setForm] = useState({ name: "", phone: "", qty: 1, code: "" });
+  const [form, setForm] = useState({ name: "", phone: "", qty: 1, code: "", food_note: "", needs_parking: false, customer_note: "" });
   const [promo, setPromo] = useState(null);
   const [codeMsg, setCodeMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,7 +37,7 @@ export default function WorkshopDetail() {
     if (!form.name.trim() || !form.phone.trim()) return alert("กรอกชื่อและเบอร์โทรด้วยนะคะ");
     setBusy(true);
     try {
-      const r = await api("/api/workshops/book", { method: "POST", token: session.token, body: { session_id: pick, qty: Number(form.qty) || 1, name: form.name.trim(), phone: form.phone.trim(), code: form.code.trim() || undefined } });
+      const r = await api("/api/workshops/book", { method: "POST", token: session.token, body: { session_id: pick, qty: Number(form.qty) || 1, name: form.name.trim(), phone: form.phone.trim(), code: form.code.trim() || undefined, food_note: form.food_note.trim(), needs_parking: form.needs_parking, customer_note: form.customer_note.trim() } });
       window.location.href = r.free ? r.redirect_url : r.checkout_url;
     } catch (e) {
       alert(e.message || "จองไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
@@ -123,6 +123,15 @@ export default function WorkshopDetail() {
               </div>
               <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="เบอร์โทรติดต่อ" inputMode="tel"
                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", marginBottom: 8 }} />
+              {/* ข้อมูลหน้างาน — เก็บตอนจองเลย แอดมินจะได้ไม่ต้องไล่ถามในไลน์ทีละคน */}
+              <input value={form.food_note} onChange={e => setForm({ ...form, food_note: e.target.value })} placeholder="แพ้อาหาร / ทานมังสวิรัติ? (ไม่มีก็เว้นว่างได้)"
+                     style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", marginBottom: 8 }} />
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, marginBottom: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={form.needs_parking} onChange={e => setForm({ ...form, needs_parking: e.target.checked })} style={{ width: "auto" }} />
+                ต้องการที่จอดรถ
+              </label>
+              <textarea value={form.customer_note} onChange={e => setForm({ ...form, customer_note: e.target.value })} placeholder="อยากบอกอะไรเพิ่มเติมไหมคะ (ไม่มีก็เว้นว่างได้)"
+                        style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", marginBottom: 8, minHeight: 52 }} />
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                 <input value={form.code} onChange={e => { setForm({ ...form, code: e.target.value.toUpperCase() }); setPromo(null); setCodeMsg(""); }} placeholder="มีโค้ดส่วนลด?"
                        style={{ flex: 1, minWidth: 0, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", textTransform: "uppercase" }} />

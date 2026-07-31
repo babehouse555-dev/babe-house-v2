@@ -377,6 +377,12 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_ws_book_session ON workshop_bookings(session_id, status);
     CREATE INDEX IF NOT EXISTS idx_ws_book_email ON workshop_bookings(lower(email));
+    -- ช่องที่คิมใช้จริงในชีตหน้างาน (อาหาร/ที่จอด/ยืนยัน) — เก็บตั้งแต่ตอนจอง จะได้ไม่ต้องไล่ถามทีหลัง
+    ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS food_note TEXT;
+    ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS needs_parking BOOLEAN DEFAULT false;
+    ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS customer_note TEXT;
+    ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS confirmed BOOLEAN DEFAULT false;
+    ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS parking_notified BOOLEAN DEFAULT false;
     CREATE TABLE IF NOT EXISTS workshop_showcase (
       showcase_id TEXT PRIMARY KEY,
       workshop_id TEXT NOT NULL,

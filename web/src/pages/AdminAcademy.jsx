@@ -435,13 +435,19 @@ export function WorkshopManage({ adminKey }) {
       {bookings && <div onClick={() => setBookings(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
         <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 640, width: "100%", maxHeight: "85vh", overflowY: "auto", padding: 20 }}>
           <div className="between"><h3 style={{ margin: 0, fontSize: 17 }}>รายชื่อผู้จอง</h3><button className="link" style={{ background: "none", border: 0 }} onClick={() => setBookings(null)}>✕</button></div>
-          {bookings === "loading" ? <p className="muted">กำลังโหลด...</p> : !bookings.length ? <p className="muted" style={{ fontSize: 13 }}>ยังไม่มีคนจองรอบนี้</p> : (
-            <table style={{ marginTop: 12 }}><thead><tr><th>ชื่อ</th><th>อีเมล</th><th>โทร</th><th>ที่</th><th>สถานะ</th></tr></thead>
+          {bookings === "loading" ? <p className="muted">กำลังโหลด...</p> : !bookings.length ? <p className="muted" style={{ fontSize: 13 }}>ยังไม่มีคนจองรอบนี้</p> : <>
+            <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>ข้อมูลอาหาร/ที่จอดเก็บมาตั้งแต่ตอนลูกค้าจอง — ไม่ต้องไล่ถามในไลน์แล้วค่ะ</p>
+            <div className="scroll"><table style={{ marginTop: 10 }}><thead><tr><th>ชื่อ</th><th>โทร</th><th>ที่</th><th>อาหาร</th><th>ที่จอด</th><th>โน้ต</th><th>สถานะ</th></tr></thead>
               <tbody>{bookings.map(b => <tr key={b.booking_id}>
-                <td>{b.name}</td><td>{b.email}</td><td>{b.phone ? <a className="link" href={`tel:${b.phone}`}>{b.phone}</a> : "-"}</td><td>{b.qty}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{b.name}<div className="muted" style={{ fontSize: 11.5 }}>{b.email}</div></td>
+                <td style={{ whiteSpace: "nowrap" }}>{b.phone ? <a className="link" href={`tel:${b.phone}`}>{b.phone}</a> : "-"}</td>
+                <td>{b.qty}</td>
+                <td style={{ maxWidth: 130, fontSize: 12.5 }}>{b.food_note || <span className="muted">—</span>}</td>
+                <td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{b.needs_parking ? (b.parking_notified ? "✅ แจ้งแล้ว" : "🅿️ ต้องการ") : <span className="muted">ไม่ต้อง</span>}</td>
+                <td style={{ maxWidth: 150, fontSize: 12.5 }}>{b.customer_note || <span className="muted">—</span>}</td>
                 <td>{b.status === "paid" ? <span className="tag on">จ่ายแล้ว</span> : b.status === "cancelled" ? <span className="tag off">ยกเลิก</span> : <span className="tag">รอจ่าย</span>}</td>
-              </tr>)}</tbody></table>
-          )}
+              </tr>)}</tbody></table></div>
+          </>}
         </div>
       </div>}
     </div>

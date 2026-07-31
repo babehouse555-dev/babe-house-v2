@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
 import { seedWorkshops } from "./seed-workshops.js";
+import { seedAssignments } from "./seed-assignments.js";
 import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2532,7 +2533,8 @@ async function runQualityWatch() {
 
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(async () => {
-  await seedWorkshops();   // ใส่รายละเอียด workshop + รีวิวให้พร้อม (ครั้งเดียว ไม่ทับของที่คิมแก้เอง)
+  await seedWorkshops();     // ใส่รายละเอียด workshop + รีวิวให้พร้อม (ครั้งเดียว ไม่ทับของที่คิมแก้เอง)
+  await seedAssignments();   // ร่างการบ้านให้ทุกคอร์ส แบบ "ไม่บังคับ" ไว้ก่อน — คิมแก้แล้วค่อยเปิดบังคับ
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI
   try {
     const rows = await q(`SELECT DISTINCT ON (COALESCE(category,'general')) COALESCE(category,'general') AS category, content, created_at FROM trend_digest ORDER BY COALESCE(category,'general'), created_at DESC`);

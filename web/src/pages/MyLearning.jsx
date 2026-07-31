@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
+import { ACADEMY_LIVE } from "../config.js";
 
 // กล่อง "คอร์ส · ประกาศนียบัตร · workshop ของฉัน" ในหน้าบัญชี
-// ⚠️ ถ้าลูกค้าคนนั้นไม่มีอะไรเลย จะไม่แสดงอะไรทั้งสิ้น → ลูกค้า Blueprint ปัจจุบันเห็นหน้าเดิมเป๊ะ
+// ⚠️ ปิดสนิทจนกว่าจะเปิดตัวเฟส 4 — ลูกค้าเก่าที่เคยซื้อคอร์สในเว็บเดิม (1,466 คน) ใช้อีเมลเดียวกัน
+//    ถ้าไม่ปิดไว้ เขาจะเห็นคอร์สโผล่มาเองก่อนที่เราจะประกาศ แล้วงงว่านี่คืออะไร
+// ⚠️ และถึงเปิดแล้ว ถ้าลูกค้าคนนั้นไม่มีอะไรเลย ก็จะไม่แสดงอะไรทั้งสิ้น
 const BLUE = "var(--blue)";
 const thDate = (iso) => iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
 const thDay = (iso) => iso ? new Date(iso).toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" }) : "";
@@ -15,7 +18,7 @@ export default function MyLearning() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!session.token) return;
+    if (!ACADEMY_LIVE || !session.token) return;
     const t = session.token;
     Promise.allSettled([
       api("/api/academy/my-courses", { token: t }),

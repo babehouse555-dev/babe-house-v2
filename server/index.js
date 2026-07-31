@@ -1688,11 +1688,13 @@ app.get("/api/admin/sales-overview", async (req, res) => {
   try {
     const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
     const since = `now() - interval '${days} days'`;
-    // Blueprint — ยอดที่จ่ายจริง (final_amount ถ้ามีโค้ดส่วนลด)
-    const bp = await one(`SELECT COUNT(*) n, COALESCE(SUM(COALESCE(final_amount_satang, amount_satang)),0) rev
-      FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND created_at > ${since}`);
-    const bpAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(COALESCE(final_amount_satang, amount_satang)),0) rev
-      FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid')`);
+    // Blueprint — ใช้นิยาม "เงินเข้าจริง" ชุดเดียวกับการ์ดรายได้เดิม (ไม่นับ mock/โค้ดฟรี/โหมดทดสอบ)
+    // ถ้าใช้คนละนิยาม ตัวเลขสองที่ในหน้าเดียวกันจะไม่ตรงกัน แล้วคิมจะไม่รู้ว่าอันไหนจริง
+    const bpReal = `payment_status='paid' AND live_mode = true AND COALESCE(provider,'') NOT IN ('mock','code') AND COALESCE(final_amount_satang,${PRICE_SATANG}) > 0`;
+    const bp = await one(`SELECT COUNT(*) n, COALESCE(SUM(COALESCE(final_amount_satang,${PRICE_SATANG})),0) rev
+      FROM blueprint_orders WHERE ${bpReal} AND created_at > ${since}`);
+    const bpAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(COALESCE(final_amount_satang,${PRICE_SATANG})),0) rev
+      FROM blueprint_orders WHERE ${bpReal}`);
     // คอร์ส — เฉพาะที่ขายผ่านเว็บใหม่ (academy_purchases) · ออเดอร์เก่าจากเว็บเดิมแยกให้ดูต่างหาก
     const ac = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM academy_purchases WHERE status='paid' AND created_at > ${since}`);
     const acAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM academy_purchases WHERE status='paid'`);

@@ -54,6 +54,7 @@ export function SalesOverview({ adminKey }) {
           </div>
         ))}
       </div>
+      <p className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>Blueprint นับเฉพาะ "เงินเข้าจริง" แบบเดียวกับการ์ดรายได้ด้านล่าง — ไม่รวมออเดอร์ทดสอบและโค้ดฟรี</p>
       {d.courses.legacy.orders > 0 && (
         <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
           📦 ยอดคอร์สจากเว็บเก่า (ก่อนย้ายระบบ): {money(d.courses.legacy.revenue)} · {d.courses.legacy.orders} ออเดอร์ — แยกไว้ไม่ให้ปนกับยอดเว็บใหม่

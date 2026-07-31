@@ -7,7 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, checkBlueprintQuality, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
+import { seedWorkshops } from "./seed-workshops.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -33,11 +34,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const claimed = await run(`INSERT INTO payment_events (provider_event_id, type, order_id) VALUES ($1,$2,$3) ON CONFLICT (provider_event_id) DO NOTHING`, [event.id, event.type, orderId || null]);
     if (claimed.rowCount !== 1) return res.json({ received: true, duplicate: true });
     const academyPurchaseId = session.metadata?.academy_purchase_id;
+    const workshopBookingId = session.metadata?.workshop_booking_id;
     switch (event.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
         if (orderId) await markOrderPaid(orderId, "stripe", session.id);
         if (academyPurchaseId) { const p = await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [academyPurchaseId]); if (p) await finalizeAcademyPurchase(p); }
+        if (workshopBookingId) { const b = await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [workshopBookingId]); if (b) await finalizeWorkshopBooking(b); }
         break;
       case "checkout.session.async_payment_failed":
         if (orderId) await run(`UPDATE blueprint_orders SET payment_status='failed' WHERE order_id=$1`, [orderId]); break;
@@ -246,6 +249,31 @@ app.post("/api/mock-payment-complete", async (req, res) => {
   const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   await markOrderPaid(o.order_id, "mock", "mock_paid");
   res.json({ ok: true, order_id: o.order_id, payment_status: "paid", redirect_url: `/processing?order_id=${encodeURIComponent(o.order_id)}` });
+});
+
+// โค้ดส่วนลดสำหรับคอร์ส/workshop — ใช้ตาราง promo_codes ตัวเดียวกับ Blueprint (คิมสร้างโค้ดที่เดิม ใช้ได้ทุกสินค้า)
+// คืน { final, percent, code } หรือ { error, message } · นับ used_count ทันทีที่ผ่าน (กันใช้เกินโควตา)
+async function redeemPromo(rawCode, email, amountSatang) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return { final: amountSatang, percent: 0, code: null };
+  const row = await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]);
+  if (!row || !row.active) return { error: "INVALID_CODE", message: "โค้ดไม่ถูกต้องหรือถูกปิดแล้วค่ะ" };
+  if (row.locked_email && normEmail(email) !== normEmail(row.locked_email)) return { error: "EMAIL_LOCKED", message: "โค้ดนี้ใช้ได้เฉพาะอีเมลที่กำหนดค่ะ" };
+  const percent = row.discount_percent == null ? 100 : Math.max(1, Math.min(100, row.discount_percent));
+  const upd = await run(`UPDATE promo_codes SET used_count=used_count+1 WHERE code=$1 AND active=1 AND (max_uses IS NULL OR used_count<max_uses)`, [code]);
+  if (upd.rowCount !== 1) return { error: "CODE_USED_UP", message: "โค้ดนี้ถูกใช้ครบแล้วค่ะ" };
+  return { final: Math.max(0, Math.round(amountSatang * (100 - percent) / 100)), percent, code };
+}
+// เช็กโค้ดก่อนกดจ่าย (ไม่นับโควตา) — ให้หน้าเว็บโชว์ราคาหลังหักทันทีเหมือนหน้า Blueprint
+app.post("/api/promo/preview", async (req, res) => {
+  const code = String(req.body?.code || "").trim().toUpperCase();
+  const amount = Math.max(0, Number(req.body?.amount_satang) || 0);
+  if (!code) return res.json({ ok: true, percent: 0, final: amount });
+  const row = await one(`SELECT * FROM promo_codes WHERE code=$1`, [code]);
+  if (!row || !row.active) return res.status(400).json({ ok: false, error: "INVALID_CODE", message: "โค้ดไม่ถูกต้องหรือถูกปิดแล้วค่ะ" });
+  if (row.max_uses != null && row.used_count >= row.max_uses) return res.status(400).json({ ok: false, error: "CODE_USED_UP", message: "โค้ดนี้ถูกใช้ครบแล้วค่ะ" });
+  const percent = row.discount_percent == null ? 100 : Math.max(1, Math.min(100, row.discount_percent));
+  res.json({ ok: true, percent, final: Math.max(0, Math.round(amount * (100 - percent) / 100)), code });
 });
 
 async function applyCode(req, res) {
@@ -1235,6 +1263,7 @@ app.get("/api/academy/course/:id", async (req, res) => {
     const tut = safeJson((await one(`SELECT data_json FROM academy_tutors WHERE legacy_id=$1`, [c.instructor]))?.data_json) || {};
     res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, price: Number(c.price || 0), price_sale: Number(c.price_sale || 0), flag_sale: c.flag_sale === "1",
         image: c.featured_image_url, duration: c.duration, category: cat.name || "", instructor: tut.name || "", instructor_image: tut.profileImage || "", instructor_detail: tut.detail || "" },
+      showcase: await q(`SELECT kind, url, caption, student_name FROM academy_showcase WHERE course_id=$1 AND active ORDER BY seq, created_at`, [id]),
       lessons: lines.map(l => ({ name: l.name, time: l.time })) });
   } catch (e) { res.status(500).json({ ok: false, error: "COURSE_FAILED" }); }
 });
@@ -1284,10 +1313,43 @@ app.get("/api/academy/learn/:id", async (req, res) => {
     const doneRows = email ? await q(`SELECT lesson_id FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, id]) : [];
     const doneSet = new Set(doneRows.map(r => r.lesson_id));
     const cert = email ? await one(`SELECT cert_id FROM academy_certificates WHERE lower(email)=lower($1) AND course_id=$2`, [email, id]) : null;
+    // 🔒 บันทึกการเปิดคอร์ส — ใช้จับพฤติกรรมผิดปกติ (บัญชีเดียวเปิดจากหลาย IP = แชร์รหัส/ดูดคลิป)
+    if (email) logVideoAccess(email, id, null, req).catch(() => {});
     res.json({ ok: true, course: { id: c.legacy_id, name: c.name, detail: c.detail, duration: c.duration }, cert_id: cert?.cert_id || null,
+      watermark: email || "",   // ลายน้ำอีเมลผู้เรียนทับบนวิดีโอ — อัดจอไปก็ติดชื่อคนอัดไปด้วย
       lessons: lines.map(l => ({ id: l.legacy_id, name: l.name, time: l.time, url: l.url, done: doneSet.has(l.legacy_id) })) });
   } catch (e) { console.error("learn", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
+// 🔒 ระบบกันดูดคลิป ชั้นที่ 1: บันทึกทุกครั้งที่เปิดคอร์ส + เตือนคิมเมื่อเจอพฤติกรรมแชร์บัญชี
+// ⚠️ พูดตามตรง: เว็บไหนก็กันการ "อัดหน้าจอ" 100% ไม่ได้ (คลิปต้องเล่นให้คนดูเห็น = อัดได้เสมอ)
+// สิ่งที่ทำได้จริงคือทำให้ "ดูดแล้วไม่คุ้ม/จับได้ว่าใครทำ" → ลายน้ำอีเมล + ล็อกการเข้าถึง + จับบัญชีที่แชร์กัน
+const SHARE_ALERT_AT = 5;   // จำนวน IP ต่างกันใน 24 ชม. ที่ถือว่าผิดปกติ
+async function logVideoAccess(email, courseId, lessonId, req) {
+  const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").split(",")[0].trim().slice(0, 60);
+  // นับ IP "ก่อน" บันทึกแถวนี้ เพื่อรู้ว่าการเปิดครั้งนี้เป็นตัวที่ทำให้ทะลุเกณฑ์พอดีหรือเปล่า
+  // (ถ้านับหลังบันทึกแล้วเช็ก ==5 เฉยๆ จะยิงเมลซ้ำทุกครั้งที่เขาเปิดหน้าใหม่)
+  let before = null;
+  if (ip) before = await q(`SELECT DISTINCT ip FROM academy_video_access
+    WHERE lower(email)=lower($1) AND created_at > now() - interval '24 hours' AND COALESCE(ip,'')<>''`, [email]);
+  await run(`INSERT INTO academy_video_access (email, course_id, lesson_id, ip, ua) VALUES (lower($1),$2,$3,$4,$5)`,
+    [email, courseId, lessonId, ip, String(req.headers["user-agent"] || "").slice(0, 200)]);
+  if (!ip || !before) return;
+  const known = before.map(r => r.ip);
+  const isNewIp = !known.includes(ip);
+  if (isNewIp && known.length + 1 === SHARE_ALERT_AT) {   // ยิงครั้งเดียวตอนแตะเกณฑ์พอดี
+    sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", "🔒 สงสัยมีการแชร์บัญชีเรียน",
+      wrap(`บัญชี <b>${email}</b> เปิดคอร์สจาก ${SHARE_ALERT_AT} IP ที่ต่างกันภายใน 24 ชั่วโมง<br><br>อาจเป็นการแชร์รหัสให้คนอื่นเรียนฟรี หรือลูกค้าเปลี่ยนเน็ตบ่อยจริงๆ ก็ได้ค่ะ<br>ลองเช็กในหน้าแอดมิน → ความปลอดภัย ก่อนตัดสินใจนะคะ<br><br>${btn(appBaseUrl() + "/admin", "เปิดหน้าแอดมิน")}`)).catch(() => {});
+  }
+}
+app.post("/api/academy/lesson-view", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.json({ ok: true });
+    await logVideoAccess(email, String(req.body?.course_id || ""), String(req.body?.lesson_id || ""), req);
+    res.json({ ok: true });
+  } catch { res.json({ ok: true }); }
+});
+
 // ===== ซื้อคอร์สผ่าน Stripe (เฟส 3) — ลูกค้าจ่ายเอง เรียนได้ทันที ไม่ต้องรอแอดมิน =====
 async function finalizeAcademyPurchase(p) {
   if (!p || p.status === "paid") return;
@@ -1313,8 +1375,16 @@ app.post("/api/academy/buy", async (req, res) => {
     if (!(baht > 0)) return res.status(400).json({ ok: false, error: "BAD_PRICE" });
     if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
     const purchaseId = uid("apay");
-    const amountSatang = Math.round(baht * 100);
+    const promo = await redeemPromo(String(req.body?.code || ""), email, Math.round(baht * 100));
+    if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
+    const amountSatang = promo.final;
     const origin = appBaseUrl();
+    // โค้ดส่วนลด 100% → ข้าม Stripe ให้สิทธิ์เรียนเลย
+    if (amountSatang <= 0) {
+      await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang) VALUES ($1, lower($2), $3, $4, 0)`, [purchaseId, email, courseId, c.name]);
+      await finalizeAcademyPurchase(await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [purchaseId]));
+      return res.json({ ok: true, free: true, purchase_id: purchaseId, redirect_url: `/academy/paid?purchase_id=${encodeURIComponent(purchaseId)}` });
+    }
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const s = await stripe.checkout.sessions.create({
@@ -1365,23 +1435,473 @@ app.post("/api/academy/progress", async (req, res) => {
     else await run(`DELETE FROM academy_progress WHERE email=lower($1) AND course_id=$2 AND lesson_id=$3`, [email, courseId, lessonId]);
     const total = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE course_id=$1`, [courseId]);
     const doneN = await one(`SELECT COUNT(*) c FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, courseId]);
-    // 🎓 เรียนครบทุกบท → ออกประกาศนียบัตรอัตโนมัติ (ครั้งเดียวต่อคอร์ส) — งานที่แอดมินเคยต้องทำมือในแชทไลน์
-    let certId = null;
-    if (Number(total.c) > 0 && Number(doneN.c) >= Number(total.c)) {
-      const ex = await one(`SELECT cert_id FROM academy_certificates WHERE lower(email)=lower($1) AND course_id=$2`, [email, courseId]);
-      if (ex) certId = ex.cert_id;
-      else {
-        const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
-        const student = (u && (u.name || u.username)) || email.split("@")[0];
-        const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
-        certId = uid("cert");
-        await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`, [certId, email, courseId, cName, student]);
-        console.log(`[academy] 🎓 cert issued: ${email} → ${cName}`);
-      }
-    }
-    res.json({ ok: true, done: Number(doneN.c), total: Number(total.c), cert_id: certId });
+    const cert = await maybeIssueCertificate(email, courseId);
+    res.json({ ok: true, done: Number(doneN.c), total: Number(total.c), cert_id: cert.cert_id, cert_blocked_by: cert.blocked_by });
   } catch (e) { console.error("progress", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
+// ✉️ เมลแจ้งเมื่อได้ใบประกาศ — ⛔ ปิดไว้จนกว่าคิมจะอ่านร่างและอนุมัติ (ตั้ง CERT_EMAIL_ENABLED=1 เพื่อเปิด)
+async function sendCertificateEmail(email, studentName, courseName, certId) {
+  if (String(process.env.CERT_EMAIL_ENABLED || "") !== "1") { console.log(`[cert-email] ปิดอยู่ (รออนุมัติ) — จะส่งถึง ${email} เรื่อง ${courseName}`); return; }
+  const url = `${appBaseUrl()}/academy/certificate/${encodeURIComponent(certId)}`;
+  await sendEmail(email, `🎓 ยินดีด้วยค่ะ! ประกาศนียบัตรคอร์ส ${courseName} พร้อมแล้ว`, wrap(
+    `สวัสดีค่ะ คุณ${studentName}<br><br>` +
+    `คุณเรียนจบคอร์ส <b>${courseName}</b> ครบทุกบทและส่งการบ้านผ่านเรียบร้อยแล้ว ครูพี่คิมขอแสดงความยินดีด้วยจริงๆ ค่ะ 🎉<br><br>` +
+    `${btn(url, "🎓 เปิดประกาศนียบัตรของฉัน")}<br><br>` +
+    `ประกาศนียบัตรใบนี้เก็บอยู่ในบัญชีของคุณตลอด กลับมาเปิดหรือสั่งพิมพ์ใหม่ได้ทุกเมื่อ ไม่ต้องเก็บลิงก์นี้ไว้ก็ได้ค่ะ<br><br>` +
+    `สิ่งที่อยากฝากไว้: ความรู้ที่เพิ่งเรียนจบจะอยู่กับเรานานที่สุดตอนที่ได้ <b>ลงมือใช้จริง</b> ลองหยิบไปทำงานจริงสักชิ้นในสัปดาห์นี้นะคะ<br><br>` +
+    `แล้วเจอกันในคอร์สต่อไปค่ะ<br>ครูพี่คิม · Babe House Academy`
+  ));
+}
+
+// ===== 🎓 ประกาศนียบัตร — ออกอัตโนมัติเมื่อ "เรียนครบทุกบท + ผ่านการบ้านที่บังคับครบ" =====
+// เดิมแอดมินต้องแจกมือในแชทไลน์แล้วตามไม่ได้ว่าใครได้แล้วบ้าง ตอนนี้ระบบออกให้เองและลูกค้าโหลดซ้ำได้ตลอดในบัญชี
+async function maybeIssueCertificate(email, courseId) {
+  const ex = await one(`SELECT cert_id FROM academy_certificates WHERE lower(email)=lower($1) AND course_id=$2`, [email, courseId]);
+  if (ex) return { cert_id: ex.cert_id, blocked_by: null };
+  const total = Number((await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE course_id=$1`, [courseId]))?.c || 0);
+  const done = Number((await one(`SELECT COUNT(*) c FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, courseId]))?.c || 0);
+  if (!(total > 0 && done >= total)) return { cert_id: null, blocked_by: "lessons" };
+  // การบ้านที่ตั้ง required=true ต้องมี submission ที่ผ่านครบทุกชิ้น (คอร์สที่ยังไม่ได้ตั้งการบ้าน = ผ่านอัตโนมัติ)
+  const pending = Number((await one(`SELECT COUNT(*) c FROM academy_assignments a WHERE a.course_id=$1 AND a.required
+      AND NOT EXISTS (SELECT 1 FROM academy_submissions s WHERE s.assignment_id=a.assignment_id AND lower(s.email)=lower($2) AND s.status='passed')`,
+    [courseId, email]))?.c || 0);
+  if (pending > 0) return { cert_id: null, blocked_by: "homework", homework_left: pending };
+  const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
+  const student = (u && (u.name || u.username)) || email.split("@")[0];
+  const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
+  const certId = uid("cert");
+  await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`, [certId, email, courseId, cName, student]);
+  console.log(`[academy] 🎓 cert issued: ${email} → ${cName}`);
+  sendCertificateEmail(email, student, cName, certId).catch(e => console.error("cert email", e.message));
+  return { cert_id: certId, blocked_by: null, just_issued: true };
+}
+
+// ===== 📝 การบ้าน — นักเรียนอัปคลิป/รูป · AI (สมองครูพี่คิม) ตรวจให้ทันที =====
+app.get("/api/academy/homework/:courseId", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const courseId = String(req.params.courseId || "");
+    const owned = await academyOwnedCourseIds(email);
+    if (!owned.includes(courseId)) return res.status(403).json({ ok: false, error: "NOT_OWNED" });
+    const asgs = await q(`SELECT assignment_id, title, brief, submit_type, required, seq FROM academy_assignments WHERE course_id=$1 ORDER BY seq, created_at`, [courseId]);
+    // ⚠️ ไม่ select file_data (ไฟล์รูปใหญ่ — เคยทำหน้าแอดมินช้ามาแล้ว) ดึงเฉพาะตอนเปิดดูทีละชิ้น
+    const subs = await q(`SELECT submission_id, assignment_id, status, score, ai_json, teacher_note, file_kind, created_at
+      FROM academy_submissions WHERE lower(email)=lower($1) AND course_id=$2 ORDER BY created_at DESC`, [email, courseId]);
+    const latest = {};
+    // ai เป็น null ถ้ายังไม่มีผลตรวจ (safeJson คืน {} ทำให้หน้าเว็บโชว์กล่องผลตรวจว่างๆ)
+    for (const s of subs) if (!latest[s.assignment_id]) latest[s.assignment_id] = { ...s, ai: s.ai_json ? safeJson(s.ai_json) : null, ai_json: undefined };
+    res.json({ ok: true, assignments: asgs.map(a => ({ ...a, my: latest[a.assignment_id] || null })), tries: subs.length });
+  } catch (e) { console.error("homework list", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+app.post("/api/academy/homework/submit", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const courseId = String(req.body?.course_id || ""), asgId = String(req.body?.assignment_id || "");
+    const dataUrl = String(req.body?.file || "");
+    if (!courseId || !asgId || !dataUrl) return res.status(400).json({ ok: false, error: "MISSING", message: "กรุณาแนบไฟล์งานด้วยนะคะ" });
+    const owned = await academyOwnedCourseIds(email);
+    if (!owned.includes(courseId)) return res.status(403).json({ ok: false, error: "NOT_OWNED" });
+    const a = await one(`SELECT * FROM academy_assignments WHERE assignment_id=$1 AND course_id=$2`, [asgId, courseId]);
+    if (!a) return res.status(404).json({ ok: false, error: "ASSIGNMENT_NOT_FOUND" });
+    const mime = (dataUrl.match(/^data:([^;]+);/) || [])[1] || String(req.body?.mime || "");
+    const isVideo = /^video\//.test(mime);
+    if (a.submit_type === "image" && isVideo) return res.status(400).json({ ok: false, error: "WRONG_TYPE", message: "การบ้านชิ้นนี้ให้ส่งเป็นรูปภาพนะคะ" });
+    if (a.submit_type === "video" && !isVideo) return res.status(400).json({ ok: false, error: "WRONG_TYPE", message: "การบ้านชิ้นนี้ให้ส่งเป็นคลิปวิดีโอนะคะ" });
+
+    const subId = uid("sub");
+    const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
+    // เก็บเฉพาะรูป (ให้คิมเปิดดูงานจริงได้) · คลิปไม่เก็บ ใหญ่เกินไปและทำให้ DB อืด
+    await run(`INSERT INTO academy_submissions (submission_id, assignment_id, course_id, email, file_kind, status, file_data)
+      VALUES ($1,$2,$3,lower($4),$5,'reviewing',$6)`, [subId, asgId, courseId, email, isVideo ? "video" : "image", isVideo ? null : dataUrl]);
+
+    let result = null, failed = false;
+    try {
+      const g = await gradeHomework({ dataUrl, mimeType: mime, courseName: cName, title: a.title, brief: a.brief, criteria: a.criteria });
+      result = g.result;
+      if (g.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'homework',$2,$3,$4,$5)`, [uid("use"), g.model, g.usage.input || 0, g.usage.output || 0, g.usage.total || 0]).catch(() => {});
+    } catch (e) {
+      console.error("[homework] grade failed", e.message);
+      failed = true;
+    }
+    if (failed) {
+      // 🛟 AI ล่ม = ห้ามตัดสินว่าตก (ลูกค้าจ่ายเงินมา) → ค้างไว้ให้ครูพี่คิมตรวจเอง แล้วเตือนทางเมล
+      await run(`UPDATE academy_submissions SET status='reviewing', teacher_note=$2 WHERE submission_id=$1`, [subId, "ระบบตรวจอัตโนมัติขัดข้อง รอครูตรวจเอง"]);
+      sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", "📝 มีการบ้านรอตรวจมือ",
+        wrap(`ระบบตรวจอัตโนมัติขัดข้อง มีงานค้างรอครูพี่คิมตรวจเองค่ะ<br><br>นักเรียน: <b>${email}</b><br>คอร์ส: ${cName}<br>การบ้าน: ${a.title}<br><br>${btn(appBaseUrl() + "/admin", "เปิดหน้าแอดมิน")}`)).catch(() => {});
+      return res.json({ ok: true, status: "reviewing", message: "ได้รับงานแล้วค่ะ ระบบตรวจไม่ว่างพอดี ครูพี่คิมจะเข้ามาตรวจให้เองนะคะ" });
+    }
+    const status = result.passed ? "passed" : "revise";
+    await run(`UPDATE academy_submissions SET status=$2, score=$3, ai_json=$4, reviewed_at=now() WHERE submission_id=$1`,
+      [subId, status, result.score, JSON.stringify(result)]);
+    const cert = result.passed ? await maybeIssueCertificate(email, courseId) : { cert_id: null };
+    res.json({ ok: true, status, result, cert_id: cert.cert_id, submission_id: subId });
+  } catch (e) { console.error("homework submit", e.message); res.status(500).json({ ok: false, error: "FAILED", message: "ส่งงานไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" }); }
+});
+// ประกาศนียบัตรทั้งหมดของฉัน — กลับมาโหลดซ้ำได้ตลอด ไม่ต้องทักแอดมิน
+app.get("/api/academy/my-certificates", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const rows = await q(`SELECT cert_id, course_id, course_name, student_name, issued_at FROM academy_certificates WHERE lower(email)=lower($1) ORDER BY issued_at DESC`, [email]);
+    res.json({ ok: true, certificates: rows });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+
+// ===== 🎟️ WORKSHOP (คลาสสด) — ลูกค้าดูตาราง เห็นที่นั่งเรียลไทม์ จองและจ่ายเองได้ =====
+// เดิมจองผ่านไลน์กับแอดมิน ทำให้เราไม่มีข้อมูลลูกค้า workshop เลย · ระบบนี้เก็บให้อัตโนมัติ
+// ที่นั่งที่ถูกกันไว้ = จ่ายแล้ว + กำลังจ่ายที่ยังไม่หมดเวลา (กันคนกดจองพร้อมกันแล้วเกินโควตา)
+const WS_HOLD_MIN = 20;
+const SEATS_TAKEN = `(SELECT COALESCE(SUM(qty),0) FROM workshop_bookings b
+  WHERE b.session_id = s.session_id AND (b.status='paid' OR (b.status='pending' AND b.created_at > now() - interval '${WS_HOLD_MIN} minutes')))`;
+
+async function seatsLeft(sessionId) {
+  const r = await one(`SELECT s.seats, ${SEATS_TAKEN} AS taken FROM workshop_sessions s WHERE s.session_id=$1`, [sessionId]);
+  if (!r) return null;
+  return { seats: Number(r.seats || 0), taken: Number(r.taken || 0), left: Math.max(0, Number(r.seats || 0) - Number(r.taken || 0)) };
+}
+app.get("/api/workshops", async (req, res) => {
+  try {
+    const ws = await q(`SELECT * FROM workshops WHERE active ORDER BY seq, created_at`);
+    const sess = await q(`SELECT s.*, ${SEATS_TAKEN} AS taken FROM workshop_sessions s
+      WHERE s.status='open' AND s.starts_at > now() ORDER BY s.starts_at`);
+    const byWs = {};
+    for (const s of sess) (byWs[s.workshop_id] ||= []).push({
+      session_id: s.session_id, starts_at: s.starts_at, ends_at: s.ends_at, location: s.location,
+      seats: Number(s.seats || 0), left: Math.max(0, Number(s.seats || 0) - Number(s.taken || 0)), price: s.price_override || null,
+    });
+    res.json({ ok: true, workshops: ws.map(w => ({ ...w, sessions: byWs[w.workshop_id] || [] })) });
+  } catch (e) { console.error("workshops", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+app.get("/api/workshops/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    const w = await one(`SELECT * FROM workshops WHERE workshop_id=$1 AND active`, [id]);
+    if (!w) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const sess = await q(`SELECT s.*, ${SEATS_TAKEN} AS taken FROM workshop_sessions s
+      WHERE s.workshop_id=$1 AND s.status='open' AND s.starts_at > now() ORDER BY s.starts_at`, [id]);
+    const showcase = await q(`SELECT url, caption FROM workshop_showcase WHERE workshop_id=$1 AND active ORDER BY seq`, [id]);
+    res.json({ ok: true, workshop: w, showcase, sessions: sess.map(s => ({
+      session_id: s.session_id, starts_at: s.starts_at, ends_at: s.ends_at, location: s.location, note: s.note,
+      seats: Number(s.seats || 0), left: Math.max(0, Number(s.seats || 0) - Number(s.taken || 0)), price: s.price_override || w.price,
+    })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+app.post("/api/workshops/book", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนจองนะคะ" });
+    const sessionId = String(req.body?.session_id || "");
+    const qty = Math.max(1, Math.min(10, Number(req.body?.qty) || 1));
+    const name = String(req.body?.name || "").trim(), phone = String(req.body?.phone || "").trim();
+    if (!sessionId || !name || !phone) return res.status(400).json({ ok: false, error: "MISSING", message: "กรอกชื่อและเบอร์โทรด้วยนะคะ" });
+    const s = await one(`SELECT s.*, w.name AS ws_name, w.price AS ws_price FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [sessionId]);
+    if (!s || s.status !== "open") return res.status(404).json({ ok: false, error: "SESSION_NOT_OPEN", message: "รอบนี้ปิดรับแล้วค่ะ" });
+    if (new Date(s.starts_at) <= new Date()) return res.status(400).json({ ok: false, error: "PAST", message: "รอบนี้ผ่านไปแล้วค่ะ" });
+    const avail = await seatsLeft(sessionId);
+    if (!avail || avail.left < qty) return res.status(409).json({ ok: false, error: "SOLD_OUT", message: avail?.left ? `เหลือที่นั่งแค่ ${avail.left} ที่ค่ะ` : "รอบนี้เต็มแล้วค่ะ" });
+    const unit = Number(s.price_override || s.ws_price || 0);
+    if (!(unit > 0)) return res.status(400).json({ ok: false, error: "BAD_PRICE" });
+    if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
+
+    let amountSatang = Math.round(unit * 100) * qty;
+    const promo = await redeemPromo(String(req.body?.code || ""), email, amountSatang);
+    if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
+    amountSatang = promo.final;
+
+    const bookingId = uid("wsb");
+    const origin = appBaseUrl();
+    // โค้ดส่วนลด 100% → ไม่ต้องผ่าน Stripe (ยอด 0 บาทสร้าง checkout ไม่ได้) บันทึกจองให้เลย
+    if (amountSatang <= 0) {
+      await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, promo_code)
+        VALUES ($1,$2,$3,lower($4),$5,$6,$7,0,$8)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, promo.code || null]);
+      await finalizeWorkshopBooking(await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [bookingId]));
+      return res.json({ ok: true, free: true, booking_id: bookingId, redirect_url: `/workshop/paid?booking_id=${encodeURIComponent(bookingId)}` });
+    }
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const when = new Date(s.starts_at).toLocaleString("th-TH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Bangkok" });
+    const ck = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: (process.env.STRIPE_PAYMENT_METHODS || "card,promptpay").split(",").map(x => x.trim()).filter(Boolean),
+      customer_email: email,
+      line_items: [{ price_data: { currency: "thb", product_data: { name: `${s.ws_name} · รอบ ${when}` }, unit_amount: amountSatang }, quantity: 1 }],
+      success_url: `${origin}/workshop/paid?booking_id=${encodeURIComponent(bookingId)}`,
+      cancel_url: `${origin}/workshop/${encodeURIComponent(s.workshop_id)}?payment=cancelled`,
+      metadata: { workshop_booking_id: bookingId, session_id: sessionId },
+    });
+    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code)
+      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null]);
+    res.json({ ok: true, checkout_url: ck.url, booking_id: bookingId });
+  } catch (e) { console.error("workshop book", e.message); res.status(500).json({ ok: false, error: "BOOK_FAILED", message: e.message }); }
+});
+async function finalizeWorkshopBooking(b) {
+  if (!b || b.status === "paid") return;
+  await run(`UPDATE workshop_bookings SET status='paid', paid_at=now() WHERE booking_id=$1 AND status<>'paid'`, [b.booking_id]);
+  const s = await one(`SELECT s.*, w.name AS ws_name FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [b.session_id]);
+  console.log(`[workshop] booked: ${b.email} → ${s?.ws_name} (${b.qty} ที่)`);
+  const left = await seatsLeft(b.session_id);
+  const when = s ? new Date(s.starts_at).toLocaleString("th-TH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
+  sendEmail(b.email, `✅ ยืนยันการจอง ${s?.ws_name || "workshop"} แล้วค่ะ`, wrap(
+    `สวัสดีค่ะ คุณ${b.name}<br><br>ได้รับการจองเรียบร้อยแล้วค่ะ 🎉<br><br>` +
+    `<b>${s?.ws_name || ""}</b><br>📅 ${when}<br>📍 ${s?.location || "แจ้งสถานที่อีกครั้งก่อนวันเรียน"}<br>👥 จำนวน ${b.qty} ที่<br><br>` +
+    (s?.note ? `${s.note}<br><br>` : "") +
+    `หลังเรียนจบ ไฟล์สรุปและเอกสารประกอบจะขึ้นในบัญชีของคุณให้ดาวน์โหลดได้เองค่ะ<br><br>${btn(appBaseUrl() + "/account", "ดูการจองของฉัน")}<br><br>แล้วเจอกันในคลาสนะคะ<br>ครูพี่คิม · Babe House`
+  )).catch(() => {});
+  sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", `🎟️ จอง workshop ใหม่ — ${s?.ws_name || ""}`, wrap(
+    `<b>${b.name}</b> (${b.email} · ${b.phone})<br>จอง ${b.qty} ที่ · ${(b.amount_satang / 100).toLocaleString()} บาท<br>รอบ: ${when}<br><br>ที่นั่งเหลือรอบนี้: <b>${left?.left ?? "-"}</b> จาก ${left?.seats ?? "-"}`
+  )).catch(() => {});
+}
+app.get("/api/workshops/booking/:id", async (req, res) => {
+  try {
+    const b = await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [String(req.params.id || "")]);
+    if (!b) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (b.status !== "paid" && b.provider_session_id && String(process.env.STRIPE_SECRET_KEY || "").trim()) {
+      try {
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const ck = await stripe.checkout.sessions.retrieve(b.provider_session_id);
+        if (ck && ck.payment_status === "paid") { await finalizeWorkshopBooking(b); b.status = "paid"; }
+      } catch {}
+    }
+    res.json({ ok: true, status: b.status, workshop_id: b.workshop_id });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+// การจอง workshop ของฉัน + ไฟล์สรุปหลังเรียน (โหลดเองได้ ไม่ต้องทักแอดมิน)
+app.get("/api/workshops/my", async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+    const rows = await q(`SELECT b.booking_id, b.qty, b.status, b.created_at, s.session_id, s.starts_at, s.location, s.summary_url, s.summary_note, w.name AS workshop_name, w.workshop_id
+      FROM workshop_bookings b JOIN workshop_sessions s ON s.session_id=b.session_id JOIN workshops w ON w.workshop_id=b.workshop_id
+      WHERE lower(b.email)=lower($1) AND b.status='paid' ORDER BY s.starts_at DESC`, [email]);
+    res.json({ ok: true, bookings: rows });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
+});
+
+// ===== 📊 หลังบ้าน: ภาพรวมยอดขายทุกสินค้าในที่เดียว (Blueprint + คอร์ส + workshop + ที่จะมีในอนาคต) =====
+app.get("/api/admin/sales-overview", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+    const since = `now() - interval '${days} days'`;
+    // Blueprint — ยอดที่จ่ายจริง (final_amount ถ้ามีโค้ดส่วนลด)
+    const bp = await one(`SELECT COUNT(*) n, COALESCE(SUM(COALESCE(final_amount_satang, amount_satang)),0) rev
+      FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND created_at > ${since}`);
+    const bpAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(COALESCE(final_amount_satang, amount_satang)),0) rev
+      FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid')`);
+    // คอร์ส — เฉพาะที่ขายผ่านเว็บใหม่ (academy_purchases) · ออเดอร์เก่าจากเว็บเดิมแยกให้ดูต่างหาก
+    const ac = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM academy_purchases WHERE status='paid' AND created_at > ${since}`);
+    const acAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM academy_purchases WHERE status='paid'`);
+    const acLegacy = await one(`SELECT COUNT(*) n, COALESCE(SUM(NULLIF(regexp_replace(COALESCE(total,'0'),'[^0-9.]','','g'),'')::numeric),0) rev
+      FROM academy_orders WHERE status='Close'`).catch(() => ({ n: 0, rev: 0 }));
+    // Workshop
+    const ws = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev, COALESCE(SUM(qty),0) seats FROM workshop_bookings WHERE status='paid' AND created_at > ${since}`);
+    const wsAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev, COALESCE(SUM(qty),0) seats FROM workshop_bookings WHERE status='paid'`);
+    // ขายดีรายคอร์ส (เว็บใหม่)
+    const topCourses = await q(`SELECT course_id, course_name, COUNT(*) n, SUM(amount_satang) rev FROM academy_purchases
+      WHERE status='paid' GROUP BY course_id, course_name ORDER BY rev DESC LIMIT 10`);
+    const B = (satang) => Math.round(Number(satang || 0) / 100);
+    res.json({ ok: true, days,
+      blueprint: { period: { orders: Number(bp.n), revenue: B(bp.rev) }, all: { orders: Number(bpAll.n), revenue: B(bpAll.rev) } },
+      courses: { period: { orders: Number(ac.n), revenue: B(ac.rev) }, all: { orders: Number(acAll.n), revenue: B(acAll.rev) },
+        legacy: { orders: Number(acLegacy.n), revenue: Math.round(Number(acLegacy.rev || 0)) } },
+      workshops: { period: { bookings: Number(ws.n), seats: Number(ws.seats), revenue: B(ws.rev) }, all: { bookings: Number(wsAll.n), seats: Number(wsAll.seats), revenue: B(wsAll.rev) } },
+      top_courses: topCourses.map(c => ({ id: c.course_id, name: c.course_name, orders: Number(c.n), revenue: B(c.rev) })),
+    });
+  } catch (e) { console.error("sales-overview", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// ===== 📝 หลังบ้าน: จัดการการบ้าน + รีวิวผลงาน + ตรวจงานที่ AI ตรวจไม่ได้ =====
+app.get("/api/admin/academy/manage", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const courseId = String(req.query.course_id || "");
+    const courses = await q(`SELECT legacy_id id, name, is_active FROM academy_courses ORDER BY legacy_id::int`);
+    if (!courseId) return res.json({ ok: true, courses: courses.map(c => ({ ...c, visible: c.is_active === "0" })) });
+    res.json({ ok: true, courses: courses.map(c => ({ ...c, visible: c.is_active === "0" })),
+      assignments: await q(`SELECT * FROM academy_assignments WHERE course_id=$1 ORDER BY seq, created_at`, [courseId]),
+      showcase: await q(`SELECT * FROM academy_showcase WHERE course_id=$1 ORDER BY seq, created_at`, [courseId]),
+      lessons: await q(`SELECT legacy_id id, name, url, seq FROM academy_course_lines WHERE course_id=$1 ORDER BY COALESCE(NULLIF(seq,'')::int,999)`, [courseId]) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/admin/academy/assignment", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const b = req.body || {};
+    if (b.action === "delete") { await run(`DELETE FROM academy_assignments WHERE assignment_id=$1`, [String(b.assignment_id)]); return res.json({ ok: true, deleted: b.assignment_id }); }
+    const id = String(b.assignment_id || "") || uid("asg");
+    await run(`INSERT INTO academy_assignments (assignment_id, course_id, title, brief, submit_type, criteria, required, seq)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (assignment_id) DO UPDATE SET title=EXCLUDED.title, brief=EXCLUDED.brief, submit_type=EXCLUDED.submit_type,
+        criteria=EXCLUDED.criteria, required=EXCLUDED.required, seq=EXCLUDED.seq`,
+      [id, String(b.course_id || ""), String(b.title || ""), String(b.brief || ""), ["image", "video", "any"].includes(b.submit_type) ? b.submit_type : "any",
+       String(b.criteria || ""), b.required !== false, Number(b.seq) || 1]);
+    res.json({ ok: true, assignment: await one(`SELECT * FROM academy_assignments WHERE assignment_id=$1`, [id]) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/admin/academy/showcase", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const b = req.body || {};
+    if (b.action === "delete") { await run(`DELETE FROM academy_showcase WHERE showcase_id=$1`, [String(b.showcase_id)]); return res.json({ ok: true, deleted: b.showcase_id }); }
+    const id = String(b.showcase_id || "") || uid("shw");
+    await run(`INSERT INTO academy_showcase (showcase_id, course_id, kind, url, caption, student_name, seq, active)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (showcase_id) DO UPDATE SET kind=EXCLUDED.kind, url=EXCLUDED.url, caption=EXCLUDED.caption,
+        student_name=EXCLUDED.student_name, seq=EXCLUDED.seq, active=EXCLUDED.active`,
+      [id, String(b.course_id || ""), ["clip", "work", "quote"].includes(b.kind) ? b.kind : "clip", String(b.url || ""),
+       String(b.caption || ""), String(b.student_name || ""), Number(b.seq) || 1, b.active !== false]);
+    res.json({ ok: true, showcase: await one(`SELECT * FROM academy_showcase WHERE showcase_id=$1`, [id]) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.get("/api/admin/academy/submissions", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const status = String(req.query.status || "");
+    // ⚠️ ไม่ select file_data — ไฟล์รูปใหญ่ ทำให้หน้ารายการช้า (บทเรียนจากบั๊กหน้านักเรียนเดิม)
+    const rows = await q(`SELECT s.submission_id, s.assignment_id, s.course_id, s.email, s.file_kind, s.status, s.score,
+        s.teacher_note, s.created_at, s.reviewed_at, a.title, c.name AS course_name
+      FROM academy_submissions s LEFT JOIN academy_assignments a ON a.assignment_id=s.assignment_id
+      LEFT JOIN academy_courses c ON c.legacy_id=s.course_id
+      ${status ? "WHERE s.status=$1" : ""} ORDER BY s.created_at DESC LIMIT 200`, status ? [status] : []);
+    res.json({ ok: true, submissions: rows, pending: Number((await one(`SELECT COUNT(*) c FROM academy_submissions WHERE status='reviewing'`))?.c || 0) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.get("/api/admin/academy/submission/:id", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const s = await one(`SELECT * FROM academy_submissions WHERE submission_id=$1`, [String(req.params.id || "")]);
+  if (!s) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  res.json({ ok: true, submission: { ...s, ai: s.ai_json ? safeJson(s.ai_json) : null, ai_json: undefined } });
+});
+// ครูพี่คิมตัดสินเอง (ทับผล AI ได้เสมอ) — ผ่าน = ปลดล็อกใบประกาศให้ทันที
+app.post("/api/admin/academy/submission/review", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const id = String(req.body?.submission_id || ""), pass = req.body?.pass === true;
+    const note = String(req.body?.note || "");
+    const s = await one(`SELECT submission_id, email, course_id FROM academy_submissions WHERE submission_id=$1`, [id]);
+    if (!s) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    await run(`UPDATE academy_submissions SET status=$2, teacher_note=$3, reviewed_at=now() WHERE submission_id=$1`, [id, pass ? "passed" : "revise", note]);
+    const cert = pass ? await maybeIssueCertificate(s.email, s.course_id) : { cert_id: null };
+    res.json({ ok: true, status: pass ? "passed" : "revise", cert_id: cert.cert_id });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// สุขภาพข้อมูลคอร์ส — บทเรียนที่ยังไม่มีลิงก์วิดีโอ (กันลูกค้าจ่ายเงินแล้วเจอบทว่าง)
+app.get("/api/admin/academy/health", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const missing = await q(`SELECT l.course_id, c.name AS course_name, l.legacy_id, l.name, l.seq
+    FROM academy_course_lines l JOIN academy_courses c ON c.legacy_id=l.course_id
+    WHERE c.is_active='0' AND COALESCE(l.url,'') NOT LIKE 'http%' ORDER BY l.course_id::int, l.seq`);
+  const noLessons = await q(`SELECT c.legacy_id, c.name FROM academy_courses c WHERE c.is_active='0'
+    AND NOT EXISTS (SELECT 1 FROM academy_course_lines l WHERE l.course_id=c.legacy_id)`);
+  res.json({ ok: true, missing_url: missing, courses_without_lessons: noLessons });
+});
+// ความปลอดภัย — บัญชีที่เปิดคอร์สจากหลาย IP ผิดปกติ (สัญญาณแชร์รหัส/ดูดคลิป)
+app.get("/api/admin/academy/security", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const days = Math.max(1, Math.min(90, Number(req.query.days) || 7));
+  const rows = await q(`SELECT email, COUNT(DISTINCT ip) ips, COUNT(*) views, MAX(created_at) last_seen
+    FROM academy_video_access WHERE created_at > now() - interval '${days} days' AND COALESCE(ip,'')<>''
+    GROUP BY email HAVING COUNT(DISTINCT ip) >= 4 ORDER BY COUNT(DISTINCT ip) DESC LIMIT 50`);
+  res.json({ ok: true, days, suspicious: rows.map(r => ({ ...r, ips: Number(r.ips), views: Number(r.views) })) });
+});
+
+// ===== 🎟️ หลังบ้าน: จัดการ workshop — คิมลงวันเองได้ทุกเดือน =====
+app.get("/api/admin/workshops", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const ws = await q(`SELECT * FROM workshops ORDER BY seq, created_at`);
+    const sess = await q(`SELECT s.*, ${SEATS_TAKEN} AS taken,
+      (SELECT COALESCE(SUM(amount_satang),0) FROM workshop_bookings b WHERE b.session_id=s.session_id AND b.status='paid') AS revenue
+      FROM workshop_sessions s ORDER BY s.starts_at DESC`);
+    const byWs = {};
+    for (const s of sess) (byWs[s.workshop_id] ||= []).push({ ...s, taken: Number(s.taken || 0), left: Math.max(0, Number(s.seats || 0) - Number(s.taken || 0)), revenue: Math.round(Number(s.revenue || 0) / 100) });
+    const showcase = await q(`SELECT * FROM workshop_showcase ORDER BY seq`);
+    const shwBy = {};
+    for (const s of showcase) (shwBy[s.workshop_id] ||= []).push(s);
+    res.json({ ok: true, workshops: ws.map(w => ({ ...w, sessions: byWs[w.workshop_id] || [], showcase: shwBy[w.workshop_id] || [] })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/admin/workshop", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const b = req.body || {};
+    if (b.action === "delete") { await run(`DELETE FROM workshops WHERE workshop_id=$1`, [String(b.workshop_id)]); return res.json({ ok: true, deleted: b.workshop_id }); }
+    const id = String(b.workshop_id || "") || uid("ws");
+    await run(`INSERT INTO workshops (workshop_id, name, tagline, detail, who_for, what_you_get, instructor, price, duration, image_url, active, seq)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      ON CONFLICT (workshop_id) DO UPDATE SET name=EXCLUDED.name, tagline=EXCLUDED.tagline, detail=EXCLUDED.detail, who_for=EXCLUDED.who_for,
+        what_you_get=EXCLUDED.what_you_get, instructor=EXCLUDED.instructor, price=EXCLUDED.price, duration=EXCLUDED.duration,
+        image_url=EXCLUDED.image_url, active=EXCLUDED.active, seq=EXCLUDED.seq`,
+      [id, String(b.name || ""), String(b.tagline || ""), String(b.detail || ""), String(b.who_for || ""), String(b.what_you_get || ""),
+       String(b.instructor || "ครูพี่คิม"), Number(b.price) || 0, String(b.duration || ""), String(b.image_url || ""), b.active !== false, Number(b.seq) || 1]);
+    res.json({ ok: true, workshop: await one(`SELECT * FROM workshops WHERE workshop_id=$1`, [id]) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/admin/workshop/session", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const b = req.body || {};
+    if (b.action === "delete") {
+      const booked = Number((await one(`SELECT COUNT(*) c FROM workshop_bookings WHERE session_id=$1 AND status='paid'`, [String(b.session_id)]))?.c || 0);
+      if (booked > 0) return res.status(409).json({ ok: false, error: "HAS_BOOKINGS", message: `รอบนี้มีคนจ่ายเงินจองแล้ว ${booked} รายการ ลบไม่ได้ค่ะ — ปิดรับสมัครแทนได้` });
+      await run(`DELETE FROM workshop_sessions WHERE session_id=$1`, [String(b.session_id)]);
+      return res.json({ ok: true, deleted: b.session_id });
+    }
+    const id = String(b.session_id || "") || uid("wss");
+    if (!b.starts_at) return res.status(400).json({ ok: false, error: "MISSING_DATE", message: "ใส่วันและเวลาเรียนด้วยนะคะ" });
+    await run(`INSERT INTO workshop_sessions (session_id, workshop_id, starts_at, ends_at, location, seats, price_override, status, note, summary_url, summary_note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      ON CONFLICT (session_id) DO UPDATE SET workshop_id=EXCLUDED.workshop_id, starts_at=EXCLUDED.starts_at, ends_at=EXCLUDED.ends_at,
+        location=EXCLUDED.location, seats=EXCLUDED.seats, price_override=EXCLUDED.price_override, status=EXCLUDED.status,
+        note=EXCLUDED.note, summary_url=EXCLUDED.summary_url, summary_note=EXCLUDED.summary_note`,
+      [id, String(b.workshop_id || ""), b.starts_at, b.ends_at || null, String(b.location || ""), Number(b.seats) || 10,
+       b.price_override ? Number(b.price_override) : null, ["open", "closed", "done"].includes(b.status) ? b.status : "open",
+       String(b.note || ""), String(b.summary_url || ""), String(b.summary_note || "")]);
+    res.json({ ok: true, session: await one(`SELECT * FROM workshop_sessions WHERE session_id=$1`, [id]) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/admin/workshop/showcase", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const b = req.body || {};
+    if (b.action === "delete") { await run(`DELETE FROM workshop_showcase WHERE showcase_id=$1`, [String(b.showcase_id)]); return res.json({ ok: true }); }
+    const id = String(b.showcase_id || "") || uid("wsc");
+    await run(`INSERT INTO workshop_showcase (showcase_id, workshop_id, url, caption, seq, active) VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (showcase_id) DO UPDATE SET url=EXCLUDED.url, caption=EXCLUDED.caption, seq=EXCLUDED.seq, active=EXCLUDED.active`,
+      [id, String(b.workshop_id || ""), String(b.url || ""), String(b.caption || ""), Number(b.seq) || 1, b.active !== false]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.get("/api/admin/workshop/bookings", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const sid = String(req.query.session_id || "");
+  const rows = await q(`SELECT b.*, s.starts_at, w.name AS workshop_name FROM workshop_bookings b
+    JOIN workshop_sessions s ON s.session_id=b.session_id JOIN workshops w ON w.workshop_id=b.workshop_id
+    ${sid ? "WHERE b.session_id=$1" : ""} ORDER BY b.created_at DESC LIMIT 300`, sid ? [sid] : []);
+  res.json({ ok: true, bookings: rows });
+});
+// เพิ่มคนที่จองผ่านไลน์/โอนตรงเข้าระบบเอง (ช่วงเปลี่ยนผ่าน จะได้มีข้อมูลลูกค้าครบ)
+app.post("/api/admin/workshop/booking", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const b = req.body || {};
+    if (b.action === "attend") { await run(`UPDATE workshop_bookings SET attended=$2 WHERE booking_id=$1`, [String(b.booking_id), b.attended !== false]); return res.json({ ok: true }); }
+    if (b.action === "cancel") { await run(`UPDATE workshop_bookings SET status='cancelled' WHERE booking_id=$1`, [String(b.booking_id)]); return res.json({ ok: true }); }
+    const s = await one(`SELECT s.*, w.price FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [String(b.session_id || "")]);
+    if (!s) return res.status(404).json({ ok: false, error: "SESSION_NOT_FOUND" });
+    const qty = Math.max(1, Number(b.qty) || 1);
+    const id = uid("wsb");
+    const amt = b.amount_satang != null ? Number(b.amount_satang) : Math.round(Number(s.price_override || s.price || 0) * 100) * qty;
+    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, status, paid_at)
+      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,'paid',now())`,
+      [id, s.session_id, s.workshop_id, String(b.email || ""), String(b.name || ""), String(b.phone || ""), qty, amt]);
+    res.json({ ok: true, booking_id: id });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 app.get("/api/admin/academy-stats", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const out = {};
@@ -2011,6 +2531,7 @@ async function runQualityWatch() {
 
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(async () => {
+  await seedWorkshops();   // ใส่รายละเอียด workshop + รีวิวให้พร้อม (ครั้งเดียว ไม่ทับของที่คิมแก้เอง)
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI
   try {
     const rows = await q(`SELECT DISTINCT ON (COALESCE(category,'general')) COALESCE(category,'general') AS category, content, created_at FROM trend_digest ORDER BY COALESCE(category,'general'), created_at DESC`);
@@ -2027,6 +2548,7 @@ initDb().then(async () => {
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
   setInterval(() => run(`UPDATE video_audits SET video_data=NULL WHERE status='uploaded' AND video_data IS NOT NULL AND created_at < now() - interval '24 hours' AND order_id IN (SELECT order_id FROM blueprint_orders WHERE payment_status NOT IN ('paid','mock_paid'))`).catch(e => console.error("va cleanup", e.message)), 3600 * 1000); // ทุก 1 ชม. ลบคลิปที่อัปแต่ไม่จ่ายเกิน 24 ชม.
+  setInterval(() => run(`DELETE FROM academy_video_access WHERE created_at < now() - interval '60 days'`).catch(() => {}), 24 * 3600 * 1000); // ล็อกการเข้าดูคลิปเก็บ 60 วันพอ (ใช้จับพฤติกรรมระยะสั้น) ไม่ให้ตารางบวม
   setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → เมลแจ้งแอดมิน
   setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
   setTimeout(emailWeeklyBackupIfDue, 90000); // เช็กหลังสตาร์ท (ส่งถ้าครบ 7 วัน)

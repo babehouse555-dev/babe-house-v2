@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { useI18n } from "../i18n.jsx";
+import MyLearning from "./MyLearning.jsx";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
@@ -145,6 +146,9 @@ export default function Account() {
         })()}
 
         <Link className="card center" to={`/form?email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block", border: "1.5px dashed var(--blue)", background: "#F4F8FD" }}>{t("ac_add_channel")}</Link>
+
+        {/* คอร์ส/ใบประกาศ/workshop — ไม่แสดงอะไรเลยถ้าลูกค้าคนนั้นยังไม่มี (ลูกค้า Blueprint เห็นหน้าเดิม) */}
+        <MyLearning />
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>{t("ac_ref_desc_a")} <b style={{ color: "#2C8E8C" }}>{t("ac_ref_desc_b")} {ref.percent}% {t("ac_ref_desc_c")}</b> <b style={{ color: "#2C8E8C" }}>{t("ac_ref_desc_d")}</b> {t("ac_ref_desc_e")}</div>

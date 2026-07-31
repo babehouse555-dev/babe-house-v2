@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api, baht } from "../api.js";
+import { SalesOverview, AcademyManage, HomeworkReview, WorkshopManage, SecurityPanel } from "./AdminAcademy.jsx";
 
 const fmtTok = (n) => { n = Number(n || 0); return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n); };
 
@@ -97,6 +98,13 @@ export default function Admin() {
   return (
     <div className="wrap page-pad">
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
+
+      {/* ── ภาพรวมทุกสินค้า + คอร์สเรียน + workshop (ยังไม่เปิดให้ลูกค้าเห็น) ── */}
+      <SalesOverview adminKey={key} />
+      <SecurityPanel adminKey={key} />
+      <HomeworkReview adminKey={key} />
+      <WorkshopManage adminKey={key} />
+      <AcademyManage adminKey={key} />
 
       {(() => { const sq = studentQ.trim().toLowerCase();
         const sFiltered = sq ? students.filter(s => `${s.email || ""} ${s.instagram_account || ""} ${s.business_type || ""} ${s.monthly_goal || ""} ${s.industry || ""}`.toLowerCase().includes(sq)) : students;

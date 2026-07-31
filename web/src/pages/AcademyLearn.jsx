@@ -1,22 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, fileToBase64 } from "../api.js";
 
-// หน้าเรียนคอร์ส (เฟส 2) — วิดีโอ + ติ๊กจบบท + แถบความคืบหน้า
+// หน้าเรียนคอร์ส — วิดีโอ + ติ๊กจบบท + แถบความคืบหน้า + ส่งการบ้านให้ AI ตรวจ
 // สิทธิ์: ลูกค้าที่ซื้อคอร์สนี้ (ออเดอร์ Close) ผ่าน session OTP · แอดมินพรีวิวได้ทุกคอร์ส
 const BLUE = "var(--blue)";
 
 // แปลงลิงก์ YouTube ทุกทรง → embed URL (watch?v= / youtu.be / shorts / playlist)
+// ใช้โดเมน youtube-nocookie + ปิดคลิปแนะนำท้ายคลิป (กันคนเลื่อนออกไปช่องอื่น) + ปิดคีย์ลัด
 function toEmbed(url) {
   const u = String(url || "").trim();
   if (!u) return null;
-  let m = u.match(/[?&]v=([A-Za-z0-9_-]{6,})/); if (m) return `https://www.youtube.com/embed/${m[1]}`;
-  m = u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/); if (m) return `https://www.youtube.com/embed/${m[1]}`;
-  m = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/); if (m) return `https://www.youtube.com/embed/${m[1]}`;
-  m = u.match(/[?&]list=([A-Za-z0-9_-]+)/); if (m) return `https://www.youtube.com/embed/videoseries?list=${m[1]}`;
+  const opts = "rel=0&modestbranding=1&disablekb=1&playsinline=1";
+  let m = u.match(/[?&]v=([A-Za-z0-9_-]{6,})/); if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?${opts}`;
+  m = u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/); if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?${opts}`;
+  m = u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/); if (m) return `https://www.youtube-nocookie.com/embed/${m[1]}?${opts}`;
+  m = u.match(/[?&]list=([A-Za-z0-9_-]+)/); if (m) return `https://www.youtube-nocookie.com/embed/videoseries?list=${m[1]}&${opts}`;
   if (u.includes("/embed/")) return u;
   return u; // ไม่รู้จักทรง — ลองใส่ iframe ตรงๆ
 }
+// เซิร์ฟเวอร์รับ payload ได้ 40MB และ base64 ทำให้ไฟล์บวมขึ้น ~1.37 เท่า → รับไฟล์จริงได้ราว 28MB
+// ตั้ง 25 ไว้เผื่อขอบ กันเคสอัปแล้วเด้ง 413 ทั้งที่บอกลูกค้าว่ารับได้
+const MAX_MB = 25;
 
 export default function AcademyLearn() {
   const [sp] = useSearchParams();
@@ -25,6 +30,8 @@ export default function AcademyLearn() {
   const [err, setErr] = useState(null);
   const [cur, setCur] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState("lessons");
+  const [hw, setHw] = useState(null);
   const adminKey = localStorage.getItem("babe_admin_key") || "";
 
   useEffect(() => {
@@ -32,16 +39,25 @@ export default function AcademyLearn() {
     api(`/api/academy/learn/${courseId}`, { token: session.token || undefined, adminKey: adminKey || undefined })
       .then(d => { setData(d); const first = (d.lessons || []).findIndex(l => !l.done); setCur(first >= 0 ? first : 0); })
       .catch(e => setErr(e));
+    if (session.token) api(`/api/academy/homework/${courseId}`, { token: session.token }).then(setHw).catch(() => {});
   }, [courseId]);
+
+  async function reloadHw() { try { setHw(await api(`/api/academy/homework/${courseId}`, { token: session.token })); } catch {} }
 
   async function mark(lesson, done) {
     if (adminKey && !session.token) return; // โหมดพรีวิวแอดมิน ไม่บันทึก progress
     setBusy(true);
     try {
       const r = await api("/api/academy/progress", { method: "POST", token: session.token, body: { course_id: courseId, lesson_id: lesson.id, done } });
-      setData(p => ({ ...p, cert_id: r.cert_id || p.cert_id, lessons: p.lessons.map(l => l.id === lesson.id ? { ...l, done } : l) }));
+      setData(p => ({ ...p, cert_id: r.cert_id || p.cert_id, cert_blocked_by: r.cert_blocked_by, lessons: p.lessons.map(l => l.id === lesson.id ? { ...l, done } : l) }));
     } catch {}
     setBusy(false);
+  }
+
+  // บันทึกว่าเปิดดูบทไหน (ใช้จับพฤติกรรมแชร์บัญชี — ไม่กระทบการใช้งาน)
+  function noteView(lesson) {
+    if (!session.token || !lesson) return;
+    api("/api/academy/lesson-view", { method: "POST", token: session.token, body: { course_id: courseId, lesson_id: lesson.id } }).catch(() => {});
   }
 
   if (err) return (
@@ -59,6 +75,9 @@ export default function AcademyLearn() {
   const pct = lessons.length ? Math.round(doneN / lessons.length * 100) : 0;
   const lesson = lessons[cur];
   const embed = lesson ? toEmbed(lesson.url) : null;
+  const asgs = hw?.assignments || [];
+  const hwLeft = asgs.filter(a => a.required && a.my?.status !== "passed").length;
+  const allDone = pct === 100 && lessons.length > 0;
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -74,37 +93,60 @@ export default function AcademyLearn() {
           </div>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: BLUE, whiteSpace: "nowrap" }}>{doneN}/{lessons.length} บท · {pct}%</div>
         </div>
-        {pct === 100 && lessons.length > 0 && (
-          <div className="card" style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 14, textAlign: "center", fontWeight: 700, color: "#1a7f43" }}>
-            🎉 ยินดีด้วยค่ะ! คุณเรียนจบคอร์สนี้แล้ว
-            {data.cert_id && <div style={{ marginTop: 10 }}><Link className="btn" to={`/academy/certificate/${data.cert_id}`}>🎓 เปิดประกาศนียบัตรของฉัน</Link></div>}
+
+        {allDone && (
+          data.cert_id ? (
+            <div className="card" style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 14, textAlign: "center", fontWeight: 700, color: "#1a7f43" }}>
+              🎉 ยินดีด้วยค่ะ! คุณเรียนจบคอร์สนี้แล้ว
+              <div style={{ marginTop: 10 }}><Link className="btn" to={`/academy/certificate/${data.cert_id}`}>🎓 เปิดประกาศนียบัตรของฉัน</Link></div>
+            </div>
+          ) : hwLeft > 0 ? (
+            <div className="card" style={{ background: "#fff7e6", border: "1px solid #f0d9a0", borderRadius: 14, textAlign: "center", color: "#8a6d1f" }}>
+              <b>เหลืออีกนิดเดียว!</b> ดูครบทุกบทแล้ว ส่งการบ้านอีก {hwLeft} ชิ้นให้ผ่าน แล้วรับประกาศนียบัตรได้เลยค่ะ
+              <div style={{ marginTop: 10 }}><button className="btn" onClick={() => setTab("homework")} style={{ padding: "9px 18px" }}>📝 ไปส่งการบ้าน</button></div>
+            </div>
+          ) : null
+        )}
+
+        {asgs.length > 0 && (
+          <div style={{ display: "flex", gap: 8, margin: "0 0 14px" }}>
+            {[["lessons", `🎬 บทเรียน (${lessons.length})`], ["homework", `📝 การบ้าน (${asgs.length})${hwLeft ? ` · เหลือ ${hwLeft}` : " ✓"}`]].map(([v, l]) => (
+              <button key={v} onClick={() => setTab(v)} style={{ border: `1.5px solid ${tab === v ? BLUE : "var(--border)"}`, background: tab === v ? BLUE : "#fff", color: tab === v ? "#fff" : "var(--ink)", borderRadius: 20, padding: "7px 16px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{l}</button>
+            ))}
           </div>
         )}
 
+        {tab === "homework" ? (
+          <Homework assignments={asgs} courseId={courseId} onDone={reloadHw} onCert={id => setData(p => ({ ...p, cert_id: id || p.cert_id }))} />
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 18, alignItems: "start" }} className="learn-grid">
           <div>
-            <div style={{ aspectRatio: "16/9", background: "#000", borderRadius: 14, overflow: "hidden" }}>
+            {/* 🔒 ลายน้ำอีเมลผู้เรียนทับบนคลิป — อัดจอไปแจกก็รู้ว่าใครทำ (กันการอัดจอ 100% ไม่ได้ แต่ทำให้ไม่คุ้มที่จะทำ) */}
+            <div style={{ position: "relative", aspectRatio: "16/9", background: "#000", borderRadius: 14, overflow: "hidden" }}
+                 onContextMenu={e => e.preventDefault()}>
               {embed
                 ? <iframe key={lesson.id} src={embed} title={lesson.name} style={{ width: "100%", height: "100%", border: 0 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                 : <div style={{ color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 14 }}>บทนี้ยังไม่มีวิดีโอ</div>}
+              {data.watermark && embed && <Watermark text={data.watermark} />}
             </div>
             {lesson && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10, flexWrap: "wrap" }}>
                 <div style={{ fontWeight: 700, fontSize: 15.5 }}>{cur + 1}. {lesson.name} {lesson.time && <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>· {lesson.time}</span>}</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   {!lesson.done
-                    ? <button className="btn" disabled={busy} onClick={() => { mark(lesson, true); if (cur < lessons.length - 1) setCur(cur + 1); }} style={{ padding: "9px 16px" }}>✓ เรียนจบบทนี้{cur < lessons.length - 1 ? " · ไปบทต่อไป" : ""}</button>
+                    ? <button className="btn" disabled={busy} onClick={() => { mark(lesson, true); if (cur < lessons.length - 1) { setCur(cur + 1); noteView(lessons[cur + 1]); } }} style={{ padding: "9px 16px" }}>✓ เรียนจบบทนี้{cur < lessons.length - 1 ? " · ไปบทต่อไป" : ""}</button>
                     : <button className="btn ghost" disabled={busy} onClick={() => mark(lesson, false)} style={{ padding: "9px 16px" }}>↺ ยกเลิกติ๊กจบ</button>}
                 </div>
               </div>
             )}
+            <p className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>🔒 วิดีโอในคอร์สเป็นลิขสิทธิ์ของ Babe House Academy สำหรับผู้เรียนท่านนี้เท่านั้น — ห้ามบันทึกหน้าจอ ทำซ้ำ หรือเผยแพร่ต่อ</p>
           </div>
 
           <div className="card" style={{ margin: 0, borderRadius: 14, padding: "14px 14px", maxHeight: "70vh", overflowY: "auto" }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, marginBottom: 10 }}>บทเรียน ({lessons.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {lessons.map((l, i) => (
-                <button key={l.id} onClick={() => setCur(i)} style={{ display: "flex", gap: 9, alignItems: "flex-start", textAlign: "left", background: i === cur ? "var(--soft)" : "none", border: 0, borderRadius: 9, padding: "8px 9px", cursor: "pointer", fontSize: 13.5, lineHeight: 1.45 }}>
+                <button key={l.id} onClick={() => { setCur(i); noteView(l); }} style={{ display: "flex", gap: 9, alignItems: "flex-start", textAlign: "left", background: i === cur ? "var(--soft)" : "none", border: 0, borderRadius: 9, padding: "8px 9px", cursor: "pointer", fontSize: 13.5, lineHeight: 1.45 }}>
                   <span style={{ color: l.done ? "#1a7f43" : "#c7c7cf", fontWeight: 800, flexShrink: 0 }}>{l.done ? "✓" : "○"}</span>
                   <span style={{ fontWeight: i === cur ? 700 : 400 }}>{i + 1}. {l.name}{l.time ? <span className="muted"> · {l.time}</span> : null}</span>
                 </button>
@@ -113,8 +155,108 @@ export default function AcademyLearn() {
             </div>
           </div>
         </div>
+        )}
       </div>
       <style>{`@media (max-width: 860px){ .learn-grid{ grid-template-columns: 1fr !important; } }`}</style>
+    </div>
+  );
+}
+
+// ลายน้ำที่ขยับตำแหน่งช้าๆ — ครอปทิ้งทีเดียวไม่ได้ ต้องครอปทั้งคลิป
+function Watermark({ text }) {
+  const [pos, setPos] = useState({ top: "8%", left: "6%" });
+  useEffect(() => {
+    const spots = [{ top: "8%", left: "6%" }, { top: "8%", left: "58%" }, { top: "82%", left: "6%" }, { top: "82%", left: "58%" }, { top: "45%", left: "34%" }];
+    let i = 0;
+    const t = setInterval(() => { i = (i + 1) % spots.length; setPos(spots[i]); }, 22000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ position: "absolute", ...pos, pointerEvents: "none", color: "rgba(255,255,255,.34)", fontSize: 12, fontWeight: 600,
+      textShadow: "0 1px 3px rgba(0,0,0,.6)", transition: "top 1.5s, left 1.5s", userSelect: "none", maxWidth: "40%", wordBreak: "break-all" }}>
+      {text}
+    </div>
+  );
+}
+
+/* ══════════ การบ้าน — ส่งงาน ครูพี่คิม (AI) ตรวจให้ทันที ══════════ */
+function Homework({ assignments, courseId, onDone, onCert }) {
+  return (
+    <div>
+      <div className="card" style={{ borderRadius: 14, background: "#f7fbff", border: `1px solid ${BLUE}33` }}>
+        <div style={{ fontSize: 14, lineHeight: 1.8 }}>
+          📝 <b>ส่งงานแล้วรู้ผลเลย</b> — ครูพี่คิมจะดูงานให้แล้วบอกว่าทำอะไรได้ดี และควรปรับตรงไหน
+          ส่งผ่านครบทุกชิ้นเมื่อไหร่ ประกาศนียบัตรจะออกให้อัตโนมัติค่ะ · ส่งใหม่ได้ไม่จำกัดครั้ง
+        </div>
+      </div>
+      {assignments.map(a => <HomeworkItem key={a.assignment_id} a={a} courseId={courseId} onDone={onDone} onCert={onCert} />)}
+    </div>
+  );
+}
+
+function HomeworkItem({ a, courseId, onDone, onCert }) {
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef(null);
+  const my = a.my;
+  const accept = a.submit_type === "image" ? "image/*" : a.submit_type === "video" ? "video/*" : "image/*,video/*";
+
+  async function send(e) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    const mb = f.size / 1024 / 1024;
+    if (mb > MAX_MB) { setMsg(`ไฟล์ใหญ่ ${mb.toFixed(0)}MB เกินไปค่ะ (รับไม่เกิน ${MAX_MB}MB) — ลองย่อคลิปให้สั้นลงหรือลดความละเอียดนะคะ`); return; }
+    setSending(true); setMsg("กำลังส่งให้ครูพี่คิมตรวจ... คลิปอาจใช้เวลาสัก 1-2 นาที รอสักครู่นะคะ");
+    try {
+      const dataUrl = await fileToBase64(f);
+      const r = await api("/api/academy/homework/submit", { method: "POST", token: session.token, body: { course_id: courseId, assignment_id: a.assignment_id, file: dataUrl, mime: f.type } });
+      setMsg("");
+      if (r.cert_id) onCert?.(r.cert_id);
+      await onDone?.();
+    } catch (e2) { setMsg(e2.message || "ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะคะ"); }
+    setSending(false);
+  }
+
+  const st = my?.status;
+  const badge = st === "passed" ? <span className="tag on">✅ ผ่านแล้ว</span>
+    : st === "revise" ? <span className="tag off">↩️ ให้แก้แล้วส่งใหม่</span>
+    : st === "reviewing" ? <span className="tag">⏳ รอครูตรวจ</span> : null;
+
+  return (
+    <div className="card" style={{ borderRadius: 14 }}>
+      <div className="between" style={{ gap: 8, flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>{a.seq}. {a.title}</h3>
+        <div>{badge}{!a.required && <span className="muted" style={{ fontSize: 12.5, marginLeft: 6 }}>(ไม่บังคับ)</span>}</div>
+      </div>
+      {a.brief && <p style={{ fontSize: 14, lineHeight: 1.8, margin: "8px 0 0", whiteSpace: "pre-wrap" }}>{a.brief}</p>}
+
+      {my?.ai && (
+        <div style={{ marginTop: 14, background: st === "passed" ? "#e8f7ee" : "#fff7e6", border: `1px solid ${st === "passed" ? "#9ed3b0" : "#f0d9a0"}`, borderRadius: 12, padding: "13px 15px" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: st === "passed" ? "#1a7f43" : "#8a6d1f" }}>
+            ครูพี่คิมตรวจแล้ว {my.score ? `· ${my.score} คะแนน` : ""}
+          </div>
+          <p style={{ fontSize: 14, lineHeight: 1.85, margin: "7px 0 0" }}>{my.ai.summary}</p>
+          {my.ai.strengths?.length > 0 && <>
+            <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 10 }}>สิ่งที่ทำได้ดี</div>
+            <ul style={{ margin: "4px 0 0", paddingLeft: 20, fontSize: 13.5, lineHeight: 1.8 }}>{my.ai.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul></>}
+          {my.ai.improvements?.length > 0 && <>
+            <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 10 }}>ลองปรับตรงนี้</div>
+            <ul style={{ margin: "4px 0 0", paddingLeft: 20, fontSize: 13.5, lineHeight: 1.8 }}>{my.ai.improvements.map((s, i) => <li key={i}>{s}</li>)}</ul></>}
+          {my.ai.what_to_fix && st !== "passed" && <p style={{ fontSize: 13.5, marginTop: 10, lineHeight: 1.8 }}><b>ส่งใหม่โดย:</b> {my.ai.what_to_fix}</p>}
+          {my.ai.next_step && <p style={{ fontSize: 13.5, marginTop: 10, lineHeight: 1.8, fontStyle: "italic" }}>💡 {my.ai.next_step}</p>}
+        </div>
+      )}
+      {my?.teacher_note && <div style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.8, background: "var(--soft)", borderRadius: 10, padding: "10px 13px" }}><b>ครูพี่คิมฝากไว้:</b> {my.teacher_note}</div>}
+
+      <div style={{ marginTop: 14 }}>
+        <input ref={fileRef} type="file" accept={accept} onChange={send} style={{ display: "none" }} />
+        <button className={st === "passed" ? "btn ghost" : "btn"} disabled={sending} onClick={() => fileRef.current?.click()} style={{ padding: "10px 18px" }}>
+          {sending ? "กำลังตรวจ..." : st ? "ส่งงานใหม่อีกครั้ง" : `📤 ส่ง${a.submit_type === "image" ? "รูป" : a.submit_type === "video" ? "คลิป" : "รูป/คลิป"}งาน`}
+        </button>
+        <span className="muted" style={{ fontSize: 12.5, marginLeft: 10 }}>ไฟล์ไม่เกิน {MAX_MB}MB</span>
+      </div>
+      {msg && <div className="msg" style={{ marginTop: 10, background: sending ? "#f7f7f8" : "#fdeaea", color: sending ? "var(--ink)" : "#b3261e" }}>{msg}</div>}
     </div>
   );
 }

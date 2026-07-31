@@ -272,6 +272,120 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS academy_categories (
       legacy_id TEXT PRIMARY KEY, data_json TEXT, imported_at TIMESTAMPTZ DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS academy_assignments (
+      assignment_id TEXT PRIMARY KEY,
+      course_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      brief TEXT,
+      submit_type TEXT DEFAULT 'any',
+      criteria TEXT,
+      required BOOLEAN DEFAULT true,
+      seq INTEGER DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS academy_submissions (
+      submission_id TEXT PRIMARY KEY,
+      assignment_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      file_kind TEXT,
+      status TEXT DEFAULT 'reviewing',
+      score INTEGER,
+      ai_json TEXT,
+      teacher_note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      reviewed_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_academy_asg_course ON academy_assignments(course_id);
+    CREATE INDEX IF NOT EXISTS idx_academy_sub_email ON academy_submissions(lower(email), course_id);
+    -- ไฟล์งานที่นักเรียนส่ง (รูปเท่านั้น — คลิปไม่เก็บ ใหญ่เกินและเคยทำหลังบ้านช้ามาแล้ว)
+    -- ⚠️ ห้าม SELECT คอลัมน์นี้ในหน้ารายการ ให้ดึงเฉพาะตอนเปิดดูงานทีละชิ้น
+    ALTER TABLE academy_submissions ADD COLUMN IF NOT EXISTS file_data TEXT;
+
+    -- รีวิว/ผลงานนักเรียนรายคอร์ส (คิมใส่ลิงก์เอง ช่วยลูกค้าตัดสินใจซื้อ)
+    CREATE TABLE IF NOT EXISTS academy_showcase (
+      showcase_id TEXT PRIMARY KEY,
+      course_id TEXT NOT NULL,
+      kind TEXT DEFAULT 'clip',
+      url TEXT,
+      caption TEXT,
+      student_name TEXT,
+      seq INTEGER DEFAULT 1,
+      active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_academy_showcase_course ON academy_showcase(course_id, active);
+
+    -- บันทึกการเปิดดูวิดีโอ (ไว้จับพฤติกรรมดูดคลิป — บัญชีเดียวเปิดรัวจากหลาย IP)
+    CREATE TABLE IF NOT EXISTS academy_video_access (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      course_id TEXT,
+      lesson_id TEXT,
+      ip TEXT,
+      ua TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_academy_vaccess ON academy_video_access(lower(email), created_at DESC);
+
+    -- ===== WORKSHOP (คลาสสด) — คิมลงวันเอง ลูกค้าจองและจ่ายเองในเว็บ =====
+    CREATE TABLE IF NOT EXISTS workshops (
+      workshop_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      tagline TEXT,
+      detail TEXT,
+      who_for TEXT,
+      what_you_get TEXT,
+      instructor TEXT,
+      price INTEGER DEFAULT 0,
+      duration TEXT,
+      image_url TEXT,
+      active BOOLEAN DEFAULT true,
+      seq INTEGER DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS workshop_sessions (
+      session_id TEXT PRIMARY KEY,
+      workshop_id TEXT NOT NULL,
+      starts_at TIMESTAMPTZ NOT NULL,
+      ends_at TIMESTAMPTZ,
+      location TEXT,
+      seats INTEGER DEFAULT 10,
+      price_override INTEGER,
+      status TEXT DEFAULT 'open',
+      note TEXT,
+      summary_url TEXT,
+      summary_note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ws_sessions ON workshop_sessions(workshop_id, starts_at);
+    CREATE TABLE IF NOT EXISTS workshop_bookings (
+      booking_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      workshop_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT,
+      phone TEXT,
+      qty INTEGER DEFAULT 1,
+      amount_satang INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      provider_session_id TEXT,
+      promo_code TEXT,
+      attended BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      paid_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_ws_book_session ON workshop_bookings(session_id, status);
+    CREATE INDEX IF NOT EXISTS idx_ws_book_email ON workshop_bookings(lower(email));
+    CREATE TABLE IF NOT EXISTS workshop_showcase (
+      showcase_id TEXT PRIMARY KEY,
+      workshop_id TEXT NOT NULL,
+      url TEXT,
+      caption TEXT,
+      seq INTEGER DEFAULT 1,
+      active BOOLEAN DEFAULT true
+    );
+    CREATE INDEX IF NOT EXISTS idx_ws_showcase ON workshop_showcase(workshop_id, active);
     CREATE TABLE IF NOT EXISTS academy_purchases (
       purchase_id TEXT PRIMARY KEY,
       email TEXT NOT NULL,

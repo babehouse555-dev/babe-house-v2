@@ -755,6 +755,106 @@ export async function analyzeVideo({ dataUrl, mimeType, contextText, lang = "th"
   }
 }
 
+// ===== ตรวจการบ้านคอร์สเรียน — "สมองครูพี่คิม" ตรวจงานนักเรียนแทนแอดมิน =====
+// ปรัชญาการตรวจ: ให้ผ่านง่ายกว่าตก เพราะเป้าหมายคือ "ทำให้เขาทำต่อ" ไม่ใช่คัดคนออก
+// แต่ต้องคอมเมนต์ให้ตรงงานจริง ไม่ใช่คำชมลอยๆ — ลูกค้าจ่ายเงินมาเพื่อฟีดแบ็กที่ใช้ได้จริง
+const HOMEWORK_PROMPT = `คุณคือ "ครูพี่คิม" (BEARBYKIM) ผู้ก่อตั้ง Babe House Academy กำลังตรวจการบ้านของนักเรียนที่ส่งงานเข้ามาในคอร์สออนไลน์
+
+🎯 หน้าที่: ดูงานที่นักเรียนส่งมา แล้วให้ฟีดแบ็กแบบที่ครูพี่คิมให้จริง — อบอุ่น ตรงไปตรงมา และบอกวิธีแก้ที่ลงมือทำต่อได้ทันที
+
+📏 เกณฑ์ตัดสิน (สำคัญมาก):
+1. ✅ ให้ผ่าน (passed:true) เมื่อ "นักเรียนทำโจทย์ตามที่สั่งจริง และเห็นความพยายามใช้สิ่งที่เรียน" — ไม่ต้องสวยระดับมืออาชีพ ไม่ต้องสมบูรณ์แบบ
+   - งานมือใหม่ที่ยังไม่เนี้ยบ แต่ครบโจทย์ = ผ่าน
+   - เป้าหมายของเราคือให้กำลังใจให้เขาทำต่อ ไม่ใช่จับผิด
+2. ⛔ ให้ไม่ผ่าน (passed:false) เฉพาะ 3 กรณีนี้เท่านั้น:
+   (ก) งานที่ส่งมา **ไม่เกี่ยวกับโจทย์เลย** (เช่น โจทย์ให้ส่งคลิปที่ตัดต่อเอง แต่ส่งรูปเซลฟี่/ภาพจอว่าง/สกรีนช็อตที่ไม่ใช่งาน)
+   (ข) ไฟล์เสีย/ว่างเปล่า/มืดสนิท/ดูไม่ออกว่าคืออะไร
+   (ค) เห็นชัดว่าไม่ได้ทำเอง (เช่น เป็นคลิปโฆษณา/หนัง/งานสำเร็จรูปที่ไม่ได้แตะเลย)
+   ⛔⛔ นอกจาก 3 ข้อนี้ ให้ passed:true เสมอ — งานยังไม่สวย/ยังไม่เก่ง ไม่ใช่เหตุผลให้ตก!
+3. score = 0-100 ให้ตามความครบถ้วนของโจทย์ + ความตั้งใจ (งานที่ผ่านส่วนใหญ่ควรอยู่ 70-90 ไม่ต้องขี้เหนียวคะแนน)
+
+✍️ วิธีเขียนคอมเมนต์:
+- 🗣️ ภาษาพูดแบบพี่สาวใจดีที่เก่งจริง ลงท้าย "ค่ะ/นะคะ" — ⛔ ห้ามใช้ "จ้ะ/จ๊ะ/จ๋า" และ ⛔ ห้ามเรียกนักเรียนว่า "น้อง" (บางคนอายุมากกว่าเรา) ให้ใช้ "คุณ" หรือไม่ต้องเรียกเลย
+- strengths = ชมสิ่งที่เห็นจริงในงานนี้ เจาะจง (เช่น "จังหวะตัดตอนเปลี่ยนซีนที่นาทีแรกลื่นมาก") ⛔ ห้ามชมลอยๆ แบบ "เก่งมากค่ะ" เฉยๆ
+- improvements = จุดที่แก้แล้วงานดีขึ้นชัด บอก **วิธีทำ** ไม่ใช่แค่บอกว่าไม่ดี (เช่น "ลองเพิ่มแสงเข้าหน้าโดยหันไปทางหน้าต่าง จะทำให้ภาพคมขึ้น")
+- ⛔ ห้ามแต่งตัวเลข/เปอร์เซ็นต์ที่วัดจริงไม่ได้ ให้บรรยายสิ่งที่เห็นจริงในงาน
+- ถ้าไม่ผ่าน: what_to_fix ต้องบอกชัดว่าต้องส่งอะไรมาใหม่ ด้วยน้ำเสียงที่ไม่ทำให้เขาท้อ
+- ⛔ ห้ามเอ่ยชื่อแบรนด์ "Babe House" ในคอมเมนต์ (นักเรียนรู้อยู่แล้วว่าเรียนที่ไหน)`;
+const HOMEWORK_SCHEMA = { type: Type.OBJECT, properties: {
+  passed: { type: Type.BOOLEAN },
+  score: { type: Type.NUMBER },
+  summary: { type: Type.STRING },
+  strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+  improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
+  next_step: { type: Type.STRING },
+  what_to_fix: { type: Type.STRING },
+}, required: ["passed", "score", "summary", "strengths", "improvements", "next_step"] };
+
+// ตรวจการบ้าน 1 ชิ้น — รับได้ทั้งรูปและวิดีโอ (วิดีโอต้องอัปขึ้น Files API ก่อนเหมือน analyzeVideo)
+export async function gradeHomework({ dataUrl, mimeType, courseName, title, brief, criteria, lang = "th" }) {
+  const ctx = [
+    `คอร์ส: ${courseName || "-"}`,
+    `โจทย์การบ้าน: ${title || "-"}`,
+    brief ? `รายละเอียดโจทย์: ${brief}` : "",
+    criteria ? `เกณฑ์เพิ่มเติมจากครูพี่คิมสำหรับการบ้านชิ้นนี้: ${criteria}` : "",
+    "", "ดูงานที่นักเรียนส่งมาแล้วตรวจตามสเปก JSON",
+  ].filter(Boolean).join("\n");
+
+  const m = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/s);
+  const mt = (m && m[1]) || mimeType || "image/jpeg";
+  const b64 = m ? m[2] : dataUrl;
+  if (!b64) throw new Error("no homework data");
+  const isVideo = /^video\//.test(mt);
+
+  if (!ai) return { result: fallbackHomework(isVideo), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
+
+  const cfg = { systemInstruction: HOMEWORK_PROMPT + langSuffix(lang), responseMimeType: "application/json", responseSchema: HOMEWORK_SCHEMA, maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: 2048 } };
+  const finish = (resp) => {
+    const r = JSON.parse(resp.text);
+    const u = resp.usageMetadata || {};
+    // กันน้ำเสียงหลุด (จ้ะ/น้อง) ตอนแสดงผล เหมือนที่ทำกับเล่ม Blueprint
+    for (const k of ["summary", "next_step", "what_to_fix"]) if (r[k]) r[k] = politeKim(r[k]);
+    for (const k of ["strengths", "improvements"]) if (Array.isArray(r[k])) r[k] = r[k].map(politeKim);
+    r.score = Math.max(0, Math.min(100, Math.round(Number(r.score) || 0)));
+    return { result: r, model: MODEL, usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
+  };
+
+  if (!isVideo) {
+    const parts = [{ inlineData: { mimeType: mt, data: b64 } }, { text: ctx }];
+    return finish(await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts }], config: cfg }));
+  }
+
+  const ext = mt.includes("quicktime") || mt.includes("mov") ? "mov" : mt.includes("webm") ? "webm" : "mp4";
+  const tmp = path.join(os.tmpdir(), `hw_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+  fs.writeFileSync(tmp, Buffer.from(b64, "base64"));
+  let uploaded;
+  try {
+    uploaded = await ai.files.upload({ file: tmp, config: { mimeType: mt } });
+    let f = uploaded, tries = 0;
+    while (f.state !== "ACTIVE" && tries++ < 60) {
+      if (f.state === "FAILED") throw new Error("video processing failed");
+      await sleep(2000);
+      f = await ai.files.get({ name: uploaded.name });
+    }
+    if (f.state !== "ACTIVE") throw new Error("video processing timeout");
+    const parts = [{ fileData: { fileUri: f.uri, mimeType: mt } }, { text: ctx }];
+    return finish(await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts }], config: cfg }));
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+    if (uploaded?.name) ai.files.delete({ name: uploaded.name }).catch(() => {});
+  }
+}
+function fallbackHomework(isVideo) {
+  return {
+    passed: true, score: 78,
+    summary: `(โหมดทดสอบ — ใส่ GEMINI_API_KEY เพื่อให้ครูพี่คิมตรวจงานจริง) ได้รับ${isVideo ? "คลิป" : "รูป"}แล้วค่ะ งานทำครบตามโจทย์`,
+    strengths: ["ส่งงานครบตามที่โจทย์กำหนด", "เห็นความตั้งใจในการลงมือทำจริง"],
+    improvements: ["ลองเก็บรายละเอียดให้เนี้ยบขึ้นอีกนิดในงานชิ้นถัดไป"],
+    next_step: "ลองทำงานชิ้นต่อไปโดยใช้เทคนิคเดิมแต่เพิ่มลูกเล่นอีกหนึ่งอย่างนะคะ",
+    what_to_fix: "",
+  };
+}
+
 // ===== ตัวตรวจคุณภาพเล่มอัตโนมัติ — สแกนหา red flag (กันเล่มออกมากลางๆ/พลาด) =====
 export function checkBlueprintQuality(bp, hasImage) {
   const flags = [];

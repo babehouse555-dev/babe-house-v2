@@ -1,8 +1,22 @@
-// Postgres data layer (Railway) — async query helpers + schema init
+// Postgres data layer — async query helpers + schema init
+// 🎮 โหมดสนามเด็กเล่น (LOCAL_DB=1): ใช้ Postgres ที่รันอยู่ในตัว Node เอง เก็บไฟล์ที่ .localdb/
+//    → ไม่ต่อเน็ต ไม่แตะฐานข้อมูลลูกค้า พังยังไงก็ไม่กระทบใคร ลบโฟลเดอร์แล้วเริ่มใหม่ได้
+//    เหตุผล (คิม 2 ส.ค.): "ลูกค้าใช้เว็บตอนกลางคืนมากๆ ตีสามยังมีคนซื้อ" — ไม่มีเวลาไหนปลอดภัยพอให้ลองของบนเว็บจริง
 import pg from "pg";
 
+const LOCAL = process.env.LOCAL_DB === "1";
+let localDb = null;
+async function getLocal() {
+  if (!localDb) {
+    const { PGlite } = await import("@electric-sql/pglite");
+    localDb = await PGlite.create(process.env.LOCAL_DB_DIR || "./.localdb");
+    console.log("🎮 โหมดสนามเด็กเล่น — ใช้ฐานข้อมูลในเครื่อง (.localdb) ไม่แตะของจริง");
+  }
+  return localDb;
+}
+
 const { Pool } = pg;
-export const pool = new Pool({
+export const pool = LOCAL ? null : new Pool({
   connectionString: process.env.DATABASE_URL,
   // Railway Postgres ต้องการ SSL ในบางกรณี — ปิด verify เพื่อความง่าย
   ssl: process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : false,
@@ -12,15 +26,26 @@ export const pool = new Pool({
   connectionTimeoutMillis: 10000,
   statement_timeout: 30000
 });
-pool.on("error", (err) => console.error("[pg pool error]", err.message));
+if (pool) pool.on("error", (err) => console.error("[pg pool error]", err.message));
+
+// จุดเดียวที่แตะฐานข้อมูล — สลับระหว่างของจริงกับสนามเด็กเล่นตรงนี้ที่เดียว
+async function query(sql, params = []) {
+  if (LOCAL) {
+    const db = await getLocal();
+    // initDb ส่ง SQL หลายคำสั่งมาก้อนเดียว — PGlite ต้องใช้ exec() ไม่ใช่ query()
+    if (!params.length) { const res = await db.exec(sql); return res[res.length - 1] || { rows: [], affectedRows: 0 }; }
+    return db.query(sql, params);
+  }
+  return pool.query(sql, params);
+}
 
 // helpers (ใช้ placeholder แบบ $1,$2 ของ Postgres)
-export async function q(sql, params = []) { const r = await pool.query(sql, params); return r.rows; }
-export async function one(sql, params = []) { const r = await pool.query(sql, params); return r.rows[0] || null; }
-export async function run(sql, params = []) { const r = await pool.query(sql, params); return { rowCount: r.rowCount }; }
+export async function q(sql, params = []) { const r = await query(sql, params); return r.rows; }
+export async function one(sql, params = []) { const r = await query(sql, params); return r.rows[0] || null; }
+export async function run(sql, params = []) { const r = await query(sql, params); return { rowCount: r.rowCount ?? r.affectedRows ?? 0 }; }
 
 export async function initDb() {
-  await pool.query(`
+  await query(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
       instagram_account TEXT,
@@ -274,7 +299,6 @@ export async function initDb() {
     -- 📣 ที่มาของลูกค้า (มาจากแอด/ลิงก์ไหน) — ไม่มีตรงนี้ = ยิงแอดโดยไม่รู้ว่าคุ้มไหม
     -- Facebook ต่อ ?fbclid= ให้ทุกคลิกจากแอดอยู่แล้ว จับได้เลยโดยไม่ต้องแก้ลิงก์ในแอด
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS source TEXT;
-    ALTER TABLE funnel_events ADD COLUMN IF NOT EXISTS source TEXT;
     CREATE INDEX IF NOT EXISTS idx_orders_source ON blueprint_orders(source);
     -- ===== Academy (เว็บเก่า babehouseacademy.com) — ข้อมูลนำเข้าจาก DB dump · แยกขาดจากระบบหลัก ลูกค้าไม่เห็น =====
     -- ⚠️ ไม่นำเข้า password/salt เดิมโดยเจตนา (ระบบใหม่จะใช้ OTP อีเมลแทน = ปลอดภัยกว่า)
@@ -508,6 +532,7 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_funnel_step ON funnel_events(step, created_at);
+    ALTER TABLE funnel_events ADD COLUMN IF NOT EXISTS source TEXT;   -- ต้องอยู่หลัง CREATE เสมอ (สนามเด็กเล่นจับได้ 2 ส.ค.)
     CREATE TABLE IF NOT EXISTS feedback (
       feedback_id TEXT PRIMARY KEY,
       email TEXT,

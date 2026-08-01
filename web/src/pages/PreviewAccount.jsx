@@ -188,10 +188,17 @@ export default function PreviewAccount() {
           content: ""; position: absolute; top: -7px; left: 0; width: 42%; height: 9px;
           background: var(--c); border-radius: 7px 7px 0 0; transition: background .18s;
         }
-        .fld-icon { font-size: 21px; line-height: 1; }
-        .fld-n { font-size: 12px; font-weight: 800; color: #4a4458; background: rgba(255,255,255,.75); border-radius: 20px; padding: 1px 7px; }
+        /* ไอคอนโผล่พ้นขอบบน — เหมือนของยื่นออกมาจากโฟลเดอร์ */
+        .fld-icon {
+          position: absolute; top: -15px; left: 50%; font-size: 22px; line-height: 1; z-index: 2;
+          transform: translateX(-46%) rotate(-7deg); transition: transform .18s;
+          filter: drop-shadow(0 2px 3px rgba(90,80,110,.18));
+        }
+        .fld-n { font-size: 12.5px; font-weight: 800; color: #4a4458; background: rgba(255,255,255,.78); border-radius: 20px; padding: 2px 9px; margin-top: 4px; }
         .fld-label { display: block; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); transition: color .18s; }
         .fld:hover .fld-body { transform: translateY(-2px); }
+        .fld:hover .fld-icon, .fld.on .fld-icon { transform: translateX(-46%) rotate(-7deg) translateY(-3px) scale(1.06); }
+        .fld-row { padding-top: 20px; }   /* เผื่อที่ให้ไอคอนที่โผล่พ้นขอบ */
         .fld.on .fld-body, .fld.on .fld-body::before { background: var(--d); }
         .fld.on .fld-body { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(90,80,110,.20); }
         .fld.on .fld-label { color: var(--ink); font-weight: 800; }

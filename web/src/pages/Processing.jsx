@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { api, track, session } from "../api.js";
+import { trackPurchaseOnce } from "../pixel.js";
 import { useI18n } from "../i18n.jsx";
 
 export default function Processing() {
@@ -46,6 +47,12 @@ export default function Processing() {
         const { order } = await api(`/api/orders/${orderId}`);
         if (!["paid", "mock_paid"].includes(order.payment_status)) throw new Error(t("pr_err_unpaid"));
         track("paid");
+        // 📣 บอก Meta ว่าออเดอร์นี้จ่ายเงินจริงแล้ว — ยิงครั้งเดียวต่อออเดอร์
+        // (หน้านี้ลูกค้ารีเฟรชบ่อยระหว่างรอเล่มเจน ถ้านับซ้ำ ยอดขายในรายงานแอดจะเกินจริง)
+        // ไม่นับออเดอร์ที่ใช้โค้ดฟรี/ทดสอบ เพราะไม่ใช่เงินเข้าจริง
+        if (order.payment_status === "paid" && Number(order.final_amount_satang ?? 49000) > 0) {
+          trackPurchaseOnce(orderId, Number(order.final_amount_satang ?? 49000) / 100);
+        }
         const s = await api("/api/start-generation", { method: "POST", body: { order_id: orderId } });
         if (s.status === "ready" && s.blueprint_id) { goDash(s.user_id, s.billing_cycle, s.blueprint_id); return; }
         setState({ phase: "working" });

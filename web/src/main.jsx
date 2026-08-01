@@ -5,12 +5,18 @@ import "./styles.css";
 import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
 import { ACADEMY_LIVE } from "./config.js";
+import { initPixel, track as fbTrack } from "./pixel.js";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
 if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
 function ScrollToTop() {
   const { pathname } = useLocation();
   useLayoutEffect(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, [pathname]); // ก่อนวาดจอ ไม่ให้เห็นกระพริบกลางหน้า
+  // 📣 บอก Meta ว่าลูกค้าเดินถึงขั้นไหนแล้ว (SPA เปลี่ยนหน้าไม่ได้โหลดใหม่ ต้องยิงเอง)
+  useEffect(() => {
+    if (pathname === "/form") fbTrack("ViewContent", { content_name: "แบบฟอร์มสร้างเล่ม" });
+    else if (pathname === "/checkout") fbTrack("InitiateCheckout", { value: 490, currency: "THB" });
+  }, [pathname]);
   // ปิงสถานะออนไลน์ทุก 45 วิ ตลอดที่เปิดเว็บอยู่ (ให้หลังบ้านนับคนออนไลน์)
   useEffect(() => { ping(); const t = setInterval(ping, 45000); return () => clearInterval(t); }, []);
   return null;
@@ -106,6 +112,7 @@ import WorkshopPaid from "./pages/WorkshopPaid.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 captureRef();
+initPixel();   // 📣 Meta Pixel — เริ่มนับตั้งแต่หน้าแรกที่ลูกค้าเปิด
 
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>

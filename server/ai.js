@@ -949,6 +949,30 @@ const AUDIT_PROMPT = `คุณคือ "ผู้ตรวจสอบคุ�
 
 ⛔ กันเตือนพร่ำเพรื่อ (สำคัญมาก): ค่า default คือ **niche_match:true / metrics_ok:true** — ให้ผ่านไว้ก่อน. ตอบ false **เฉพาะเมื่อขัดแย้งกันชัดเจนจริงๆ** เท่านั้น. ถ้าแผนกว้างๆ ครอบคลุมได้ / ไม่แน่ใจ / เป็นแค่มุมมองต่างเล็กน้อย → ให้ผ่าน (true) และ confidence ต่ำ. confidence = ความมั่นใจว่า "มีปัญหาจริง" (สูง = มั่นใจว่าผิดจริง). อย่าเดานิชจากเพศ/ชื่อคน. ตอบ JSON เท่านั้น`;
 
+// ตรวจความสมเหตุผลของตัวเลข Insight ด้วยกฎตายตัว (ไม่ใช้ AI — AI แต่งกฎเองซ้ำๆ จนเตือนผิด 3 ครั้ง)
+// จับเฉพาะ "เป็นไปไม่ได้จริง" เท่านั้น · เคสกำกวมปล่อยผ่านหมด (เตือนผิดแย่กว่าไม่เตือน)
+export function checkMetricsSanity(m) {
+  const flags = [];
+  const n = (v) => (typeof v === "number" && isFinite(v) && v > 0 ? v : null);
+  const reach = n(m.reach), followers = n(m.followers), er = n(m.engagement_rate);
+
+  // (ก) reach คือเพดาน — ไลก์/คอมเมนต์/แชร์/เซฟ/เข้าชมโปรไฟล์/กดลิงก์ เกิน reach ไม่ได้
+  if (reach) {
+    const capped = { likes: "ไลก์", comments: "คอมเมนต์", shares: "แชร์", saves: "เซฟ", profile_visits: "เข้าชมโปรไฟล์", link_taps: "กดลิงก์" };
+    const over = Object.entries(capped).filter(([k]) => n(m[k]) && m[k] > reach).map(([k, th]) => `${th} ${m[k].toLocaleString()}`);
+    if (over.length) flags.push(`🔢 ตัวเลขเกินการเข้าถึง (reach ${reach.toLocaleString()}): ${over.join(" · ")} — น่าจะอ่านภาพสลับช่อง`);
+  }
+  // (ข) engagement rate สูงเกินจริง (รับได้ทั้งรูปแบบ 0-1 และ 0-100)
+  const erPct = er == null ? null : (er <= 1 ? er * 100 : er);
+  if (erPct != null && erPct > 30) flags.push(`🔢 อัตราการมีส่วนร่วม ${erPct.toFixed(1)}% สูงผิดปกติ — น่าจะอ่านตัวเลขผิด`);
+  // (ค) followers กับ reach สลับกันแบบชัดเจนมาก (reach มากกว่าผู้ติดตาม 50 เท่าขึ้นไป)
+  // ใช้เกณฑ์สูงมากเพราะคลิปไวรัลทำ reach ทะลุผู้ติดตามหลายเท่าได้จริง ไม่ใช่ความผิดพลาด
+  if (reach && followers && reach > followers * 50) {
+    flags.push(`🔢 ผู้ติดตาม ${followers.toLocaleString()} แต่การเข้าถึง ${reach.toLocaleString()} (ต่างกันเกิน 50 เท่า) — เช็กว่าอ่านสลับกันไหม`);
+  }
+  return flags;
+}
+
 export async function auditBlueprintMatch(parsed, analysis, lang = "th") {
   try {
     if (!ai || !parsed || !analysis) return [];
@@ -979,9 +1003,11 @@ export async function auditBlueprintMatch(parsed, analysis, lang = "th") {
     if (r.niche_match === false && Number(r.confidence) >= 0.6) {
       flags.push(`🎯 แผนอาจไม่ตรงกับช่อง: ${String(r.niche_reason || "").slice(0, 200)}${r.real_niche_guess ? ` (ช่องน่าจะเป็นแนว "${String(r.real_niche_guess).slice(0, 60)}")` : ""}`);
     }
-    if (hasNums && r.metrics_ok === false && Number(r.confidence) >= 0.6) {
-      flags.push(`🔢 ตัวเลขสถิติอาจสลับ/ผิด: ${String(r.metrics_reason || "").slice(0, 200)}`);
-    }
+    // 🔢 ตัวเลขสถิติ: ตรวจด้วยโค้ด ไม่ถาม AI แล้ว
+    // เหตุผล: AI แต่งกฎขึ้นมาเองซ้ำ 3 ครั้ง (@_junenicha อ่าน 23,700 เป็น 23 · @ceoliplover อ้างว่า
+    // profile visits ต้อง ≥ likes · @davi_brand บอกว่า profile_visits 334 < reach 1828 ผิด ทั้งที่ปกติ)
+    // เขียน prompt ห้ามละเอียดแค่ไหนก็ยังหลุด — กฎทั้ง 3 ข้อคำนวณเองได้ 100% จึงเลิกพึ่ง AI ตรงนี้
+    if (hasNums) flags.push(...checkMetricsSanity(m));
     return flags;
   } catch (e) { console.warn("auditBlueprintMatch", e.message); return []; }
 }

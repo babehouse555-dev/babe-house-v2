@@ -34,7 +34,16 @@ export default function Workshops() {
             const next = w.sessions?.[0];
             const soon = (w.sessions || []).slice(0, 3);
             return (
-              <div key={w.workshop_id} className="card" style={{ margin: 0, borderRadius: 16, display: "flex", flexDirection: "column", borderTop: next ? `4px solid ${BLUE}` : "1px solid var(--border)" }}>
+              <div key={w.workshop_id} className="card" style={{ margin: 0, borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", padding: 0, borderTop: next ? `4px solid ${BLUE}` : "1px solid var(--border)" }}>
+                {/* รูปคลาส — คิมบอก 2 ส.ค. "เวิร์กช็อปเปิดมามีแต่ตัวหนังสือ" ต้องเห็นภาพถึงจะตัดสินใจง่าย */}
+                <div style={{ position: "relative", aspectRatio: "16/10", background: "var(--soft)", overflow: "hidden" }}>
+                  {w.image_url
+                    ? <img src={w.image_url} alt={w.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    : <div className="center muted" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>🎟️</div>}
+                  {next && <span style={{ position: "absolute", left: 10, top: 10, background: "rgba(255,255,255,.94)", color: BLUE, fontWeight: 800, fontSize: 11.5, borderRadius: 20, padding: "4px 10px" }}>เปิดรับสมัคร</span>}
+                  {w.reviews?.length > 0 && <span style={{ position: "absolute", right: 10, top: 10, background: "rgba(20,16,30,.72)", color: "#fff", fontWeight: 700, fontSize: 11.5, borderRadius: 20, padding: "4px 10px" }}>▶ รีวิว {w.reviews.length}</span>}
+                </div>
+                <div style={{ padding: 16, display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.4 }}>{w.name}</div>
                 {w.tagline && <div className="muted" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.6 }}>{w.tagline}</div>}
                 <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>{w.instructor} · {w.duration}</div>
@@ -55,6 +64,7 @@ export default function Workshops() {
                   <Link className={next ? "btn" : "btn ghost"} to={`/workshop/${w.workshop_id}`} style={{ padding: "9px 16px", fontSize: 13.5 }}>
                     {next ? "ดูรอบและจอง →" : "ดูรายละเอียด →"}
                   </Link>
+                </div>
                 </div>
               </div>
             );

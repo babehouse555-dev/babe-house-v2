@@ -770,6 +770,15 @@ app.post("/api/auth/request-otp", async (req, res) => {
     res.json({ ok: true, sent, dev_code: EMAIL_ENABLED ? undefined : code });
   } catch (err) { res.status(500).json({ ok: false, error: "REQUEST_OTP_FAILED", message: err.message }); }
 });
+// 🎮 เข้าเป็น "ลูกค้าตัวอย่าง" ได้ทันที — มีเฉพาะในสนามเด็กเล่นเท่านั้น
+// ⛔ เว็บจริงเรียกไม่ได้เด็ดขาด เพราะเช็ค LOCAL_DB ก่อน
+app.post("/api/dev/demo-login", async (req, res) => {
+  if (process.env.LOCAL_DB !== "1") return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const email = "demo@babehouse.test";
+  const token = uid("sess");
+  await run(`INSERT INTO auth_sessions (token,email,expires_at) VALUES ($1,$2,$3)`, [token, email, Date.now() + 30 * 24 * 3600 * 1000]);
+  res.json({ ok: true, token, email });
+});
 app.post("/api/auth/verify-otp", async (req, res) => {
   try {
     const email = normEmail(req.body?.email), code = String(req.body?.code || "").trim();
@@ -1657,7 +1666,11 @@ app.get("/api/workshops", async (req, res) => {
       session_id: s.session_id, starts_at: s.starts_at, ends_at: s.ends_at, location: s.location,
       seats: Number(s.seats || 0), left: Math.max(0, Number(s.seats || 0) - Number(s.taken || 0)), price: s.price_override || null,
     });
-    res.json({ ok: true, workshops: ws.map(w => ({ ...w, sessions: byWs[w.workshop_id] || [] })) });
+    // ส่งคลิปรีวิวมาด้วย — คิมบอกว่ารีวิวเพื่อนๆ ทำให้นักเรียนตัดสินใจง่ายขึ้นมาก
+    const shows = await q(`SELECT workshop_id, url, caption FROM workshop_showcase ORDER BY seq, showcase_id`);
+    const revBy = {};
+    for (const r of shows) (revBy[r.workshop_id] ||= []).push(r);
+    res.json({ ok: true, workshops: ws.map(w => ({ ...w, sessions: byWs[w.workshop_id] || [], reviews: revBy[w.workshop_id] || [] })) });
   } catch (e) { console.error("workshops", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 // ⚠️ ต้องประกาศก่อน "/api/workshops/:id" ไม่งั้น Express จะจับ "my" เป็น id แล้วตอบ NOT_FOUND

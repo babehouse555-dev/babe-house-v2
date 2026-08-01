@@ -45,6 +45,15 @@ function TopBar() {
 // 🎮 ป้ายสนามเด็กเล่น — โผล่เฉพาะตอนเปิดที่ localhost (เครื่องตัวเอง) เท่านั้น
 // เว็บจริงไม่มีทางขึ้นป้ายนี้ เพราะเช็คจากชื่อโฮสต์ตอนเปิดหน้า
 const IS_PLAYGROUND = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+async function demoLogin() {
+  try {
+    const r = await fetch("/api/dev/demo-login", { method: "POST" }).then(x => x.json());
+    if (!r.ok) throw new Error();
+    localStorage.setItem("babe_session_token", r.token);
+    localStorage.setItem("babe_session_email", r.email);
+    location.href = "/account";
+  } catch { alert("เข้าไม่ได้ — สนามเด็กเล่นอาจปิดอยู่"); }
+}
 function PlaygroundBar() {
   if (!IS_PLAYGROUND) return null;
   return (
@@ -52,7 +61,11 @@ function PlaygroundBar() {
       position: "sticky", top: 0, zIndex: 999, background: "repeating-linear-gradient(45deg,#7C5CE6,#7C5CE6 14px,#6a4fd0 14px,#6a4fd0 28px)",
       color: "#fff", textAlign: "center", fontSize: 13.5, fontWeight: 800, padding: "7px 12px", letterSpacing: .2,
     }}>
-      🎮 สนามเด็กเล่น — เครื่องของคิมเอง · ไม่ใช่เว็บจริง · ลูกค้าไม่เห็นหน้านี้
+      🎮 สนามเด็กเล่น — เครื่องของคิมเอง · ไม่ใช่เว็บจริง
+      {" · "}
+      <button onClick={demoLogin} style={{ background: "rgba(255,255,255,.95)", color: "#5a3fc0", border: 0, borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+        👤 เข้าเป็นลูกค้าตัวอย่าง
+      </button>
     </div>
   );
 }

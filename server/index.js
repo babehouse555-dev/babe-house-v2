@@ -46,6 +46,31 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         if (orderId) await markOrderPaid(orderId, "stripe", session.id);
         if (academyPurchaseId) { const p = await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [academyPurchaseId]); if (p) await finalizeAcademyPurchase(p); }
         if (workshopBookingId) { const b = await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [workshopBookingId]); if (b) await finalizeWorkshopBooking(b); }
+        if (session.metadata?.club_email && session.subscription) {
+          await run(`UPDATE club_members SET status='active', stripe_sub_id=$1, stripe_customer_id=$2, started_at=COALESCE(started_at,now()), updated_at=now() WHERE email=$3`,
+            [session.subscription, session.customer || null, normEmail(session.metadata.club_email)]);
+        }
+        break;
+      // 🩵 Club — Stripe ตัดเงินสำเร็จทุกเดือน → ต่ออายุสมาชิกอัตโนมัติ
+      case "invoice.paid": {
+        const subId = session.subscription || session.parent?.subscription_details?.subscription;
+        const em = normEmail(session.customer_email || session.customer_details?.email || "");
+        if (subId) {
+          const endTs = session.lines?.data?.[0]?.period?.end;
+          await run(`UPDATE club_members SET status='active', stripe_sub_id=$1, stripe_customer_id=$2,
+            current_period_end=$3, updated_at=now() WHERE email=$4 OR stripe_sub_id=$1`,
+            [subId, session.customer || null, endTs ? new Date(endTs * 1000).toISOString() : null, em]);
+          console.log(`[club] ต่ออายุ ${em || subId} ถึง ${endTs ? new Date(endTs * 1000).toISOString().slice(0, 10) : "?"}`);
+        }
+        break;
+      }
+      case "invoice.payment_failed": {
+        const subId = session.subscription;
+        if (subId) await run(`UPDATE club_members SET status='past_due', updated_at=now() WHERE stripe_sub_id=$1`, [subId]);
+        break;
+      }
+      case "customer.subscription.deleted":
+        await run(`UPDATE club_members SET status='canceled', canceled_at=now(), updated_at=now() WHERE stripe_sub_id=$1`, [session.id]);
         break;
       case "checkout.session.async_payment_failed":
         if (orderId) await run(`UPDATE blueprint_orders SET payment_status='failed' WHERE order_id=$1`, [orderId]); break;
@@ -1553,8 +1578,11 @@ async function handleHomeworkSubmit(req, res, src = {}) {
     const tries = Number((await one(`SELECT COUNT(*) c FROM academy_submissions WHERE assignment_id=$1 AND lower(email)=lower($2)`, [asgId, email]))?.c || 0);
     const passed = await one(`SELECT 1 FROM academy_submissions WHERE assignment_id=$1 AND lower(email)=lower($2) AND status='passed' LIMIT 1`, [asgId, email]);
     if (!passed && tries >= MAX_HW_TRIES) {
-      return res.status(429).json({ ok: false, error: "TOO_MANY_TRIES",
+      // 🩵 สมาชิก Club มีโควตาตรวจฟรีเพิ่ม 4 ชิ้น/เดือน — ใช้ต่อได้เลยไม่ต้องทักแอดมิน
+      const rescued = clubActive(await getClub(email)) && await useClubQuota(email, "homework_used", CLUB_HOMEWORK_QUOTA);
+      if (!rescued) return res.status(429).json({ ok: false, error: "TOO_MANY_TRIES",
         message: `ส่งงานชิ้นนี้ครบ ${MAX_HW_TRIES} ครั้งแล้วค่ะ ทักครูพี่คิมมาได้เลย เดี๋ยวช่วยดูให้เป็นพิเศษนะคะ 🩵` });
+      console.log(`[club] ใช้โควตาตรวจการบ้านฟรี · ${email}`);
     }
     const mime = src.mime || (dataUrl.match(/^data:([^;]+);/) || [])[1] || String(req.body?.mime || "");
     const isVideo = /^video\//.test(mime);
@@ -1710,6 +1738,13 @@ app.post("/api/workshops/book", async (req, res) => {
     const promo = await redeemPromo(String(req.body?.code || ""), email, amountSatang);
     if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
     amountSatang = promo.final;
+    // 🩵 สิทธิ์สมาชิก Club: ลด 20% ใช้ได้ 1 คลาส/เดือน (ใช้เฉพาะตอนไม่ได้ใช้โค้ดอื่น — ไม่ให้ลดซ้อนกัน)
+    let clubOff = 0;
+    if (!promo.code && clubActive(await getClub(email)) && await useClubQuota(email, "workshop_discount_used", 1)) {
+      clubOff = Math.round(amountSatang * CLUB_WORKSHOP_OFF / 100);
+      amountSatang -= clubOff;
+      console.log(`[club] ใช้สิทธิ์ลดเวิร์กช็อป ${CLUB_WORKSHOP_OFF}% · ${email} · -${clubOff / 100}฿`);
+    }
 
     const bookingId = uid("wsb");
     const origin = appBaseUrl();
@@ -2134,6 +2169,107 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // วิเคราะห์ใหม่ทั้งเล่ม (analysis + content) ด้วย prompt ล่าสุด — ใช้ตอนบทวิเคราะห์จับนิชผิด (เช่น เอาบริการ/เครื่องมือมาเป็นแนวคอนเทนต์). ใส่ focus_hint ชี้แนวคอนเทนต์จริงได้
 // ✏️ แก้ "ธีมเล่ม" อย่างเดียว — ไม่แตะสคริปต์/ปฏิทินที่ลูกค้าอาจใช้ไปแล้ว (ถูกกว่า+ปลอดภัยกว่า reanalyze ทั้งเล่ม)
 // ไม่ส่ง blueprint_id = กวาดทุกเล่มที่ธีมเป็น "ชื่อเอกสาร" แทนคำโปรยของช่องลูกค้า
+// ===== 🩵 Babe Club (สมาชิกรายเดือน) =====
+// ราคาคิมเคาะ 2026-08-01: ช่องแรก 199 · ทุกช่องถัดไป 149 ไม่จำกัด
+// เก็บเป็นบิลเดียวเสมอ → ค่าธรรมเนียม Stripe คงที่ 11฿ จ่ายครั้งเดียว ไม่ใช่ต่อช่อง
+// 🔒 สวิตช์เปิดขาย — ยังปิดอยู่ ลูกค้าสมัครไม่ได้จนกว่าคิมจะสั่งเปิด (ตั้ง CLUB_LIVE=1 บน Railway)
+const CLUB_LIVE = process.env.CLUB_LIVE === "1";
+const CLUB_FIRST = 199, CLUB_EXTRA = 149;
+const CLUB_HOMEWORK_QUOTA = 4;        // ตรวจการบ้านฟรี 4 ชิ้น/เดือน
+const CLUB_WORKSHOP_OFF = 20;         // ลดค่าเวิร์กช็อป 20% ใช้ได้ 1 คลาส/เดือน
+const clubPrice = (channels) => (CLUB_FIRST + Math.max(0, Number(channels || 1) - 1) * CLUB_EXTRA);
+const clubActive = (m) => !!m && ["active", "canceling"].includes(m.status) &&
+  (!m.current_period_end || new Date(m.current_period_end).getTime() > Date.now());
+
+async function getClub(email) {
+  const e = normEmail(email); if (!e) return null;
+  return one(`SELECT * FROM club_members WHERE email=$1`, [e]);
+}
+async function clubUsage(email, cycle = currentBillingCycle()) {
+  const e = normEmail(email);
+  await run(`INSERT INTO club_usage (email, cycle) VALUES ($1,$2) ON CONFLICT (email,cycle) DO NOTHING`, [e, cycle]);
+  return one(`SELECT * FROM club_usage WHERE email=$1 AND cycle=$2`, [e, cycle]);
+}
+// ใช้สิทธิ์ 1 ครั้ง — คืน false ถ้าโควตาหมด (กันยิงซ้ำด้วย WHERE ... < quota)
+async function useClubQuota(email, field, quota) {
+  const e = normEmail(email), cycle = currentBillingCycle();
+  await clubUsage(e, cycle);
+  const r = await run(`UPDATE club_usage SET ${field}=${field}+1 WHERE email=$1 AND cycle=$2 AND ${field} < $3`, [e, cycle, quota]);
+  return r.rowCount === 1;
+}
+// สรุปสิทธิ์ที่ลูกค้าเห็นในหน้าบัญชี
+app.get("/api/club/me", async (req, res) => {
+  const email = normEmail(req.query.email || "");
+  if (!email) return res.json({ ok: true, member: null });
+  const m = await getClub(email);
+  if (!clubActive(m)) return res.json({ ok: true, member: null, price_first: CLUB_FIRST, price_extra: CLUB_EXTRA });
+  const u = await clubUsage(email);
+  res.json({ ok: true, price_first: CLUB_FIRST, price_extra: CLUB_EXTRA,
+    member: {
+      status: m.status, channels: m.channels, price_baht: (m.price_satang || clubPrice(m.channels) * 100) / 100,
+      renews_at: m.current_period_end, started_at: m.started_at,
+      benefits: {
+        homework: { used: u.homework_used, quota: CLUB_HOMEWORK_QUOTA, left: Math.max(0, CLUB_HOMEWORK_QUOTA - u.homework_used) },
+        workshop: { used: u.workshop_discount_used, quota: 1, percent: CLUB_WORKSHOP_OFF },
+      },
+    } });
+});
+app.get("/api/club/price", (req, res) => {
+  const ch = Math.max(1, Math.min(20, Number(req.query.channels) || 1));
+  res.json({ ok: true, channels: ch, baht: clubPrice(ch), first: CLUB_FIRST, extra: CLUB_EXTRA });
+});
+// สมัคร Club — Stripe Subscription (ตัดเงินอัตโนมัติ ยกเลิกเองได้ทุกเมื่อ)
+app.post("/api/club/subscribe", rateLimit(20, M10), async (req, res) => {
+  if (!CLUB_LIVE) return res.status(403).json({ ok: false, error: "CLUB_NOT_OPEN", message: "Babe Club ยังไม่เปิดให้สมัครค่ะ" });
+  const email = normEmail(req.body?.email || "");
+  const channels = Math.max(1, Math.min(20, Number(req.body?.channels) || 1));
+  if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL" });
+  const existing = await getClub(email);
+  if (clubActive(existing)) return res.status(400).json({ ok: false, error: "ALREADY_MEMBER", message: "อีเมลนี้เป็นสมาชิกอยู่แล้วค่ะ" });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(500).json({ ok: false, error: "NO_STRIPE" });
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const baht = clubPrice(channels);
+  try {
+    const s = await stripe.checkout.sessions.create({
+      mode: "subscription",                       // ← ต่างจากซื้อขาด: Stripe เก็บบัตรและตัดเองทุกเดือน
+      customer_email: email,
+      line_items: [{
+        price_data: {
+          currency: "thb", unit_amount: baht * 100, recurring: { interval: "month" },
+          product_data: { name: `Babe Club · ${channels} ช่อง`, description: "แผนคอนเทนต์สดตามเทรนด์ + สิทธิ์คอร์สและเวิร์กช็อป · ยกเลิกได้ทุกเมื่อ" },
+        }, quantity: 1,
+      }],
+      subscription_data: { metadata: { club_email: email, channels: String(channels) } },
+      metadata: { club_email: email, channels: String(channels) },
+      success_url: `${appBaseUrl()}/club?welcome=1`,
+      cancel_url: `${appBaseUrl()}/plans`,
+    });
+    await run(`INSERT INTO club_members (email, status, channels, price_satang) VALUES ($1,'pending',$2,$3)
+      ON CONFLICT (email) DO UPDATE SET status='pending', channels=EXCLUDED.channels, price_satang=EXCLUDED.price_satang, updated_at=now()`,
+      [email, channels, baht * 100]);
+    res.json({ ok: true, url: s.url, baht });
+  } catch (e) { console.error("club subscribe", e.message); res.status(500).json({ ok: false, error: "STRIPE_FAILED", message: e.message }); }
+});
+// ยกเลิก — ไม่ตัดสิทธิ์ทันที ใช้ได้จนจบรอบที่จ่ายไปแล้ว (ห้ามให้ลูกค้ารู้สึกโดนยึดของ)
+app.post("/api/club/cancel", async (req, res) => {
+  const email = normEmail(req.body?.email || "");
+  const m = await getClub(email);
+  if (!m || !m.stripe_sub_id) return res.status(404).json({ ok: false, error: "NOT_MEMBER" });
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  await stripe.subscriptions.update(m.stripe_sub_id, { cancel_at_period_end: true });
+  await run(`UPDATE club_members SET status='canceling', canceled_at=now(), updated_at=now() WHERE email=$1`, [email]);
+  res.json({ ok: true, until: m.current_period_end });
+});
+// เปิด/ปิดฝั่งแอดมินไว้ก่อน — ยังไม่เปิดขายจนกว่าคิมจะสั่ง
+app.get("/api/admin/club", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const members = await q(`SELECT * FROM club_members ORDER BY started_at DESC`);
+  const active = members.filter(clubActive);
+  const mrr = active.reduce((a, m) => a + (m.price_satang || clubPrice(m.channels) * 100) / 100, 0);
+  res.json({ ok: true, live: CLUB_LIVE, total: members.length, active: active.length, mrr, members });
+});
 // ===== 🗂️ ห้องทำงาน: ทุกโปรเจคอยู่ที่เดียว =====
 app.get("/api/admin/projects", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

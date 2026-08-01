@@ -3,15 +3,30 @@ import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { ACADEMY_LIVE } from "../config.js";
 
-// กล่อง "คอร์ส · ประกาศนียบัตร · workshop ของฉัน" ในหน้าบัญชี
+// 🏠 "ของทั้งหมดที่ฉันซื้อ" — คอร์ส · ประกาศนียบัตร · workshop
+// หลักคิด (คิมสั่ง 2026-08-01): ลูกค้าเข้ามาต้องเจอ "ทุกอย่างที่เขาซื้อ" ในที่เดียว ดูง่าย
 // ⚠️ ปิดสนิทจนกว่าจะเปิดตัวเฟส 4 — ลูกค้าเก่าที่เคยซื้อคอร์สในเว็บเดิม (1,466 คน) ใช้อีเมลเดียวกัน
-//    ถ้าไม่ปิดไว้ เขาจะเห็นคอร์สโผล่มาเองก่อนที่เราจะประกาศ แล้วงงว่านี่คืออะไร
-// ⚠️ และถึงเปิดแล้ว ถ้าลูกค้าคนนั้นไม่มีอะไรเลย ก็จะไม่แสดงอะไรทั้งสิ้น
+//    ถ้าไม่ปิด เขาจะเห็นคอร์สโผล่มาเองก่อนที่เราจะประกาศ
+// ⚠️ หมวดไหนไม่มีของ = ไม่แสดงเลย (ลูกค้า Blueprint อย่างเดียวเห็นหน้าเดิมเป๊ะ)
 const BLUE = "var(--blue)";
 const thDate = (iso) => iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
 const thDay = (iso) => iso ? new Date(iso).toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" }) : "";
 
-export default function MyLearning() {
+// หัวข้อหมวด — ใช้หน้าตาเดียวกันทุกหมวด เพื่อให้อ่านเป็น "ระบบเดียว" ไม่ใช่ของแปะเพิ่ม
+export function SectionHead({ icon, title, count, right }) {
+  return (
+    <div className="between" style={{ margin: "26px 0 10px", flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 19 }}>{icon}</span>
+        <h2 style={{ fontSize: 16.5, fontWeight: 800, margin: 0 }}>{title}</h2>
+        {count != null && <span style={{ background: "var(--soft)", color: "var(--muted)", borderRadius: 20, padding: "2px 9px", fontSize: 12.5, fontWeight: 700 }}>{count}</span>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+export default function MyLearning({ channelCount = 0, bookCount = 0 }) {
   const [courses, setCourses] = useState([]);
   const [certs, setCerts] = useState([]);
   const [ws, setWs] = useState([]);
@@ -40,36 +55,46 @@ export default function MyLearning() {
 
   return (
     <>
-      {courses.length > 0 && (
-        <div className="card">
-          <h3 style={{ margin: "0 0 12px", fontSize: 16.5 }}>🎓 คอร์สของฉัน ({courses.length})</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* แถบสรุป — โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท จะได้เห็นภาพรวมทันทีว่ามีอะไรบ้าง */}
+      <Summary items={[
+        channelCount ? { icon: "📘", n: bookCount, label: `เล่ม · ${channelCount} ช่อง` } : null,
+        courses.length ? { icon: "🎓", n: courses.length, label: "คอร์ส" } : null,
+        certs.length ? { icon: "🏆", n: certs.length, label: "ประกาศนียบัตร" } : null,
+        ws.length ? { icon: "🎟️", n: ws.length, label: "คลาสสด" } : null,
+      ].filter(Boolean)} />
+
+      {courses.length > 0 && <>
+        <SectionHead icon="🎓" title="คอร์สเรียนของฉัน" count={courses.length}
+          right={<Link className="link" to="/academy" style={{ fontSize: 13 }}>ดูคอร์สทั้งหมด →</Link>} />
+        <div className="card" style={{ marginTop: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {courses.map(c => {
               const pct = c.lessons ? Math.round(c.done / c.lessons * 100) : 0;
+              const done = pct >= 100;
               return (
                 <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 170 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14.5 }}>{c.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14.5 }}>{done && "✅ "}{c.name}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
                       <div style={{ flex: 1, height: 7, background: "var(--soft)", borderRadius: 5, overflow: "hidden" }}>
-                        <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#1a7f43" : BLUE }} />
+                        <div style={{ width: `${pct}%`, height: "100%", background: done ? "#1a7f43" : BLUE }} />
                       </div>
-                      <span className="muted" style={{ fontSize: 12 }}>{c.done}/{c.lessons} บท</span>
+                      <span className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>{c.done}/{c.lessons} บท</span>
                     </div>
                   </div>
-                  <Link className="btn" to={`/academy/learn?course=${c.id}`} style={{ padding: "8px 16px", fontSize: 13.5 }}>
-                    {pct === 100 ? "ทบทวน →" : c.done > 0 ? "เรียนต่อ →" : "เริ่มเรียน →"}
+                  <Link className="btn" to={`/academy/learn?course=${c.id}`} style={{ padding: "8px 16px", fontSize: 13.5, whiteSpace: "nowrap", background: done ? "#1a7f43" : undefined }}>
+                    {done ? "ทบทวน →" : c.done > 0 ? "เรียนต่อ →" : "เริ่มเรียน →"}
                   </Link>
                 </div>
               );
             })}
           </div>
         </div>
-      )}
+      </>}
 
-      {certs.length > 0 && (
-        <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df" }}>
-          <h3 style={{ margin: "0 0 4px", fontSize: 16.5 }}>🎓 ประกาศนียบัตรของฉัน ({certs.length})</h3>
+      {certs.length > 0 && <>
+        <SectionHead icon="🏆" title="ประกาศนียบัตรของฉัน" count={certs.length} />
+        <div className="card" style={{ marginTop: 0, background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df" }}>
           <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>เก็บไว้ให้ตลอด กลับมาเปิดหรือสั่งพิมพ์ใหม่ได้ทุกเมื่อ ไม่ต้องทักแอดมินค่ะ</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {certs.map(c => (
@@ -84,11 +109,11 @@ export default function MyLearning() {
             ))}
           </div>
         </div>
-      )}
+      </>}
 
-      {ws.length > 0 && (
-        <div className="card">
-          <h3 style={{ margin: "0 0 12px", fontSize: 16.5 }}>🎟️ Workshop ของฉัน</h3>
+      {ws.length > 0 && <>
+        <SectionHead icon="🎟️" title="คลาสสดของฉัน" count={ws.length} />
+        <div className="card" style={{ marginTop: 0 }}>
           {upcoming.length > 0 && <>
             <div className="muted" style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>รอบที่จะถึง</div>
             {upcoming.map(b => (
@@ -103,7 +128,7 @@ export default function MyLearning() {
             ))}
           </>}
           {past.length > 0 && <>
-            <div className="muted" style={{ fontSize: 12.5, fontWeight: 700, margin: "14px 0 8px" }}>เรียนไปแล้ว</div>
+            <div className="muted" style={{ fontSize: 12.5, fontWeight: 700, margin: `${upcoming.length ? 14 : 0}px 0 8px` }}>เรียนไปแล้ว</div>
             {past.map(b => (
               <div key={b.booking_id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "13px 15px", marginBottom: 8 }}>
                 <div className="between" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -120,7 +145,22 @@ export default function MyLearning() {
             ))}
           </>}
         </div>
-      )}
+      </>}
     </>
+  );
+}
+
+function Summary({ items }) {
+  if (items.length < 2) return null;   // มีของอย่างเดียวไม่ต้องสรุป รกเปล่าๆ
+  return (
+    <div className="card" style={{ background: "linear-gradient(135deg,#EAF3FD,#F6F0FF)", border: "none", display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-around", padding: "16px 14px" }}>
+      {items.map(it => (
+        <div key={it.label} style={{ textAlign: "center", minWidth: 88 }}>
+          <div style={{ fontSize: 19 }}>{it.icon}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: BLUE, lineHeight: 1.2 }}>{it.n}</div>
+          <div className="muted" style={{ fontSize: 12 }}>{it.label}</div>
+        </div>
+      ))}
+    </div>
   );
 }

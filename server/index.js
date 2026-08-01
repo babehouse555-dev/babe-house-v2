@@ -2565,14 +2565,38 @@ async function findBrokenBooks(days = 7) {
 // Watchdog: เจอเล่มพัง → เมลแจ้งแอดมินทันที (ไม่ต้องรอลูกค้าบอก)
 const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
 const alertedBp = new Set();
+// 🔧 ยามคุณภาพ: เจอเล่มพัง → "ซ่อมเองก่อน" แล้วค่อยเตือนคิมเฉพาะเคสที่ซ่อมไม่ขึ้น
+// เดิมมันแค่ส่งเมลบอกให้คิมไปกดปุ่มซ่อมเอง = งานมือที่ไม่ควรมี (ตัวซ่อม regenContentForBp มีอยู่แล้ว แค่ไม่มีใครเรียก)
+const autoRepairTries = new Map();   // blueprint_id → ซ่อมไปกี่ครั้งแล้ว
+const MAX_AUTO_REPAIR = 2;           // ซ่อมเองได้ 2 ครั้ง ไม่สำเร็จค่อยเรียกคน
+const REPAIR_PER_ROUND = 3;          // ซ่อมรอบละไม่เกิน 3 เล่ม กันค่า AI พุ่งและกันแย่งคิวลูกค้าใหม่
 async function runQualityWatch() {
   try {
-    const broken = (await findBrokenBooks(2)).filter(b => !alertedBp.has(b.blueprint_id));
+    const broken = await findBrokenBooks(2);
     if (!broken.length) return;
-    for (const b of broken) alertedBp.add(b.blueprint_id);
-    const list = broken.map(b => `• ${b.email || "?"} (${b.instagram_account || "?"}) — ${b.reason}`).join("<br>");
-    await sendEmail(ADMIN_ALERT_EMAIL, `⚠️ Babe House: พบ ${broken.length} เล่มอาจมีปัญหา`, wrap(`ระบบตรวจพบเล่มที่อาจมีปัญหา (สคริปต์ไม่ครบ/error):<br><br>${list}<br><br>เข้าหลังบ้าน → "คุณภาพเล่ม" กดปุ่ม <b>ซ่อมเล่ม</b> ได้เลยค่ะ`)).catch(() => {});
-    console.log(`[quality-watch] แจ้งเตือน ${broken.length} เล่ม`);
+    const giveUp = [];
+    let repaired = 0;
+    for (const b of broken) {
+      const tries = autoRepairTries.get(b.blueprint_id) || 0;
+      if (tries >= MAX_AUTO_REPAIR) {
+        // ซ่อมเองครบโควตาแล้วยังพัง → ค่อยรบกวนคิม (ครั้งเดียวต่อเล่ม)
+        if (!alertedBp.has(b.blueprint_id)) { alertedBp.add(b.blueprint_id); giveUp.push(b); }
+        continue;
+      }
+      if (repaired >= REPAIR_PER_ROUND) continue;   // เหลือไว้รอบหน้า (อีก 10 นาที)
+      autoRepairTries.set(b.blueprint_id, tries + 1);
+      repaired++;
+      console.log(`[quality-watch] 🔧 ซ่อมเอง ${b.blueprint_id} (${b.reason}) ครั้งที่ ${tries + 1}`);
+      regenContentForBp(b.blueprint_id).catch(e => console.error("auto-repair", e.message));
+    }
+    if (giveUp.length) {
+      const list = giveUp.map(b => `• ${b.email || "?"} (${b.instagram_account || "?"}) — ${b.reason}`).join("<br>");
+      await sendEmail(ADMIN_ALERT_EMAIL, `⚠️ Babe House: ${giveUp.length} เล่มซ่อมเองไม่สำเร็จ`, wrap(
+        `ระบบพยายามซ่อมเองแล้ว ${MAX_AUTO_REPAIR} ครั้ง แต่ยังไม่ผ่านค่ะ อันนี้ต้องให้คิมดูเอง:<br><br>${list}<br><br>` +
+        `เข้าหลังบ้าน → "คุณภาพเล่ม" กดปุ่ม <b>ซ่อมเล่ม</b> หรือ <b>รีเจนใหม่ทั้งเล่ม</b><br><br>` +
+        `<span style="color:#999;font-size:12px">เมลนี้ส่งเฉพาะตอนซ่อมอัตโนมัติไม่สำเร็จเท่านั้น — เล่มที่ระบบซ่อมเองได้จะไม่รบกวนคิมเลยค่ะ</span>`)).catch(() => {});
+      console.warn(`[quality-watch] ยอมแพ้ ${giveUp.length} เล่ม → แจ้งคิม`);
+    }
   } catch (e) { console.error("quality-watch", e.message); }
 }
 
@@ -2597,7 +2621,7 @@ initDb().then(async () => {
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
   setInterval(() => run(`UPDATE video_audits SET video_data=NULL WHERE status='uploaded' AND video_data IS NOT NULL AND created_at < now() - interval '24 hours' AND order_id IN (SELECT order_id FROM blueprint_orders WHERE payment_status NOT IN ('paid','mock_paid'))`).catch(e => console.error("va cleanup", e.message)), 3600 * 1000); // ทุก 1 ชม. ลบคลิปที่อัปแต่ไม่จ่ายเกิน 24 ชม.
   setInterval(() => run(`DELETE FROM academy_video_access WHERE created_at < now() - interval '60 days'`).catch(() => {}), 24 * 3600 * 1000); // ล็อกการเข้าดูคลิปเก็บ 60 วันพอ (ใช้จับพฤติกรรมระยะสั้น) ไม่ให้ตารางบวม
-  setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → เมลแจ้งแอดมิน
+  setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → ซ่อมเองก่อน แล้วค่อยเมลแจ้งคิมถ้าซ่อมไม่ขึ้น
   setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
   setTimeout(emailWeeklyBackupIfDue, 90000); // เช็กหลังสตาร์ท (ส่งถ้าครบ 7 วัน)
   setInterval(emailWeeklyBackupIfDue, 12 * 3600 * 1000); // เช็กทุก 12 ชม. → ส่ง backup เข้าเมลแอดมินสัปดาห์ละครั้ง

@@ -881,10 +881,18 @@ export async function rewriteTheme(bp, lang = "th") {
 ตอบ JSON: {"theme":"..."}`;
   const { resp } = await genContent({
     contents: [{ role: "user", parts: [{ text: JSON.stringify(ctx, null, 1) }] }],
-    config: { systemInstruction: sys + langSuffix(lang), responseMimeType: "application/json", maxOutputTokens: 300 },
+    config: {
+      systemInstruction: sys + langSuffix(lang), responseMimeType: "application/json",
+      // ต้องมี schema — ไม่งั้นโมเดลตอบเป็นร้อยแก้ว ("Here is the theme...") แล้ว JSON.parse พัง
+      responseSchema: { type: Type.OBJECT, properties: { theme: { type: Type.STRING } }, required: ["theme"] },
+      maxOutputTokens: 800,
+    },
     retries: 2,
   });
-  const t = String(JSON.parse(resp.text)?.theme || "").trim().replace(/^["“”']|["“”']$/g, "");
+  let parsed = null;
+  try { parsed = JSON.parse(resp.text); }
+  catch { const m = String(resp.text || "").match(/"theme"\s*:\s*"([^"]+)"/); parsed = m ? { theme: m[1] } : null; }
+  const t = String(parsed?.theme || "").trim().replace(/^["“”']|["“”']$/g, "");
   return t && !BAD_THEME_RE.test(t) && !/babe\s*house/i.test(t) ? t : null;
 }
 // ธีมที่เป็น "ชื่อเอกสาร" ไม่ใช่ตัวตนของช่องลูกค้า

@@ -2141,11 +2141,13 @@ app.post("/api/admin/fix-theme", async (req, res) => {
     ? await q(`SELECT blueprint_id, blueprint_json FROM blueprints WHERE blueprint_id=$1 AND deleted_at IS NULL`, [one_id])
     : await q(`SELECT blueprint_id, blueprint_json FROM blueprints WHERE deleted_at IS NULL ORDER BY created_at DESC`);
   const done = [], skipped = [];
+  let tried = 0;
   for (const r of rows) {
-    if (done.length >= limit) break;
+    if (tried >= limit) break;                                 // นับ "ครั้งที่ลอง" ไม่ใช่ "ครั้งที่สำเร็จ" — กันเผาโควตารัวๆ ตอน AI พลาด
     const bp = safeJson(r.blueprint_json); if (!bp) continue;
     const old = String(bp.theme || "");
     if (!one_id && !BAD_THEME_RE.test(old)) continue;          // กวาดอัตโนมัติ = แตะเฉพาะเล่มที่ธีมพัง
+    tried++;
     let fresh = null;
     try { fresh = await rewriteTheme(bp, "th"); } catch (e) { skipped.push({ id: r.blueprint_id, why: e.message }); continue; }
     if (!fresh || fresh === old) { skipped.push({ id: r.blueprint_id, why: "AI ยังเขียนไม่ผ่านเกณฑ์" }); continue; }

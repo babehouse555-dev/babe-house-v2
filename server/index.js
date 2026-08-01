@@ -1497,6 +1497,9 @@ async function maybeIssueCertificate(email, courseId) {
 }
 
 // ===== 📝 การบ้าน — นักเรียนอัปคลิป/รูป · AI (สมองครูพี่คิม) ตรวจให้ทันที =====
+// ส่งได้กี่ครั้งต่อชิ้น: ต้นทุนตรวจ ~฿1/ครั้ง เทียบค่าคอร์ส 3,745 ไม่ใช่ปัญหาเรื่องเงิน
+// แต่จำกัดไว้เพราะ (1) กันคนยิงรัวจนระบบแน่น (2) ฟีดแบ็กที่ได้ไม่จำกัดจะไม่ถูกให้ค่า
+const MAX_HW_TRIES = Number(process.env.MAX_HW_TRIES) || 5;
 app.get("/api/academy/homework/:courseId", async (req, res) => {
   try {
     const email = await authEmail(req);
@@ -1525,6 +1528,13 @@ app.post("/api/academy/homework/submit", async (req, res) => {
     if (!owned.includes(courseId)) return res.status(403).json({ ok: false, error: "NOT_OWNED" });
     const a = await one(`SELECT * FROM academy_assignments WHERE assignment_id=$1 AND course_id=$2`, [asgId, courseId]);
     if (!a) return res.status(404).json({ ok: false, error: "ASSIGNMENT_NOT_FOUND" });
+    // จำกัดจำนวนครั้งที่ส่งได้ต่อชิ้น — คุมต้นทุน AI และทำให้ฟีดแบ็กมีค่า (ผ่านแล้วไม่นับ ส่งซ้ำอวดผลงานได้)
+    const tries = Number((await one(`SELECT COUNT(*) c FROM academy_submissions WHERE assignment_id=$1 AND lower(email)=lower($2)`, [asgId, email]))?.c || 0);
+    const passed = await one(`SELECT 1 FROM academy_submissions WHERE assignment_id=$1 AND lower(email)=lower($2) AND status='passed' LIMIT 1`, [asgId, email]);
+    if (!passed && tries >= MAX_HW_TRIES) {
+      return res.status(429).json({ ok: false, error: "TOO_MANY_TRIES",
+        message: `ส่งงานชิ้นนี้ครบ ${MAX_HW_TRIES} ครั้งแล้วค่ะ ทักครูพี่คิมมาได้เลย เดี๋ยวช่วยดูให้เป็นพิเศษนะคะ 🩵` });
+    }
     const mime = (dataUrl.match(/^data:([^;]+);/) || [])[1] || String(req.body?.mime || "");
     const isVideo = /^video\//.test(mime);
     if (a.submit_type === "image" && isVideo) return res.status(400).json({ ok: false, error: "WRONG_TYPE", message: "การบ้านชิ้นนี้ให้ส่งเป็นรูปภาพนะคะ" });

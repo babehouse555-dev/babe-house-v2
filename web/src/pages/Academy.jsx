@@ -9,6 +9,7 @@ const BLUE = "var(--blue)";
 export default function Academy() {
   const [data, setData] = useState(null);
   const [cat, setCat] = useState("ทั้งหมด");
+  const [q, setQ] = useState("");
   const [open, setOpen] = useState(null);   // course id ที่กางรายละเอียด
   const [detail, setDetail] = useState({}); // id -> {course, lessons}
   const [mine, setMine] = useState(null);   // คอร์สที่ล็อกอินแล้วเป็นเจ้าของ
@@ -31,7 +32,10 @@ export default function Academy() {
   if (!data.ok) return <div className="wrap narrow page-pad center"><p className="muted">โหลดไม่สำเร็จ ลองรีเฟรชอีกครั้งค่ะ</p></div>;
 
   const cats = ["ทั้งหมด", ...[...new Set(data.courses.map(c => c.category))]];
-  const list = cat === "ทั้งหมด" ? data.courses : data.courses.filter(c => c.category === cat);
+  const byCat = cat === "ทั้งหมด" ? data.courses : data.courses.filter(c => c.category === cat);
+  // ค้นหาจากชื่อคอร์ส + หมวด + ชื่อผู้สอน (ลูกค้าจำได้บ้างไม่ได้บ้างว่าคอร์สชื่ออะไร)
+  const kw = q.trim().toLowerCase();
+  const list = kw ? byCat.filter(c => `${c.name} ${c.category} ${c.instructor}`.toLowerCase().includes(kw)) : byCat;
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -41,7 +45,15 @@ export default function Academy() {
 
       <div className="wrap" style={{ padding: "30px 0 60px" }}>
         <h1 className="serif" style={{ fontSize: "clamp(24px,4vw,32px)", fontWeight: 800, textAlign: "center", margin: "6px 0 4px" }}>คอร์สเรียน Babe House Academy</h1>
-        <p className="muted" style={{ textAlign: "center", fontSize: 15, marginBottom: 22 }}>เรียนได้ทันทีหลังชำระเงิน · ติดตามความคืบหน้า · ประกาศนียบัตรอัตโนมัติ (เร็วๆ นี้)</p>
+        <p className="muted" style={{ textAlign: "center", fontSize: 15, marginBottom: 18 }}>เรียนได้ทันทีหลังชำระเงิน · ติดตามความคืบหน้า · ประกาศนียบัตรอัตโนมัติ</p>
+
+        {/* 🔍 ค้นหาคอร์ส */}
+        <div style={{ maxWidth: 420, margin: "0 auto 18px", position: "relative" }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 ค้นหาคอร์ส เช่น ตัดต่อ, Canva, วาดรูป"
+                 style={{ width: "100%", boxSizing: "border-box", padding: "11px 38px 11px 15px", border: "1px solid var(--border)", borderRadius: 999, fontSize: 14.5, fontFamily: "inherit" }} />
+          {q && <button onClick={() => setQ("")} aria-label="ล้างคำค้นหา"
+                        style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, cursor: "pointer", fontSize: 17, color: "var(--muted)", lineHeight: 1 }}>✕</button>}
+        </div>
 
         {mine && mine.length > 0 && (
           <div className="card" style={{ borderRadius: 16, marginBottom: 24, border: `1.5px solid ${BLUE}` }}>
@@ -112,9 +124,9 @@ export default function Academy() {
           ))}
         </div>
 
-        <p className="muted" style={{ textAlign: "center", fontSize: 12.5, marginTop: 26 }}>
-          เฟสถัดไป: ปุ่มซื้อผ่าน Stripe · ระบบเรียน + แถบความคืบหน้า · ประกาศนียบัตรอัตโนมัติ
-        </p>
+        {!list.length && <div className="card center muted" style={{ marginTop: 18 }}>
+          ไม่พบคอร์สที่ค้นหา{kw ? ` "${q}"` : ""} — ลองคำอื่นหรือกดดูทั้งหมดนะคะ
+        </div>}
       </div>
     </div>
   );

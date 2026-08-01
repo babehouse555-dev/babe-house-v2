@@ -96,10 +96,7 @@ export default function AcademyLearn() {
 
         {allDone && (
           data.cert_id ? (
-            <div className="card" style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 14, textAlign: "center", fontWeight: 700, color: "#1a7f43" }}>
-              🎉 ยินดีด้วยค่ะ! คุณเรียนจบคอร์สนี้แล้ว
-              <div style={{ marginTop: 10 }}><Link className="btn" to={`/academy/certificate/${data.cert_id}`}>🎓 เปิดประกาศนียบัตรของฉัน</Link></div>
-            </div>
+            <Celebration certId={data.cert_id} courseName={data.course.name} />
           ) : hwLeft > 0 ? (
             <div className="card" style={{ background: "#fff7e6", border: "1px solid #f0d9a0", borderRadius: 14, textAlign: "center", color: "#8a6d1f" }}>
               <b>เหลืออีกนิดเดียว!</b> ดูครบทุกบทแล้ว ส่งการบ้านอีก {hwLeft} ชิ้นให้ผ่าน แล้วรับประกาศนียบัตรได้เลยค่ะ
@@ -127,6 +124,14 @@ export default function AcademyLearn() {
               {embed
                 ? <iframe key={lesson.id} src={embed} title={lesson.name} style={{ width: "100%", height: "100%", border: 0 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                 : <div style={{ color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 14 }}>บทนี้ยังไม่มีวิดีโอ</div>}
+              {/* 🔒 บังแถบบนของ YouTube (ชื่อคลิป + ปุ่มแชร์ + "ดูใน YouTube") ไม่ให้กดคัดลอกลิงก์ไปแจกต่อ
+                  เว้นช่องกลางไว้ให้กดเล่น/หยุดได้ตามปกติ */}
+              {embed && <>
+                <div aria-hidden onContextMenu={e => e.preventDefault()}
+                     style={{ position: "absolute", top: 0, left: 0, width: "26%", height: 62, cursor: "default" }} />
+                <div aria-hidden onContextMenu={e => e.preventDefault()}
+                     style={{ position: "absolute", top: 0, right: 0, width: "34%", height: 62, cursor: "default" }} />
+              </>}
               {data.watermark && embed && <Watermark text={data.watermark} />}
             </div>
             {lesson && (
@@ -158,6 +163,48 @@ export default function AcademyLearn() {
         )}
       </div>
       <style>{`@media (max-width: 860px){ .learn-grid{ grid-template-columns: 1fr !important; } }`}</style>
+    </div>
+  );
+}
+
+/* 🎉 หน้าจบคอร์ส — ถ้วยรางวัล + พลุ (คิมบอกว่าของเดิมดูจืดไป)
+   พลุวาดด้วย CSS ล้วน ไม่โหลดไลบรารีเพิ่ม เว็บไม่หนักขึ้น */
+function Celebration({ certId, courseName }) {
+  const bits = Array.from({ length: 26 }, (_, i) => ({
+    left: (i * 37) % 100,
+    delay: (i % 9) * 0.28,
+    dur: 2.6 + (i % 5) * 0.45,
+    color: ["#2E86DE", "#FFC93C", "#FF7AA2", "#4ED8A0", "#B084F5"][i % 5],
+    w: 6 + (i % 3) * 3,
+    rot: (i * 53) % 360,
+  }));
+  return (
+    <div className="card" style={{ position: "relative", overflow: "hidden", textAlign: "center", borderRadius: 18,
+      background: "linear-gradient(160deg,#EAF3FD 0%,#FDF2F8 55%,#FFF9E8 100%)", border: "1px solid #d6e7fa", padding: "30px 20px 26px" }}>
+      <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {bits.map((b, i) => (
+          <span key={i} style={{ position: "absolute", top: -14, left: `${b.left}%`, width: b.w, height: b.w * 1.6,
+            background: b.color, borderRadius: 2, opacity: .9, transform: `rotate(${b.rot}deg)`,
+            animation: `bhFall ${b.dur}s linear ${b.delay}s infinite` }} />
+        ))}
+      </div>
+      <div style={{ position: "relative" }}>
+        <div style={{ fontSize: 62, lineHeight: 1, animation: "bhPop .7s cubic-bezier(.2,1.4,.4,1) both" }}>🏆</div>
+        <h2 className="serif" style={{ fontSize: "clamp(21px,3.4vw,28px)", fontWeight: 800, margin: "12px 0 6px", color: "#1a7f43" }}>
+          ยินดีด้วยค่ะ! เรียนจบแล้ว 🎉
+        </h2>
+        <p style={{ fontSize: 14.5, lineHeight: 1.8, margin: "0 auto 18px", maxWidth: 460, color: "var(--ink)" }}>
+          คุณเรียน <b>{courseName}</b> จบครบทุกบทแล้ว<br />
+          ครูพี่คิมภูมิใจด้วยจริงๆ นะคะ — ประกาศนียบัตรของคุณพร้อมแล้ว
+        </p>
+        <Link className="btn" to={`/academy/certificate/${certId}`} style={{ padding: "12px 26px", fontSize: 15.5 }}>🎓 เปิดประกาศนียบัตรของฉัน</Link>
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>เก็บไว้ในบัญชีของคุณตลอด กลับมาโหลดใหม่ได้ทุกเมื่อ</div>
+      </div>
+      <style>{`
+        @keyframes bhFall { 0%{transform:translateY(0) rotate(0);opacity:0} 10%{opacity:.95} 100%{transform:translateY(320px) rotate(540deg);opacity:0} }
+        @keyframes bhPop { 0%{transform:scale(.3) rotate(-18deg);opacity:0} 100%{transform:scale(1) rotate(0);opacity:1} }
+        @media (prefers-reduced-motion: reduce){ span[style*="bhFall"]{ animation: none !important; opacity: 0 !important; } }
+      `}</style>
     </div>
   );
 }
@@ -233,8 +280,10 @@ function HomeworkItem({ a, courseId, onDone, onCert }) {
 
       {my?.ai && (
         <div style={{ marginTop: 14, background: st === "passed" ? "#e8f7ee" : "#fff7e6", border: `1px solid ${st === "passed" ? "#9ed3b0" : "#f0d9a0"}`, borderRadius: 12, padding: "13px 15px" }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: st === "passed" ? "#1a7f43" : "#8a6d1f" }}>
-            ครูพี่คิมตรวจแล้ว {my.score ? `· ${my.score} คะแนน` : ""}
+          <div style={{ fontWeight: 700, fontSize: 15, color: st === "passed" ? "#1a7f43" : "#8a6d1f" }}>
+            {st === "passed"
+              ? `✅ ผ่านแล้วค่ะ! ยินดีด้วยนะคะ${my.score ? ` · ${my.score} คะแนน` : ""}`
+              : `↩️ ยังไม่ผ่าน ลองแก้แล้วส่งใหม่นะคะ${my.score ? ` · ${my.score} คะแนน` : ""}`}
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.85, margin: "7px 0 0" }}>{my.ai.summary}</p>
           {my.ai.strengths?.length > 0 && <>

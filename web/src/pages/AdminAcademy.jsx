@@ -291,6 +291,7 @@ export function WorkshopManage({ adminKey }) {
   const [sess, setSess] = useState(null);
   const [wsForm, setWsForm] = useState(null);
   const [bookings, setBookings] = useState(null);
+  const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   async function load() { try { setD(await api("/api/admin/workshops", { adminKey })); } catch { setD({ workshops: [] }); } }
   useEffect(() => { load(); }, []);
@@ -323,15 +324,43 @@ export function WorkshopManage({ adminKey }) {
   }
 
   if (!d) return <div className="card"><h3>🎟️ Workshop</h3><p className="muted">กำลังโหลด...</p></div>;
+  // หน้ายาวเกินไปถ้ากางทั้ง 10 คลาส → ปกติโชว์เฉพาะคลาสที่มีรอบเปิดรับ + ปุ่มลงวันแบบเลือกจากลิสต์
+  const withUpcoming = d.workshops.filter(w => (w.sessions || []).some(s => new Date(s.starts_at) > new Date()));
+  const shown = showAll ? d.workshops : withUpcoming;
   return (
     <div className="card">
       <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ margin: 0 }}>🎟️ Workshop (คลาสสด)</h3>
         <button className="btn ghost" style={{ padding: "6px 12px", fontSize: 13 }} onClick={() => setWsForm({ name: "", price: 3990, instructor: "ครูพี่คิม", duration: "1 วันเต็ม 11.00–15.30 น.", active: true, seq: (d.workshops.length || 0) + 1 })}>+ เพิ่มคลาสใหม่</button>
       </div>
-      <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>รายละเอียดคลาสใส่ไว้ให้แล้วจากเอกสารของคิม — ที่ต้องทำทุกเดือนคือกด <b>+ ลงวันเรียน</b> ในคลาสที่จะเปิดรอบ</p>
 
-      {d.workshops.map(w => {
+      {/* ทางลัดที่คิมใช้จริงทุกเดือน: เลือกคลาส → ลงวัน จบ ไม่ต้องเลื่อนหาการ์ด */}
+      <div style={{ background: "var(--soft)", borderRadius: 14, padding: "13px 15px", margin: "12px 0" }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 8 }}>📅 ลงวันเรียนรอบใหม่ — เลือกคลาสแล้วกดได้เลย</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select id="ws-quick" style={{ ...inp, flex: 1, minWidth: 200, width: "auto" }} defaultValue="">
+            <option value="">— เลือกคลาส —</option>
+            {d.workshops.filter(w => w.active).map(w => <option key={w.workshop_id} value={w.workshop_id}>{w.name} · {money(w.price)}</option>)}
+          </select>
+          <button className="btn" style={{ padding: "9px 18px", fontSize: 13.5, whiteSpace: "nowrap" }} onClick={() => {
+            const v = document.getElementById("ws-quick")?.value;
+            if (!v) return alert("เลือกคลาสก่อนนะคะ");
+            setSess({ workshop_id: v, starts_at: "", seats: 10, location: "", status: "open" });
+          }}>+ ลงวันเรียน</button>
+        </div>
+      </div>
+
+      {!showAll && (
+        <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+          {withUpcoming.length ? `แสดงเฉพาะ ${withUpcoming.length} คลาสที่มีรอบเปิดรับอยู่` : "ตอนนี้ยังไม่มีคลาสไหนเปิดรอบเลย"} ·{" "}
+          <button className="link" style={{ background: "none", border: 0, fontSize: 12.5, padding: 0 }} onClick={() => setShowAll(true)}>ดูคลาสทั้งหมด ({d.workshops.length}) ▾</button>
+        </p>
+      )}
+      {showAll && <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+        แสดงทั้งหมด · <button className="link" style={{ background: "none", border: 0, fontSize: 12.5, padding: 0 }} onClick={() => setShowAll(false)}>ย่อให้สั้นลง ▴</button>
+      </p>}
+
+      {shown.map(w => {
         const upcoming = (w.sessions || []).filter(s => new Date(s.starts_at) > new Date());
         return (
           <div key={w.workshop_id} style={{ ...box, padding: 14 }}>

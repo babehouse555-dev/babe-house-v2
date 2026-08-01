@@ -1249,11 +1249,15 @@ app.post("/api/admin/academy-import", async (req, res) => {
 // แคตตาล็อกคอร์ส (อ่านอย่างเดียว) — สำหรับหน้าพรีวิว /academy (ยังไม่ลิงก์จากเมนู ลูกค้าไม่เจอ)
 // ⚠️ ธง isActive ของระบบเก่ากลับด้าน: '0' = คอร์สที่แสดงบนเว็บจริง (ตรวจเทียบเว็บเก่า 21 คอร์สแล้ว) · '1' = ซ่อน/เวอร์ชันเก่า
 // ⛔ ไม่ส่ง url วิดีโอบทเรียนออกไปเด็ดขาด (เป็นคอนเทนต์ที่ลูกค้าจ่ายเงิน) — url ใช้เฉพาะฝั่งแอดมิน/ระบบเรียนในเฟสถัดไป
+// คอร์สที่เลิกขายแล้ว (คิมสั่งเอาออก 2026-08-01: Creative Thinking = คอร์สเก่ามาก ไม่อยากขายต่อ)
+// ซ่อนที่โค้ดแทนการแก้ธง is_active ใน DB → ลูกค้าเก่าที่ซื้อไปแล้วยังเข้าเรียนได้ตามปกติ
+const HIDDEN_COURSES = new Set(["15"]);
 app.get("/api/academy/catalog", async (req, res) => {
   try {
-    const courses = await q(`SELECT c.legacy_id, c.name, c.price, c.price_sale, c.flag_sale, c.category, c.instructor, c.featured_image_url, c.duration,
+    const all = await q(`SELECT c.legacy_id, c.name, c.price, c.price_sale, c.flag_sale, c.category, c.instructor, c.featured_image_url, c.duration,
         (SELECT COUNT(*) FROM academy_course_lines l WHERE l.course_id = c.legacy_id) AS lessons
       FROM academy_courses c WHERE c.is_active = '0' ORDER BY c.legacy_id::int`);
+    const courses = all.filter(c => !HIDDEN_COURSES.has(String(c.legacy_id)));
     const cats = await q(`SELECT legacy_id, data_json FROM academy_categories`);
     const tutors = await q(`SELECT legacy_id, data_json FROM academy_tutors`);
     const catMap = {}, tutMap = {};
@@ -1269,6 +1273,7 @@ app.get("/api/academy/catalog", async (req, res) => {
 app.get("/api/academy/course/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
+    if (HIDDEN_COURSES.has(id)) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     const c = await one(`SELECT * FROM academy_courses WHERE legacy_id=$1 AND is_active='0'`, [id]);
     if (!c) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     const lines = await q(`SELECT legacy_id, name, time, seq FROM academy_course_lines WHERE course_id=$1 ORDER BY COALESCE(NULLIF(seq,'')::int, 999), legacy_id::int`, [id]); // ⛔ ไม่ select url
@@ -1380,6 +1385,7 @@ app.post("/api/academy/buy", async (req, res) => {
     const email = await authEmail(req);
     if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนซื้อคอร์สนะคะ" });
     const courseId = String(req.body?.course_id || "");
+    if (HIDDEN_COURSES.has(courseId)) return res.status(404).json({ ok: false, error: "COURSE_NOT_FOUND", message: "คอร์สนี้ปิดการขายแล้วค่ะ" });
     const c = await one(`SELECT legacy_id, name, price, price_sale, flag_sale FROM academy_courses WHERE legacy_id=$1 AND is_active='0'`, [courseId]);
     if (!c) return res.status(404).json({ ok: false, error: "COURSE_NOT_FOUND" });
     const owned = await academyOwnedCourseIds(email);
@@ -1454,7 +1460,8 @@ app.post("/api/academy/progress", async (req, res) => {
 });
 // ✉️ เมลแจ้งเมื่อได้ใบประกาศ — ⛔ ปิดไว้จนกว่าคิมจะอ่านร่างและอนุมัติ (ตั้ง CERT_EMAIL_ENABLED=1 เพื่อเปิด)
 async function sendCertificateEmail(email, studentName, courseName, certId) {
-  if (String(process.env.CERT_EMAIL_ENABLED || "") !== "1") { console.log(`[cert-email] ปิดอยู่ (รออนุมัติ) — จะส่งถึง ${email} เรื่อง ${courseName}`); return; }
+  // ✅ คิมอนุมัติร่างแล้ว 2026-08-01 → เปิดใช้เป็นค่าเริ่มต้น (ตั้ง CERT_EMAIL_ENABLED=0 เพื่อปิดชั่วคราวได้)
+  if (String(process.env.CERT_EMAIL_ENABLED || "1") === "0") { console.log(`[cert-email] ปิดอยู่ — จะส่งถึง ${email} เรื่อง ${courseName}`); return; }
   const url = `${appBaseUrl()}/academy/certificate/${encodeURIComponent(certId)}`;
   await sendEmail(email, `🎓 ยินดีด้วยค่ะ! ประกาศนียบัตรคอร์ส ${courseName} พร้อมแล้ว`, wrap(
     `สวัสดีค่ะ คุณ${studentName}<br><br>` +

@@ -865,6 +865,30 @@ function fallbackHomework(isVideo) {
 }
 
 // ===== ตัวตรวจคุณภาพเล่มอัตโนมัติ — สแกนหา red flag (กันเล่มออกมากลางๆ/พลาด) =====
+// ✏️ เขียน "ธีมเล่ม" ใหม่อย่างเดียว โดยไม่แตะสคริปต์/ปฏิทินที่ลูกค้าอาจใช้ไปแล้ว
+// ใช้กับเล่มเก่าที่ธีมหลุดไปเป็น "บทวิเคราะห์ช่อง: ..." (= ชื่อเอกสาร ไม่ใช่คำโปรยของช่องลูกค้า)
+export async function rewriteTheme(bp, lang = "th") {
+  if (!ai) return null;
+  const ctx = {
+    ช่อง: bp.instagram_account, จุดยืน: bp.positioning, คนดู: bp.audience_summary,
+    เสาคอนเทนต์: (bp.pillars || []).slice(0, 5),
+    ตัวอย่างหัวข้อจริงในแผน: (bp.calendar || []).slice(0, 8).map(c => c.title || c.topic || c.idea).filter(Boolean),
+  };
+  const sys = `เขียน "ธีมเล่ม" ให้ช่องนี้ใหม่ 1 บรรทัด — ธีมคือ "ช่องนี้ทำคอนเทนต์เรื่องอะไร" ที่เอาไปวางเป็นคำโปรยใต้ชื่อช่องเขาได้เลย
+✅ ถูก: "รีวิวร้านอาหาร ที่เที่ยว และทริคเดินทางสำหรับคนชอบลองสิ่งใหม่ๆ" · "ปั้นลิปสติกแบรนด์ไทยให้เป็นลิปที่ผู้หญิงหยิบใช้ทุกวัน"
+⛔ ผิด (ห้ามเด็ดขาด): ขึ้นต้นด้วย "บทวิเคราะห์ช่อง" / "การวิเคราะห์ช่อง" / "วางแผนคอนเทนต์" / "Blueprint" — พวกนี้คือชื่อเอกสารของเรา ไม่ใช่ตัวตนช่องลูกค้า
+⛔ ห้ามใส่ชื่อ Babe House · ห้ามใส่เครื่องหมายคำพูด · ยาว 8-22 คำ
+ตอบ JSON: {"theme":"..."}`;
+  const { resp } = await genContent({
+    contents: [{ role: "user", parts: [{ text: JSON.stringify(ctx, null, 1) }] }],
+    config: { systemInstruction: sys + langSuffix(lang), responseMimeType: "application/json", maxOutputTokens: 300 },
+    retries: 2,
+  });
+  const t = String(JSON.parse(resp.text)?.theme || "").trim().replace(/^["“”']|["“”']$/g, "");
+  return t && !BAD_THEME_RE.test(t) && !/babe\s*house/i.test(t) ? t : null;
+}
+// ธีมที่เป็น "ชื่อเอกสาร" ไม่ใช่ตัวตนของช่องลูกค้า
+export const BAD_THEME_RE = /^\s*(การ|บท)?(วิเคราะห์ช่อง|วิเคราะห์|วางแผนคอนเทนต์|วางกลยุทธ์คอนเทนต์|blueprint)/i;
 export function checkBlueprintQuality(bp, hasImage) {
   const flags = [];
   if (!bp || typeof bp !== "object") return ["เล่มว่าง/ไม่ใช่ JSON"];
@@ -875,7 +899,7 @@ export function checkBlueprintQuality(bp, hasImage) {
   // theme ต้องบอกว่า "ช่องทำคอนเทนต์เรื่องอะไร" ไม่ใช่ "เราวิเคราะห์/วางแผนให้เขา"
   // เจอจริง 2/14 เล่ม (@ssavesavee, @palmierr23) — AI หลุดไปเขียนถึงกระบวนการของเราแทนเนื้อหาช่องลูกค้า
   const theme = String(bp.theme || "");
-  if (/^\s*(การ)?(วิเคราะห์ช่อง|วางแผนคอนเทนต์|วางกลยุทธ์คอนเทนต์)/.test(theme)) {
+  if (BAD_THEME_RE.test(theme)) {   // ครอบคลุม "บทวิเคราะห์ช่อง:" ด้วย — เจอเพิ่มอีก 19 เล่มตอนสแกนทั้งระบบ
     flags.push(`ธีมเล่มพูดถึงการวางแผนแทนเนื้อหาช่อง: "${theme.slice(0, 60)}"`);
   }
   // 🚨 เล่มกลายเป็นของ Babe House แทนช่องลูกค้า — เกิดเมื่อลูกค้ากด "ใช้ตัวอย่างนี้" แล้วส่งเลย (เจอจริง 2 คน)

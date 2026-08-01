@@ -12,7 +12,7 @@ import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
 import { seedWorkshops } from "./seed-workshops.js";
 import { seedAssignments } from "./seed-assignments.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -2131,6 +2131,31 @@ app.post("/api/admin/regen-content", async (req, res) => {
   res.json({ ok: true, blueprint_id: bpId, scripts: (result.content.scripts || []).length, calendar: (result.content.calendar || []).length, flags });
 });
 // วิเคราะห์ใหม่ทั้งเล่ม (analysis + content) ด้วย prompt ล่าสุด — ใช้ตอนบทวิเคราะห์จับนิชผิด (เช่น เอาบริการ/เครื่องมือมาเป็นแนวคอนเทนต์). ใส่ focus_hint ชี้แนวคอนเทนต์จริงได้
+// ✏️ แก้ "ธีมเล่ม" อย่างเดียว — ไม่แตะสคริปต์/ปฏิทินที่ลูกค้าอาจใช้ไปแล้ว (ถูกกว่า+ปลอดภัยกว่า reanalyze ทั้งเล่ม)
+// ไม่ส่ง blueprint_id = กวาดทุกเล่มที่ธีมเป็น "ชื่อเอกสาร" แทนคำโปรยของช่องลูกค้า
+app.post("/api/admin/fix-theme", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const one_id = String(req.body?.blueprint_id || "").trim();
+  const limit = Math.min(Number(req.body?.limit) || 25, 60);
+  const rows = one_id
+    ? await q(`SELECT blueprint_id, blueprint_json FROM blueprints WHERE blueprint_id=$1 AND deleted_at IS NULL`, [one_id])
+    : await q(`SELECT blueprint_id, blueprint_json FROM blueprints WHERE deleted_at IS NULL ORDER BY created_at DESC`);
+  const done = [], skipped = [];
+  for (const r of rows) {
+    if (done.length >= limit) break;
+    const bp = safeJson(r.blueprint_json); if (!bp) continue;
+    const old = String(bp.theme || "");
+    if (!one_id && !BAD_THEME_RE.test(old)) continue;          // กวาดอัตโนมัติ = แตะเฉพาะเล่มที่ธีมพัง
+    let fresh = null;
+    try { fresh = await rewriteTheme(bp, "th"); } catch (e) { skipped.push({ id: r.blueprint_id, why: e.message }); continue; }
+    if (!fresh || fresh === old) { skipped.push({ id: r.blueprint_id, why: "AI ยังเขียนไม่ผ่านเกณฑ์" }); continue; }
+    const merged = { ...bp, theme: fresh };
+    await run(`UPDATE blueprints SET blueprint_json=$1, quality_flags_json=$2 WHERE blueprint_id=$3`,
+      [JSON.stringify(merged), JSON.stringify(checkBlueprintQuality(merged, true)), r.blueprint_id]);
+    done.push({ id: r.blueprint_id, from: old.slice(0, 60), to: fresh });
+  }
+  res.json({ ok: true, fixed: done.length, skipped: skipped.length, done, skipped });
+});
 app.post("/api/admin/reanalyze", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const bpId = String(req.body?.blueprint_id || "").trim();

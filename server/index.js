@@ -2139,8 +2139,11 @@ app.get("/api/admin/projects", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const projects = await q(`SELECT * FROM projects ORDER BY status='done', priority ASC, sort ASC, created_at ASC`);
   const items = await q(`SELECT * FROM project_items ORDER BY priority ASC, sort ASC, created_at ASC`);
+  const comments = await q(`SELECT * FROM project_comments ORDER BY created_at ASC`);
+  const byItem = {};
+  for (const c of comments) (byItem[c.item_id] ||= []).push(c);
   const byPid = {};
-  for (const it of items) (byPid[it.project_id] ||= []).push(it);
+  for (const it of items) (byPid[it.project_id] ||= []).push({ ...it, comments: byItem[it.id] || [] });
   res.json({ ok: true, projects: projects.map(p => ({ ...p, items: byPid[p.id] || [] })) });
 });
 app.post("/api/admin/projects/save", async (req, res) => {
@@ -2168,10 +2171,28 @@ app.post("/api/admin/projects/item", async (req, res) => {
      kind === "done" ? (b.done_at || new Date().toISOString()) : null]);
   res.json({ ok: true, id });
 });
+app.post("/api/admin/projects/comment", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const itemId = String(req.body?.item_id || "").trim();
+  const text = String(req.body?.text || "").trim();
+  if (!itemId || !text) return res.status(400).json({ ok: false, error: "MISSING" });
+  const id = uid("pc");
+  await run(`INSERT INTO project_comments (id,item_id,text,author) VALUES ($1,$2,$3,$4)`,
+    [id, itemId, text.slice(0, 4000), String(req.body?.author || "kim")]);
+  res.json({ ok: true, id });
+});
+app.post("/api/admin/projects/comment/delete", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.id || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  await run(`DELETE FROM project_comments WHERE id=$1`, [id]);
+  res.json({ ok: true });
+});
 app.post("/api/admin/projects/item/delete", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const id = String(req.body?.id || "").trim();
   if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  await run(`DELETE FROM project_comments WHERE item_id=$1`, [id]);
   await run(`DELETE FROM project_items WHERE id=$1`, [id]);
   res.json({ ok: true });
 });

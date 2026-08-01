@@ -218,6 +218,15 @@ export async function initDb() {
       updated_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_project_items_pid ON project_items(project_id, kind);
+    -- คอมเมนต์ต่องาน — คุยกันในงานนั้นได้เรื่อยๆ ส่งต่อให้ทีมอ่านได้
+    CREATE TABLE IF NOT EXISTS project_comments (
+      id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      author TEXT DEFAULT 'kim',
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_comments_item ON project_comments(item_id, created_at);
     -- บันทึกว่าส่ง "รายงานสุขภาพระบบรายวัน" ให้คิมไปแล้ววันไหน (กันส่งซ้ำ และรอด deploy ที่รีเซ็ต timer)
     CREATE TABLE IF NOT EXISTS daily_report_log (
       day DATE PRIMARY KEY,

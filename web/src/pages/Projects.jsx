@@ -12,6 +12,18 @@ const KINDS = [
 const OWNERS = [{ v: "", l: "ยังไม่ระบุ" }, { v: "kim", l: "คิม" }, { v: "claude", l: "ระบบ/Claude" }, { v: "team", l: "ทีม" }];
 const ownerLabel = (o) => (OWNERS.find(x => x.v === (o || ""))?.l) || o;
 
+// แถบยืนยันท้ายจอ — บอกว่าเพิ่งเกิดอะไรขึ้น + ย้อนกลับได้ใน 7 วินาที
+function Toast({ t, onClose }) {
+  useEffect(() => { const id = setTimeout(onClose, 7000); return () => clearTimeout(id); }, [t, onClose]);
+  return (
+    <div className="toast">
+      <span style={{ fontSize: 14.5, fontWeight: 700 }}>✅ {t.msg}</span>
+      {t.undo && <button onClick={() => { t.undo(); onClose(); }} className="toast-undo">↩︎ ย้อนกลับ</button>}
+      <button onClick={onClose} className="toast-x" title="ปิด">✕</button>
+    </div>
+  );
+}
+
 export default function Projects() {
   const [key, setKey] = useState(localStorage.getItem("babe_admin_key") || "");
   const [authed, setAuthed] = useState(false);
@@ -21,6 +33,9 @@ export default function Projects() {
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({ project_id: "", kind: "idea", text: "", owner: "" });
   const [showDone, setShowDone] = useState(false);   // ของที่เสร็จแล้วพับไว้ก่อน
+  const [detail, setDetail] = useState(null);        // id ของงานที่เปิดดูรายละเอียดอยู่
+  const [cmt, setCmt] = useState("");
+  const [toast, setToast] = useState(null);          // แถบยืนยัน + ปุ่มย้อนกลับ
 
   const load = async (k = key) => { const r = await api("/api/admin/projects", { adminKey: k }); setPs(r.projects || []); };
   const login = async (k) => {
@@ -39,7 +54,22 @@ export default function Projects() {
     await save({ project_id: draft.project_id, kind: draft.kind, text: t, owner: draft.owner || null });
     setDraft(d => ({ ...d, text: "" }));
   };
-  const move = (it, kind) => save({ ...it, kind });
+  // ทุกการกดต้องมีเสียงตอบกลับ + ย้อนกลับได้ ไม่งั้นคิมไม่รู้ว่ากดติดหรือกดพลาด
+  const move = async (it, kind, msg) => {
+    const before = it.kind;
+    await save({ ...it, kind });
+    if (msg) setToast({ msg, undo: () => save({ ...it, kind: before }) });
+  };
+  const addComment = async (it) => {
+    const t = cmt.trim(); if (!t) return;
+    setBusy(true);
+    try { await api("/api/admin/projects/comment", { method: "POST", body: { item_id: it.id, text: t }, adminKey: key }); await load(); setCmt(""); }
+    finally { setBusy(false); }
+  };
+  const delComment = async (id) => {
+    if (!confirm("ลบคอมเมนต์นี้?")) return;
+    await api("/api/admin/projects/comment/delete", { method: "POST", body: { id }, adminKey: key }); await load();
+  };
   const del = async (id) => { if (!confirm("ลบรายการนี้?")) return; await api("/api/admin/projects/item/delete", { method: "POST", body: { id }, adminKey: key }); await load(); };
 
   if (!authed) return (
@@ -64,6 +94,8 @@ export default function Projects() {
   const decide = flat("blocked");                       // ติดที่คิมคนเดียว = ปลดล็อกได้เยอะสุด
   const mine = flat("next", "kim");                     // งานที่คิมต้องลงมือเอง
   const byClaude = flat("next", "claude");              // งานที่ฉันทำแทนได้
+  // งานที่เปิดดูรายละเอียดอยู่ — หาข้ามทุกโปรเจค เพราะกดมาจากแถบ "ทำอะไรต่อ" ก็ได้
+  const dItem = detail ? ps.flatMap(p => (p.items || []).map(i => ({ ...i, proj: p }))).find(i => i.id === detail) : null;
 
   return (
     <div className="wrap page-pad" style={{ maxWidth: 940 }}>
@@ -153,18 +185,25 @@ export default function Projects() {
               {/* ข้อความอ่านเต็มบรรทัดเสมอ · ปุ่มจัดการอยู่บรรทัดล่าง ไม่มาแย่งที่ */}
               {!collapsed && list.map(it => (
                 <div key={it.id} className="pi">
-                  <button className="pi-tick" title={k === "done" ? "เอากลับมาทำต่อ" : "ทำเสร็จแล้ว"} disabled={busy}
-                          onClick={() => move(it, k === "done" ? "next" : "done")}
-                          style={{ borderColor: k === "done" ? "#1a7f43" : "var(--border)", background: k === "done" ? "#1a7f43" : "#fff", color: "#fff" }}>
-                    {k === "done" ? "✓" : ""}
+                  {/* ปุ่มติ๊ก — ต้องดูออกทันทีว่ากดแล้วจะเกิดอะไร (คิมบอก "กดเข้าไปไม่รู้ ยืนหรือยกเลิก") */}
+                  <button className={`pi-tick${k === "done" ? " on" : ""}`} disabled={busy}
+                          title={k === "done" ? "กดเพื่อเอากลับมาทำต่อ" : "กดเมื่อทำเสร็จแล้ว"}
+                          onClick={() => move(it, k === "done" ? "next" : "done", k === "done" ? "เอากลับมาทำต่อแล้ว" : "ทำเสร็จแล้ว! 🎉")}>
+                    <span className="pi-tick-mark">✓</span>
                   </button>
                   <div className="pi-main">
-                    <div className="pi-text" style={{ textDecoration: k === "done" ? "line-through" : "none", opacity: k === "done" ? .55 : 1 }}>{it.text}</div>
+                    <button className="pi-text" onClick={() => setDetail(it.id)} title="กดดูรายละเอียด + คอมเมนต์"
+                            style={{ textDecoration: k === "done" ? "line-through" : "none", opacity: k === "done" ? .55 : 1 }}>{it.text}</button>
+
+                    {(it.comments?.length > 0 || it.note) &&
+                      <div className="pi-cnt">💬 {it.comments?.length ? `${it.comments.length} คอมเมนต์` : "มีโน้ต"}</div>}
+
                     <div className="pi-meta">
                       {it.owner && <span className="pi-who">👤 {ownerLabel(it.owner)}</span>}
                       <span className="pi-actions">
+                        <button className="pi-move" onClick={() => setDetail(it.id)} style={{ color: "#7a7486" }}>💬 รายละเอียด</button>
                         {KINDS.filter(x => x.k !== k && x.k !== "done").map(x => (
-                          <button key={x.k} className="pi-move" disabled={busy} onClick={() => move(it, x.k)} title={`ย้ายไป ${x.label}`}
+                          <button key={x.k} className="pi-move" disabled={busy} onClick={() => move(it, x.k, `ย้ายไป "${x.label}" แล้ว`)} title={`ย้ายไป ${x.label}`}
                                   style={{ color: x.tone }}>{x.icon} {x.label}</button>
                         ))}
                         <button className="pi-move" onClick={() => del(it.id)} title="ลบ" style={{ color: "#b7b7bf" }}>🗑️</button>
@@ -206,6 +245,64 @@ export default function Projects() {
         </div>
       </div>
 
+      {/* 📄 รายละเอียดงาน + คอมเมนต์ */}
+      {dItem && (
+        <div className="dt-bg" onClick={e => { if (e.target === e.currentTarget) setDetail(null); }}>
+          <div className="dt">
+            <div className="between" style={{ gap: 10, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+                <span className="up-chip" style={{ background: dItem.proj.color }}>{dItem.proj.emoji}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "#6b6577" }}>{dItem.proj.name}</span>
+                <span className="dt-badge" style={{ color: KINDS.find(x => x.k === dItem.kind)?.tone }}>
+                  {KINDS.find(x => x.k === dItem.kind)?.icon} {KINDS.find(x => x.k === dItem.kind)?.label}
+                </span>
+              </div>
+              <button onClick={() => setDetail(null)} className="dt-x" title="ปิด">✕</button>
+            </div>
+
+            <h2 style={{ fontSize: 19, lineHeight: 1.5, margin: "14px 0 10px", fontWeight: 800 }}>{dItem.text}</h2>
+
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 6 }}>
+              <select value={dItem.kind} onChange={e => move(dItem, e.target.value, `ย้ายไป "${KINDS.find(k => k.k === e.target.value)?.label}" แล้ว`)} disabled={busy}
+                      style={{ fontSize: 13, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }}>
+                {KINDS.map(x => <option key={x.k} value={x.k}>{x.icon} {x.label}</option>)}
+              </select>
+              <select value={dItem.owner || ""} onChange={e => save({ ...dItem, owner: e.target.value || null })} disabled={busy}
+                      style={{ fontSize: 13, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }}>
+                {OWNERS.map(o => <option key={o.v} value={o.v}>👤 {o.l}</option>)}
+              </select>
+            </div>
+
+            <div style={{ fontWeight: 800, fontSize: 14, margin: "18px 0 8px" }}>
+              💬 คอมเมนต์{dItem.comments?.length ? ` · ${dItem.comments.length}` : ""}
+            </div>
+            {!dItem.comments?.length && <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>ยังไม่มีคอมเมนต์ — จดรายละเอียด ลิงก์ หรือสั่งงานทีมไว้ตรงนี้ได้เลยค่ะ</div>}
+            {(dItem.comments || []).map(c => (
+              <div key={c.id} className="dt-cmt">
+                <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.65 }}>{c.text}</div>
+                <div className="between" style={{ marginTop: 5 }}>
+                  <span className="muted" style={{ fontSize: 11.5 }}>{new Date(c.created_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}</span>
+                  <button onClick={() => delComment(c.id)} style={{ border: 0, background: "none", cursor: "pointer", color: "#c4c4cc", fontSize: 13 }}>🗑️</button>
+                </div>
+              </div>
+            ))}
+            <textarea value={cmt} onChange={e => setCmt(e.target.value)} rows={3}
+              onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) addComment(dItem); }}
+              placeholder="เขียนคอมเมนต์… (Cmd+Enter ส่ง)"
+              style={{ width: "100%", boxSizing: "border-box", fontSize: 14, lineHeight: 1.6, padding: "10px 12px", borderRadius: 11, border: "1px solid var(--border)", fontFamily: "inherit", resize: "vertical", marginTop: 8 }} />
+            <div style={{ display: "flex", gap: 7, marginTop: 8, flexWrap: "wrap" }}>
+              <button className="btn" disabled={busy || !cmt.trim()} onClick={() => addComment(dItem)} style={{ padding: "9px 20px", fontSize: 14 }}>
+                {busy ? "กำลังบันทึก…" : "เพิ่มคอมเมนต์"}
+              </button>
+              <button className="btn ghost" onClick={() => { del(dItem.id); setDetail(null); }} style={{ padding: "9px 16px", fontSize: 13.5, marginLeft: "auto" }}>ลบงานนี้</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ แถบยืนยันท้ายจอ — กดอะไรไปแล้วต้องเห็นผลทันที และย้อนกลับได้ */}
+      {toast && <Toast t={toast} onClose={() => setToast(null)} />}
+
       <style>{`
         .prj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; margin-bottom: 22px; }
         .prj {
@@ -225,9 +322,16 @@ export default function Projects() {
 
         /* รายการในโปรเจค — ข้อความต้องอ่านเต็มบรรทัด ห้ามโดนปุ่มบีบ */
         .pi { display: flex; gap: 11px; align-items: flex-start; padding: 11px 0; border-top: 1px solid var(--border); }
-        .pi-tick { flex: 0 0 auto; width: 21px; height: 21px; margin-top: 2px; border-radius: 6px; border: 1.5px solid; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+        /* ปุ่มติ๊ก: ว่าง = ยังไม่เสร็จ · ชี้เมาส์แล้วเห็น ✓ จางๆ บอกว่ากดแล้วจะเป็นอะไร */
+        .pi-tick { flex: 0 0 auto; width: 23px; height: 23px; margin-top: 1px; border-radius: 7px;
+          border: 1.5px solid var(--border); background: #fff; cursor: pointer; padding: 0;
+          display: inline-flex; align-items: center; justify-content: center; transition: all .15s; }
+        .pi-tick-mark { font-size: 13px; font-weight: 900; color: #fff; opacity: 0; transition: opacity .15s; }
+        .pi-tick:hover { border-color: #1a7f43; background: #E6F4EC; }
+        .pi-tick:hover .pi-tick-mark { opacity: .55; color: #1a7f43; }
+        .pi-tick.on { border-color: #1a7f43; background: #1a7f43; }
+        .pi-tick.on .pi-tick-mark { opacity: 1; color: #fff; }
         .pi-main { flex: 1 1 auto; min-width: 0; }            /* min-width:0 คือกุญแจ ไม่งั้นข้อความยาวถูกบีบเป็นเส้น */
-        .pi-text { font-size: 14.5px; line-height: 1.6; word-break: break-word; }
         .pi-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 5px; }
         .pi-who { font-size: 12px; color: var(--muted); }
         .pi-actions { display: flex; flex-wrap: wrap; gap: 4px; opacity: 0; transition: opacity .15s; }
@@ -245,6 +349,38 @@ export default function Projects() {
         .up-chip { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px; display: inline-flex;
           align-items: center; justify-content: center; font-size: 14px; }
         .up-text { flex: 1 1 auto; min-width: 0; font-size: 14px; line-height: 1.55; color: #2c2a35; word-break: break-word; }
+
+        /* โน้ตของคิม */
+        .pi-note { display: block; width: 100%; text-align: left; margin-top: 7px; cursor: pointer; font-family: inherit;
+          background: #FBF8EE; border: 1px solid #EEE3CC; border-radius: 10px; padding: 8px 11px;
+          font-size: 13px; line-height: 1.6; color: #5c5340; white-space: pre-wrap; }
+        .pi-note:hover { background: #F7F2E4; }
+
+        /* ข้อความงาน = ปุ่มเปิดรายละเอียด */
+        .pi-text { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0;
+          font-family: inherit; cursor: pointer; font-size: 14.5px; line-height: 1.6; color: #2c2a35; word-break: break-word; }
+        .pi-text:hover { color: #2E86DE; }
+        .pi-cnt { font-size: 12px; color: #8a8496; margin-top: 5px; }
+
+        /* แผงรายละเอียดงาน */
+        .dt-bg { position: fixed; inset: 0; z-index: 80; background: rgba(30,26,40,.42); backdrop-filter: blur(2px);
+          display: flex; align-items: flex-start; justify-content: center; padding: 24px 14px; overflow-y: auto; }
+        .dt { background: #fff; border-radius: 18px; padding: 20px; width: 100%; max-width: 620px;
+          box-shadow: 0 20px 50px rgba(0,0,0,.22); animation: dtIn .18s ease-out; }
+        @keyframes dtIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .dt-badge { font-size: 12px; font-weight: 800; }
+        .dt-x { background: #f2f1f6; border: 0; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; color: #6b6577; font-size: 14px; flex-shrink: 0; }
+        .dt-cmt { background: #F8F7FB; border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; margin-bottom: 8px; }
+
+        /* แถบยืนยัน */
+        .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 90;
+          display: flex; align-items: center; gap: 12px; background: #2c2a35; color: #fff;
+          padding: 12px 14px 12px 18px; border-radius: 14px; box-shadow: 0 10px 28px rgba(0,0,0,.26);
+          max-width: calc(100vw - 28px); animation: toastUp .22s ease-out; }
+        @keyframes toastUp { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        .toast-undo { background: #fff; color: #2c2a35; border: 0; border-radius: 20px; padding: 6px 14px;
+          font-size: 13px; font-weight: 800; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .toast-x { background: none; border: 0; color: #9c98a8; cursor: pointer; font-size: 14px; padding: 2px 4px; }
       `}</style>
     </div>
   );

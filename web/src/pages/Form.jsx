@@ -223,6 +223,13 @@ export default function Form() {
   const upd = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
   const setVal = (k, val) => setF(v => ({ ...v, [k]: val }));
   const fillExample = (k) => { setF(v => ({ ...v, [k]: t("fm_guide")[k].example })); };
+  // 🚫 กันลูกค้ากด "ใช้ตัวอย่างนี้" แล้วส่งเลย — AI จะทำเล่มให้ Babe House Academy แทนช่องเขา (เจอจริง 2 คน)
+  const stillExample = (k) => {
+    const v = String(f[k] || "").trim(); if (!v) return false;
+    const ex = String(t("fm_guide")[k]?.example || "").trim();
+    return !!ex && (v === ex || /babe\s*house|เบ๊บเฮาส์/i.test(v));
+  };
+  const exampleLeftIn = () => ["instagram_account", "business_type", "starting_point", "monthly_goal"].find(stillExample);
   // props ช่วยใส่ onFocus + render guide ใต้ช่อง (มือถือ)
   const fieldProps = (k) => ({ onFocus: () => setFocus(k) });
 
@@ -248,6 +255,9 @@ export default function Form() {
     if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock เบอร์โทร
     if (hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); setStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock: มีช่องต้องมีรูป Insight เสมอ
+    // ยังมีข้อความตัวอย่างของเราค้างอยู่ → หยุดไว้ก่อน ไม่งั้นได้เล่มของ Babe House ไม่ใช่ของเขา
+    const exK = exampleLeftIn();
+    if (exK) { setErr(t("fm_v_example")); setStep(exK === "instagram_account" ? 1 : 2); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     if (!consent) { setErr(t("fm_v_consent")); return; }
     setBusy(true); setErr("");
     try {

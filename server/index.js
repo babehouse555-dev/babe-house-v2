@@ -103,8 +103,23 @@ function cleanCompetitors(fr) {
     competitor_1: String(fr.competitor_1 || "").trim() || "ไม่ระบุชื่อคู่แข่ง ให้ AI วิเคราะห์คู่แข่งเชิงกลยุทธ์จากประเภทธุรกิจแทน",
     competitor_2: String(fr.competitor_2 || "").trim() || "ไม่ระบุชื่อคู่แข่ง ให้ AI วิเคราะห์คู่แข่งเชิงกลยุทธ์จากพฤติกรรมตลาดแทน" };
 }
+// 🚫 ลูกค้าบางคนกด "ใช้ตัวอย่างนี้" แล้วส่งมาเลย (เจอจริง 2 คน) → AI ทำเล่มให้ Babe House Academy แทนช่องเขา
+// ลบข้อความตัวอย่างของเราออกก่อนส่งเข้า AI เสมอ — กันได้แม้ลูกค้าเปิดหน้าเว็บเวอร์ชันเก่าค้างไว้
+const OUR_EXAMPLE_RE = /babe\s*house|เบ๊บเฮาส์|สถาบันสอนตัดต่อวิดีโอและทำคอนเทนต์สำหรับผู้หญิง/i;
+function stripOurExample(fr) {
+  const out = { ...fr };
+  for (const k of ["business_type", "starting_point", "monthly_goal"]) {
+    const v = String(out[k] || "");
+    if (!v || !OUR_EXAMPLE_RE.test(v)) continue;
+    // ตัดทิ้งเฉพาะบรรทัด/ประโยคที่มีชื่อเรา เก็บส่วนที่ลูกค้าเขียนเองไว้
+    const kept = v.split(/\n+/).filter(line => !OUR_EXAMPLE_RE.test(line)).join("\n").trim();
+    out[k] = kept;
+    console.warn(`[form-guard] ลบข้อความตัวอย่างของเราออกจาก ${k} (เหลือ ${kept.length} ตัวอักษร)`);
+  }
+  return out;
+}
 function normalizePayload(p) {
-  return { ...p, email: normEmail(p.email) || undefined, meta_purchase: { tier: "Premium_490", billing_cycle: p.meta_purchase?.billing_cycle || currentBillingCycle() }, form_responses: cleanCompetitors(p.form_responses || {}) };
+  return { ...p, email: normEmail(p.email) || undefined, meta_purchase: { tier: "Premium_490", billing_cycle: p.meta_purchase?.billing_cycle || currentBillingCycle() }, form_responses: stripOurExample(cleanCompetitors(p.form_responses || {})) };
 }
 async function upsertUser({ user_id, instagram_account, business_type }) {
   await run(`INSERT INTO users (user_id, instagram_account, business_type) VALUES ($1,$2,$3)

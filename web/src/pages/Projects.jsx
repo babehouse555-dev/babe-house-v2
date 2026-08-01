@@ -20,6 +20,7 @@ export default function Projects() {
   const [open, setOpen] = useState(null);        // project id ที่เปิดอยู่
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({ project_id: "", kind: "idea", text: "", owner: "" });
+  const [showDone, setShowDone] = useState(false);   // ของที่เสร็จแล้วพับไว้ก่อน
 
   const load = async (k = key) => { const r = await api("/api/admin/projects", { adminKey: k }); setPs(r.projects || []); };
   const login = async (k) => {
@@ -98,20 +99,35 @@ export default function Projects() {
         {KINDS.map(({ k, label, icon, tone }) => {
           const list = (cur.items || []).filter(i => i.kind === k);
           if (!list.length) return null;
+          const collapsed = k === "done" && !showDone;    // ของที่เสร็จแล้วพับไว้ ไม่ให้บังงานที่ยังไม่ทำ
           return (
             <div key={k} className="card" style={{ marginTop: 0, marginBottom: 14, borderLeft: `4px solid ${tone}` }}>
-              <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 10, color: tone }}>{icon} {label} · {list.length}</div>
-              {list.map(it => (
-                <div key={it.id} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "9px 0", borderTop: "1px solid var(--border)" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14.5, lineHeight: 1.55, textDecoration: k === "done" ? "line-through" : "none", opacity: k === "done" ? .6 : 1 }}>{it.text}</div>
-                    {it.owner && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>👤 {ownerLabel(it.owner)}</div>}
+              <button onClick={() => k === "done" && setShowDone(v => !v)}
+                      style={{ width: "100%", textAlign: "left", background: "none", border: 0, padding: 0, cursor: k === "done" ? "pointer" : "default",
+                               fontWeight: 800, fontSize: 14.5, marginBottom: collapsed ? 0 : 10, color: tone, fontFamily: "inherit" }}>
+                {icon} {label} · {list.length}{k === "done" && <span style={{ fontWeight: 600, fontSize: 12.5, marginLeft: 8 }}>{collapsed ? "▸ กดดู" : "▾ ซ่อน"}</span>}
+              </button>
+              {/* ข้อความอ่านเต็มบรรทัดเสมอ · ปุ่มจัดการอยู่บรรทัดล่าง ไม่มาแย่งที่ */}
+              {!collapsed && list.map(it => (
+                <div key={it.id} className="pi">
+                  <button className="pi-tick" title={k === "done" ? "เอากลับมาทำต่อ" : "ทำเสร็จแล้ว"} disabled={busy}
+                          onClick={() => move(it, k === "done" ? "next" : "done")}
+                          style={{ borderColor: k === "done" ? "#1a7f43" : "var(--border)", background: k === "done" ? "#1a7f43" : "#fff", color: "#fff" }}>
+                    {k === "done" ? "✓" : ""}
+                  </button>
+                  <div className="pi-main">
+                    <div className="pi-text" style={{ textDecoration: k === "done" ? "line-through" : "none", opacity: k === "done" ? .55 : 1 }}>{it.text}</div>
+                    <div className="pi-meta">
+                      {it.owner && <span className="pi-who">👤 {ownerLabel(it.owner)}</span>}
+                      <span className="pi-actions">
+                        {KINDS.filter(x => x.k !== k && x.k !== "done").map(x => (
+                          <button key={x.k} className="pi-move" disabled={busy} onClick={() => move(it, x.k)} title={`ย้ายไป ${x.label}`}
+                                  style={{ color: x.tone }}>{x.icon} {x.label}</button>
+                        ))}
+                        <button className="pi-move" onClick={() => del(it.id)} title="ลบ" style={{ color: "#b7b7bf" }}>🗑️</button>
+                      </span>
+                    </div>
                   </div>
-                  <select value={it.kind} onChange={e => move(it, e.target.value)} disabled={busy}
-                          style={{ fontSize: 12, padding: "4px 6px", borderRadius: 8, border: "1px solid var(--border)", background: "#fff" }}>
-                    {KINDS.map(x => <option key={x.k} value={x.k}>{x.icon} {x.label}</option>)}
-                  </select>
-                  <button onClick={() => del(it.id)} title="ลบ" style={{ border: 0, background: "none", cursor: "pointer", color: "#c4c4cc", fontSize: 15 }}>🗑️</button>
                 </div>
               ))}
             </div>
@@ -163,6 +179,20 @@ export default function Projects() {
         .prj-goal { display: block; font-size: 12.5px; color: #5d5a68; line-height: 1.55; margin-top: 5px; }
         .prj-tags { display: flex; flex-wrap: wrap; gap: 9px; font-size: 12px; font-weight: 700; margin-top: 9px; }
         @media (max-width: 520px) { .prj-grid { grid-template-columns: 1fr; } }
+
+        /* รายการในโปรเจค — ข้อความต้องอ่านเต็มบรรทัด ห้ามโดนปุ่มบีบ */
+        .pi { display: flex; gap: 11px; align-items: flex-start; padding: 11px 0; border-top: 1px solid var(--border); }
+        .pi-tick { flex: 0 0 auto; width: 21px; height: 21px; margin-top: 2px; border-radius: 6px; border: 1.5px solid; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+        .pi-main { flex: 1 1 auto; min-width: 0; }            /* min-width:0 คือกุญแจ ไม่งั้นข้อความยาวถูกบีบเป็นเส้น */
+        .pi-text { font-size: 14.5px; line-height: 1.6; word-break: break-word; }
+        .pi-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 5px; }
+        .pi-who { font-size: 12px; color: var(--muted); }
+        .pi-actions { display: flex; flex-wrap: wrap; gap: 4px; opacity: 0; transition: opacity .15s; }
+        .pi:hover .pi-actions, .pi:focus-within .pi-actions { opacity: 1; }
+        .pi-move { border: 0; background: none; cursor: pointer; font-family: inherit; font-size: 11.5px; font-weight: 700; padding: 3px 7px; border-radius: 7px; }
+        .pi-move:hover { background: #f2f1f6; }
+        /* มือถือ/จอสัมผัส ไม่มี hover → โชว์ปุ่มไว้เลย */
+        @media (hover: none) { .pi-actions { opacity: 1; } }
       `}</style>
     </div>
   );

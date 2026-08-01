@@ -2480,6 +2480,13 @@ app.get("/api/health", (req, res) => {
 app.use(express.static(WEB_DIST));
 app.get("*", (req, res) => {
   if (req.path.startsWith("/api/")) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  // 🔴 สำคัญ: ห้ามตอบ index.html ให้ไฟล์ asset ที่ไม่มีอยู่จริง
+  // ทุกครั้งที่ deploy ชื่อไฟล์ .js เปลี่ยน → ลูกค้าที่เปิดหน้าค้างไว้จะขอไฟล์เก่าที่หายไปแล้ว
+  // ถ้าตอบ index.html (HTTP 200 + text/html) เบราว์เซอร์จะเอา HTML ไปรันเป็น JavaScript → พังทั้งหน้า
+  // ("ระบบขัดข้องชั่วคราว") · ตอบ 404 ตรงๆ แทน แล้วให้ฝั่งหน้าเว็บโหลดหน้าใหม่เองอัตโนมัติ
+  if (/\.(js|mjs|css|map|json|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot)$/i.test(req.path)) {
+    return res.status(404).type("text/plain").send("Not found");
+  }
   res.sendFile(path.join(WEB_DIST, "index.html"));
 });
 app.use((err, req, res, next) => { console.error("Unhandled:", err?.message); if (res.headersSent) return next(err); res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "ระบบขัดข้อง" }); });

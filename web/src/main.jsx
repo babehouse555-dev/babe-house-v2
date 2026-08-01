@@ -40,16 +40,43 @@ function Shell({ children }) {
   return <>{loc.pathname !== "/" && <TopBar />}{children}</>;
 }
 
+// 🔄 กู้อัตโนมัติเมื่อเว็บถูกอัปเดตระหว่างลูกค้าเปิดหน้าค้างอยู่
+// ตอน deploy ชื่อไฟล์ .js เปลี่ยน → ไฟล์เดิมที่หน้านั้นอ้างอิงหายไป → โหลดไม่ได้ → หน้าพัง
+// แทนที่จะโชว์ "ระบบขัดข้อง" ให้โหลดหน้าใหม่เงียบๆ (ครั้งเดียว กันวนลูป)
+const RELOAD_KEY = "babe_stale_reload";
+function recoverFromStaleBuild() {
+  try {
+    if (sessionStorage.getItem(RELOAD_KEY)) return false;   // โหลดใหม่ไปแล้วรอบนึง ไม่วนอีก
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    location.reload();
+    return true;
+  } catch { return false; }
+}
+// ล้างธงเมื่อหน้าโหลดสำเร็จเกิน 8 วิ (แปลว่ารอบนี้ปกติแล้ว)
+setTimeout(() => { try { sessionStorage.removeItem(RELOAD_KEY); } catch {} }, 8000);
+if (typeof window !== "undefined") {
+  const looksStale = (m) => /Unexpected token '<'|failed to fetch dynamically imported|error loading dynamically imported|Loading chunk|Importing a module script failed|MIME type/i.test(String(m || ""));
+  window.addEventListener("error", (e) => { if (looksStale(e?.message)) recoverFromStaleBuild(); }, true);
+  window.addEventListener("unhandledrejection", (e) => { if (looksStale(e?.reason?.message || e?.reason)) recoverFromStaleBuild(); });
+}
+
 class ErrorBoundary extends React.Component {
   constructor(p) { super(p); this.state = { err: null }; }
   static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err) {
+    // หน้าพังเพราะไฟล์เก่า → โหลดใหม่ให้เลย ลูกค้าไม่ต้องเห็นหน้า error
+    if (/Unexpected token '<'|dynamically imported|Loading chunk|MIME type/i.test(String(err?.message || ""))) recoverFromStaleBuild();
+  }
   render() {
     if (this.state.err) return (
       <div className="wrap narrow page-pad center" style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div className="serif" style={{ fontSize: 56, color: "var(--blue)" }}>🩵</div>
         <h1 style={{ fontSize: 22, margin: "10px 0 6px" }}>ระบบขัดข้องชั่วคราว</h1>
-        <p className="muted" style={{ marginBottom: 20 }}>ขออภัยค่ะ ลองโหลดหน้าใหม่อีกครั้งนะคะ</p>
-        <div><a className="btn" href="/">กลับหน้าแรก</a></div>
+        <p className="muted" style={{ marginBottom: 20 }}>ขออภัยค่ะ กดปุ่มด้านล่างเพื่อโหลดใหม่ได้เลยนะคะ<br />ข้อมูลที่กรอกไว้ยังอยู่ ไม่ต้องเริ่มใหม่ค่ะ</p>
+        <div>
+          <button className="btn" onClick={() => { try { sessionStorage.removeItem(RELOAD_KEY); } catch {} location.reload(); }}>โหลดหน้านี้ใหม่</button>
+          <a className="btn ghost" href="/" style={{ marginLeft: 8 }}>กลับหน้าแรก</a>
+        </div>
       </div>
     );
     return this.props.children;

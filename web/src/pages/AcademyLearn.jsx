@@ -19,9 +19,10 @@ function toEmbed(url) {
   if (u.includes("/embed/")) return u;
   return u; // ไม่รู้จักทรง — ลองใส่ iframe ตรงๆ
 }
-// เซิร์ฟเวอร์รับ payload ได้ 40MB และ base64 ทำให้ไฟล์บวมขึ้น ~1.37 เท่า → รับไฟล์จริงได้ราว 28MB
-// ตั้ง 25 ไว้เผื่อขอบ กันเคสอัปแล้วเด้ง 413 ทั้งที่บอกลูกค้าว่ารับได้
-const MAX_MB = 25;
+// คลิปตัดต่อจัดเต็มเกิน 100MB ได้ง่ายๆ (คิมบอกเอง) → ไฟล์ใหญ่ส่งแบบ multipart เขียนลงดิสก์ที่เซิร์ฟเวอร์
+// รูปเล็กยังส่งแบบเดิม (ย่อ+บีบในเบราว์เซอร์แล้ว จะได้เก็บไว้โชว์เป็นผลงานได้)
+const MAX_MB = 200;
+const INLINE_MB = 8;   // เล็กกว่านี้ส่งแบบ JSON (เก็บรูปลง DB ได้) · ใหญ่กว่านี้ส่งเป็นไฟล์
 
 export default function AcademyLearn() {
   const [sp] = useSearchParams();
@@ -254,11 +255,31 @@ function HomeworkItem({ a, courseId, onDone, onCert }) {
     e.target.value = "";
     if (!f) return;
     const mb = f.size / 1024 / 1024;
-    if (mb > MAX_MB) { setMsg(`ไฟล์ใหญ่ ${mb.toFixed(0)}MB เกินไปค่ะ (รับไม่เกิน ${MAX_MB}MB) — ลองย่อคลิปให้สั้นลงหรือลดความละเอียดนะคะ`); return; }
-    setSending(true); setMsg("กำลังส่งให้ครูพี่คิมตรวจ... คลิปอาจใช้เวลาสัก 1-2 นาที รอสักครู่นะคะ");
+    if (mb > MAX_MB) { setMsg(`ไฟล์ใหญ่ ${mb.toFixed(0)}MB เกินไปค่ะ (รับไม่เกิน ${MAX_MB}MB) — ลองบีบไฟล์หรือตัดให้สั้นลงนะคะ`); return; }
+    const isImg = /^image\//.test(f.type || "");
+    setSending(true);
+    setMsg(mb > 40 ? `กำลังอัปไฟล์ ${mb.toFixed(0)}MB... ไฟล์ใหญ่อาจใช้เวลาหลายนาที อย่าเพิ่งปิดหน้านี้นะคะ`
+                   : "กำลังส่งให้ครูพี่คิมตรวจ... คลิปอาจใช้เวลาสัก 1-2 นาที รอสักครู่นะคะ");
     try {
-      const dataUrl = await fileToBase64(f);
-      const r = await api("/api/academy/homework/submit", { method: "POST", token: session.token, body: { course_id: courseId, assignment_id: a.assignment_id, file: dataUrl, mime: f.type, allow_marketing: allowMkt } });
+      let r;
+      if (isImg && mb <= INLINE_MB) {
+        // รูป → ย่อ/บีบก่อนแล้วส่งแบบเดิม (เก็บไว้โชว์เป็นผลงานได้)
+        const dataUrl = await fileToBase64(f);
+        r = await api("/api/academy/homework/submit", { method: "POST", token: session.token,
+          body: { course_id: courseId, assignment_id: a.assignment_id, file: dataUrl, mime: f.type, allow_marketing: allowMkt } });
+      } else {
+        // คลิป/ไฟล์ใหญ่ → ส่งเป็นไฟล์จริง ไม่แปลงเป็นข้อความ (ไม่งั้นไฟล์บวม 1.37 เท่าและกินแรม)
+        const fd = new FormData();
+        fd.append("course_id", courseId);
+        fd.append("assignment_id", a.assignment_id);
+        fd.append("allow_marketing", String(allowMkt));
+        fd.append("file", f, f.name);
+        const res = await fetch("/api/academy/homework/submit-file", {
+          method: "POST", headers: { Authorization: "Bearer " + session.token }, body: fd,
+        });
+        r = await res.json().catch(() => ({}));
+        if (!res.ok || r.ok === false) throw new Error(r.message || "ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
+      }
       setMsg("");
       if (r.cert_id) onCert?.(r.cert_id);
       await onDone?.();

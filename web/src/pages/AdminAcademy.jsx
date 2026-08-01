@@ -223,9 +223,15 @@ export function HomeworkReview({ adminKey }) {
   const [open, setOpen] = useState(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [feat, setFeat] = useState(false);
+  async function feature() {
+    setBusy(true);
+    try { await api("/api/admin/academy/submission/feature", { method: "POST", adminKey, body: { submission_id: open.submission_id, student_name: "" } }); setFeat(true); }
+    catch (e) { alert(e.message); } finally { setBusy(false); }
+  }
   async function load(t = tab) { setTab(t); try { setList(await api(`/api/admin/academy/submissions${t ? "?status=" + t : ""}`, { adminKey })); } catch { setList({ submissions: [] }); } }
   useEffect(() => { load(); }, []);
-  async function view(id) { setNote(""); setOpen("loading"); try { const d = await api(`/api/admin/academy/submission/${id}`, { adminKey }); setOpen(d.submission); setNote(d.submission.teacher_note || ""); } catch { setOpen(null); } }
+  async function view(id) { setNote(""); setFeat(false); setOpen("loading"); try { const d = await api(`/api/admin/academy/submission/${id}`, { adminKey }); setOpen(d.submission); setNote(d.submission.teacher_note || ""); } catch { setOpen(null); } }
   async function decide(pass) {
     setBusy(true);
     try {
@@ -276,6 +282,23 @@ export function HomeworkReview({ adminKey }) {
             <div className="row" style={{ gap: 8, marginTop: 14 }}>
               <button className="btn" disabled={busy} onClick={() => decide(true)} style={{ padding: "10px 20px" }}>✅ ให้ผ่าน</button>
               <button className="btn ghost" disabled={busy} onClick={() => decide(false)} style={{ padding: "10px 20px" }}>↩️ ให้แก้แล้วส่งใหม่</button>
+            </div>
+
+            {/* ⭐ เอาผลงานไปโชว์หน้าคอร์ส — ขึ้นเฉพาะงานที่นักเรียนติ๊กอนุญาตแล้วเท่านั้น */}
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px dashed var(--border)" }}>
+              {open.allow_marketing ? (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1a7f43" }}>✅ นักเรียนอนุญาตให้นำผลงานไปโปรโมตได้</div>
+                  <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 10px" }}>กดแล้วผลงานจะไปโชว์ในหน้าขายของคอร์สนี้ทันที (ลบทีหลังได้ที่หัวข้อจัดการคอร์สเรียน)</p>
+                  <button className="btn ghost" disabled={busy || feat} onClick={feature} style={{ padding: "9px 16px", fontSize: 13.5 }}>
+                    {feat ? "✅ เพิ่มเป็นผลงานโชว์แล้ว" : "⭐ เอาไปโชว์ในหน้าคอร์ส"}
+                  </button>
+                </>
+              ) : (
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  🔒 นักเรียนไม่ได้ติ๊กอนุญาตให้นำผลงานไปโปรโมต — ถ้าอยากใช้ ต้องทักไปขออนุญาตเจ้าตัวก่อนนะคะ
+                </div>
+              )}
             </div>
           </>}
         </div>

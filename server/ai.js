@@ -796,7 +796,9 @@ const HOMEWORK_SCHEMA = { type: Type.OBJECT, properties: {
 }, required: ["passed", "score", "summary", "strengths", "improvements", "next_step"] };
 
 // ตรวจการบ้าน 1 ชิ้น — รับได้ทั้งรูปและวิดีโอ (วิดีโอต้องอัปขึ้น Files API ก่อนเหมือน analyzeVideo)
-export async function gradeHomework({ dataUrl, mimeType, courseName, title, brief, criteria, lang = "th" }) {
+// รับได้ 2 ทาง: filePath (ไฟล์ใหญ่ อัปแบบ multipart แล้วเขียนลงดิสก์) หรือ dataUrl (ไฟล์เล็ก/รูป)
+// ไฟล์ใหญ่ต้องไม่โหลดเข้าหน่วยความจำเป็น string — คลิป 200MB จะกลายเป็น base64 ~274MB กินแรมจนเซิร์ฟเวอร์ล่ม
+export async function gradeHomework({ dataUrl, filePath, mimeType, courseName, title, brief, criteria, lang = "th" }) {
   const ctx = [
     `คอร์ส: ${courseName || "-"}`,
     `โจทย์การบ้าน: ${title || "-"}`,
@@ -807,8 +809,8 @@ export async function gradeHomework({ dataUrl, mimeType, courseName, title, brie
 
   const m = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/s);
   const mt = (m && m[1]) || mimeType || "image/jpeg";
-  const b64 = m ? m[2] : dataUrl;
-  if (!b64) throw new Error("no homework data");
+  const b64 = filePath ? null : (m ? m[2] : dataUrl);
+  if (!b64 && !filePath) throw new Error("no homework data");
   const isVideo = /^video\//.test(mt);
 
   if (!ai) return { result: fallbackHomework(isVideo), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
@@ -824,14 +826,16 @@ export async function gradeHomework({ dataUrl, mimeType, courseName, title, brie
     return { result: r, model: MODEL, usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
   };
 
-  if (!isVideo) {
+  if (!isVideo && b64) {
     const parts = [{ inlineData: { mimeType: mt, data: b64 } }, { text: ctx }];
     return finish(await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts }], config: cfg }));
   }
 
+  // คลิป (หรือไฟล์ที่อัปแบบ multipart) → ส่งผ่าน Files API ของ Gemini โดยอ่านจากไฟล์บนดิสก์
   const ext = mt.includes("quicktime") || mt.includes("mov") ? "mov" : mt.includes("webm") ? "webm" : "mp4";
-  const tmp = path.join(os.tmpdir(), `hw_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
-  fs.writeFileSync(tmp, Buffer.from(b64, "base64"));
+  const ownTmp = !filePath;   // ไฟล์ที่เราสร้างเองต้องลบเอง · ไฟล์จาก multipart ให้ฝั่งเรียกลบ
+  const tmp = filePath || path.join(os.tmpdir(), `hw_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+  if (ownTmp) fs.writeFileSync(tmp, Buffer.from(b64, "base64"));
   let uploaded;
   try {
     uploaded = await ai.files.upload({ file: tmp, config: { mimeType: mt } });
@@ -845,7 +849,7 @@ export async function gradeHomework({ dataUrl, mimeType, courseName, title, brie
     const parts = [{ fileData: { fileUri: f.uri, mimeType: mt } }, { text: ctx }];
     return finish(await ai.models.generateContent({ model: MODEL, contents: [{ role: "user", parts }], config: cfg }));
   } finally {
-    try { fs.unlinkSync(tmp); } catch {}
+    if (ownTmp) { try { fs.unlinkSync(tmp); } catch {} }
     if (uploaded?.name) ai.files.delete({ name: uploaded.name }).catch(() => {});
   }
 }

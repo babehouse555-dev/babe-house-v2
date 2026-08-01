@@ -4,7 +4,9 @@ import express from "express";
 import cors from "cors";
 import crypto from "node:crypto";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
+import os from "node:os";
+import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
@@ -1251,7 +1253,9 @@ app.post("/api/admin/academy-import", async (req, res) => {
 // ⛔ ไม่ส่ง url วิดีโอบทเรียนออกไปเด็ดขาด (เป็นคอนเทนต์ที่ลูกค้าจ่ายเงิน) — url ใช้เฉพาะฝั่งแอดมิน/ระบบเรียนในเฟสถัดไป
 // คอร์สที่เลิกขายแล้ว (คิมสั่งเอาออก 2026-08-01: Creative Thinking = คอร์สเก่ามาก ไม่อยากขายต่อ)
 // ซ่อนที่โค้ดแทนการแก้ธง is_active ใน DB → ลูกค้าเก่าที่ซื้อไปแล้วยังเข้าเรียนได้ตามปกติ
-const HIDDEN_COURSES = new Set(["15"]);
+// "15" = Creative Thinking (คอร์สเก่ามาก คิมไม่อยากขายต่อ)
+// "40","41","42" = Sky Drawing ของครูมู (จบความร่วมมือ 2026-08-01 · ขายได้ 0 ออเดอร์)
+const HIDDEN_COURSES = new Set(["15", "40", "41", "42"]);
 app.get("/api/academy/catalog", async (req, res) => {
   try {
     const all = await q(`SELECT c.legacy_id, c.name, c.price, c.price_sale, c.flag_sale, c.category, c.instructor, c.featured_image_url, c.duration,
@@ -1517,13 +1521,14 @@ app.get("/api/academy/homework/:courseId", async (req, res) => {
     res.json({ ok: true, assignments: asgs.map(a => ({ ...a, my: latest[a.assignment_id] || null })), tries: subs.length });
   } catch (e) { console.error("homework list", e.message); res.status(500).json({ ok: false, error: "FAILED" }); }
 });
-app.post("/api/academy/homework/submit", async (req, res) => {
-  try {
+// ตัวจริงของการรับ+ตรวจการบ้าน — ใช้ร่วมกันทั้งเส้น JSON (รูปเล็ก) และเส้น multipart (คลิปใหญ่)
+async function handleHomeworkSubmit(req, res, src = {}) {
+  {
     const email = await authEmail(req);
     if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
     const courseId = String(req.body?.course_id || ""), asgId = String(req.body?.assignment_id || "");
-    const dataUrl = String(req.body?.file || "");
-    if (!courseId || !asgId || !dataUrl) return res.status(400).json({ ok: false, error: "MISSING", message: "กรุณาแนบไฟล์งานด้วยนะคะ" });
+    const dataUrl = src.filePath ? "" : String(req.body?.file || "");
+    if (!courseId || !asgId || (!dataUrl && !src.filePath)) return res.status(400).json({ ok: false, error: "MISSING", message: "กรุณาแนบไฟล์งานด้วยนะคะ" });
     const owned = await academyOwnedCourseIds(email);
     if (!owned.includes(courseId)) return res.status(403).json({ ok: false, error: "NOT_OWNED" });
     const a = await one(`SELECT * FROM academy_assignments WHERE assignment_id=$1 AND course_id=$2`, [asgId, courseId]);
@@ -1535,7 +1540,7 @@ app.post("/api/academy/homework/submit", async (req, res) => {
       return res.status(429).json({ ok: false, error: "TOO_MANY_TRIES",
         message: `ส่งงานชิ้นนี้ครบ ${MAX_HW_TRIES} ครั้งแล้วค่ะ ทักครูพี่คิมมาได้เลย เดี๋ยวช่วยดูให้เป็นพิเศษนะคะ 🩵` });
     }
-    const mime = (dataUrl.match(/^data:([^;]+);/) || [])[1] || String(req.body?.mime || "");
+    const mime = src.mime || (dataUrl.match(/^data:([^;]+);/) || [])[1] || String(req.body?.mime || "");
     const isVideo = /^video\//.test(mime);
     if (a.submit_type === "image" && isVideo) return res.status(400).json({ ok: false, error: "WRONG_TYPE", message: "การบ้านชิ้นนี้ให้ส่งเป็นรูปภาพนะคะ" });
     if (a.submit_type === "video" && !isVideo) return res.status(400).json({ ok: false, error: "WRONG_TYPE", message: "การบ้านชิ้นนี้ให้ส่งเป็นคลิปวิดีโอนะคะ" });
@@ -1545,11 +1550,11 @@ app.post("/api/academy/homework/submit", async (req, res) => {
     // เก็บเฉพาะรูป (ให้คิมเปิดดูงานจริงได้) · คลิปไม่เก็บ ใหญ่เกินไปและทำให้ DB อืด
     await run(`INSERT INTO academy_submissions (submission_id, assignment_id, course_id, email, file_kind, status, file_data, allow_marketing)
       VALUES ($1,$2,$3,lower($4),$5,'reviewing',$6,$7)`,
-      [subId, asgId, courseId, email, isVideo ? "video" : "image", isVideo ? null : dataUrl, req.body?.allow_marketing === true]);
+      [subId, asgId, courseId, email, isVideo ? "video" : "image", isVideo ? null : (dataUrl || null), String(req.body?.allow_marketing) === "true"]);
 
     let result = null, failed = false;
     try {
-      const g = await gradeHomework({ dataUrl, mimeType: mime, courseName: cName, title: a.title, brief: a.brief, criteria: a.criteria });
+      const g = await gradeHomework({ dataUrl: dataUrl || undefined, filePath: src.filePath, mimeType: mime, courseName: cName, title: a.title, brief: a.brief, criteria: a.criteria });
       result = g.result;
       if (g.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'homework',$2,$3,$4,$5)`, [uid("use"), g.model, g.usage.input || 0, g.usage.output || 0, g.usage.total || 0]).catch(() => {});
     } catch (e) {
@@ -1567,8 +1572,41 @@ app.post("/api/academy/homework/submit", async (req, res) => {
     await run(`UPDATE academy_submissions SET status=$2, score=$3, ai_json=$4, reviewed_at=now() WHERE submission_id=$1`,
       [subId, status, result.score, JSON.stringify(result)]);
     const cert = result.passed ? await maybeIssueCertificate(email, courseId) : { cert_id: null };
-    res.json({ ok: true, status, result, cert_id: cert.cert_id, submission_id: subId });
-  } catch (e) { console.error("homework submit", e.message); res.status(500).json({ ok: false, error: "FAILED", message: "ส่งงานไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" }); }
+    return res.json({ ok: true, status, result, cert_id: cert.cert_id, submission_id: subId });
+  }
+}
+
+// เส้นเดิม: รูป/ไฟล์เล็กส่งมาเป็น JSON base64
+app.post("/api/academy/homework/submit", async (req, res) => {
+  try { await handleHomeworkSubmit(req, res); }
+  catch (e) { console.error("homework submit", e.message); if (!res.headersSent) res.status(500).json({ ok: false, error: "FAILED", message: "ส่งงานไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" }); }
+});
+
+// เส้นใหม่: คลิปใหญ่ถึง 200MB — multer เขียนลงดิสก์ทีละชิ้น ไม่โหลดเข้าแรมทั้งก้อน
+// ⚠️ ใช้ multer เฉพาะเส้นนี้ ไม่แตะ express.json ของทั้งระบบ
+const HW_MAX_MB = Number(process.env.HW_MAX_MB) || 200;
+const hwUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, os.tmpdir()),
+    filename: (req, file, cb) => cb(null, `hwup_${Date.now()}_${Math.random().toString(36).slice(2)}${path.extname(file.originalname || "") || ".mp4"}`),
+  }),
+  limits: { fileSize: HW_MAX_MB * 1024 * 1024, files: 1 },
+});
+app.post("/api/academy/homework/submit-file", (req, res) => {
+  hwUpload.single("file")(req, res, async (err) => {
+    if (err) {
+      const tooBig = err.code === "LIMIT_FILE_SIZE";
+      return res.status(tooBig ? 413 : 400).json({ ok: false, error: tooBig ? "FILE_TOO_LARGE" : "UPLOAD_FAILED",
+        message: tooBig ? `ไฟล์ใหญ่เกิน ${HW_MAX_MB}MB ค่ะ ลองบีบไฟล์หรือตัดให้สั้นลงนะคะ` : "อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" });
+    }
+    try {
+      if (!req.file) return res.status(400).json({ ok: false, error: "MISSING", message: "กรุณาแนบไฟล์งานด้วยนะคะ" });
+      await handleHomeworkSubmit(req, res, { filePath: req.file.path, mime: req.file.mimetype || "" });
+    } catch (e) {
+      console.error("homework upload", e.message);
+      if (!res.headersSent) res.status(500).json({ ok: false, error: "FAILED", message: "ส่งงานไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" });
+    } finally { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch {} }
+  });
 });
 // ประกาศนียบัตรทั้งหมดของฉัน — กลับมาโหลดซ้ำได้ตลอด ไม่ต้องทักแอดมิน
 app.get("/api/academy/my-certificates", async (req, res) => {
@@ -1829,6 +1867,25 @@ app.post("/api/admin/academy/submission/review", async (req, res) => {
     const cert = pass ? await maybeIssueCertificate(s.email, s.course_id) : { cert_id: null };
     res.json({ ok: true, status: pass ? "passed" : "revise", cert_id: cert.cert_id });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ⭐ เอาผลงานนักเรียนไปโชว์ในหน้าคอร์ส (ช่วยปิดการขาย) — ทำได้เฉพาะงานที่นักเรียนติ๊กอนุญาตเท่านั้น
+app.post("/api/admin/academy/submission/feature", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const s = await one(`SELECT * FROM academy_submissions WHERE submission_id=$1`, [String(req.body?.submission_id || "")]);
+    if (!s) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (!s.allow_marketing) return res.status(403).json({ ok: false, error: "NO_CONSENT",
+      message: "นักเรียนคนนี้ไม่ได้ติ๊กอนุญาตให้นำผลงานไปโปรโมตค่ะ — ต้องขออนุญาตเจ้าตัวก่อนนะคะ" });
+    if (!s.file_data) return res.status(400).json({ ok: false, error: "NO_FILE",
+      message: "งานชิ้นนี้เป็นคลิป ระบบไม่ได้เก็บไฟล์ไว้ — ขอไฟล์จากนักเรียนแล้วเพิ่มเป็นรีวิวเองได้ที่หัวข้อจัดการคอร์สค่ะ" });
+    const id = "shw_" + s.submission_id.slice(-12);
+    const seq = Number((await one(`SELECT COALESCE(MAX(seq),0)+1 n FROM academy_showcase WHERE course_id=$1`, [s.course_id]))?.n || 1);
+    await run(`INSERT INTO academy_showcase (showcase_id, course_id, kind, url, caption, student_name, seq, active)
+      VALUES ($1,$2,'work',$3,$4,$5,$6,true)
+      ON CONFLICT (showcase_id) DO UPDATE SET url=EXCLUDED.url, caption=EXCLUDED.caption, active=true`,
+      [id, s.course_id, s.file_data, String(req.body?.caption || "ผลงานจากนักเรียนในคอร์สนี้"), String(req.body?.student_name || ""), seq]);
+    res.json({ ok: true, showcase_id: id });
+  } catch (e) { console.error("feature", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 // สุขภาพข้อมูลคอร์ส — บทเรียนที่ยังไม่มีลิงก์วิดีโอ (กันลูกค้าจ่ายเงินแล้วเจอบทว่าง)
 app.get("/api/admin/academy/health", async (req, res) => {

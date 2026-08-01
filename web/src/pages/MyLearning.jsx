@@ -26,7 +26,7 @@ export function SectionHead({ icon, title, count, right }) {
   );
 }
 
-export default function MyLearning({ channelCount = 0, bookCount = 0 }) {
+export default function MyLearning({ channelCount = 0, bookCount = 0, only = null, onCounts = null }) {
   const [courses, setCourses] = useState([]);
   const [certs, setCerts] = useState([]);
   const [ws, setWs] = useState([]);
@@ -47,7 +47,10 @@ export default function MyLearning({ channelCount = 0, bookCount = 0 }) {
     });
   }, []);
 
+  // บอกหน้าบัญชีว่ามีของกี่ชิ้นในแต่ละหมวด เพื่อไปทำเลขบนโฟลเดอร์
+  useEffect(() => { if (loaded && onCounts) onCounts({ courses: courses.length, certs: certs.length, ws: ws.length }); }, [loaded, courses.length, certs.length, ws.length]);   // eslint-disable-line
   if (!loaded || (!courses.length && !certs.length && !ws.length)) return null;
+  const show = (k) => !only || only === k;
 
   const now = new Date();
   const upcoming = ws.filter(b => new Date(b.starts_at) >= now);
@@ -56,14 +59,14 @@ export default function MyLearning({ channelCount = 0, bookCount = 0 }) {
   return (
     <>
       {/* แถบสรุป — โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท จะได้เห็นภาพรวมทันทีว่ามีอะไรบ้าง */}
-      <Summary items={[
+      {!only && <Summary items={[
         channelCount ? { icon: "📘", n: bookCount, label: `เล่ม · ${channelCount} ช่อง` } : null,
         courses.length ? { icon: "🎓", n: courses.length, label: "คอร์ส" } : null,
         certs.length ? { icon: "🏆", n: certs.length, label: "ประกาศนียบัตร" } : null,
         ws.length ? { icon: "🎟️", n: ws.length, label: "คลาสสด" } : null,
-      ].filter(Boolean)} />
+      ].filter(Boolean)} />}
 
-      {courses.length > 0 && <>
+      {show("course") && courses.length > 0 && <>
         <SectionHead icon="🎓" title="คอร์สเรียนของฉัน" count={courses.length}
           right={<Link className="link" to="/academy" style={{ fontSize: 13 }}>ดูคอร์สทั้งหมด →</Link>} />
         <div className="card" style={{ marginTop: 0 }}>
@@ -92,7 +95,7 @@ export default function MyLearning({ channelCount = 0, bookCount = 0 }) {
         </div>
       </>}
 
-      {certs.length > 0 && <>
+      {show("cert") && certs.length > 0 && <>
         <SectionHead icon="🏆" title="ประกาศนียบัตรของฉัน" count={certs.length} />
         <div className="card" style={{ marginTop: 0, background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df" }}>
           <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>เก็บไว้ให้ตลอด กลับมาเปิดหรือสั่งพิมพ์ใหม่ได้ทุกเมื่อ ไม่ต้องทักแอดมินค่ะ</p>
@@ -111,7 +114,7 @@ export default function MyLearning({ channelCount = 0, bookCount = 0 }) {
         </div>
       </>}
 
-      {ws.length > 0 && <>
+      {show("ws") && ws.length > 0 && <>
         <SectionHead icon="🎟️" title="คลาสสดของฉัน" count={ws.length} />
         <div className="card" style={{ marginTop: 0 }}>
           {upcoming.length > 0 && <>

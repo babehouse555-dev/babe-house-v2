@@ -19,7 +19,9 @@ export default function Account() {
   const [ref, setRef] = useState(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState({}); // ช่องไหนกางอยู่ (accordion) — หลายช่องจะพับไว้ กันหน้ายาว
-  const [chQ, setChQ] = useState(""); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
+  const [chQ, setChQ] = useState("");
+  const [folder, setFolder] = useState("plan");            // 🗂️ โฟลเดอร์ที่เปิดอยู่
+  const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0 }); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
@@ -86,6 +88,30 @@ export default function Account() {
 
       {step === "list" && data && <>
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">{t("ac_books_of_pre")} <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>{t("ac_logout")}</button></div>
+        {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
+            โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
+        {[(data.channels || []).length, counts.courses, counts.certs, counts.ws].filter(n => n > 0).length > 1 && (
+          <div className="fld-row">
+            {[
+              { key: "plan", icon: "📘", label: "แผนคอนเทนต์", pastel: "#C7DEF0", deep: "#A9CCE6", n: (data.channels || []).length },
+              { key: "course", icon: "🎓", label: "คอร์สเรียน", pastel: "#DDCCEE", deep: "#C9B4E3", n: counts.courses },
+              { key: "cert", icon: "🏆", label: "ประกาศนียบัตร", pastel: "#C6DBCB", deep: "#AECBB6", n: counts.certs },
+              { key: "ws", icon: "🎟️", label: "คลาสสด", pastel: "#F3D6B6", deep: "#E9C398", n: counts.ws },
+            ].filter(f => f.n > 0).map(f => {
+              const on = f.key === folder;
+              return (
+                <button key={f.key} className={`fld${on ? " on" : ""}`} onClick={() => setFolder(f.key)} aria-pressed={on}>
+                  <span className="fld-body" style={{ "--c": f.pastel, "--d": f.deep }}>
+                    <span className="fld-icon">{f.icon}</span>
+                    <span className="fld-n">{f.n}</span>
+                  </span>
+                  <span className="fld-label">{f.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {(data.pending || []).map(p => p.status === "error"
           ? <div key={p.order_id} className="card" style={{ background: "#fff7e6", border: "1px solid #e8d49a" }}>
               <div style={{ fontWeight: 800, color: "#8a6d1f" }}>⚠️ {p.billing_cycle.replace("_", " ")} — {t("ac_pending_err_title")}</div>
@@ -102,6 +128,7 @@ export default function Account() {
         {(data.channels || []).length === 0 && (data.pending || []).length === 0 && <div className="card center muted">{t("ac_no_books")}</div>}
 
         {/* หัวข้อหมวดแบบเดียวกับคอร์ส/ใบประกาศ/คลาสสด — ให้ทั้งหน้าอ่านเป็นระบบเดียว ไม่ใช่ของแปะกัน */}
+        {(![(data.channels || []).length, counts.courses, counts.certs, counts.ws].filter(n => n > 0).length > 1 || folder === "plan") && <>
         {(data.channels || []).length > 0 && <SectionHead icon="📘" title="แผนคอนเทนต์ของฉัน" count={(data.channels || []).length + " ช่อง"} />}
         {(() => { const chs = data.channels || []; const singleCh = chs.length === 1;
           const q = chQ.trim().toLowerCase();
@@ -147,11 +174,14 @@ export default function Account() {
         })()}
 
         <Link className="card center" to={`/form?email=${encodeURIComponent(data.email)}`} style={{ color: "var(--blue)", fontWeight: 700, display: "block", border: "1.5px dashed var(--blue)", background: "#F4F8FD" }}>{t("ac_add_channel")}</Link>
+        </>}
 
         {/* คอร์ส/ใบประกาศ/คลาสสด — ไม่แสดงอะไรเลยถ้าลูกค้าคนนั้นยังไม่มี (ลูกค้า Blueprint เห็นหน้าเดิม) */}
         <MyLearning
           channelCount={(data.channels || []).length}
           bookCount={(data.channels || []).reduce((a, ch) => a + (ch.months || []).length, 0)}
+          only={[(data.channels || []).length, counts.courses, counts.certs, counts.ws].filter(n => n > 0).length > 1 ? folder : null}
+          onCounts={setCounts}
         />
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>
@@ -165,6 +195,26 @@ export default function Account() {
           <div className="muted" style={{ fontSize: 13, marginTop: 12 }}>{t("ac_ref_count_pre")} <b style={{ color: "#2C8E8C" }}>{ref.count}</b> {t("ac_people")}{ref.count > 0 ? t("ac_ref_thanks") : ""}</div>
         </div>}
       </>}
+
+      <style>{`
+        .fld-row { display: flex; gap: 14px; overflow-x: auto; padding: 20px 2px 16px; margin-bottom: 6px; }
+        .fld { flex-shrink: 0; width: 92px; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; text-align: center; }
+        .fld-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+          height: 58px; border-radius: 4px 12px 12px 12px; background: var(--c);
+          box-shadow: 0 2px 5px rgba(90,80,110,.10); transition: transform .18s, box-shadow .18s, background .18s; }
+        .fld-body::before { content: ""; position: absolute; top: -7px; left: 0; width: 42%; height: 9px;
+          background: var(--c); border-radius: 7px 7px 0 0; transition: background .18s; }
+        .fld-icon { position: absolute; top: -15px; left: 50%; font-size: 22px; line-height: 1; z-index: 2;
+          transform: translateX(-46%) rotate(-7deg); transition: transform .18s; filter: drop-shadow(0 2px 3px rgba(90,80,110,.18)); }
+        .fld-n { font-size: 12.5px; font-weight: 800; color: #4a4458; background: rgba(255,255,255,.78); border-radius: 20px; padding: 2px 9px; margin-top: 4px; }
+        .fld-label { display: block; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: var(--muted); transition: color .18s; }
+        .fld:hover .fld-body { transform: translateY(-2px); }
+        .fld:hover .fld-icon, .fld.on .fld-icon { transform: translateX(-46%) rotate(-7deg) translateY(-3px) scale(1.06); }
+        .fld.on .fld-body, .fld.on .fld-body::before { background: var(--d); }
+        .fld.on .fld-body { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(90,80,110,.20); }
+        .fld.on .fld-label { color: var(--ink); font-weight: 800; }
+        @media (prefers-reduced-motion: reduce){ .fld-body, .fld-icon { transition: none; } }
+      `}</style>
     </div>
   );
 }

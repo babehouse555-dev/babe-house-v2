@@ -3,25 +3,52 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, filesToBase64, getRef, getSource, currentCycle, session, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 
+const MAX_IMG = 8;
 // กล่องอัปรูป Insight — เลือกไฟล์ หรือ "ลากวาง" ได้ (ไฮไลต์เขียวตอนลากทับ)
+// 🐛 บั๊กที่ลูกค้าเจอ (@_junenicha 1 ส.ค.): "อัปโหลดรูปได้รูปเดียว"
+//    เดิม onChange = setFiles(e.target.files) → เลือกใหม่ = "ทับ" ของเก่า
+//    บนมือถือแกลเลอรีมักเลือกได้ทีละใบ ลูกค้าเลยกดเพิ่มเท่าไหร่ก็เหลือใบเดียวตลอด
+//    แก้เป็น "สะสมทีละใบ" + โชว์รายการ + ลบรายใบได้
 function ImageDrop({ files, setFiles, onPick }) {
   const { t } = useI18n();
   const [drag, setDrag] = useState(false);
-  const onDrop = (e) => {
-    e.preventDefault(); setDrag(false);
-    const imgs = [...(e.dataTransfer?.files || [])].filter(f => /^image\//.test(f.type));
+  const cur = [...(files || [])];
+  const add = (incoming) => {
+    const imgs = [...incoming].filter(f => /^image\//.test(f.type));
     if (!imgs.length) return;
-    const dt = new DataTransfer(); imgs.slice(0, 8).forEach(f => dt.items.add(f)); setFiles(dt.files);
+    const key = (f) => `${f.name}|${f.size}`;
+    const seen = new Set(cur.map(key));
+    setFiles([...cur, ...imgs.filter(f => !seen.has(key(f)))].slice(0, MAX_IMG));
   };
+  const removeAt = (i) => setFiles(cur.filter((_, n) => n !== i));
+  const full = cur.length >= MAX_IMG;
   return <div
     onDragOver={e => { e.preventDefault(); if (!drag) setDrag(true); }}
     onDragEnter={e => e.preventDefault()}
     onDragLeave={e => { if (e.currentTarget === e.target) setDrag(false); }}
-    onDrop={onDrop}
+    onDrop={e => { e.preventDefault(); setDrag(false); add(e.dataTransfer?.files || []); }}
     style={{ border: `2px dashed ${drag ? "#1a7f43" : "var(--blue)"}`, borderRadius: 14, padding: "20px 16px", textAlign: "center", background: drag ? "#eafaf0" : "#F4F8FD", transition: "background .15s, border-color .15s" }}>
-    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onFocus={onPick} onChange={e => setFiles(e.target.files)} style={{ display: "block", margin: "0 auto", pointerEvents: "auto" }} />
-    <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>{drag ? t("fm_drop_now") : t("fm_drop_hint")}</div>
-    {files.length > 0 && <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 6 }}>{t("fm_selected")} {Math.min(files.length, 8)} {t("fm_images_word")}</div>}
+    <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={full} onFocus={onPick}
+      // ล้างค่า input ทุกครั้ง → เลือกไฟล์ "ชื่อเดิม" ซ้ำได้ และกดเพิ่มทีละใบได้เรื่อยๆ
+      onChange={e => { add(e.target.files); e.target.value = ""; }}
+      style={{ display: "block", margin: "0 auto", pointerEvents: "auto" }} />
+    <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+      {drag ? t("fm_drop_now") : full ? `ครบ ${MAX_IMG} รูปแล้วค่ะ (ลบรูปที่ไม่ต้องการออกก่อนถ้าอยากเปลี่ยน)` : t("fm_drop_hint")}
+    </div>
+    {cur.length > 0 && <>
+      <div className="hint" style={{ color: "#1a7f43", fontWeight: 700, marginTop: 6 }}>
+        {t("fm_selected")} {cur.length} {t("fm_images_word")}{!full && " · กดเลือกไฟล์อีกครั้งเพื่อเพิ่มรูปได้เลยค่ะ"}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 10 }}>
+        {cur.map((f, i) => (
+          <span key={`${f.name}|${f.size}|${i}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid var(--border)", borderRadius: 20, padding: "5px 6px 5px 11px", fontSize: 12 }}>
+            <span style={{ maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🖼️ {f.name}</span>
+            <button type="button" onClick={() => removeAt(i)} title="เอารูปนี้ออก"
+              style={{ border: 0, background: "#f1f1f4", color: "#666", borderRadius: 20, width: 18, height: 18, lineHeight: "17px", cursor: "pointer", padding: 0, fontSize: 12 }}>✕</button>
+          </span>
+        ))}
+      </div>
+    </>}
   </div>;
 }
 

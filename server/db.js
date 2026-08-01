@@ -191,6 +191,12 @@ export async function initDb() {
       rows INTEGER,
       bytes INTEGER
     );
+    -- บันทึกว่าส่ง "รายงานสุขภาพระบบรายวัน" ให้คิมไปแล้ววันไหน (กันส่งซ้ำ และรอด deploy ที่รีเซ็ต timer)
+    CREATE TABLE IF NOT EXISTS daily_report_log (
+      day DATE PRIMARY KEY,
+      sent_at TIMESTAMPTZ DEFAULT now(),
+      summary_json TEXT
+    );
     CREATE TABLE IF NOT EXISTS script_overrides (
       scope TEXT NOT NULL,            -- 'plan' (แผน 30 วัน) | 'credit' (สคริปต์สปอนเซอร์)
       ref_id TEXT NOT NULL,           -- blueprint_id | credit_scripts.id

@@ -2731,6 +2731,61 @@ async function findBrokenBooks(days = 7) {
   }
   return broken;
 }
+// ☀️ รายงานสุขภาพระบบรายวัน — คิมจะได้ไม่ต้องมานั่งถามว่า "เล่มพังไหม" ทุกวัน
+// หลักคิด: เงียบ = ปกติ ต้องพิสูจน์ได้ ไม่ใช่แค่ "ไม่มีใครบ่น" · ส่งทุกวันแม้ไม่มีปัญหา เพื่อให้ "ไม่ได้เมล" = ระบบล่ม (สังเกตได้)
+async function buildDailyHealth() {
+  const since = `now() - interval '24 hours'`;
+  const sold = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0)/100 baht FROM blueprint_orders
+    WHERE payment_status='paid' AND COALESCE(provider,'') <> 'code' AND created_at > ${since}`);
+  const made = await one(`SELECT COUNT(*) n FROM blueprints WHERE deleted_at IS NULL AND created_at > ${since}`);
+  // ลูกค้าที่ได้บทวิเคราะห์แล้ว แต่ยังไม่กดปุ่ม "สร้างแผน 30 วัน" (ไม่ใช่ระบบพัง — แต่เขายังไม่ได้ของที่จ่ายไป)
+  const waiting = await q(`SELECT r.instagram_account, r.email, b.billing_cycle, b.created_at
+    FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+    WHERE b.deleted_at IS NULL AND b.content_status='pending' AND b.content_started_at IS NULL
+      AND b.created_at < now() - interval '6 hours' ORDER BY b.created_at ASC LIMIT 20`);
+  const broken = await findBrokenBooks(14);
+  const flagged = await q(`SELECT r.instagram_account, b.quality_flags_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+    WHERE b.deleted_at IS NULL AND b.created_at > ${since} AND COALESCE(b.quality_flags_json,'[]') <> '[]'`);
+  return { sold, made: Number(made?.n || 0), waiting, broken, flagged };
+}
+async function runDailyHealthReport() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const done = await one(`SELECT day FROM daily_report_log WHERE day=$1`, [today]);
+    if (done) return;                                   // ส่งไปแล้ววันนี้
+    if (new Date().getUTCHours() < 2) return;           // ~09:00 เวลาไทย
+    const h = await buildDailyHealth();
+    await run(`INSERT INTO daily_report_log (day, summary_json) VALUES ($1,$2) ON CONFLICT (day) DO NOTHING`,
+      [today, JSON.stringify({ sold: h.sold, made: h.made, waiting: h.waiting.length, broken: h.broken.length })]);
+    const problems = h.broken.length + h.waiting.length;
+    const li = (x) => `<li style="margin:3px 0">${x}</li>`;
+    const body =
+      `<p style="font-size:15px">สรุประบบ 24 ชม.ที่ผ่านมาค่ะ 🩵</p>` +
+      `<table style="font-size:15px;line-height:2"><tr><td>ขายได้</td><td><b>${h.sold?.n || 0} เล่ม · ฿${Number(h.sold?.baht || 0).toLocaleString()}</b></td></tr>` +
+      `<tr><td>เล่มที่สร้าง&nbsp;&nbsp;</td><td><b>${h.made} เล่ม</b></td></tr></table>` +
+      (h.broken.length
+        ? `<p style="color:#b00"><b>⚠️ เล่มที่ระบบกำลังซ่อม ${h.broken.length} เล่ม</b></p><ul>${h.broken.slice(0, 10).map(b => li(`${b.instagram_account || "?"} — ${b.reason}`)).join("")}</ul>` +
+          `<p style="font-size:13px;color:#666">ระบบซ่อมเองอัตโนมัติ ถ้าซ่อม 2 ครั้งไม่ผ่านจะมีเมลแยกแจ้งคิมค่ะ</p>`
+        : `<p style="color:#1a7f43"><b>✅ ไม่มีเล่มพัง ไม่มีเล่มค้าง</b></p>`) +
+      (h.waiting.length
+        ? `<p><b>⏳ ${h.waiting.length} คนได้บทวิเคราะห์แล้วแต่ยังไม่กดสร้างแผน 30 วัน</b> (ระบบส่งเมลเตือนให้แล้ว)</p><ul>${h.waiting.slice(0, 10).map(w => li(`${w.instagram_account || "?"} · ${w.email || ""} — ${new Date(w.created_at).toISOString().slice(0, 10)}`)).join("")}</ul>`
+        : "") +
+      (h.flagged.length ? `<p>🔎 เล่มใหม่ที่มีธงคุณภาพ ${h.flagged.length} เล่ม — ดูได้ที่หลังบ้าน → "คุณภาพเล่ม"</p>` : "") +
+      `<p style="color:#999;font-size:12px;margin-top:18px">เมลนี้ส่งทุกวันเวลา 9 โมงเช้า ถ้าวันไหนไม่ได้รับ = ระบบมีปัญหา ให้เช็กทันทีค่ะ</p>`;
+    await sendEmail(ADMIN_ALERT_EMAIL, `${problems ? "⚠️" : "✅"} Babe House รายงานประจำวัน · ขาย ${h.sold?.n || 0} เล่ม${problems ? ` · ต้องดู ${problems} รายการ` : " · ทุกอย่างปกติ"}`, wrap(body));
+    console.log(`[daily-report] ส่งแล้ว · ขาย ${h.sold?.n || 0} · พัง ${h.broken.length} · รอกดสร้างแผน ${h.waiting.length}`);
+  } catch (e) { console.error("daily-report", e.message); }
+}
+app.get("/api/admin/daily-health", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try { res.json({ ok: true, ...(await buildDailyHealth()) }); } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
+});
+app.post("/api/admin/daily-health/send", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  if (req.body?.force) await run(`DELETE FROM daily_report_log WHERE day=$1`, [new Date().toISOString().slice(0, 10)]);
+  await runDailyHealthReport();
+  res.json({ ok: true });
+});
 // Watchdog: เจอเล่มพัง → เมลแจ้งแอดมินทันที (ไม่ต้องรอลูกค้าบอก)
 const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
 const alertedBp = new Set();
@@ -2792,6 +2847,7 @@ initDb().then(async () => {
   setInterval(() => run(`DELETE FROM academy_video_access WHERE created_at < now() - interval '60 days'`).catch(() => {}), 24 * 3600 * 1000); // ล็อกการเข้าดูคลิปเก็บ 60 วันพอ (ใช้จับพฤติกรรมระยะสั้น) ไม่ให้ตารางบวม
   setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → ซ่อมเองก่อน แล้วค่อยเมลแจ้งคิมถ้าซ่อมไม่ขึ้น
   setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
+  setInterval(runDailyHealthReport, 30 * 60 * 1000); // เช็กทุก 30 นาที → ส่งรายงานสุขภาพวันละครั้ง (~9 โมงเช้า)
   setTimeout(emailWeeklyBackupIfDue, 90000); // เช็กหลังสตาร์ท (ส่งถ้าครบ 7 วัน)
   setInterval(emailWeeklyBackupIfDue, 12 * 3600 * 1000); // เช็กทุก 12 ชม. → ส่ง backup เข้าเมลแอดมินสัปดาห์ละครั้ง
 }).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });

@@ -191,40 +191,6 @@ export async function initDb() {
       rows INTEGER,
       bytes INTEGER
     );
-    -- 🩵 Babe Club — สมาชิกรายเดือน 199 (ช่องแรก) + 149 ทุกช่องถัดไป · คิมเคาะ 2026-08-01
-    CREATE TABLE IF NOT EXISTS club_members (
-      email TEXT PRIMARY KEY,
-      status TEXT DEFAULT 'active',        -- active | canceling | canceled | past_due
-      channels INTEGER DEFAULT 1,          -- จำนวนช่องที่สมัคร (ใช้คิดราคา)
-      price_satang INTEGER,                -- ราคาที่ตกลงไว้ตอนสมัคร (ล็อกราคาให้ลูกค้าเก่า)
-      stripe_customer_id TEXT,
-      stripe_sub_id TEXT,
-      current_period_end TIMESTAMPTZ,
-      started_at TIMESTAMPTZ DEFAULT now(),
-      canceled_at TIMESTAMPTZ,
-      updated_at TIMESTAMPTZ DEFAULT now()
-    );
-    -- โควตาสิทธิ์รายเดือน (ใช้ไม่ใช้ก็หมด = เหตุผลให้กลับมาใช้ทุกเดือน)
-    CREATE TABLE IF NOT EXISTS club_usage (
-      email TEXT NOT NULL,
-      cycle TEXT NOT NULL,                 -- 'August_2026'
-      homework_used INTEGER DEFAULT 0,     -- โควตาตรวจการบ้านฟรี 4 ชิ้น/เดือน
-      workshop_discount_used INTEGER DEFAULT 0,  -- ส่วนลดเวิร์กช็อป 20% ใช้ได้ 1 คลาส/เดือน
-      PRIMARY KEY (email, cycle)
-    );
-    -- เนื้อหา Club รายเดือนต่อช่อง (เทรนด์สัปดาห์นี้ + คอนเทนต์แนะนำ)
-    CREATE TABLE IF NOT EXISTS club_months (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      channel TEXT NOT NULL,
-      cycle TEXT NOT NULL,
-      content_json TEXT,
-      status TEXT DEFAULT 'pending',
-      created_at TIMESTAMPTZ DEFAULT now(),
-      updated_at TIMESTAMPTZ DEFAULT now()
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_club_months_uniq ON club_months(email, channel, cycle);
-
     -- 🗂️ ห้องทำงานของคิม — ทุกโปรเจคอยู่ที่เดียว ไอเดียมาตอนไหนก็ลงถูกที่
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,

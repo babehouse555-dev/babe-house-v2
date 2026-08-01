@@ -2893,16 +2893,32 @@ async function runQualityWatch() {
 }
 
 const PORT = Number(process.env.PORT || 3000);
-initDb().then(async () => {
-  await seedWorkshops();     // ใส่รายละเอียด workshop + รีวิวให้พร้อม (ครั้งเดียว ไม่ทับของที่คิมแก้เอง)
-  await seedAssignments();
-  await seedProjects();      // ใส่โปรเจคทั้งหมดที่คุยกันไว้ลงห้องทำงาน (ไม่ทับของที่คิมแก้เอง)
+
+// 🛟 เปิดเว็บให้ลูกค้าเข้าได้ "ก่อน" ต่อฐานข้อมูลเสมอ
+// บทเรียน 2 ส.ค.: เดิมถ้า initDb ล้มแม้แค่ชั่วคราว โค้ดสั่ง process.exit(1) → Railway รีสตาร์ท → ล้มซ้ำ → เว็บดับยาว
+// ตอนนี้: ฟังพอร์ตก่อน (เว็บไม่ดับ) แล้วค่อยลองต่อ DB ซ้ำเรื่อยๆ จนติด
+app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
+
+async function connectDbWithRetry() {
+  for (let attempt = 1; ; attempt++) {
+    try { await initDb(); console.log(`[db] เชื่อมต่อสำเร็จ (ครั้งที่ ${attempt})`); return; }
+    catch (e) {
+      const wait = Math.min(30000, 2000 * attempt);
+      console.error(`[db] เชื่อมต่อไม่ได้ (ครั้งที่ ${attempt}): ${e.message} — ลองใหม่ใน ${wait / 1000}s`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+}
+connectDbWithRetry().then(async () => {
+  // seed ล้มก็ไม่ควรทำเว็บดับ — ของพวกนี้เป็นข้อมูลตั้งต้น ไม่ใช่หัวใจการให้บริการ
+  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects]]) {
+    try { await fn(); } catch (e) { console.error(`[seed ${name}]`, e.message); }
+  }
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI
   try {
     const rows = await q(`SELECT DISTINCT ON (COALESCE(category,'general')) COALESCE(category,'general') AS category, content, created_at FROM trend_digest ORDER BY COALESCE(category,'general'), created_at DESC`);
     for (const r of rows) setCuratedTrends(r.category, r.content, new Date(r.created_at).getTime());
   } catch (e) { console.warn("load trends", e.message); }
-  app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
   setTimeout(() => { runMonthlyReminders(); runHomeworkReminders(); runAbandonedFollowups(); runActivationReminders(); }, 30000);
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
   // ตอนสตาร์ท: คอนเทนต์/refine ที่ค้าง 'generating' = orphan จาก process เก่าแน่นอน → มาร์คให้ "เก่า" เพื่อให้ retryStuckContent กู้ทันที
@@ -2919,4 +2935,4 @@ initDb().then(async () => {
   setInterval(runDailyHealthReport, 30 * 60 * 1000); // เช็กทุก 30 นาที → ส่งรายงานสุขภาพวันละครั้ง (~9 โมงเช้า)
   setTimeout(emailWeeklyBackupIfDue, 90000); // เช็กหลังสตาร์ท (ส่งถ้าครบ 7 วัน)
   setInterval(emailWeeklyBackupIfDue, 12 * 3600 * 1000); // เช็กทุก 12 ชม. → ส่ง backup เข้าเมลแอดมินสัปดาห์ละครั้ง
-}).catch(e => { console.error("DB init failed:", e.message); process.exit(1); });
+}).catch(e => console.error("[startup] งานหลังต่อ DB ล้ม:", e.message));   // ⛔ ห้าม process.exit — เว็บต้องอยู่ต่อ

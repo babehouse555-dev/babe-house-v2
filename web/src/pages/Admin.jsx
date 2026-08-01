@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { api, baht } from "../api.js";
-import { SalesOverview, AcademyManage, HomeworkReview, WorkshopManage, SecurityPanel } from "./AdminAcademy.jsx";
+import { SalesOverview, AcademyManage, HomeworkReview, WorkshopManage, SecurityPanel, ActivationPending } from "./AdminAcademy.jsx";
 
 const fmtTok = (n) => { n = Number(n || 0); return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n); };
 
@@ -99,6 +99,9 @@ export default function Admin() {
     <div className="wrap page-pad">
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
 
+      {/* ลูกค้าจ่ายแล้วแต่ยังไม่ได้ของชิ้นหลัก — เอาไว้บนสุด ต้องเห็นก่อนใคร */}
+      <ActivationPending adminKey={key} />
+
       {/* ── ภาพรวมทุกสินค้า + คอร์สเรียน + workshop (ยังไม่เปิดให้ลูกค้าเห็น) ── */}
       <SalesOverview adminKey={key} />
       <SecurityPanel adminKey={key} />
@@ -129,7 +132,7 @@ export default function Admin() {
       </div>}
 
       {ov && <div className="card"><h3>ภาพรวม</h3><div className="row" style={{ marginTop: 12 }}>{[["ลูกค้า", ov.customers], ["เล่ม", ov.blueprints], ["จ่ายแล้ว", ov.paid_orders]].map(([l, n]) => <div key={l} style={{ flex: 1, minWidth: 120, background: "linear-gradient(135deg,#EAF3FD,#F4F9FF)", borderRadius: 14, padding: 16 }}><div style={{ fontSize: 28, fontWeight: 800, color: "var(--blue)" }}>{n}</div><div className="muted" style={{ fontSize: 13 }}>{l}</div></div>)}</div>
-        <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`ส่งเตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} · ตามคนยังไม่จ่าย ${d.abandoned ?? 0} ราย`); } catch (e) { setRemind(e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือน + ตามคนยังไม่จ่าย (เดี๋ยวนี้)</button><button className="btn ghost" style={{ padding: "9px 14px" }} onClick={async () => { try { const r = await fetch((import.meta.env.VITE_API_BASE || "") + "/api/admin/backup", { headers: { "x-admin-key": key } }); if (!r.ok) throw new Error("โหลดไม่ได้ (เช็ก key)"); const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `babehouse-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url); } catch (e) { alert(e.message || "ดาวน์โหลดไม่สำเร็จ"); } }}>💾 ดาวน์โหลด backup ทั้งหมด</button><span className="muted" style={{ fontSize: 13 }}>{remind}</span></div>
+        <div className="row" style={{ marginTop: 14, gap: 10 }}><button className="btn ghost" onClick={async () => { setRemind("ส่ง..."); try { const d = await api("/api/admin/run-reminders", { method: "POST", adminKey: key, body: {} }); setRemind(`✅ ส่งแล้ว — เตือนต่อเดือน ${d.sent} · การบ้าน ${d.homework} · ตามคนยังไม่จ่าย ${d.abandoned ?? 0} · เตือนคนยังไม่กดสร้างแผน ${d.activation ?? 0}`); } catch (e) { setRemind("❌ " + e.message); } }} style={{ padding: "9px 14px" }}>📩 ส่งอีเมลเตือน + ตามคนยังไม่จ่าย (เดี๋ยวนี้)</button><button className="btn ghost" style={{ padding: "9px 14px" }} onClick={async () => { try { const r = await fetch((import.meta.env.VITE_API_BASE || "") + "/api/admin/backup", { headers: { "x-admin-key": key } }); if (!r.ok) throw new Error("โหลดไม่ได้ (เช็ก key)"); const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `babehouse-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url); } catch (e) { alert(e.message || "ดาวน์โหลดไม่สำเร็จ"); } }}>💾 ดาวน์โหลด backup ทั้งหมด</button>{remind && <div style={{ width: "100%", marginTop: 8, background: remind.startsWith("❌") ? "#fdeaea" : "#e8f7ee", color: remind.startsWith("❌") ? "#b3261e" : "#1a7f43", border: `1px solid ${remind.startsWith("❌") ? "#f0b4b4" : "#9ed3b0"}`, borderRadius: 10, padding: "10px 13px", fontSize: 13.5, fontWeight: 700 }}>{remind}</div>}</div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>ระบบส่งให้อัตโนมัติ <b>ช่วงปลายเดือน (ตั้งแต่วันที่ 25)</b> เพื่อกระตุ้นต่อแผนเดือนหน้า · 1 อีเมล/คน/เดือน — ปุ่มนี้สำหรับสั่งส่งทันทีโดยไม่ต้องรอ</p>
         {(ov.error_gen > 0 || ov.pending_gen > 0) && <div className="msg" style={{ background: ov.error_gen > 0 ? "#fdeaea" : "#fff7e6", color: ov.error_gen > 0 ? "#b3261e" : "#8a6d1f", marginTop: 10 }}>{ov.error_gen > 0 ? `⚠️ มี ${ov.error_gen} เล่มที่จ่ายแล้วแต่ AI สร้างยังไม่สำเร็จ (เช่น Gemini แน่น/token หมด) — ระบบลองใหม่ให้อัตโนมัติทุก 5 นาที ถ้าค้างนานควรเช็ก quota หรือเติม credit ที่ Google` : `⏳ มี ${ov.pending_gen} เล่มกำลังสร้าง...`}</div>}
       </div>}

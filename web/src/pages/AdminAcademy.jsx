@@ -454,6 +454,66 @@ export function WorkshopManage({ adminKey }) {
   );
 }
 
+/* ══════════ 6) คนที่ได้บทวิเคราะห์แล้วแต่ยังไม่กด "สร้างแผน 30 วัน" ══════════ */
+// ลูกค้าจ่ายเงินมาแล้วแต่ยังไม่ได้ของชิ้นหลัก (สคริปต์ 30 วัน) — กลุ่มนี้สำคัญที่สุดที่ต้องตาม
+export function ActivationPending({ adminKey }) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function load() { try { setD(await api("/api/admin/activation-pending", { adminKey })); } catch (e) { setD({ error: e.message, pending: [] }); } }
+  useEffect(() => { load(); }, []);
+  async function send() {
+    setBusy(true); setMsg("");
+    try { const r = await api("/api/admin/run-activation", { method: "POST", adminKey, body: {} });
+      setMsg(r.sent > 0 ? `✅ ส่งเมลเตือนไป ${r.sent} คนแล้วค่ะ` : "ไม่มีใครเข้าเกณฑ์ต้องเตือนตอนนี้ (ทุกคนที่เกิน 24 ชม. ได้รับเมลไปแล้ว)");
+      await load();
+    } catch (e) { setMsg("❌ " + e.message); } finally { setBusy(false); }
+  }
+  if (!d) return null;
+  if (d.error) return <div className="card"><h3>📋 รอลูกค้ากดสร้างแผน</h3><p className="muted">โหลดไม่สำเร็จ: {d.error}</p></div>;
+  if (!d.pending.length) return (
+    <div className="card" style={{ background: "#e8f7ee", border: "1px solid #9ed3b0" }}>
+      <h3 style={{ margin: 0, fontSize: 16 }}>✅ ไม่มีใครค้างรอกดสร้างแผน</h3>
+      <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>ลูกค้าทุกคนที่ได้บทวิเคราะห์แล้ว กดสร้างแผน 30 วันครบหมด</p>
+    </div>
+  );
+  return (
+    <div className="card" style={{ borderLeft: `4px solid ${d.over_24h > 0 ? "#e0a800" : BLUE}` }}>
+      <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0 }}>📋 รอลูกค้ากดสร้างแผน 30 วัน ({d.total})</h3>
+        <button className="link" style={{ background: "none", border: 0 }} onClick={load}>↻ รีเฟรช</button>
+      </div>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+        คนกลุ่มนี้จ่ายเงินแล้วและได้บทวิเคราะห์แล้ว แต่ยังไม่ได้กดปุ่มเพื่อรับสคริปต์ 30 วัน —
+        ระบบส่งเมลเตือนให้อัตโนมัติเมื่อเกิน 24 ชม. (คนละ 1 ครั้ง)
+      </p>
+      <div className="row" style={{ gap: 10, margin: "12px 0", flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 120, background: "var(--soft)", borderRadius: 12, padding: "12px 14px" }}>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{d.total}</div><div className="muted" style={{ fontSize: 12.5 }}>รอทั้งหมด</div></div>
+        <div style={{ flex: 1, minWidth: 120, background: d.over_24h > 0 ? "#fff7e6" : "var(--soft)", borderRadius: 12, padding: "12px 14px" }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: d.over_24h > 0 ? "#8a6d1f" : "inherit" }}>{d.over_24h}</div><div className="muted" style={{ fontSize: 12.5 }}>เกิน 24 ชม.</div></div>
+        <div style={{ flex: 1, minWidth: 120, background: "var(--soft)", borderRadius: 12, padding: "12px 14px" }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#1a7f43" }}>{d.reminded}</div><div className="muted" style={{ fontSize: 12.5 }}>ส่งเมลเตือนแล้ว</div></div>
+      </div>
+      <button className="btn" disabled={busy} onClick={send} style={{ padding: "10px 18px" }}>{busy ? "กำลังส่ง..." : "📩 ส่งเมลเตือนคนที่ยังไม่ได้รับ (เดี๋ยวนี้)"}</button>
+      {msg && <div className="msg" style={{ marginTop: 10, background: msg.startsWith("❌") ? "#fdeaea" : "#e8f7ee", color: msg.startsWith("❌") ? "#b3261e" : "#1a7f43" }}>{msg}</div>}
+      <div className="scroll" style={{ marginTop: 14, maxHeight: 340, overflowY: "auto" }}>
+        <table><thead><tr><th>รอมาแล้ว</th><th>IG</th><th>อีเมล</th><th>เมลเตือน</th><th>เล่ม</th></tr></thead>
+          <tbody>{d.pending.map(p => (
+            <tr key={p.blueprint_id}>
+              <td style={{ whiteSpace: "nowrap", fontWeight: p.hours_waiting >= 24 ? 700 : 400, color: p.hours_waiting >= 48 ? "#b3261e" : p.hours_waiting >= 24 ? "#8a6d1f" : "inherit" }}>
+                {p.hours_waiting < 24 ? `${p.hours_waiting} ชม.` : `${Math.floor(p.hours_waiting / 24)} วัน`}
+              </td>
+              <td style={{ whiteSpace: "nowrap" }}>{p.instagram_account || "-"}</td>
+              <td>{p.email}</td>
+              <td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{p.activation_reminded_at ? "✅ ส่งแล้ว" : p.hours_waiting >= 24 ? <span style={{ color: "#8a6d1f", fontWeight: 700 }}>รอส่ง</span> : <span className="muted">ยังไม่ถึงเวลา</span>}</td>
+              <td><a className="link" target="_blank" rel="noreferrer" href={`/dashboard?user_id=${encodeURIComponent(p.user_id)}&billing_cycle=${encodeURIComponent(p.billing_cycle)}&blueprint_id=${encodeURIComponent(p.blueprint_id)}`}>เปิด ›</a></td>
+            </tr>))}</tbody></table>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════ 5) ความปลอดภัย — จับบัญชีที่น่าจะแชร์รหัสกัน ══════════ */
 export function SecurityPanel({ adminKey }) {
   const [d, setD] = useState(null);

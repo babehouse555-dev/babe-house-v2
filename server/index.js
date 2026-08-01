@@ -2389,6 +2389,29 @@ async function runActivationReminders() {
   } catch (e) { console.error("activation", e.message); return 0; }
 }
 app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, abandoned, activation, cycle: currentBillingCycle() }); });
+// 👀 ใครได้บทวิเคราะห์แล้วแต่ยังไม่กด "สร้างแผน 30 วัน" — เห็นรายชื่อจริง + รู้ว่าเตือนไปหรือยัง
+app.get("/api/admin/activation-pending", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.created_at, b.activation_reminded_at,
+        r.email, r.instagram_account,
+        ROUND(EXTRACT(EPOCH FROM (now() - b.created_at)) / 3600)::int AS hours_waiting
+      FROM blueprints b JOIN blueprint_requests r ON b.request_id = r.request_id
+      WHERE b.content_status='pending' AND COALESCE(b.analysis_status,'ready')='ready' AND b.deleted_at IS NULL
+      ORDER BY b.created_at ASC LIMIT 200`);
+    res.json({ ok: true,
+      total: rows.length,
+      over_24h: rows.filter(r => r.hours_waiting >= 24).length,
+      reminded: rows.filter(r => r.activation_reminded_at).length,
+      pending: rows });
+  } catch (e) { console.error("activation-pending", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ปุ่มเฉพาะกิจ: ส่งเมลเตือน activation อย่างเดียว (ไม่พ่วงเตือนอื่น จะได้ไม่ช้าและอ่านผลง่าย)
+app.post("/api/admin/run-activation", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const sent = await runActivationReminders();
+  res.json({ ok: true, sent });
+});
 // ซ่อมเล่มเดียว: เจนคอนเทนต์ใหม่ในเล่มเดิม (สคริปต์ไม่ครบ/พัง)
 app.post("/api/admin/regen-content", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

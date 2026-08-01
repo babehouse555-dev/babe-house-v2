@@ -306,6 +306,8 @@ export async function initDb() {
     -- ไฟล์งานที่นักเรียนส่ง (รูปเท่านั้น — คลิปไม่เก็บ ใหญ่เกินและเคยทำหลังบ้านช้ามาแล้ว)
     -- ⚠️ ห้าม SELECT คอลัมน์นี้ในหน้ารายการ ให้ดึงเฉพาะตอนเปิดดูงานทีละชิ้น
     ALTER TABLE academy_submissions ADD COLUMN IF NOT EXISTS file_data TEXT;
+    -- นักเรียนยอมให้เอาผลงานไปโปรโมตได้ไหม (ต้องถามก่อนเสมอ ห้ามเอาไปใช้เงียบๆ)
+    ALTER TABLE academy_submissions ADD COLUMN IF NOT EXISTS allow_marketing BOOLEAN DEFAULT false;
 
     -- รีวิว/ผลงานนักเรียนรายคอร์ส (คิมใส่ลิงก์เอง ช่วยลูกค้าตัดสินใจซื้อ)
     CREATE TABLE IF NOT EXISTS academy_showcase (

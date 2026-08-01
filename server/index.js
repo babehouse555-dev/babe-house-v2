@@ -1543,8 +1543,9 @@ app.post("/api/academy/homework/submit", async (req, res) => {
     const subId = uid("sub");
     const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
     // เก็บเฉพาะรูป (ให้คิมเปิดดูงานจริงได้) · คลิปไม่เก็บ ใหญ่เกินไปและทำให้ DB อืด
-    await run(`INSERT INTO academy_submissions (submission_id, assignment_id, course_id, email, file_kind, status, file_data)
-      VALUES ($1,$2,$3,lower($4),$5,'reviewing',$6)`, [subId, asgId, courseId, email, isVideo ? "video" : "image", isVideo ? null : dataUrl]);
+    await run(`INSERT INTO academy_submissions (submission_id, assignment_id, course_id, email, file_kind, status, file_data, allow_marketing)
+      VALUES ($1,$2,$3,lower($4),$5,'reviewing',$6,$7)`,
+      [subId, asgId, courseId, email, isVideo ? "video" : "image", isVideo ? null : dataUrl, req.body?.allow_marketing === true]);
 
     let result = null, failed = false;
     try {

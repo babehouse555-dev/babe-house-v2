@@ -244,6 +244,7 @@ function Homework({ assignments, courseId, onDone, onCert }) {
 function HomeworkItem({ a, courseId, onDone, onCert }) {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
+  const [allowMkt, setAllowMkt] = useState(false);
   const fileRef = useRef(null);
   const my = a.my;
   const accept = a.submit_type === "image" ? "image/*" : a.submit_type === "video" ? "video/*" : "image/*,video/*";
@@ -257,7 +258,7 @@ function HomeworkItem({ a, courseId, onDone, onCert }) {
     setSending(true); setMsg("กำลังส่งให้ครูพี่คิมตรวจ... คลิปอาจใช้เวลาสัก 1-2 นาที รอสักครู่นะคะ");
     try {
       const dataUrl = await fileToBase64(f);
-      const r = await api("/api/academy/homework/submit", { method: "POST", token: session.token, body: { course_id: courseId, assignment_id: a.assignment_id, file: dataUrl, mime: f.type } });
+      const r = await api("/api/academy/homework/submit", { method: "POST", token: session.token, body: { course_id: courseId, assignment_id: a.assignment_id, file: dataUrl, mime: f.type, allow_marketing: allowMkt } });
       setMsg("");
       if (r.cert_id) onCert?.(r.cert_id);
       await onDone?.();
@@ -299,6 +300,11 @@ function HomeworkItem({ a, courseId, onDone, onCert }) {
       {my?.teacher_note && <div style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.8, background: "var(--soft)", borderRadius: 10, padding: "10px 13px" }}><b>ครูพี่คิมฝากไว้:</b> {my.teacher_note}</div>}
 
       <div style={{ marginTop: 14 }}>
+        {/* ขออนุญาตก่อนเอาผลงานไปโปรโมต — ห้ามเอาไปใช้เงียบๆ ต่อให้เป็นลูกค้าเรา */}
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, lineHeight: 1.6, marginBottom: 12, cursor: "pointer" }}>
+          <input type="checkbox" checked={allowMkt} onChange={e => setAllowMkt(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+          <span>อนุญาตให้ Babe House นำผลงานชิ้นนี้ไปโปรโมตได้ <span className="muted">(ไม่ติ๊กก็ส่งงานได้ตามปกติค่ะ)</span></span>
+        </label>
         <input ref={fileRef} type="file" accept={accept} onChange={send} style={{ display: "none" }} />
         <button className={st === "passed" ? "btn ghost" : "btn"} disabled={sending} onClick={() => fileRef.current?.click()} style={{ padding: "10px 18px" }}>
           {sending ? "กำลังตรวจ..." : st ? "ส่งงานใหม่อีกครั้ง" : `📤 ส่ง${a.submit_type === "image" ? "รูป" : a.submit_type === "video" ? "คลิป" : "รูป/คลิป"}งาน`}

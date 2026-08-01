@@ -6,6 +6,82 @@ import { api, session } from "../api.js";
 // ข้อมูลจริงจาก academy_* (นำเข้าจากเว็บเก่า) · ไม่มีลิงก์วิดีโอหลุดออกมา
 const BLUE = "var(--blue)";
 
+/* 🏃‍♀️ "คอร์สของฉัน" แบบลู่วิ่ง — เห็นว่าตัวเองวิ่งมาถึงไหนแล้ว เหลืออีกไกลแค่ไหน
+   คิมบอกว่าของเดิม "ดูไม่น่าสนใจเลย" (เป็นแค่แถบสีเฉยๆ) เลยทำให้เห็นความคืบหน้าเป็นภาพ */
+function RunnerTrack({ pct }) {
+  const done = pct >= 100;
+  return (
+    <div style={{ position: "relative", height: 34, marginTop: 6 }}>
+      {/* ลู่วิ่ง */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 20, height: 8, background: "var(--soft)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 6, transition: "width .5s cubic-bezier(.3,1,.4,1)",
+          background: done ? "linear-gradient(90deg,#4ED8A0,#1a7f43)" : `linear-gradient(90deg,${BLUE},#7BB7F0)` }} />
+      </div>
+      {/* เส้นชัย */}
+      <div style={{ position: "absolute", right: -2, top: 12, fontSize: 15 }}>{done ? "🏆" : "🏁"}</div>
+      {/* นักวิ่ง */}
+      <div style={{ position: "absolute", left: `calc(${Math.min(pct, 94)}% - 10px)`, top: 0, fontSize: 19,
+        transition: "left .5s cubic-bezier(.3,1,.4,1)", filter: "drop-shadow(0 2px 3px rgba(0,0,0,.15))" }}>
+        {done ? "🎉" : "🏃‍♀️"}
+      </div>
+    </div>
+  );
+}
+
+function MyCourses({ courses }) {
+  const totalPct = Math.round(courses.reduce((a, c) => a + (c.lessons ? c.done / c.lessons : 0), 0) / courses.length * 100);
+  const finished = courses.filter(c => c.lessons && c.done >= c.lessons).length;
+  const cheer = totalPct >= 100 ? "เก่งมากค่ะ! เรียนจบครบทุกคอร์สแล้ว 🎉"
+    : totalPct >= 60 ? "เลยครึ่งทางมาแล้ว อีกนิดเดียวเองค่ะ 💪"
+    : totalPct >= 20 ? "กำลังไปได้สวยเลยค่ะ ทำต่อไปนะคะ 🩵"
+    : "เริ่มแล้วคือชนะไปครึ่งนึงแล้วค่ะ ค่อยๆ ไปนะคะ ✨";
+
+  return (
+    <div className="card" style={{ borderRadius: 18, marginBottom: 26, border: "none", padding: 0, overflow: "hidden",
+      background: "linear-gradient(135deg,#EAF3FD 0%,#F6F0FF 100%)" }}>
+      <div style={{ padding: "18px 20px 14px" }}>
+        <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+          <h3 style={{ fontSize: 17, margin: 0 }}>📚 คอร์สของฉัน</h3>
+          <div style={{ display: "flex", gap: 14, fontSize: 12.5 }}>
+            <span><b style={{ color: BLUE, fontSize: 15 }}>{courses.length}</b> คอร์ส</span>
+            <span><b style={{ color: "#1a7f43", fontSize: 15 }}>{finished}</b> เรียนจบ</span>
+            <span><b style={{ color: BLUE, fontSize: 15 }}>{totalPct}%</b> รวม</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 13.5, marginTop: 6, color: "var(--ink)" }}>{cheer}</div>
+      </div>
+
+      <div style={{ background: "#fff", padding: "6px 20px 18px", display: "flex", flexDirection: "column", gap: 4 }}>
+        {courses.map(m => {
+          const pct = m.lessons ? Math.round(m.done / m.lessons * 100) : 0;
+          const done = pct >= 100;
+          return (
+            <div key={m.id} style={{ padding: "13px 0", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 170 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}>
+                    {done && <span style={{ fontSize: 13 }}>✅</span>}{m.name}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    {m.done}/{m.lessons} บท · {pct}%{done && m.cert_id ? " · ได้ประกาศนียบัตรแล้ว 🎓" : ""}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {done && m.cert_id && <Link className="btn ghost" to={`/academy/certificate/${m.cert_id}`} style={{ padding: "8px 12px", fontSize: 13 }}>🎓</Link>}
+                  <Link className="btn" to={`/academy/learn?course=${m.id}`} style={{ padding: "8px 16px", fontSize: 13.5, whiteSpace: "nowrap", background: done ? "#1a7f43" : undefined }}>
+                    {done ? "ทบทวน →" : m.done > 0 ? "เรียนต่อ →" : "เริ่มเรียน →"}
+                  </Link>
+                </div>
+              </div>
+              <RunnerTrack pct={pct} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Academy() {
   const [data, setData] = useState(null);
   const [cat, setCat] = useState("ทั้งหมด");
@@ -55,28 +131,7 @@ export default function Academy() {
                         style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, cursor: "pointer", fontSize: 17, color: "var(--muted)", lineHeight: 1 }}>✕</button>}
         </div>
 
-        {mine && mine.length > 0 && (
-          <div className="card" style={{ borderRadius: 16, marginBottom: 24, border: `1.5px solid ${BLUE}` }}>
-            <h3 style={{ fontSize: 16.5, margin: "0 0 12px" }}>📚 คอร์สของฉัน</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {mine.map(m => {
-                const pct = m.lessons ? Math.round(m.done / m.lessons * 100) : 0;
-                return (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <div style={{ flex: 1, minWidth: 180 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14.5 }}>{m.name}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                        <div style={{ flex: 1, height: 7, background: "var(--soft)", borderRadius: 5, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: BLUE }} /></div>
-                        <span className="muted" style={{ fontSize: 12 }}>{m.done}/{m.lessons} บท</span>
-                      </div>
-                    </div>
-                    <Link className="btn" to={`/academy/learn?course=${m.id}`} style={{ padding: "8px 16px", fontSize: 13.5 }}>{m.done > 0 ? "เรียนต่อ →" : "เริ่มเรียน →"}</Link>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {mine && mine.length > 0 && <MyCourses courses={mine} />}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginBottom: 24 }}>
           {cats.map(c => (

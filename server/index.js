@@ -2678,11 +2678,15 @@ async function findBrokenBooks(days = 7) {
   //   1) ดูแค่ status ready/error → เล่มที่ค้างที่ 'pending' ตลอดกาลไม่เคยถูกตรวจ
   //   2) เงื่อนไข `scr.length && scr.length < 30` → เล่มที่มี "0 สคริปต์" รอดทุกครั้ง (0 เป็น falsy)
   // ตอนนี้จับทั้ง 2 แบบแล้ว · เล่มที่เพิ่งซื้อ (<30 นาที) ยังไม่นับ เพราะกำลังเจนอยู่จริง
-  const rows = await q(`SELECT b.blueprint_id, b.content_status, b.blueprint_json, b.created_at, r.email, r.instagram_account
+  const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.content_status, b.blueprint_json, b.created_at, r.email, r.instagram_account
     FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
     WHERE b.deleted_at IS NULL AND b.created_at > now() - interval '${Number(days)} days'`);
+  // ร่างซ้ำ: ลูกค้ากดสร้างหลายรอบ เหลือแถวเปล่าค้างไว้ ทั้งที่มีเล่มดีอยู่แล้ว → อย่าเผาค่า AI ซ่อมของที่ไม่มีใครใช้
+  const healthy = new Set(rows.filter(r => r.content_status === "ready" && ((safeJson(r.blueprint_json) || {}).scripts || []).length >= 30)
+    .map(r => `${r.user_id}|${r.billing_cycle}`));
   const broken = [];
   for (const r of rows) {
+    if (healthy.has(`${r.user_id}|${r.billing_cycle}`) && !(r.content_status === "ready" && ((safeJson(r.blueprint_json) || {}).scripts || []).length >= 30)) continue;
     const ageMin = (Date.now() - new Date(r.created_at).getTime()) / 60000;
     let reason = "";
     if (r.content_status === "error") reason = "เจนคอนเทนต์ error";

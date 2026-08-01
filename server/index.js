@@ -640,7 +640,7 @@ async function alertQualityIfNeeded(flags, parsed, bpId) {
     const serious = (flags || []).filter(f => SERIOUS_QUALITY_RE.test(f));
     if (!serious.length) return;
     const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`;
-    await sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com",
+    await sendEmail(OPS_EMAIL,
       `⚠️ เล่มอาจมีปัญหาคุณภาพ — ${parsed.instagram_account || bpId}`,
       wrap(`เล่มเจนเสร็จแล้ว แต่ระบบตรวจเจอจุดที่ควรดู (เจนซ้ำอัตโนมัติแล้วยังเจอ):<br><br>• ${serious.join("<br>• ")}<br><br>ช่อง: <b>${parsed.instagram_account || "-"}</b><br><br>${btn(url, "เปิดดูเล่มนี้")}<br><br><span style="color:#999;font-size:12px">เมลนี้ส่งอัตโนมัติ "เฉพาะตอนเจอปัญหา" เท่านั้น — ไม่เจอปัญหาจะไม่ส่ง คิมไม่ต้องนั่งเช็กเองค่ะ</span>`)).catch(() => {});
     console.warn(`[quality-alert] ${bpId}: ${serious.join(" · ")}`);
@@ -1374,7 +1374,7 @@ async function logVideoAccess(email, courseId, lessonId, req) {
   const known = before.map(r => r.ip);
   const isNewIp = !known.includes(ip);
   if (isNewIp && known.length + 1 === SHARE_ALERT_AT) {   // ยิงครั้งเดียวตอนแตะเกณฑ์พอดี
-    sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", "🔒 สงสัยมีการแชร์บัญชีเรียน",
+    sendEmail(OPS_EMAIL, "🔒 สงสัยมีการแชร์บัญชีเรียน",
       wrap(`บัญชี <b>${email}</b> เปิดคอร์สจาก ${SHARE_ALERT_AT} IP ที่ต่างกันภายใน 24 ชั่วโมง<br><br>อาจเป็นการแชร์รหัสให้คนอื่นเรียนฟรี หรือลูกค้าเปลี่ยนเน็ตบ่อยจริงๆ ก็ได้ค่ะ<br>ลองเช็กในหน้าแอดมิน → ความปลอดภัย ก่อนตัดสินใจนะคะ<br><br>${btn(appBaseUrl() + "/admin", "เปิดหน้าแอดมิน")}`)).catch(() => {});
   }
 }
@@ -1579,7 +1579,7 @@ async function handleHomeworkSubmit(req, res, src = {}) {
     if (failed) {
       // 🛟 AI ล่ม = ห้ามตัดสินว่าตก (ลูกค้าจ่ายเงินมา) → ค้างไว้ให้ครูพี่คิมตรวจเอง แล้วเตือนทางเมล
       await run(`UPDATE academy_submissions SET status='reviewing', teacher_note=$2 WHERE submission_id=$1`, [subId, "ระบบตรวจอัตโนมัติขัดข้อง รอครูตรวจเอง"]);
-      sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", "📝 มีการบ้านรอตรวจมือ",
+      sendEmail(OPS_EMAIL, "📝 มีการบ้านรอตรวจมือ",
         wrap(`ระบบตรวจอัตโนมัติขัดข้อง มีงานค้างรอครูพี่คิมตรวจเองค่ะ<br><br>นักเรียน: <b>${email}</b><br>คอร์ส: ${cName}<br>การบ้าน: ${a.title}<br><br>${btn(appBaseUrl() + "/admin", "เปิดหน้าแอดมิน")}`)).catch(() => {});
       return res.json({ ok: true, status: "reviewing", message: "ได้รับงานแล้วค่ะ ระบบตรวจไม่ว่างพอดี ครูพี่คิมจะเข้ามาตรวจให้เองนะคะ" });
     }
@@ -1750,7 +1750,7 @@ async function finalizeWorkshopBooking(b) {
     (s?.note ? `${s.note}<br><br>` : "") +
     `หลังเรียนจบ ไฟล์สรุปและเอกสารประกอบจะขึ้นในบัญชีของคุณให้ดาวน์โหลดได้เองค่ะ<br><br>${btn(appBaseUrl() + "/account", "ดูการจองของฉัน")}<br><br>แล้วเจอกันในคลาสนะคะ<br>ครูพี่คิม · Babe House`
   )).catch(() => {});
-  sendEmail(process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com", `🎟️ จอง workshop ใหม่ — ${s?.ws_name || ""}`, wrap(
+  sendEmail(OPS_EMAIL, `🎟️ จอง workshop ใหม่ — ${s?.ws_name || ""}`, wrap(
     `<b>${b.name}</b> (${b.email} · ${b.phone})<br>จอง ${b.qty} ที่ · ${(b.amount_satang / 100).toLocaleString()} บาท<br>รอบ: ${when}<br><br>` +
     `🍽️ อาหาร: ${b.food_note || "ไม่ได้แจ้ง"}<br>🅿️ ที่จอดรถ: ${b.needs_parking ? "<b>ต้องการ</b>" : "ไม่ต้องการ"}<br>` +
     (b.customer_note ? `📝 โน้ตจากลูกค้า: ${b.customer_note}<br>` : "") +
@@ -2037,7 +2037,7 @@ async function emailBackup() {
   const json = JSON.stringify(dump);
   const b64 = Buffer.from(json, "utf-8").toString("base64");
   const day = new Date().toISOString().slice(0, 10);
-  const to = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
+  const to = OPS_EMAIL;
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2063,7 +2063,7 @@ async function emailWeeklyBackupIfDue() {
 // ส่ง backup เข้าเมลเดี๋ยวนี้ (ปุ่มทดสอบ/สั่งเอง)
 app.post("/api/admin/backup-email-now", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  try { const r = await emailBackup(); res.json({ ok: true, ...r, to: process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com" }); }
+  try { const r = await emailBackup(); res.json({ ok: true, ...r, to: OPS_EMAIL }); }
   catch (e) { res.status(500).json({ ok: false, error: "EMAIL_FAILED", message: e.message }); }
 });
 // เติม "ข้อความขึ้นจอ + วิธีถ่าย" (ost/vis) ให้เล่มเก่าที่ถูกเจนตอน prompt ยังไม่บังคับ (คง say เดิม 100%)
@@ -2504,7 +2504,7 @@ async function runActivationReminders() {
         AND b.activation_reminded_at IS NULL
         AND r.email IS NOT NULL AND b.deleted_at IS NULL
         AND lower(r.email) <> lower($1)
-      ORDER BY b.created_at ASC LIMIT 100`, [process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com"]);
+      ORDER BY b.created_at ASC LIMIT 100`, [OPS_EMAIL]);
     let sent = 0;
     for (const r of rows) {
       const bp = safeJson(r.blueprint_json) || {};
@@ -2744,8 +2744,10 @@ async function findBrokenBooks(days = 7) {
 // ☀️ รายงานสุขภาพระบบรายวัน — คิมจะได้ไม่ต้องมานั่งถามว่า "เล่มพังไหม" ทุกวัน
 // หลักคิด: เงียบ = ปกติ ต้องพิสูจน์ได้ ไม่ใช่แค่ "ไม่มีใครบ่น" · ส่งทุกวันแม้ไม่มีปัญหา เพื่อให้ "ไม่ได้เมล" = ระบบล่ม (สังเกตได้)
 async function buildDailyHealth() {
-  // ⛔ ไม่ใส่ยอดขาย/รายได้ในรายงานนี้ — เมลนี้ทีมเห็นด้วย (คิมสั่ง 1 ส.ค.) · รายงานนี้ดู "สุขภาพระบบ" อย่างเดียว
+  // ยอดขายใส่ได้ — รายงานนี้ส่งเข้า OPS_EMAIL (กล่องส่วนตัวคิม) ไม่ใช่กล่องที่ทีมเห็น
   const since = `now() - interval '24 hours'`;
+  const sold = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0)/100 baht FROM blueprint_orders
+    WHERE payment_status='paid' AND COALESCE(provider,'') <> 'code' AND created_at > ${since}`);
   const made = await one(`SELECT COUNT(*) n FROM blueprints WHERE deleted_at IS NULL AND created_at > ${since}`);
   // ลูกค้าที่ได้บทวิเคราะห์แล้ว แต่ยังไม่กดปุ่ม "สร้างแผน 30 วัน" (ไม่ใช่ระบบพัง — แต่เขายังไม่ได้ของที่จ่ายไป)
   const waiting = await q(`SELECT r.instagram_account, r.email, b.billing_cycle, b.created_at
@@ -2755,7 +2757,7 @@ async function buildDailyHealth() {
   const broken = await findBrokenBooks(14);
   const flagged = await q(`SELECT r.instagram_account, b.quality_flags_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
     WHERE b.deleted_at IS NULL AND b.created_at > ${since} AND COALESCE(b.quality_flags_json,'[]') <> '[]'`);
-  return { made: Number(made?.n || 0), waiting, broken, flagged };
+  return { sold, made: Number(made?.n || 0), waiting, broken, flagged };
 }
 async function runDailyHealthReport() {
   try {
@@ -2765,11 +2767,13 @@ async function runDailyHealthReport() {
     if (new Date().getUTCHours() < 2) return;           // ~09:00 เวลาไทย
     const h = await buildDailyHealth();
     await run(`INSERT INTO daily_report_log (day, summary_json) VALUES ($1,$2) ON CONFLICT (day) DO NOTHING`,
-      [today, JSON.stringify({ made: h.made, waiting: h.waiting.length, broken: h.broken.length })]);
+      [today, JSON.stringify({ sold: h.sold, made: h.made, waiting: h.waiting.length, broken: h.broken.length })]);
     const problems = h.broken.length + h.waiting.length;
     const li = (x) => `<li style="margin:3px 0">${x}</li>`;
     const body =
-      `<p style="font-size:15px">สรุปสุขภาพระบบ 24 ชม.ที่ผ่านมาค่ะ 🩵</p>` +
+      `<p style="font-size:15px">สรุป 24 ชม.ที่ผ่านมาค่ะ 🩵</p>` +
+      `<table style="font-size:15px;line-height:2"><tr><td>ขายได้&nbsp;&nbsp;</td><td><b>${h.sold?.n || 0} เล่ม · ฿${Number(h.sold?.baht || 0).toLocaleString()}</b></td></tr>` +
+      `<tr><td>เล่มที่สร้าง&nbsp;&nbsp;</td><td><b>${h.made} เล่ม</b></td></tr></table>` +
       (h.broken.length
         ? `<p style="color:#b00"><b>⚠️ เล่มที่ระบบกำลังซ่อม ${h.broken.length} เล่ม</b></p><ul>${h.broken.slice(0, 10).map(b => li(`${b.instagram_account || "?"} — ${b.reason}`)).join("")}</ul>` +
           `<p style="font-size:13px;color:#666">ระบบซ่อมเองอัตโนมัติ ถ้าซ่อม 2 ครั้งไม่ผ่านจะมีเมลแยกแจ้งคิมค่ะ</p>`
@@ -2778,13 +2782,17 @@ async function runDailyHealthReport() {
         ? `<p><b>⏳ ${h.waiting.length} คนได้บทวิเคราะห์แล้วแต่ยังไม่กดสร้างแผน 30 วัน</b> (ระบบส่งเมลเตือนให้แล้ว)</p><ul>${h.waiting.slice(0, 10).map(w => li(`${w.instagram_account || "?"} · ${w.email || ""} — ${new Date(w.created_at).toISOString().slice(0, 10)}`)).join("")}</ul>`
         : "") +
       (h.flagged.length ? `<p>🔎 เล่มใหม่ที่มีธงคุณภาพ ${h.flagged.length} เล่ม — ดูได้ที่หลังบ้าน → "คุณภาพเล่ม"</p>` : "") +
-      `<p style="color:#999;font-size:12px;margin-top:18px">เมลนี้ส่งทุกวันเวลา 9 โมงเช้า ถ้าวันไหนไม่ได้รับ = ระบบมีปัญหา ให้เช็กทันทีค่ะ</p>`;
-    await sendEmail(ADMIN_ALERT_EMAIL, `${problems ? "⚠️" : "✅"} Babe House รายงานประจำวัน${problems ? ` · ต้องดู ${problems} รายการ` : " · ระบบปกติดี"}`, wrap(body));
+      `<p style="color:#999;font-size:12px;margin-top:18px">เมลนี้ส่งทุกวัน 9 โมงเช้าเข้ากล่องนี้กล่องเดียว (ไม่เข้า babehouse555) ถ้าวันไหนไม่ได้รับ = ระบบมีปัญหา ให้เช็กทันทีค่ะ</p>`;
+    await sendEmail(OPS_EMAIL, `${problems ? "⚠️" : "✅"} Babe House รายงานประจำวัน · ขาย ${h.sold?.n || 0} เล่ม${problems ? ` · ต้องดู ${problems} รายการ` : " · ระบบปกติดี"}`, wrap(body));
     console.log(`[daily-report] ส่งแล้ว · พัง ${h.broken.length} · รอกดสร้างแผน ${h.waiting.length}`);
   } catch (e) { console.error("daily-report", e.message); }
 }
 // Watchdog: เจอเล่มพัง → เมลแจ้งแอดมินทันที (ไม่ต้องรอลูกค้าบอก)
-const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
+// 📬 เมลหลังบ้านทั้งหมด (รายงานรายวัน · เตือนปัญหา · แจ้งยอดขาย) ส่งเข้ากล่องนี้กล่องเดียว
+// คิมสั่ง 1 ส.ค.: ห้ามเข้า babehouse555@gmail.com เพราะทีมเห็นด้วย → ยอดขายใส่ได้ตามปกติในกล่องนี้
+// ใช้ตัวแปรใหม่ (ไม่ใช่ ADMIN_ALERT_EMAIL เดิม) เพื่อไม่ให้ค่า env เก่าบน Railway มาทับ
+const OPS_EMAIL = process.env.OPS_EMAIL || "babehouse.work@gmail.com";
+const ADMIN_ALERT_EMAIL = OPS_EMAIL;
 const alertedBp = new Set();
 // 🔧 ยามคุณภาพ: เจอเล่มพัง → "ซ่อมเองก่อน" แล้วค่อยเตือนคิมเฉพาะเคสที่ซ่อมไม่ขึ้น
 // เดิมมันแค่ส่งเมลบอกให้คิมไปกดปุ่มซ่อมเอง = งานมือที่ไม่ควรมี (ตัวซ่อม regenContentForBp มีอยู่แล้ว แค่ไม่มีใครเรียก)

@@ -2096,8 +2096,15 @@ app.post("/api/admin/reset-improve", async (req, res) => {
 // หาเล่มที่ content_status=ready แต่สคริปต์หาย (โดนบั๊ก improve เขียนทับ) — ไว้ตรวจ+กู้
 app.get("/api/admin/broken-content", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, r.email, r.instagram_account FROM blueprints b LEFT JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.content_status='ready' AND b.deleted_at IS NULL AND b.blueprint_json NOT LIKE '%"scripts":[{%' ORDER BY b.created_at DESC`);
-  res.json({ ok: true, count: rows.length, books: rows });
+  // จับ 2 แบบ: (1) บอกว่าเสร็จแล้วแต่สคริปต์หาย  (2) ค้างที่ 'pending' นานเกิน 30 นาที = เจนค้าง ไม่มีใครรู้
+  // เดิมดูแค่ ready → เล่มค้าง pending 11 เล่มหลุดสายตาไปเป็นเดือน (ลูกค้าจ่ายเงินแล้วไม่มีเล่ม)
+  const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.content_status, b.created_at, r.email, r.instagram_account
+    FROM blueprints b LEFT JOIN blueprint_requests r ON b.request_id=r.request_id
+    WHERE b.deleted_at IS NULL AND (
+      (b.content_status='ready'   AND b.blueprint_json NOT LIKE '%"scripts":[{%') OR
+      (b.content_status<>'ready'  AND b.created_at < now() - interval '30 minutes')
+    ) ORDER BY b.created_at DESC`);
+  res.json({ ok: true, count: rows.length, stuck: rows.filter(x => x.content_status !== "ready").length, books: rows });
 });
 // กู้เล่มที่สคริปต์หาย: สร้างคอนเทนต์ใหม่จากบทวิเคราะห์เดิม (bypass guard 'ready')
 app.post("/api/admin/regen-content", async (req, res) => {
@@ -2667,16 +2674,26 @@ async function regenContentForBp(bpId) {
 }
 // หาเล่มที่สคริปต์ไม่ครบ/วันว่าง/error (ใช้ทั้ง watchdog + ปุ่มซ่อมทั้งหมด)
 async function findBrokenBooks(days = 7) {
-  const rows = await q(`SELECT b.blueprint_id, b.content_status, b.blueprint_json, r.email, r.instagram_account FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.created_at > now() - interval '${Number(days)} days' AND b.content_status IN ('ready','error')`);
+  // ⚠️ เดิมมี 2 รูรั่วที่ทำให้ 11 เล่มของลูกค้าที่จ่ายเงินแล้วหลุดสายตาไปเป็นเดือน:
+  //   1) ดูแค่ status ready/error → เล่มที่ค้างที่ 'pending' ตลอดกาลไม่เคยถูกตรวจ
+  //   2) เงื่อนไข `scr.length && scr.length < 30` → เล่มที่มี "0 สคริปต์" รอดทุกครั้ง (0 เป็น falsy)
+  // ตอนนี้จับทั้ง 2 แบบแล้ว · เล่มที่เพิ่งซื้อ (<30 นาที) ยังไม่นับ เพราะกำลังเจนอยู่จริง
+  const rows = await q(`SELECT b.blueprint_id, b.content_status, b.blueprint_json, b.created_at, r.email, r.instagram_account
+    FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+    WHERE b.deleted_at IS NULL AND b.created_at > now() - interval '${Number(days)} days'`);
   const broken = [];
   for (const r of rows) {
+    const ageMin = (Date.now() - new Date(r.created_at).getTime()) / 60000;
     let reason = "";
     if (r.content_status === "error") reason = "เจนคอนเทนต์ error";
-    else {
+    else if (r.content_status !== "ready") {
+      if (ageMin < 30) continue;                 // เพิ่งซื้อ กำลังเจนอยู่ ปล่อยไว้ก่อน
+      reason = `ค้างที่ ${r.content_status} มา ${Math.round(ageMin)} นาที`;
+    } else {
       const bp = safeJson(r.blueprint_json) || {};
       const scr = Array.isArray(bp.scripts) ? bp.scripts : [];
       const empty = scr.filter(s => (s.beats || []).reduce((a, x) => a + String(x.say || "").length, 0) < 50).length;
-      if (scr.length && scr.length < 30) reason = `สคริปต์ ${scr.length}/30`;
+      if (scr.length < 30) reason = `สคริปต์ ${scr.length}/30`;   // ครอบคลุม 0 ด้วย
       else if (empty > 0) reason = `${empty} วันว่าง`;
     }
     if (reason) broken.push({ blueprint_id: r.blueprint_id, email: r.email, instagram_account: r.instagram_account, reason });
@@ -2693,7 +2710,7 @@ const MAX_AUTO_REPAIR = 2;           // ซ่อมเองได้ 2 คร�
 const REPAIR_PER_ROUND = 3;          // ซ่อมรอบละไม่เกิน 3 เล่ม กันค่า AI พุ่งและกันแย่งคิวลูกค้าใหม่
 async function runQualityWatch() {
   try {
-    const broken = await findBrokenBooks(2);
+    const broken = await findBrokenBooks(14);   // เดิม 2 วัน → เล่มค้างของเดือนก่อนไม่เคยถูกมองเห็น
     if (!broken.length) return;
     const giveUp = [];
     let repaired = 0;

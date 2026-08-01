@@ -109,20 +109,22 @@ export default function AcademyCourse() {
               {sale ? <><span style={{ color: BLUE }}>฿{c.price_sale.toLocaleString()}</span> <span className="muted" style={{ fontSize: 15, textDecoration: "line-through", fontWeight: 400 }}>฿{c.price.toLocaleString()}</span></> : <>฿{c.price.toLocaleString()}</>}
             </div>
             <div className="muted" style={{ fontSize: 13, margin: "4px 0 14px" }}>จ่ายครั้งเดียว · เรียนซ้ำได้ไม่จำกัด</div>
+            {/* ⚠️ ช่องโค้ดต้องอยู่ "เหนือ" ปุ่มจ่ายเงินเสมอ — ถ้าอยู่ใต้ปุ่ม ลูกค้าจะกดจ่ายไปก่อนโดยไม่ทันเห็น
+                (คิมเจอเองตอนเทสต์: "กดเข้าไปแล้วมันหายจ่ายเงินเลย ไหนปุ่มใส่โค้ด") */}
+            {!owned && <div style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPromo(null); setCodeMsg(""); }} placeholder="มีโค้ดส่วนลด? ใส่ตรงนี้"
+                       style={{ flex: 1, minWidth: 0, padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", textTransform: "uppercase" }} />
+                <button className="btn ghost" onClick={() => checkCode(finalPrice * 100)} style={{ padding: "9px 14px", fontSize: 13.5, whiteSpace: "nowrap" }}>ใช้โค้ด</button>
+              </div>
+              {codeMsg && <div style={{ fontSize: 12.5, marginTop: 6, color: promo ? "#1a7f43" : "#b3261e" }}>{codeMsg}</div>}
+            </div>}
             {!owned && promo && <div style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 10, padding: "9px 12px", marginBottom: 10, fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>
               ราคาหลังใช้โค้ด: {promo.final <= 0 ? "ฟรี!" : `฿${(promo.final / 100).toLocaleString()}`}
             </div>}
             {owned
               ? <Link className="btn full" to={`/academy/learn?course=${c.id}`} style={{ textAlign: "center" }}>เข้าเรียน →</Link>
               : <button className="btn full" disabled={buying} onClick={buy}>{buying ? "กำลังไปหน้าชำระเงิน..." : session.token ? (promo?.final <= 0 ? "เริ่มเรียนเลย (ฟรี)" : "สมัครเรียนคอร์สนี้") : "เข้าสู่ระบบเพื่อสมัครเรียน"}</button>}
-            {!owned && <div style={{ marginTop: 10 }}>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPromo(null); setCodeMsg(""); }} placeholder="มีโค้ดส่วนลด?"
-                       style={{ flex: 1, minWidth: 0, padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", textTransform: "uppercase" }} />
-                <button className="btn ghost" onClick={() => checkCode(finalPrice * 100)} style={{ padding: "9px 14px", fontSize: 13.5, whiteSpace: "nowrap" }}>ใช้โค้ด</button>
-              </div>
-              {codeMsg && <div style={{ fontSize: 12.5, marginTop: 6, color: promo ? "#1a7f43" : "#b3261e" }}>{codeMsg}</div>}
-            </div>}
             <ul style={{ listStyle: "none", margin: "14px 0 0", padding: 0, fontSize: 13.5, lineHeight: 2 }}>
               <li>✓ เรียนได้ทันทีหลังชำระเงิน</li>
               <li>✓ {d.lessons.length} บทเรียน · ดูซ้ำได้ตลอด</li>

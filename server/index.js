@@ -2133,6 +2133,16 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // วิเคราะห์ใหม่ทั้งเล่ม (analysis + content) ด้วย prompt ล่าสุด — ใช้ตอนบทวิเคราะห์จับนิชผิด (เช่น เอาบริการ/เครื่องมือมาเป็นแนวคอนเทนต์). ใส่ focus_hint ชี้แนวคอนเทนต์จริงได้
 // ✏️ แก้ "ธีมเล่ม" อย่างเดียว — ไม่แตะสคริปต์/ปฏิทินที่ลูกค้าอาจใช้ไปแล้ว (ถูกกว่า+ปลอดภัยกว่า reanalyze ทั้งเล่ม)
 // ไม่ส่ง blueprint_id = กวาดทุกเล่มที่ธีมเป็น "ชื่อเอกสาร" แทนคำโปรยของช่องลูกค้า
+app.get("/api/admin/daily-health", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try { res.json({ ok: true, ...(await buildDailyHealth()) }); } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
+});
+app.post("/api/admin/daily-health/send", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  if (req.body?.force) await run(`DELETE FROM daily_report_log WHERE day=$1`, [new Date().toISOString().slice(0, 10)]);
+  await runDailyHealthReport();
+  res.json({ ok: true });
+});
 app.post("/api/admin/fix-theme", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const one_id = String(req.body?.blueprint_id || "").trim();
@@ -2776,16 +2786,6 @@ async function runDailyHealthReport() {
     console.log(`[daily-report] ส่งแล้ว · ขาย ${h.sold?.n || 0} · พัง ${h.broken.length} · รอกดสร้างแผน ${h.waiting.length}`);
   } catch (e) { console.error("daily-report", e.message); }
 }
-app.get("/api/admin/daily-health", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  try { res.json({ ok: true, ...(await buildDailyHealth()) }); } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
-});
-app.post("/api/admin/daily-health/send", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  if (req.body?.force) await run(`DELETE FROM daily_report_log WHERE day=$1`, [new Date().toISOString().slice(0, 10)]);
-  await runDailyHealthReport();
-  res.json({ ok: true });
-});
 // Watchdog: เจอเล่มพัง → เมลแจ้งแอดมินทันที (ไม่ต้องรอลูกค้าบอก)
 const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || "babehouse555@gmail.com";
 const alertedBp = new Set();

@@ -2744,9 +2744,8 @@ async function findBrokenBooks(days = 7) {
 // ☀️ รายงานสุขภาพระบบรายวัน — คิมจะได้ไม่ต้องมานั่งถามว่า "เล่มพังไหม" ทุกวัน
 // หลักคิด: เงียบ = ปกติ ต้องพิสูจน์ได้ ไม่ใช่แค่ "ไม่มีใครบ่น" · ส่งทุกวันแม้ไม่มีปัญหา เพื่อให้ "ไม่ได้เมล" = ระบบล่ม (สังเกตได้)
 async function buildDailyHealth() {
+  // ⛔ ไม่ใส่ยอดขาย/รายได้ในรายงานนี้ — เมลนี้ทีมเห็นด้วย (คิมสั่ง 1 ส.ค.) · รายงานนี้ดู "สุขภาพระบบ" อย่างเดียว
   const since = `now() - interval '24 hours'`;
-  const sold = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0)/100 baht FROM blueprint_orders
-    WHERE payment_status='paid' AND COALESCE(provider,'') <> 'code' AND created_at > ${since}`);
   const made = await one(`SELECT COUNT(*) n FROM blueprints WHERE deleted_at IS NULL AND created_at > ${since}`);
   // ลูกค้าที่ได้บทวิเคราะห์แล้ว แต่ยังไม่กดปุ่ม "สร้างแผน 30 วัน" (ไม่ใช่ระบบพัง — แต่เขายังไม่ได้ของที่จ่ายไป)
   const waiting = await q(`SELECT r.instagram_account, r.email, b.billing_cycle, b.created_at
@@ -2756,7 +2755,7 @@ async function buildDailyHealth() {
   const broken = await findBrokenBooks(14);
   const flagged = await q(`SELECT r.instagram_account, b.quality_flags_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
     WHERE b.deleted_at IS NULL AND b.created_at > ${since} AND COALESCE(b.quality_flags_json,'[]') <> '[]'`);
-  return { sold, made: Number(made?.n || 0), waiting, broken, flagged };
+  return { made: Number(made?.n || 0), waiting, broken, flagged };
 }
 async function runDailyHealthReport() {
   try {
@@ -2766,24 +2765,22 @@ async function runDailyHealthReport() {
     if (new Date().getUTCHours() < 2) return;           // ~09:00 เวลาไทย
     const h = await buildDailyHealth();
     await run(`INSERT INTO daily_report_log (day, summary_json) VALUES ($1,$2) ON CONFLICT (day) DO NOTHING`,
-      [today, JSON.stringify({ sold: h.sold, made: h.made, waiting: h.waiting.length, broken: h.broken.length })]);
+      [today, JSON.stringify({ made: h.made, waiting: h.waiting.length, broken: h.broken.length })]);
     const problems = h.broken.length + h.waiting.length;
     const li = (x) => `<li style="margin:3px 0">${x}</li>`;
     const body =
-      `<p style="font-size:15px">สรุประบบ 24 ชม.ที่ผ่านมาค่ะ 🩵</p>` +
-      `<table style="font-size:15px;line-height:2"><tr><td>ขายได้</td><td><b>${h.sold?.n || 0} เล่ม · ฿${Number(h.sold?.baht || 0).toLocaleString()}</b></td></tr>` +
-      `<tr><td>เล่มที่สร้าง&nbsp;&nbsp;</td><td><b>${h.made} เล่ม</b></td></tr></table>` +
+      `<p style="font-size:15px">สรุปสุขภาพระบบ 24 ชม.ที่ผ่านมาค่ะ 🩵</p>` +
       (h.broken.length
         ? `<p style="color:#b00"><b>⚠️ เล่มที่ระบบกำลังซ่อม ${h.broken.length} เล่ม</b></p><ul>${h.broken.slice(0, 10).map(b => li(`${b.instagram_account || "?"} — ${b.reason}`)).join("")}</ul>` +
           `<p style="font-size:13px;color:#666">ระบบซ่อมเองอัตโนมัติ ถ้าซ่อม 2 ครั้งไม่ผ่านจะมีเมลแยกแจ้งคิมค่ะ</p>`
-        : `<p style="color:#1a7f43"><b>✅ ไม่มีเล่มพัง ไม่มีเล่มค้าง</b></p>`) +
+        : `<p style="color:#1a7f43;font-size:15px"><b>✅ เล่มที่สร้างใน 24 ชม.ที่ผ่านมาสมบูรณ์ครบทุกเล่ม</b><br>ไม่มีเล่มพัง ไม่มีเล่มค้าง</p>`) +
       (h.waiting.length
         ? `<p><b>⏳ ${h.waiting.length} คนได้บทวิเคราะห์แล้วแต่ยังไม่กดสร้างแผน 30 วัน</b> (ระบบส่งเมลเตือนให้แล้ว)</p><ul>${h.waiting.slice(0, 10).map(w => li(`${w.instagram_account || "?"} · ${w.email || ""} — ${new Date(w.created_at).toISOString().slice(0, 10)}`)).join("")}</ul>`
         : "") +
       (h.flagged.length ? `<p>🔎 เล่มใหม่ที่มีธงคุณภาพ ${h.flagged.length} เล่ม — ดูได้ที่หลังบ้าน → "คุณภาพเล่ม"</p>` : "") +
       `<p style="color:#999;font-size:12px;margin-top:18px">เมลนี้ส่งทุกวันเวลา 9 โมงเช้า ถ้าวันไหนไม่ได้รับ = ระบบมีปัญหา ให้เช็กทันทีค่ะ</p>`;
-    await sendEmail(ADMIN_ALERT_EMAIL, `${problems ? "⚠️" : "✅"} Babe House รายงานประจำวัน · ขาย ${h.sold?.n || 0} เล่ม${problems ? ` · ต้องดู ${problems} รายการ` : " · ทุกอย่างปกติ"}`, wrap(body));
-    console.log(`[daily-report] ส่งแล้ว · ขาย ${h.sold?.n || 0} · พัง ${h.broken.length} · รอกดสร้างแผน ${h.waiting.length}`);
+    await sendEmail(ADMIN_ALERT_EMAIL, `${problems ? "⚠️" : "✅"} Babe House รายงานประจำวัน${problems ? ` · ต้องดู ${problems} รายการ` : " · ระบบปกติดี"}`, wrap(body));
+    console.log(`[daily-report] ส่งแล้ว · พัง ${h.broken.length} · รอกดสร้างแผน ${h.waiting.length}`);
   } catch (e) { console.error("daily-report", e.message); }
 }
 // Watchdog: เจอเล่มพัง → เมลแจ้งแอดมินทันที (ไม่ต้องรอลูกค้าบอก)

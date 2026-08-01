@@ -6,4 +6,7 @@
 //   • การ์ดในหน้าเล่ม Blueprint: จาก QR ให้ทักไลน์ → ปุ่มเข้าหน้าเรียนบนเว็บเลย
 //
 // ⚠️ ก่อนเปิด ควรเช็กให้ครบ: ลิงก์วิดีโอครบทุกบท · ทดลองซื้อจริง 1 คอร์ส · ทดลองส่งการบ้าน 1 ชิ้น
-export const ACADEMY_LIVE = false;
+// 🎮 ในสนามเด็กเล่น (localhost) เปิดทุกอย่างให้เห็นเสมอ — คิมจะได้กดดูของที่ "สร้างเสร็จแต่ปิดอยู่" ได้จริง
+// เว็บจริงยังปิดตามเดิม จนกว่าจะแก้ค่า false ข้างล่างเป็น true
+const IS_PLAYGROUND = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+export const ACADEMY_LIVE = IS_PLAYGROUND || false;

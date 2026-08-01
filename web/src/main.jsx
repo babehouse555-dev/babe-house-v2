@@ -33,6 +33,8 @@ function TopBar() {
           {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
           {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
           {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
+          {/* 🩵 ทางเข้า Club — คิมขอให้อยู่ด้านบนใกล้บัญชีของฉัน เหมือนปุ่มอัปเกรดแผน */}
+          {ACADEMY_LIVE && <Link to="/plans" style={{ fontWeight: 800, fontSize: 13.5, color: "#0e7a63", background: "linear-gradient(135deg,#DFF3EC,#EAF8F3)", border: "1px solid #BFE5D8", borderRadius: 20, padding: "5px 13px" }}>🩵 Club</Link>}
           <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>
           <LangToggle />
         </div>

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
 import { seedProjects } from "./seed-projects.js";
+import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
 import { seedAssignments } from "./seed-assignments.js";
 import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
@@ -2911,7 +2912,7 @@ async function connectDbWithRetry() {
 }
 connectDbWithRetry().then(async () => {
   // seed ล้มก็ไม่ควรทำเว็บดับ — ของพวกนี้เป็นข้อมูลตั้งต้น ไม่ใช่หัวใจการให้บริการ
-  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects]]) {
+  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects], ["playground", seedPlayground]]) {
     try { await fn(); } catch (e) { console.error(`[seed ${name}]`, e.message); }
   }
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI

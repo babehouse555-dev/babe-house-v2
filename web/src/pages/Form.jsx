@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { api, filesToBase64, getRef, currentCycle, session, track } from "../api.js";
+import { api, filesToBase64, getRef, getSource, currentCycle, session, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 
 // กล่องอัปรูป Insight — เลือกไฟล์ หรือ "ลากวาง" ได้ (ไฮไลต์เขียวตอนลากทับ)
@@ -254,7 +254,7 @@ export default function Form() {
       const images = await filesToBase64([...files], 8);
       const userId = `babe_user_${Date.now()}`;
       const payload = {
-        user_id: userId, email: f.email.trim().toLowerCase(), referred_by: getRef(), lang,
+        user_id: userId, email: f.email.trim().toLowerCase(), referred_by: getRef(), source: getSource(), lang,
         meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
         instagram_account: f.instagram_account,
         form_responses: {
@@ -287,7 +287,7 @@ export default function Form() {
       if (renewGoal.length) { fr.goal_primary = renewGoal.join(", "); fr.monthly_goal = renewGoal.join(" + "); }
       if (renewNote.trim()) fr.starting_point = `${fr.starting_point || ""}\nอัปเดตเดือนนี้: ${renewNote.trim()}`.trim();
       const payload = {
-        user_id: `babe_user_${Date.now()}`, email: (session.email || f.email).trim().toLowerCase(), referred_by: getRef(), lang,
+        user_id: `babe_user_${Date.now()}`, email: (session.email || f.email).trim().toLowerCase(), referred_by: getRef(), source: getSource(), lang,
         meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
         instagram_account: lastProfile.instagram_account || f.instagram_account,
         form_responses: fr, insight_images: images, insight_screenshot_base64: images[0] || null

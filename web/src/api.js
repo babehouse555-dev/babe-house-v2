@@ -26,8 +26,36 @@ export const session = {
 export function captureRef() {
   const r = new URLSearchParams(location.search).get("ref");
   if (r) localStorage.setItem("babe_ref", r);
+  captureSource();
 }
 export const getRef = () => localStorage.getItem("babe_ref") || undefined;
+
+// 📣 จำว่าลูกค้าคนนี้มาจากไหน (ครั้งแรกที่เข้าเว็บเท่านั้น — ไม่ทับของเดิม)
+// Facebook/Instagram ต่อ ?fbclid= มาให้ทุกคลิกจากแอดอยู่แล้ว → รู้ได้ทันทีว่ามาจากแอด
+// ถ้าใส่ utm_* ในลิงก์แอดด้วย จะแยกได้ละเอียดถึงระดับ "แอดตัวไหน"
+export function captureSource() {
+  try {
+    if (localStorage.getItem("babe_src")) return;   // มาครั้งแรกอย่างไหน จำอันนั้น
+    const p = new URLSearchParams(location.search);
+    const utm = p.get("utm_source"), content = p.get("utm_content") || p.get("utm_campaign");
+    let src = null;
+    if (utm) src = content ? `${utm}/${content}` : utm;
+    else if (p.get("fbclid")) src = "meta-ads";       // คลิกมาจากแอด Facebook/Instagram
+    else if (p.get("ref")) src = "referral";
+    else {
+      const ref = document.referrer || "";
+      if (ref && !ref.includes(location.host)) {
+        const h = (ref.match(/^https?:\/\/([^/]+)/) || [])[1] || "";
+        if (/facebook|instagram|fb\.me/i.test(h)) src = "meta-organic";
+        else if (/line\./i.test(h)) src = "line";
+        else if (/google|bing/i.test(h)) src = "search";
+        else if (h) src = h.slice(0, 40);
+      } else if (!ref) src = "direct";
+    }
+    if (src) localStorage.setItem("babe_src", src.slice(0, 60));
+  } catch {}
+}
+export const getSource = () => localStorage.getItem("babe_src") || undefined;
 
 // บันทึก funnel step (landing/form_view/form_submit/checkout_view/paid) — ไม่ throw ไม่บล็อก UI
 function sessionId() {
@@ -36,7 +64,7 @@ function sessionId() {
   return s;
 }
 export function track(step) {
-  try { fetch(BASE + "/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true, body: JSON.stringify({ step, session_id: sessionId(), email: session.email || undefined }) }).catch(() => {}); } catch {}
+  try { fetch(BASE + "/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true, body: JSON.stringify({ step, session_id: sessionId(), email: session.email || undefined, source: getSource() }) }).catch(() => {}); } catch {}
 }
 // ปิงสถานะออนไลน์ (ให้หลังบ้านเห็นว่ามีคน/นักเรียนเปิดหน้าอยู่กี่คน)
 export function ping() {

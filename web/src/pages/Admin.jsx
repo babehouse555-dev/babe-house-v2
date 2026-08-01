@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { api, baht } from "../api.js";
-import { SalesOverview, AcademyManage, HomeworkReview, WorkshopManage, SecurityPanel, ActivationPending } from "./AdminAcademy.jsx";
+import { SalesOverview, AcademyManage, HomeworkReview, WorkshopManage, SecurityPanel, ActivationPending, Attribution } from "./AdminAcademy.jsx";
 
 const fmtTok = (n) => { n = Number(n || 0); return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n); };
 
@@ -101,6 +101,7 @@ export default function Admin() {
 
       {/* ลูกค้าจ่ายแล้วแต่ยังไม่ได้ของชิ้นหลัก — เอาไว้บนสุด ต้องเห็นก่อนใคร */}
       <ActivationPending adminKey={key} />
+      <Attribution adminKey={key} />
 
       {/* ── ภาพรวมทุกสินค้า + คอร์สเรียน + workshop (ยังไม่เปิดให้ลูกค้าเห็น) ── */}
       <SalesOverview adminKey={key} />

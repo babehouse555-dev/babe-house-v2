@@ -229,6 +229,11 @@ export async function initDb() {
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     ALTER TABLE blueprints ADD COLUMN IF NOT EXISTS activation_reminded_at TIMESTAMPTZ;
     ALTER TABLE blueprint_requests ADD COLUMN IF NOT EXISTS phone TEXT;
+    -- 📣 ที่มาของลูกค้า (มาจากแอด/ลิงก์ไหน) — ไม่มีตรงนี้ = ยิงแอดโดยไม่รู้ว่าคุ้มไหม
+    -- Facebook ต่อ ?fbclid= ให้ทุกคลิกจากแอดอยู่แล้ว จับได้เลยโดยไม่ต้องแก้ลิงก์ในแอด
+    ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS source TEXT;
+    ALTER TABLE funnel_events ADD COLUMN IF NOT EXISTS source TEXT;
+    CREATE INDEX IF NOT EXISTS idx_orders_source ON blueprint_orders(source);
     -- ===== Academy (เว็บเก่า babehouseacademy.com) — ข้อมูลนำเข้าจาก DB dump · แยกขาดจากระบบหลัก ลูกค้าไม่เห็น =====
     -- ⚠️ ไม่นำเข้า password/salt เดิมโดยเจตนา (ระบบใหม่จะใช้ OTP อีเมลแทน = ปลอดภัยกว่า)
     CREATE TABLE IF NOT EXISTS academy_users (

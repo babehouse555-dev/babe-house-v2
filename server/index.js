@@ -215,6 +215,7 @@ const CheckoutSchema = z.object({
   tier: z.literal("Premium_490"),
   payload: z.object({
     user_id: z.string().min(1), instagram_account: z.string().min(1), email: z.string().email().optional(), referred_by: z.string().optional(),
+    source: z.string().optional(),   // ⚠️ ต้องประกาศตรงนี้ ไม่งั้น zod ตัดทิ้งเงียบๆ (เคยพลาดมาแล้วกับ phone)
     meta_purchase: z.object({ tier: z.literal("Premium_490"), billing_cycle: z.string().min(1) }),
     form_responses: z.object({ self_term: z.string().optional().default(""), audience_term: z.string().optional().default(""), catchphrases: z.string().optional().default(""), tone: z.string().optional().default(""), business_type: z.string().optional().default(""), gender: z.string().optional().default(""), age_range: z.string().optional().default(""), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1), competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default(""), phone: z.string().optional().default("") }),
     insight_screenshot_base64: z.string().nullable().optional(), insight_images: z.array(z.string()).max(8).optional()
@@ -243,8 +244,9 @@ app.post("/api/checkout", async (req, res) => {
       if (Number(r.n) >= LOYALTY_MIN_MONTHS) { discountPct = LOYALTY_PERCENT; finalAmount = Math.round(PRICE_SATANG * (100 - LOYALTY_PERCENT) / 100); }
     }
     const checkoutUrl = `/checkout?order_id=${encodeURIComponent(orderId)}`;
-    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,referred_by,discount_percent,checkout_url) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12)`,
-      [orderId, payload.user_id, payload.instagram_account, payload.email || null, parsed.tier, payload.meta_purchase.billing_cycle, JSON.stringify(payload), PROVIDER, finalAmount, refValid, discountPct, checkoutUrl]);
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,referred_by,discount_percent,checkout_url,source) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13)`,
+      [orderId, payload.user_id, payload.instagram_account, payload.email || null, parsed.tier, payload.meta_purchase.billing_cycle, JSON.stringify(payload), PROVIDER, finalAmount, refValid, discountPct, checkoutUrl,
+       (String(req.body?.source || payload.source || "").slice(0, 60)) || null]);
     res.json({ ok: true, order_id: orderId, checkout_url: checkoutUrl, provider: PROVIDER, payment_status: "pending" });
   } catch (err) { console.error(err); res.status(400).json({ ok: false, error: "CHECKOUT_FAILED", message: err.message }); }
 });
@@ -1097,8 +1099,8 @@ app.post("/api/track", async (req, res) => {
   try {
     const step = String(req.body?.step || "");
     if (FUNNEL_STEPS.includes(step)) {
-      await run(`INSERT INTO funnel_events (id,step,session_id,email) VALUES ($1,$2,$3,$4)`,
-        [uid("ev"), step, String(req.body?.session_id || "").slice(0, 80), (String(req.body?.email || "").slice(0, 120)) || null]);
+      await run(`INSERT INTO funnel_events (id,step,session_id,email,source) VALUES ($1,$2,$3,$4,$5)`,
+        [uid("ev"), step, String(req.body?.session_id || "").slice(0, 80), (String(req.body?.email || "").slice(0, 120)) || null, (String(req.body?.source || "").slice(0, 60)) || null]);
     }
   } catch {}
   res.json({ ok: true });
@@ -2389,6 +2391,28 @@ async function runActivationReminders() {
   } catch (e) { console.error("activation", e.message); return 0; }
 }
 app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, abandoned, activation, cycle: currentBillingCycle() }); });
+// 📣 ลูกค้ามาจากไหน + ใครจ่ายเงินจริง (ตอบคำถาม "มีคนซื้อจากแอดยัง")
+app.get("/api/admin/attribution", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+    const rows = await q(`SELECT COALESCE(source,'(ไม่รู้ที่มา)') AS source,
+        COUNT(*) AS orders,
+        COUNT(*) FILTER (WHERE payment_status IN ('paid','mock_paid')) AS paid,
+        COALESCE(SUM(COALESCE(final_amount_satang,${PRICE_SATANG})) FILTER (WHERE payment_status='paid' AND live_mode = true AND COALESCE(provider,'') NOT IN ('mock','code')),0) AS revenue
+      FROM blueprint_orders WHERE created_at > now() - interval '${days} days'
+      GROUP BY 1 ORDER BY paid DESC, orders DESC`);
+    const visits = await q(`SELECT COALESCE(source,'(ไม่รู้ที่มา)') AS source, COUNT(DISTINCT session_id) AS sessions
+      FROM funnel_events WHERE created_at > now() - interval '${days} days' GROUP BY 1`);
+    const vMap = {}; for (const v of visits) vMap[v.source] = Number(v.sessions);
+    res.json({ ok: true, days,
+      // ยังไม่มีข้อมูลที่มาเลย = เพิ่งเริ่มเก็บ (ออเดอร์ก่อนหน้านี้ไม่มีข้อมูลย้อนหลัง)
+      tracking_started: rows.some(r => r.source !== "(ไม่รู้ที่มา)"),
+      sources: rows.map(r => ({ source: r.source, orders: Number(r.orders), paid: Number(r.paid),
+        revenue: Math.round(Number(r.revenue) / 100), sessions: vMap[r.source] || 0 })) });
+  } catch (e) { console.error("attribution", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 // 👀 ใครได้บทวิเคราะห์แล้วแต่ยังไม่กด "สร้างแผน 30 วัน" — เห็นรายชื่อจริง + รู้ว่าเตือนไปหรือยัง
 app.get("/api/admin/activation-pending", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

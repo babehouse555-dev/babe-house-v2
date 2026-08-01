@@ -454,6 +454,40 @@ export function WorkshopManage({ adminKey }) {
   );
 }
 
+/* ══════════ 7) ลูกค้ามาจากไหน — ตอบว่า "แอดทำเงินได้จริงไหม" ══════════ */
+export function Attribution({ adminKey }) {
+  const [d, setD] = useState(null);
+  const [days, setDays] = useState(30);
+  useEffect(() => { api(`/api/admin/attribution?days=${days}`, { adminKey }).then(setD).catch(() => setD({ sources: [] })); }, [days]);
+  if (!d) return null;
+  const LABEL = { "meta-ads": "📣 แอด Facebook/IG", "meta-organic": "📱 โพสต์ FB/IG (ไม่ใช่แอด)", "line": "💬 LINE", "search": "🔍 ค้นหา Google", "direct": "🔗 พิมพ์ลิงก์เข้ามาเอง", "referral": "🤝 เพื่อนแนะนำ", "(ไม่รู้ที่มา)": "❔ ก่อนเริ่มเก็บข้อมูล" };
+  return (
+    <div className="card">
+      <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0 }}>📣 ลูกค้ามาจากไหน</h3>
+        <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...inp, width: "auto", padding: "6px 10px" }}>
+          <option value={7}>7 วัน</option><option value={30}>30 วัน</option><option value={90}>90 วัน</option>
+        </select>
+      </div>
+      {!d.tracking_started
+        ? <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>เพิ่งเริ่มเก็บข้อมูลที่มาวันนี้ — ออเดอร์ที่เกิดก่อนหน้านี้ย้อนหลังไม่ได้ค่ะ รออีกสัก 1 วันจะเริ่มเห็นภาพ</p>
+        : <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>นับจากลิงก์ที่ลูกค้าคลิกเข้ามาครั้งแรก · "แอด Facebook/IG" จับจาก fbclid ที่ Facebook ต่อมาให้ทุกคลิกจากแอด</p>}
+      <div className="scroll" style={{ marginTop: 12 }}>
+        <table><thead><tr><th>ที่มา</th><th>คนเข้าเว็บ</th><th>เริ่มสั่งซื้อ</th><th>จ่ายจริง</th><th>เงินเข้า</th></tr></thead>
+          <tbody>{d.sources.map(s => (
+            <tr key={s.source} style={s.source === "meta-ads" ? { background: "#f7fbff" } : undefined}>
+              <td style={{ fontWeight: s.source === "meta-ads" ? 700 : 400 }}>{LABEL[s.source] || s.source}</td>
+              <td>{s.sessions || "—"}</td><td>{s.orders}</td>
+              <td style={{ fontWeight: 700, color: s.paid > 0 ? "#1a7f43" : "inherit" }}>{s.paid}</td>
+              <td style={{ fontWeight: 700 }}>{s.revenue ? money(s.revenue) : "—"}</td>
+            </tr>))}
+            {!d.sources.length && <tr><td colSpan={5} className="muted">ยังไม่มีข้อมูล</td></tr>}
+          </tbody></table>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════ 6) คนที่ได้บทวิเคราะห์แล้วแต่ยังไม่กด "สร้างแผน 30 วัน" ══════════ */
 // ลูกค้าจ่ายเงินมาแล้วแต่ยังไม่ได้ของชิ้นหลัก (สคริปต์ 30 วัน) — กลุ่มนี้สำคัญที่สุดที่ต้องตาม
 export function ActivationPending({ adminKey }) {

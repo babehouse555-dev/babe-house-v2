@@ -56,6 +56,15 @@ export default function Projects() {
   const totalNext = ps.reduce((a, p) => a + activeCount(p, "next"), 0);
   const totalBlocked = ps.reduce((a, p) => a + activeCount(p, "blocked"), 0);
 
+  // รวมงานข้ามโปรเจคมาเรียงใหม่ — โปรเจคสำคัญกว่ามาก่อน แล้วค่อยดูความสำคัญของตัวงาน
+  const flat = (kind, who) => ps.flatMap(p => (p.items || [])
+    .filter(i => i.kind === kind && (who === undefined || (i.owner || "") === who))
+    .map(i => ({ ...i, pid: p.id, emoji: p.emoji, color: p.color, pprio: p.priority })))
+    .sort((a, b) => (a.pprio - b.pprio) || (a.priority - b.priority));
+  const decide = flat("blocked");                       // ติดที่คิมคนเดียว = ปลดล็อกได้เยอะสุด
+  const mine = flat("next", "kim");                     // งานที่คิมต้องลงมือเอง
+  const byClaude = flat("next", "claude");              // งานที่ฉันทำแทนได้
+
   return (
     <div className="wrap page-pad" style={{ maxWidth: 940 }}>
       <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -68,9 +77,43 @@ export default function Projects() {
       </div>
 
       {!cur && <>
-        <p className="muted" style={{ fontSize: 14, margin: "6px 0 20px" }}>
+        <p className="muted" style={{ fontSize: 14, margin: "6px 0 16px" }}>
           ตอนนี้มี <b>{ps.filter(p => p.status !== "done").length} โปรเจค</b> · งานที่ทำต่อได้เลย <b style={{ color: "#2E86DE" }}>{totalNext}</b> · รอคิมเคาะ <b style={{ color: "#C77700" }}>{totalBlocked}</b>
         </p>
+
+        {/* 🎯 เปิดมาต้องตอบได้ทันทีว่า "แล้วยังไงต่อ" — ไม่ต้องไล่เปิดทีละโฟลเดอร์ */}
+        {(mine.length > 0 || decide.length > 0) && (
+          <div className="card" style={{ marginTop: 0, marginBottom: 20, background: "linear-gradient(135deg,#FBF7EE,#FDFBF7)", border: "1px solid #EADFCB" }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 3 }}>🎯 ถ้าคิมมีเวลา 1 ชั่วโมงตอนนี้</div>
+            <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>ทำจากบนลงล่าง — เรียงตามว่าอะไรปลดล็อกงานอื่นได้มากที่สุด</div>
+
+            {decide.length > 0 && <>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#C77700", marginBottom: 6 }}>⏸️ ตัดสินใจก่อน — {decide.length} เรื่องนี้บล็อกงานที่เหลืออยู่</div>
+              {decide.slice(0, 5).map(x => (
+                <button key={x.id} onClick={() => setOpen(x.pid)} className="up-row">
+                  <span className="up-chip" style={{ background: x.color }}>{x.emoji}</span>
+                  <span className="up-text">{x.text}</span>
+                </button>
+              ))}
+            </>}
+
+            {mine.length > 0 && <>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#2E86DE", margin: `${decide.length ? 14 : 0}px 0 6px` }}>▶️ ลงมือได้เลย</div>
+              {mine.slice(0, 5).map(x => (
+                <button key={x.id} onClick={() => setOpen(x.pid)} className="up-row">
+                  <span className="up-chip" style={{ background: x.color }}>{x.emoji}</span>
+                  <span className="up-text">{x.text}</span>
+                </button>
+              ))}
+            </>}
+
+            {byClaude.length > 0 && (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed #E3D8C4", fontSize: 12.5, color: "#6b6577" }}>
+                🤖 อีก <b>{byClaude.length} อย่าง</b>ฉันทำเองได้ ไม่ต้องรอคิม — บอกให้เริ่มได้ทุกเมื่อ
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 🗂️ โฟลเดอร์ — โทนพาสเทลแบบเดียวกับหน้าบัญชี */}
         <div className="prj-grid">
@@ -193,6 +236,15 @@ export default function Projects() {
         .pi-move:hover { background: #f2f1f6; }
         /* มือถือ/จอสัมผัส ไม่มี hover → โชว์ปุ่มไว้เลย */
         @media (hover: none) { .pi-actions { opacity: 1; } }
+
+        /* แถว "ทำอะไรต่อ" — กดแล้วกระโดดเข้าโปรเจคนั้น */
+        .up-row { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left;
+          background: #fff; border: 1px solid #EFE7D9; border-radius: 11px; padding: 10px 12px; margin-bottom: 6px;
+          cursor: pointer; font-family: inherit; transition: transform .12s, box-shadow .12s; }
+        .up-row:hover { transform: translateX(2px); box-shadow: 0 3px 8px rgba(120,100,70,.10); }
+        .up-chip { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px; display: inline-flex;
+          align-items: center; justify-content: center; font-size: 14px; }
+        .up-text { flex: 1 1 auto; min-width: 0; font-size: 14px; line-height: 1.55; color: #2c2a35; word-break: break-word; }
       `}</style>
     </div>
   );

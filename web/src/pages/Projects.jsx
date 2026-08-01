@@ -105,7 +105,10 @@ export default function Projects() {
           <h1 className="page" style={{ marginBottom: 2 }}>{cur ? `${cur.emoji} ${cur.name}` : "โปรเจคทั้งหมด"}</h1>
         </div>
         {cur ? <button className="btn ghost" onClick={() => setOpen(null)}>← โปรเจคทั้งหมด</button>
-             : <a className="btn ghost" href="/admin">ไปหลังบ้านหลัก →</a>}
+             : <span className="row" style={{ gap: 7 }}>
+                 <a className="btn ghost" href="/map">🗺️ แผนผังเว็บ</a>
+                 <a className="btn ghost" href="/admin">หลังบ้าน →</a>
+               </span>}
       </div>
 
       {!cur && <>

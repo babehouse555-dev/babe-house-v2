@@ -191,6 +191,33 @@ export async function initDb() {
       rows INTEGER,
       bytes INTEGER
     );
+    -- 🗂️ ห้องทำงานของคิม — ทุกโปรเจคอยู่ที่เดียว ไอเดียมาตอนไหนก็ลงถูกที่
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      emoji TEXT DEFAULT '📁',
+      color TEXT DEFAULT '#C7DEF0',
+      goal TEXT,                       -- ทำไปเพื่ออะไร (เห็นแล้วนึกออกทันทีว่าทำไมถึงทำ)
+      status TEXT DEFAULT 'active',    -- active | parked | done
+      priority INTEGER DEFAULT 5,      -- 1 = สำคัญสุด
+      sort INTEGER DEFAULT 100,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS project_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      kind TEXT NOT NULL,              -- next (ทำต่อ) | idea (ไอเดีย) | done (เสร็จแล้ว) | blocked (ติดอยู่)
+      text TEXT NOT NULL,
+      note TEXT,
+      owner TEXT,                      -- 'kim' | 'claude' | ชื่อทีม
+      priority INTEGER DEFAULT 5,
+      sort INTEGER DEFAULT 100,
+      done_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_items_pid ON project_items(project_id, kind);
     -- บันทึกว่าส่ง "รายงานสุขภาพระบบรายวัน" ให้คิมไปแล้ววันไหน (กันส่งซ้ำ และรอด deploy ที่รีเซ็ต timer)
     CREATE TABLE IF NOT EXISTS daily_report_log (
       day DATE PRIMARY KEY,

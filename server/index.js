@@ -10,6 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
+import { seedProjects } from "./seed-projects.js";
 import { seedWorkshops } from "./seed-workshops.js";
 import { seedAssignments } from "./seed-assignments.js";
 import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
@@ -2133,6 +2134,47 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // วิเคราะห์ใหม่ทั้งเล่ม (analysis + content) ด้วย prompt ล่าสุด — ใช้ตอนบทวิเคราะห์จับนิชผิด (เช่น เอาบริการ/เครื่องมือมาเป็นแนวคอนเทนต์). ใส่ focus_hint ชี้แนวคอนเทนต์จริงได้
 // ✏️ แก้ "ธีมเล่ม" อย่างเดียว — ไม่แตะสคริปต์/ปฏิทินที่ลูกค้าอาจใช้ไปแล้ว (ถูกกว่า+ปลอดภัยกว่า reanalyze ทั้งเล่ม)
 // ไม่ส่ง blueprint_id = กวาดทุกเล่มที่ธีมเป็น "ชื่อเอกสาร" แทนคำโปรยของช่องลูกค้า
+// ===== 🗂️ ห้องทำงาน: ทุกโปรเจคอยู่ที่เดียว =====
+app.get("/api/admin/projects", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const projects = await q(`SELECT * FROM projects ORDER BY status='done', priority ASC, sort ASC, created_at ASC`);
+  const items = await q(`SELECT * FROM project_items ORDER BY priority ASC, sort ASC, created_at ASC`);
+  const byPid = {};
+  for (const it of items) (byPid[it.project_id] ||= []).push(it);
+  res.json({ ok: true, projects: projects.map(p => ({ ...p, items: byPid[p.id] || [] })) });
+});
+app.post("/api/admin/projects/save", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const id = String(b.id || "").trim() || uid("prj");
+  await run(`INSERT INTO projects (id,name,emoji,color,goal,status,priority,sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, emoji=EXCLUDED.emoji, color=EXCLUDED.color,
+      goal=EXCLUDED.goal, status=EXCLUDED.status, priority=EXCLUDED.priority, sort=EXCLUDED.sort, updated_at=now()`,
+    [id, String(b.name || "โปรเจคใหม่"), b.emoji || "📁", b.color || "#C7DEF0", b.goal || "", b.status || "active", Number(b.priority) || 5, Number(b.sort) || 100]);
+  res.json({ ok: true, id });
+});
+// เพิ่ม/แก้รายการในโปรเจค — ใช้ทั้งตอนคิมโยนไอเดียเข้ามา และตอนระบบอัปเดตงานที่ทำเสร็จ
+app.post("/api/admin/projects/item", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const pid = String(b.project_id || "").trim();
+  if (!pid) return res.status(400).json({ ok: false, error: "NO_PROJECT" });
+  const id = String(b.id || "").trim() || uid("pit");
+  const kind = ["next", "idea", "done", "blocked"].includes(b.kind) ? b.kind : "idea";
+  await run(`INSERT INTO project_items (id,project_id,kind,text,note,owner,priority,sort,done_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    ON CONFLICT (id) DO UPDATE SET kind=EXCLUDED.kind, text=EXCLUDED.text, note=EXCLUDED.note,
+      owner=EXCLUDED.owner, priority=EXCLUDED.priority, sort=EXCLUDED.sort, done_at=EXCLUDED.done_at, updated_at=now()`,
+    [id, pid, kind, String(b.text || "").slice(0, 800), b.note || null, b.owner || null, Number(b.priority) || 5, Number(b.sort) || 100,
+     kind === "done" ? (b.done_at || new Date().toISOString()) : null]);
+  res.json({ ok: true, id });
+});
+app.post("/api/admin/projects/item/delete", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.id || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  await run(`DELETE FROM project_items WHERE id=$1`, [id]);
+  res.json({ ok: true });
+});
 app.get("/api/admin/daily-health", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try { res.json({ ok: true, ...(await buildDailyHealth()) }); } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
@@ -2832,7 +2874,8 @@ async function runQualityWatch() {
 const PORT = Number(process.env.PORT || 3000);
 initDb().then(async () => {
   await seedWorkshops();     // ใส่รายละเอียด workshop + รีวิวให้พร้อม (ครั้งเดียว ไม่ทับของที่คิมแก้เอง)
-  await seedAssignments();   // ร่างการบ้านให้ทุกคอร์ส แบบ "ไม่บังคับ" ไว้ก่อน — คิมแก้แล้วค่อยเปิดบังคับ
+  await seedAssignments();
+  await seedProjects();      // ใส่โปรเจคทั้งหมดที่คุยกันไว้ลงห้องทำงาน (ไม่ทับของที่คิมแก้เอง)
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI
   try {
     const rows = await q(`SELECT DISTINCT ON (COALESCE(category,'general')) COALESCE(category,'general') AS category, content, created_at FROM trend_digest ORDER BY COALESCE(category,'general'), created_at DESC`);

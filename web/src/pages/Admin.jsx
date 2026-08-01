@@ -98,6 +98,11 @@ export default function Admin() {
   return (
     <div className="wrap page-pad">
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
+      {/* ทางเข้าห้องทำงาน — ที่เดียวที่เห็นทุกโปรเจคพร้อมกัน */}
+      <a href="/projects" style={{ display: "block", textDecoration: "none", color: "inherit", background: "linear-gradient(135deg,#EFE9FB,#F6F2FC)", border: "1px solid #DDD2F0", borderRadius: 14, padding: "14px 16px", margin: "4px 0 18px" }}>
+        <div style={{ fontWeight: 800, fontSize: 15.5 }}>🗂️ ห้องทำงาน — โปรเจคทั้งหมด</div>
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>ดูว่าแต่ละโปรเจคทำอะไรต่อ · นึกไอเดียอะไรออกพิมพ์ทิ้งไว้ได้เลย →</div>
+      </a>
 
       {/* ลูกค้าจ่ายแล้วแต่ยังไม่ได้ของชิ้นหลัก — เอาไว้บนสุด ต้องเห็นก่อนใคร */}
       <ActivationPending adminKey={key} />

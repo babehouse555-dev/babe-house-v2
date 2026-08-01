@@ -9,6 +9,30 @@ const day = (n, h = 10) => { const d = new Date(); d.setDate(d.getDate() + n); d
 export async function seedPlayground() {
   if (process.env.LOCAL_DB !== "1") return;          // ⛔ กันหลุดขึ้นเว็บจริงเด็ดขาด
 
+
+  // ⓪ คอร์สตัวอย่าง — ของจริงอยู่บนเว็บจริง (นำเข้าจากเว็บเก่า) สนามเด็กเล่นเลยต้องใส่ปลอมไว้ให้เห็นหน้าจอ
+  const DEMO_COURSES = [
+    ["1", "All in Your Phone — ตัดต่อในมือถือ", "3745", "ตัดต่อคลิปสวยด้วยมือถือเครื่องเดียว ตั้งแต่จัดเฟรมยันลงเสียง", "ตัดต่อวิดีโอ", 8],
+    ["2", "All In Ipad — ครบทุกงานบน iPad", "3745", "ใช้ iPad ทำงานคอนเทนต์ได้ครบ ตัดต่อ วาด ออกแบบ", "ตัดต่อวิดีโอ", 17],
+    ["3", "Canva Craft — ออกแบบให้ดูแพง", "2490", "ทำกราฟิกให้ดูมีราคาด้วย Canva ตั้งแต่จัดหน้าจนเลือกสี", "ออกแบบกราฟิก", 11],
+    ["4", "PROCREATE DRAWING — วาดรูปบน iPad", "2990", "วาดภาพประกอบด้วย Procreate ตั้งแต่เส้นแรกจนงานเสร็จ", "วาดภาพ", 6],
+    ["5", "ตัดต่อ Advance สายเล่าเรื่อง", "5990", "ยกระดับงานตัดต่อให้เล่าเรื่องเป็น คนดูอยู่จนจบ", "ตัดต่อวิดีโอ", 14],
+    ["6", "ถ่ายรูปด้วยมือถือให้เหมือนมืออาชีพ", "1990", "จัดองค์ประกอบ แสง มุมกล้อง ด้วยมือถือเครื่องเดียว", "ถ่ายภาพ", 9],
+  ];
+  let nC = 0;
+  for (const [id, name, price, detail, cat, lessons] of DEMO_COURSES) {
+    const r = await run(`INSERT INTO academy_courses (legacy_id, name, detail, price, category, instructor, duration, is_active)
+      VALUES ($1,$2,$3,$4,$5,'ครูพี่คิม',$6,'0') ON CONFLICT (legacy_id) DO NOTHING`,
+      [id, name, detail, price, cat, `${lessons} บท`]);
+    nC += r.rowCount || 0;
+    for (let i = 1; i <= lessons; i++) {
+      await run(`INSERT INTO academy_course_lines (legacy_id, course_id, name, seq, url, time)
+        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (legacy_id) DO NOTHING`,
+        [`pgl_${id}_${i}`, id, `บทที่ ${i} — ตัวอย่างบทเรียนในสนามเด็กเล่น`, String(i),
+         "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "05:00"]);
+    }
+  }
+
   // ① รอบวันเรียนเวิร์กช็อป — ของจริงคิมค่อยใส่เอง อันนี้ปลอมไว้ให้เห็นหน้าจอง
   const ws = await q(`SELECT workshop_id, name FROM workshops ORDER BY seq, name LIMIT 6`);
   const places = ["Babe House Studio ทองหล่อ", "Babe House Studio ทองหล่อ", "ออนไลน์ผ่าน Zoom"];
@@ -45,5 +69,5 @@ export async function seedPlayground() {
       [`pgwb_1`, s1[0].session_id, s1[0].workshop_id, DEMO_EMAIL]);
   }
 
-  if (nSess) console.log(`🎮 [สนามเด็กเล่น] ใส่รอบวันเรียนปลอม ${nSess} รอบ · ลูกค้าตัวอย่าง ${DEMO_EMAIL}`);
+  if (nSess || nC) console.log(`🎮 [สนามเด็กเล่น] คอร์สตัวอย่าง ${nC} · รอบวันเรียนปลอม ${nSess} · ลูกค้าตัวอย่าง ${DEMO_EMAIL}`);
 }

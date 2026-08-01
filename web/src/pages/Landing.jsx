@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, track } from "../api.js";
+import { ACADEMY_LIVE } from "../config.js";
 import { useI18n, LangToggle } from "../i18n.jsx";
 
 // เสียงจากคนใช้จริง — โชว์เฉพาะรีวิวที่แอดมินอนุมัติแล้ว (social proof)
@@ -75,12 +76,17 @@ export default function Landing() {
         <div className="wrap between" style={{ height: 60 }}>
           <div style={{ fontWeight: 800, fontSize: 18 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></div>
           <div className="row" style={{ gap: 14, alignItems: "center" }}>
-            <a href="#offer" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>{t("nav_promo")}</a>
-            <Link to="/account" className="link" style={{ fontSize: 14 }}>{t("nav_login")}</Link>
+            <a href="#offer" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>{t("nav_promo")}</a>
+            {/* สินค้าอื่นต้องโผล่บนหน้าแรกด้วย — หน้าแรกคือหน้าที่ลูกค้าเจอเยอะสุด ถ้าไม่มีตรงนี้ก็ไม่มีใครหาเจอ */}
+            {ACADEMY_LIVE && <Link to="/academy" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
+            {ACADEMY_LIVE && <Link to="/workshop" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
+            {ACADEMY_LIVE && <Link to="/plans" style={{ fontWeight: 800, fontSize: 13.5, color: "#0e7a63", background: "linear-gradient(135deg,#DFF3EC,#EAF8F3)", border: "1px solid #BFE5D8", borderRadius: 20, padding: "5px 13px", whiteSpace: "nowrap" }}>🩵 Club</Link>}
+            <Link to="/account" className="link" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{t("nav_login")}</Link>
             <LangToggle />
           </div>
         </div>
       </nav>
+      <style>{`@media (max-width: 560px){ .nav-hide-sm { display: none; } }`}</style>
 
       {/* 1. HERO — สะอาด มีพรีวิวสินค้า (สไตล์ Apple) */}
       <header className="center" style={{ background: "linear-gradient(180deg,var(--soft),#fff)", padding: "48px 0 0", overflow: "hidden" }}>

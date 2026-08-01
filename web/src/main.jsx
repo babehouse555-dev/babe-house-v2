@@ -40,10 +40,25 @@ function TopBar() {
     </div>
   );
 }
+// 🎮 ป้ายสนามเด็กเล่น — โผล่เฉพาะตอนเปิดที่ localhost (เครื่องตัวเอง) เท่านั้น
+// เว็บจริงไม่มีทางขึ้นป้ายนี้ เพราะเช็คจากชื่อโฮสต์ตอนเปิดหน้า
+const IS_PLAYGROUND = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+function PlaygroundBar() {
+  if (!IS_PLAYGROUND) return null;
+  return (
+    <div style={{
+      position: "sticky", top: 0, zIndex: 999, background: "repeating-linear-gradient(45deg,#7C5CE6,#7C5CE6 14px,#6a4fd0 14px,#6a4fd0 28px)",
+      color: "#fff", textAlign: "center", fontSize: 13.5, fontWeight: 800, padding: "7px 12px", letterSpacing: .2,
+    }}>
+      🎮 สนามเด็กเล่น — เครื่องของคิมเอง · ไม่ใช่เว็บจริง · ลูกค้าไม่เห็นหน้านี้
+    </div>
+  );
+}
+
 function Shell({ children }) {
   const loc = useLocation();
   // แสดงแถบบนทุกหน้า ยกเว้นหน้า Landing (ซึ่งมี nav ของตัวเอง)
-  return <>{loc.pathname !== "/" && <TopBar />}{children}</>;
+  return <><PlaygroundBar />{loc.pathname !== "/" && <TopBar />}{children}</>;
 }
 
 // 🔄 กู้อัตโนมัติเมื่อเว็บถูกอัปเดตระหว่างลูกค้าเปิดหน้าค้างอยู่

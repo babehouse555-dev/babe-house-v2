@@ -393,6 +393,27 @@ export default function Dashboard() {
                 </button>
               </div>
               <ScriptEditor script={script} scope="plan" refId={bpId} day={script.d} lang={lang} demo={demo} onChange={ns => updateScript(script.d, ns)} />
+
+              {/* 🎬 ไม่มีเวลาตัด — ให้ทีมทำให้ · สคริปต์นี้คือบรีฟ ลูกค้าไม่ต้องเขียนอะไรเพิ่มเลย
+                  คิมเคาะ 2 ส.ค.: ราคาเห็นเฉพาะคนที่มีเล่ม ไม่โชว์สาธารณะ */}
+              {!demo && (() => {
+                const cal = (bp.calendar || []).find(c => Number(c.d) === Number(script.d)) || {};
+                const brief = encodeURIComponent(JSON.stringify({ d: script.d, t: cal.t || title, h: cal.h || "" }));
+                const to = `/edit?clips=1&bp=${encodeURIComponent(bpId || "")}&cycle=${encodeURIComponent(cycle || "")}&day=${script.d}&brief=${brief}`;
+                return (
+                  <Link to={to} style={{ display: "flex", gap: 12, alignItems: "center", textDecoration: "none", color: "inherit",
+                    marginTop: 14, background: "linear-gradient(135deg,#F3EFFC,#FAF8FE)", border: "1px solid #DDD2F0", borderRadius: 14, padding: "13px 15px" }}>
+                    <span style={{ fontSize: 24 }}>🎬</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 800, fontSize: 14.5 }}>ไม่มีเวลาตัดคลิปนี้? ให้ทีมทำให้</span>
+                      <span className="muted" style={{ display: "block", fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
+                        ส่งฟุตเทจมา เดี๋ยวทีมตัดจากสคริปต์นี้ให้ — ไม่ต้องเขียนบรีฟ
+                      </span>
+                    </span>
+                    <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>ดูราคา →</span>
+                  </Link>
+                );
+              })()}
               {bp.compliance && <div style={{ background: "#FFF8E6", border: "1px solid #F0D98C", borderRadius: 14, padding: "13px 15px", marginTop: 12 }}>
                 <div style={{ fontWeight: 800, fontSize: 13.5, color: "#8a6d1a", display: "flex", gap: 7, alignItems: "flex-start" }}><span style={{ fontSize: 17, lineHeight: 1 }}>{bp.compliance.icon}</span><span>{bp.compliance.title}</span></div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 9 }}>

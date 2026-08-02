@@ -216,6 +216,45 @@ export async function initDb() {
       rows INTEGER,
       bytes INTEGER
     );
+    -- 🎬 ให้ทีมช่วยลงมือทำ — ลูกค้าสั่งตัดต่อจากสคริปต์ในแผนตัวเอง (คิมเคาะ 2026-08-02)
+    -- ขอบเขต: ตัดต่ออย่างเดียว · ลูกค้าส่งฟุตเทจ+เสียงมาเอง · ไม่รับถ่าย (งานถ่ายต้องคุยกับทีมแยก)
+    CREATE TABLE IF NOT EXISTS edit_orders (
+      order_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      blueprint_id TEXT,
+      billing_cycle TEXT,
+      script_day INTEGER,
+      brief_json TEXT,                 -- สคริปต์จากแผน = บรีฟ ลูกค้าไม่ต้องเขียนเอง
+      clips INTEGER DEFAULT 1,
+      price_per_clip INTEGER,
+      amount_satang INTEGER,
+      payment_status TEXT DEFAULT 'pending',
+      provider TEXT,
+      provider_session_id TEXT,
+      footage_url TEXT,
+      voice_url TEXT,
+      note TEXT,
+      status TEXT DEFAULT 'awaiting_files',
+      draft_url TEXT,
+      final_url TEXT,
+      revisions_used INTEGER DEFAULT 0,
+      assignee TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_edit_orders_email ON edit_orders(email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_edit_orders_status ON edit_orders(status, created_at);
+    CREATE TABLE IF NOT EXISTS edit_comments (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      author TEXT NOT NULL,            -- 'customer' | 'team'
+      author_name TEXT,
+      text TEXT NOT NULL,
+      at_time TEXT,                    -- เวลาในคลิปที่พูดถึง เช่น "0:12"
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_edit_comments_order ON edit_comments(order_id, created_at);
+
     -- 🗂️ ห้องทำงานของคิม — ทุกโปรเจคอยู่ที่เดียว ไอเดียมาตอนไหนก็ลงถูกที่
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,

@@ -98,6 +98,9 @@ export default function Admin() {
   return (
     <div className="wrap page-pad">
       <div className="between"><h1 className="page">ระบบหลังบ้าน</h1><button className="link" onClick={() => { localStorage.removeItem("babe_admin_key"); setAuthed(false); }} style={{ background: "none", border: 0 }}>ออกจากระบบ</button></div>
+      {/* 🎬 งานตัดต่อของลูกค้า — ทีมทำงานจากตรงนี้ */}
+      <EditOrdersPanel adminKey={key} />
+
       {/* ทางเข้าห้องทำงาน — ที่เดียวที่เห็นทุกโปรเจคพร้อมกัน */}
       <a href="/projects" style={{ display: "block", textDecoration: "none", color: "inherit", background: "linear-gradient(135deg,#EFE9FB,#F6F2FC)", border: "1px solid #DDD2F0", borderRadius: 14, padding: "14px 16px", margin: "4px 0 18px" }}>
         <div style={{ fontWeight: 800, fontSize: 15.5 }}>🗂️ ห้องทำงาน — โปรเจคทั้งหมด</div>
@@ -294,6 +297,55 @@ export default function Admin() {
         </table></div>
       </div>
 
+    </div>
+  );
+}
+
+// 🎬 แผงงานตัดต่อสำหรับทีม — เห็นงานเข้าใหม่ เปลี่ยนสถานะ แนบงาน มอบหมายคน
+function EditOrdersPanel({ adminKey }) {
+  const [d, setD] = useState(null);
+  const [draft, setDraft] = useState({});
+  const load = () => api("/api/admin/edit-orders", { adminKey }).then(setD).catch(() => {});
+  useEffect(() => { if (adminKey) load(); }, [adminKey]);   // eslint-disable-line
+  if (!d || !(d.orders || []).length) return null;
+  const open = d.orders.filter(o => o.status !== "done" && o.status !== "canceled");
+  const upd = async (id, body) => { await api("/api/admin/edit-order/update", { method: "POST", adminKey, body: { order_id: id, ...body } }); load(); };
+  return (
+    <div className="card" style={{ border: "1px solid #DDD2F0", background: "#FBFAFE" }}>
+      <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0, color: "#5a3fc0" }}>🎬 งานตัดต่อ ({open.length} งานที่ยังไม่จบ)</h3>
+        <span className="muted" style={{ fontSize: 12.5 }}>ทั้งหมด {d.orders.length} งาน</span>
+      </div>
+      {d.orders.slice(0, 15).map(o => (
+        <div key={o.order_id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+          <div className="between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
+            <b style={{ fontSize: 14 }}>{o.email} · {o.clips} คลิป · ฿{Number((o.amount_satang || 0) / 100).toLocaleString()}</b>
+            <span className="muted" style={{ fontSize: 12 }}>{String(o.created_at).slice(0, 10)}</span>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.9, marginBottom: 8 }}>
+            {o.footage_url ? <>🎞️ <a className="link" href={o.footage_url} target="_blank" rel="noreferrer">ฟุตเทจ</a> </> : <span style={{ color: "#C77700" }}>⏳ ยังไม่ส่งไฟล์ </span>}
+            {o.voice_url && <>· 🎙️ <a className="link" href={o.voice_url} target="_blank" rel="noreferrer">เสียง</a> </>}
+            {o.comments > 0 && <>· 💬 {o.comments} </>}
+            {o.revisions_used > 0 && <>· ✏️ แก้ไปแล้ว {o.revisions_used} ครั้ง </>}
+            {o.assignee && <>· 👤 {o.assignee}</>}
+          </div>
+          {o.note && <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>📝 {o.note}</div>}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={o.status} onChange={e => upd(o.order_id, { status: e.target.value })}
+              style={{ fontSize: 12.5, padding: "6px 9px", borderRadius: 9, border: "1px solid var(--border)" }}>
+              {Object.entries(d.statuses).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <input placeholder="ลิงก์งานที่ตัดเสร็จ" defaultValue={o.draft_url || ""}
+              onChange={e => setDraft(p => ({ ...p, [o.order_id]: e.target.value }))}
+              style={{ flex: "1 1 190px", fontSize: 12.5, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--border)" }} />
+            <input placeholder="คนรับงาน" defaultValue={o.assignee || ""}
+              onChange={e => setDraft(p => ({ ...p, ["a" + o.order_id]: e.target.value }))}
+              style={{ width: 110, fontSize: 12.5, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--border)" }} />
+            <button onClick={() => upd(o.order_id, { draft_url: draft[o.order_id], assignee: draft["a" + o.order_id], status: draft[o.order_id] ? "draft_sent" : undefined })}
+              style={{ background: "#5a3fc0", color: "#fff", border: 0, borderRadius: 9, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

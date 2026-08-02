@@ -2148,6 +2148,122 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // วิเคราะห์ใหม่ทั้งเล่ม (analysis + content) ด้วย prompt ล่าสุด — ใช้ตอนบทวิเคราะห์จับนิชผิด (เช่น เอาบริการ/เครื่องมือมาเป็นแนวคอนเทนต์). ใส่ focus_hint ชี้แนวคอนเทนต์จริงได้
 // ✏️ แก้ "ธีมเล่ม" อย่างเดียว — ไม่แตะสคริปต์/ปฏิทินที่ลูกค้าอาจใช้ไปแล้ว (ถูกกว่า+ปลอดภัยกว่า reanalyze ทั้งเล่ม)
 // ไม่ส่ง blueprint_id = กวาดทุกเล่มที่ธีมเป็น "ชื่อเอกสาร" แทนคำโปรยของช่องลูกค้า
+// ===== 🎬 ให้ทีมช่วยลงมือทำ (ตัดต่อจากแผนของลูกค้า) =====
+// ราคาคิมเคาะ 2026-08-02 — ยิ่งสั่งเยอะยิ่งถูกลง ไม่มีเพดาน · ต้นทุนฟรีแลนซ์ ~400/คลิป
+// ⛔ ไม่รับงานถ่ายในเว็บ (ตัวแปรเยอะ ตั้งราคาตายตัวแล้วขาดทุน) → มีปุ่มให้ทีมโทรกลับแทน
+const EDIT_TIERS = [
+  { min: 30, price: 1250 }, { min: 20, price: 1350 }, { min: 10, price: 1500 },
+  { min: 4, price: 1700 }, { min: 1, price: 1900 },
+];
+const editPrice = (n) => (EDIT_TIERS.find(t => Number(n) >= t.min) || EDIT_TIERS[EDIT_TIERS.length - 1]).price;
+const EDIT_FREE_REVISIONS = 2;
+const EDIT_STATUS = {
+  awaiting_files: "รอไฟล์จากคุณ", editing: "ทีมกำลังตัด", draft_sent: "ส่งงานให้ดูแล้ว",
+  revising: "กำลังแก้ตามคอมเมนต์", done: "เสร็จเรียบร้อย", canceled: "ยกเลิกแล้ว",
+};
+
+app.get("/api/edit/price", (req, res) => {
+  const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
+  res.json({ ok: true, clips: n, price_per_clip: editPrice(n), total: editPrice(n) * n, tiers: EDIT_TIERS, free_revisions: EDIT_FREE_REVISIONS });
+});
+
+// สั่งงาน — บรีฟมาจากสคริปต์ในแผนลูกค้าเอง ไม่ต้องเขียนใหม่
+app.post("/api/edit/order", rateLimit(30, M10), async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนสั่งงานนะคะ" });
+  const clips = Math.max(1, Math.min(200, Number(req.body?.clips) || 1));
+  const per = editPrice(clips), total = per * clips;
+  const id = uid("eo");
+  await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,note)
+    VALUES ($1,lower($2),$3,$4,$5,$6,$7,$8,$9,'pending','mock',$10)`,
+    [id, email, req.body?.blueprint_id || null, req.body?.billing_cycle || null,
+     req.body?.script_day != null ? Number(req.body.script_day) : null,
+     req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
+     clips, per, total * 100, String(req.body?.note || "").slice(0, 2000)]);
+  res.json({ ok: true, order_id: id, clips, price_per_clip: per, total });
+});
+
+// งานของฉัน
+app.get("/api/edit/my", async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+  const rows = await q(`SELECT * FROM edit_orders WHERE lower(email)=lower($1) ORDER BY created_at DESC`, [email]);
+  res.json({ ok: true, orders: rows.map(r => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status })), free_revisions: EDIT_FREE_REVISIONS });
+});
+app.get("/api/edit/order/:id", async (req, res) => {
+  const email = await authEmail(req);
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [String(req.params.id)]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const isTeam = isAdmin(req);
+  if (!isTeam && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+  const comments = await q(`SELECT * FROM edit_comments WHERE order_id=$1 ORDER BY created_at`, [o.order_id]);
+  res.json({ ok: true, order: { ...o, status_th: EDIT_STATUS[o.status] || o.status, brief: safeJson(o.brief_json) }, comments, free_revisions: EDIT_FREE_REVISIONS });
+});
+
+// ลูกค้าส่งลิงก์ฟุตเทจ/เสียง → เด้งให้ทีมรู้
+app.post("/api/edit/files", async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1 AND lower(email)=lower($2)`, [String(req.body?.order_id || ""), email]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const f = String(req.body?.footage_url || "").trim(), v = String(req.body?.voice_url || "").trim();
+  if (!/^https?:\/\//.test(f)) return res.status(400).json({ ok: false, error: "BAD_LINK", message: "ใส่ลิงก์ฟุตเทจให้ถูกต้องนะคะ (ขึ้นต้นด้วย http)" });
+  await run(`UPDATE edit_orders SET footage_url=$1, voice_url=$2, status=CASE WHEN status='awaiting_files' THEN 'editing' ELSE status END, updated_at=now() WHERE order_id=$3`,
+    [f, v || null, o.order_id]);
+  sendEmail(OPS_EMAIL, `🎬 ลูกค้าส่งไฟล์แล้ว — ${o.email}`, wrap(
+    `งาน <b>${o.order_id}</b> · ${o.clips} คลิป<br>ฟุตเทจ: ${f}<br>${v ? `เสียง: ${v}<br>` : ""}<br>${btn(`${appBaseUrl()}/admin`, "เปิดหลังบ้าน")}`)).catch(() => {});
+  res.json({ ok: true });
+});
+
+// คอมเมนต์ — ลูกค้าและทีมคุยกันในงานเดียวกัน
+app.post("/api/edit/comment", async (req, res) => {
+  const orderId = String(req.body?.order_id || "");
+  const text = String(req.body?.text || "").trim();
+  if (!orderId || !text) return res.status(400).json({ ok: false, error: "MISSING" });
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [orderId]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const team = isAdmin(req);
+  const email = team ? null : await authEmail(req);
+  if (!team && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+  await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,at_time) VALUES ($1,$2,$3,$4,$5,$6)`,
+    [uid("ec"), orderId, team ? "team" : "customer", team ? "ทีม Babe House" : (email || ""), text.slice(0, 3000), String(req.body?.at_time || "").slice(0, 12) || null]);
+  // ลูกค้าคอมเมนต์ตอนงานส่งมาแล้ว = ขอแก้ → นับรอบแก้ + เด้งทีม
+  if (!team && o.status === "draft_sent") {
+    await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1, updated_at=now() WHERE order_id=$1`, [orderId]);
+    sendEmail(OPS_EMAIL, `💬 ลูกค้าขอแก้งาน — ${o.email}`, wrap(
+      `งาน <b>${orderId}</b> · แก้ครั้งที่ ${Number(o.revisions_used) + 1} (ฟรี ${EDIT_FREE_REVISIONS} ครั้ง)<br><br>“${text.slice(0, 300)}”<br><br>${btn(`${appBaseUrl()}/admin`, "เปิดหลังบ้าน")}`)).catch(() => {});
+  }
+  res.json({ ok: true });
+});
+
+// ลูกค้ากดรับงาน
+app.post("/api/edit/approve", async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1 AND lower(email)=lower($2)`, [String(req.body?.order_id || ""), email]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  await run(`UPDATE edit_orders SET status='done', final_url=COALESCE(draft_url, final_url), updated_at=now() WHERE order_id=$1`, [o.order_id]);
+  res.json({ ok: true });
+});
+
+// ===== หลังบ้านทีม =====
+app.get("/api/admin/edit-orders", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const rows = await q(`SELECT * FROM edit_orders ORDER BY (status='done'), created_at DESC`);
+  const cs = await q(`SELECT order_id, COUNT(*) n FROM edit_comments GROUP BY order_id`);
+  const cmap = Object.fromEntries(cs.map(c => [c.order_id, Number(c.n)]));
+  res.json({ ok: true, orders: rows.map(r => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status, comments: cmap[r.order_id] || 0 })), statuses: EDIT_STATUS });
+});
+app.post("/api/admin/edit-order/update", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || "");
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [id]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const st = EDIT_STATUS[req.body?.status] ? req.body.status : o.status;
+  await run(`UPDATE edit_orders SET status=$1, draft_url=COALESCE($2,draft_url), assignee=COALESCE($3,assignee), updated_at=now() WHERE order_id=$4`,
+    [st, req.body?.draft_url || null, req.body?.assignee || null, id]);
+  res.json({ ok: true });
+});
 // ===== 🗂️ ห้องทำงาน: ทุกโปรเจคอยู่ที่เดียว =====
 app.get("/api/admin/projects", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

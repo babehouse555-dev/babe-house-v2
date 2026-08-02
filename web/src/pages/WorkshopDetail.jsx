@@ -76,17 +76,35 @@ export default function WorkshopDetail() {
               <p style={{ fontSize: 14.5, lineHeight: 1.9, margin: 0, whiteSpace: "pre-wrap" }}>{w.what_you_get}</p>
             </div>}
 
+            {/* 🎬 รีวิวจากคนที่เรียนจริง — คิมบอก 2 ส.ค. "คลิปรีวิวของเพื่อนๆ ทำให้นักเรียนตัดสินใจง่ายขึ้นอีก"
+                เดิมเป็นลิงก์ตัวหนังสือ ไม่มีใครกด → ทำเป็นการ์ดทรงรีลให้เห็นว่าเป็นคลิป */}
             {d.showcase?.length > 0 && <div className="card" style={{ borderRadius: 16 }}>
-              <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>รีวิวจากคนที่เรียนจริง</h3>
-              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>{d.showcase.length} คลิป</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 8 }}>
+              <h3 style={{ fontSize: 16, margin: "0 0 3px" }}>🎬 รีวิวจากคนที่เรียนจริง</h3>
+              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 13px" }}>
+                {d.showcase.length} คลิป · กดดูได้เลย เปิดใน Instagram
+              </p>
+              <div className="rv-row">
                 {d.showcase.map((s, i) => (
-                  <a key={i} className="link" href={s.url} target="_blank" rel="noreferrer"
-                     style={{ border: "1px solid var(--border)", borderRadius: 12, padding: "12px 14px", textDecoration: "none", fontSize: 13.5, fontWeight: 700 }}>
-                    ▶️ {s.caption || `รีวิวที่ ${i + 1}`}
+                  <a key={i} className="rv" href={s.url} target="_blank" rel="noreferrer">
+                    <span className="rv-play">▶</span>
+                    <span className="rv-tag">รีวิวที่ {i + 1}</span>
+                    {s.caption && <span className="rv-cap">{s.caption}</span>}
                   </a>
                 ))}
               </div>
+              <style>{`
+                .rv-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+                .rv { position: relative; flex: 0 0 auto; width: 116px; aspect-ratio: 9/16; border-radius: 13px; overflow: hidden;
+                  text-decoration: none; scroll-snap-align: start; display: flex; flex-direction: column;
+                  align-items: center; justify-content: center; gap: 7px;
+                  background: linear-gradient(140deg,#F9CE34 0%,#EE2A7B 46%,#6228D7 100%);
+                  box-shadow: 0 3px 10px rgba(90,40,120,.20); transition: transform .16s, box-shadow .16s; }
+                .rv:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(90,40,120,.30); }
+                .rv-play { width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.94);
+                  color: #EE2A7B; font-size: 15px; display: flex; align-items: center; justify-content: center; padding-left: 3px; }
+                .rv-tag { color: #fff; font-size: 12px; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.28); }
+                .rv-cap { color: rgba(255,255,255,.92); font-size: 10.5px; padding: 0 8px; text-align: center; line-height: 1.4; }
+              `}</style>
             </div>}
           </div>
 

@@ -251,6 +251,7 @@ export async function initDb() {
       author_name TEXT,
       text TEXT NOT NULL,
       at_time TEXT,                    -- เวลาในคลิปที่พูดถึง เช่น "0:12"
+      is_auto INTEGER DEFAULT 0,       -- ข้อความตอบรับอัตโนมัติ (ไม่ใช่คนพิมพ์)
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_edit_comments_order ON edit_comments(order_id, created_at);

@@ -29,27 +29,30 @@ export function SectionHead({ icon, title, count, right }) {
 export default function MyLearning({ channelCount = 0, bookCount = 0, only = null, onCounts = null }) {
   const [courses, setCourses] = useState([]);
   const [certs, setCerts] = useState([]);
+  const [edits, setEdits] = useState([]);   // 🎬 งานที่สั่งให้ทีมตัด
   const [ws, setWs] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!ACADEMY_LIVE || !session.token) return;
+    if (!session.token) return;
     const t = session.token;
     Promise.allSettled([
-      api("/api/academy/my-courses", { token: t }),
-      api("/api/academy/my-certificates", { token: t }),
-      api("/api/workshops/my", { token: t }),
-    ]).then(([a, b, c]) => {
+      ACADEMY_LIVE ? api("/api/academy/my-courses", { token: t }) : Promise.reject(),
+      ACADEMY_LIVE ? api("/api/academy/my-certificates", { token: t }) : Promise.reject(),
+      ACADEMY_LIVE ? api("/api/workshops/my", { token: t }) : Promise.reject(),
+      api("/api/edit/my", { token: t }),           // 🎬 งานตัดต่อ — เปิดให้ทุกคนที่มีเล่ม ไม่ผูกกับสวิตช์ Academy
+    ]).then(([a, b, c, e]) => {
       if (a.status === "fulfilled") setCourses(a.value.courses || []);
       if (b.status === "fulfilled") setCerts(b.value.certificates || []);
       if (c.status === "fulfilled") setWs(c.value.bookings || []);
+      if (e.status === "fulfilled") setEdits(e.value.orders || []);
       setLoaded(true);
     });
   }, []);
 
   // บอกหน้าบัญชีว่ามีของกี่ชิ้นในแต่ละหมวด เพื่อไปทำเลขบนโฟลเดอร์
-  useEffect(() => { if (loaded && onCounts) onCounts({ courses: courses.length, certs: certs.length, ws: ws.length }); }, [loaded, courses.length, certs.length, ws.length]);   // eslint-disable-line
-  if (!loaded || (!courses.length && !certs.length && !ws.length)) return null;
+  useEffect(() => { if (loaded && onCounts) onCounts({ courses: courses.length, certs: certs.length, ws: ws.length, edits: edits.length }); }, [loaded, courses.length, certs.length, ws.length, edits.length]);   // eslint-disable-line
+  if (!loaded || (!courses.length && !certs.length && !ws.length && !edits.length)) return null;
   const show = (k) => !only || only === k;
 
   const now = new Date();
@@ -111,6 +114,27 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
               </Link>
             ))}
           </div>
+        </div>
+      </>}
+
+      {/* 🎬 งานที่สั่งให้ทีมตัด — คิมขอ 2 ส.ค. ให้อยู่ในบัญชีเดียวกัน ไม่แยกหน้า */}
+      {show("edit") && edits.length > 0 && <>
+        <SectionHead icon="🎬" title="งานที่ทีมกำลังทำให้" count={edits.length}
+          right={<Link className="link" to="/edit" style={{ fontSize: 13 }}>สั่งงานเพิ่ม →</Link>} />
+        <div className="card" style={{ marginTop: 0 }}>
+          {edits.map(o => (
+            <Link key={o.order_id} to={`/edit/${o.order_id}`}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap",
+                padding: "12px 0", borderTop: "1px solid var(--border)", textDecoration: "none", color: "inherit" }}>
+              <span>
+                <span style={{ fontWeight: 700, fontSize: 14.5, display: "block" }}>{o.clips} คลิป · ฿{Number((o.amount_satang || 0) / 100).toLocaleString()}</span>
+                <span className="muted" style={{ fontSize: 12.5 }}>สั่งเมื่อ {new Date(o.created_at).toLocaleDateString("th-TH", { dateStyle: "medium" })}</span>
+              </span>
+              <span style={{ fontSize: 12.5, fontWeight: 800, borderRadius: 20, padding: "5px 12px",
+                background: o.status === "done" ? "#E8F5EE" : o.status === "awaiting_files" ? "#FDF3E4" : "#F3EFFC",
+                color: o.status === "done" ? "#1a7f43" : o.status === "awaiting_files" ? "#C77700" : "#7C5CE6" }}>{o.status_th}</span>
+            </Link>
+          ))}
         </div>
       </>}
 

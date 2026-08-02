@@ -2227,6 +2227,24 @@ app.post("/api/edit/comment", async (req, res) => {
   if (!team && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
   await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,at_time) VALUES ($1,$2,$3,$4,$5,$6)`,
     [uid("ec"), orderId, team ? "team" : "customer", team ? "ทีม Babe House" : (email || ""), text.slice(0, 3000), String(req.body?.at_time || "").slice(0, 12) || null]);
+
+  // 🤖 ตอบรับอัตโนมัติทันที — ลูกค้าจะได้ไม่รู้สึกว่าพิมพ์ไปแล้วเงียบ
+  // ⚠️ ตั้งใจใช้ข้อความคงที่ ไม่ใช้ AI แต่งเอง: AI อาจเผลอสัญญาเวลาส่งงานหรือตอบคำถามผิดแทนทีม
+  // ไม่ตอบซ้ำถ้าข้อความก่อนหน้าเป็นตัวตอบอัตโนมัติอยู่แล้ว (ลูกค้าพิมพ์รัวๆ จะได้ไม่รก)
+  if (!team) {
+    const last = await one(`SELECT author, is_auto FROM edit_comments WHERE order_id=$1 ORDER BY created_at DESC OFFSET 1 LIMIT 1`, [orderId]);
+    if (!(last && Number(last.is_auto) === 1)) {
+      const ACK = {
+        awaiting_files: "รับเรื่องแล้วค่ะ 🩵 ทีมเห็นข้อความแล้วนะคะ — พอส่งลิงก์ฟุตเทจเข้ามา ทีมจะเริ่มตัดให้เลยค่ะ",
+        editing: "รับเรื่องแล้วค่ะ 🩵 ทีมกำลังตัดงานของคุณอยู่ เดี๋ยวมีความคืบหน้าจะแจ้งให้ทราบนะคะ",
+        draft_sent: "รับเรื่องแล้วค่ะ 🩵 ทีมจะแก้ให้ตามที่บอกเลยนะคะ เดี๋ยวส่งกลับมาให้ดูใหม่ค่ะ",
+        revising: "รับเรื่องเพิ่มแล้วค่ะ 🩵 ทีมจะรวมแก้ไปพร้อมกันในรอบนี้เลยนะคะ",
+        done: "รับเรื่องแล้วค่ะ 🩵 งานนี้ปิดไปแล้ว เดี๋ยวทีมอ่านแล้วติดต่อกลับนะคะ",
+      };
+      await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
+        [uid("ec"), orderId, ACK[o.status] || ACK.editing]);
+    }
+  }
   // ลูกค้าคอมเมนต์ตอนงานส่งมาแล้ว = ขอแก้ → นับรอบแก้ + เด้งทีม
   if (!team && o.status === "draft_sent") {
     await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1, updated_at=now() WHERE order_id=$1`, [orderId]);

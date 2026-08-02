@@ -21,7 +21,7 @@ export default function Account() {
   const [expanded, setExpanded] = useState({}); // ช่องไหนกางอยู่ (accordion) — หลายช่องจะพับไว้ กันหน้ายาว
   const [chQ, setChQ] = useState("");
   const [folder, setFolder] = useState("plan");            // 🗂️ โฟลเดอร์ที่เปิดอยู่
-  const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0 }); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
+  const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0, edits: 0 }); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
@@ -90,13 +90,14 @@ export default function Account() {
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">{t("ac_books_of_pre")} <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>{t("ac_logout")}</button></div>
         {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
             โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
-        {[(data.channels || []).length, counts.courses, counts.certs, counts.ws].filter(n => n > 0).length > 1 && (
+        {[(data.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits].filter(n => n > 0).length > 1 && (
           <div className="fld-row">
             {[
               { key: "plan", icon: "📘", label: "แผนคอนเทนต์", pastel: "#C7DEF0", deep: "#A9CCE6", n: (data.channels || []).length },
               { key: "course", icon: "🎓", label: "คอร์สเรียน", pastel: "#DDCCEE", deep: "#C9B4E3", n: counts.courses },
               { key: "cert", icon: "🏆", label: "ประกาศนียบัตร", pastel: "#C6DBCB", deep: "#AECBB6", n: counts.certs },
               { key: "ws", icon: "🎟️", label: "คลาสสด", pastel: "#F3D6B6", deep: "#E9C398", n: counts.ws },
+              { key: "edit", icon: "🎬", label: "งานตัดต่อ", pastel: "#E4D6F0", deep: "#D0BCE6", n: counts.edits },
             ].filter(f => f.n > 0).map(f => {
               const on = f.key === folder;
               return (
@@ -128,7 +129,7 @@ export default function Account() {
         {(data.channels || []).length === 0 && (data.pending || []).length === 0 && <div className="card center muted">{t("ac_no_books")}</div>}
 
         {/* หัวข้อหมวดแบบเดียวกับคอร์ส/ใบประกาศ/คลาสสด — ให้ทั้งหน้าอ่านเป็นระบบเดียว ไม่ใช่ของแปะกัน */}
-        {(![(data.channels || []).length, counts.courses, counts.certs, counts.ws].filter(n => n > 0).length > 1 || folder === "plan") && <>
+        {(![(data.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits].filter(n => n > 0).length > 1 || folder === "plan") && <>
         {(data.channels || []).length > 0 && <SectionHead icon="📘" title="แผนคอนเทนต์ของฉัน" count={(data.channels || []).length + " ช่อง"} />}
         {(() => { const chs = data.channels || []; const singleCh = chs.length === 1;
           const q = chQ.trim().toLowerCase();
@@ -180,7 +181,7 @@ export default function Account() {
         <MyLearning
           channelCount={(data.channels || []).length}
           bookCount={(data.channels || []).reduce((a, ch) => a + (ch.months || []).length, 0)}
-          only={[(data.channels || []).length, counts.courses, counts.certs, counts.ws].filter(n => n > 0).length > 1 ? folder : null}
+          only={[(data.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits].filter(n => n > 0).length > 1 ? folder : null}
           onCounts={setCounts}
         />
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>

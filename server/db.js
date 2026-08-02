@@ -247,6 +247,19 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_edit_orders_email ON edit_orders(email, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_edit_orders_status ON edit_orders(status, created_at);
+    -- 🎟️ ประวัติการซื้อเครดิตตัดต่อ (1 เครดิต = ตัด 1 คลิป · ซื้อเยอะราคาต่อคลิปถูกลง)
+    CREATE TABLE IF NOT EXISTS edit_credit_purchases (
+      purchase_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      credits INTEGER NOT NULL,
+      price_per_clip INTEGER,
+      amount_satang INTEGER,
+      payment_status TEXT DEFAULT 'pending',
+      provider TEXT,
+      provider_session_id TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_edit_credit_email ON edit_credit_purchases(email, created_at DESC);
     CREATE TABLE IF NOT EXISTS edit_comments (
       id TEXT PRIMARY KEY,
       order_id TEXT NOT NULL,
@@ -545,6 +558,11 @@ export async function initDb() {
     UPDATE blueprints SET activation_reminded_at=now() WHERE blueprint_id='bp_0132d190-6cf9-42c2-ba4a-a825a75c8d31' AND activation_reminded_at IS NULL;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 0;
     ALTER TABLE blueprint_orders ADD COLUMN IF NOT EXISTS credits_granted BOOLEAN DEFAULT false;
+    -- 🎬 เครดิตตัดต่อ — คนละถังกับ credits (ซึ่งใช้กับ "เพิ่มสคริปต์")
+    -- คิมเคาะ 2 ส.ค.: ซื้อเครดิตไว้ก่อน แล้วค่อยเดินดูตาราง 30 วันว่าจะให้ทีมตัดวันไหน
+    -- (เดิมบังคับเลือกจำนวนคลิปตอนซื้อ ทั้งที่บรีฟมีวันเดียว → ลูกค้างงว่าอีก 29 คลิปคืออะไร)
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS edit_credits INTEGER DEFAULT 0;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS paid_by TEXT;   -- 'credit' = หักจากเครดิตที่ซื้อไว้
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_data TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_mime TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS context TEXT;

@@ -43,6 +43,31 @@ export default function Dashboard() {
   useEffect(() => { if (genState !== "generating") { setGenElapsed(0); return; } const iv = setInterval(() => setGenElapsed(e => e + 1), 1000); return () => clearInterval(iv); }, [genState]);
   const [snapEdits, setSnapEdits] = useState({}); // แก้ค่า 6 ช่องตรงๆ (index→value ใหม่) ไม่ต้องเจนใหม่
   const [editTile, setEditTile] = useState(null);  // ช่องที่กำลังแก้
+  // 🎟️ เครดิตตัดต่อ: เหลือกี่คลิป + วันไหนสั่งให้ทีมตัดไปแล้ว
+  const [editCredits, setEditCredits] = useState(0);
+  const [editDays, setEditDays] = useState(new Set());
+  const [usingCredit, setUsingCredit] = useState(false);
+  const loadEditCredits = () => {
+    if (demo || !session.token || !bpId) return;
+    api(`/api/edit/credits?blueprint_id=${encodeURIComponent(bpId)}`, { token: session.token })
+      .then(d => { setEditCredits(Number(d.credits || 0)); setEditDays(new Set((d.used_days || []).map(x => Number(x.day)))); })
+      .catch(() => {});
+  };
+  useEffect(loadEditCredits, [bpId, demo]);   // eslint-disable-line
+  // ให้ทีมตัดคลิปของวันนี้ — หัก 1 เครดิต บรีฟใช้สคริปต์วันนั้นเอง
+  async function useEditCredit(day) {
+    if (usingCredit) return;
+    const cal = (bp.calendar || []).find(c => Number(c.d) === Number(day)) || {};
+    if (!window.confirm(`ให้ทีมครูพี่คิมตัดคลิปวันที่ ${day} ใช่ไหมคะ\n\n"${cal.t || ""}"\n\nจะหักเครดิตตัดต่อ 1 คลิป (เหลือ ${editCredits - 1} คลิป)`)) return;
+    setUsingCredit(true);
+    try {
+      await api("/api/edit/use-credit", { method: "POST", token: session.token, body: {
+        blueprint_id: bpId, billing_cycle: cycle, script_day: day, brief: { d: day, t: cal.t || "", h: cal.h || "" } } });
+      loadEditCredits();
+      alert(`รับงานวันที่ ${day} แล้วค่ะ 🎬\n\nส่งฟุตเทจให้ทีมได้ที่หน้า "งานตัดต่อของฉัน" ในบัญชีของคุณนะคะ`);
+    } catch (e) { alert(e.message || "ไม่สำเร็จ ลองใหม่นะคะ"); }
+    finally { setUsingCredit(false); }
+  }
   const latestUrl = `/api/blueprints/latest?user_id=${encodeURIComponent(userId || "")}&billing_cycle=${encodeURIComponent(cycle || "")}&blueprint_id=${encodeURIComponent(bpId || "")}`;
 
   // สเต็ป 2: ลูกค้ายืนยันบทวิเคราะห์แม่น → สร้างปฏิทิน + 30 สคริปต์ (เจนเบื้องหลัง + poll จนเสร็จ)
@@ -364,11 +389,28 @@ export default function Dashboard() {
               <button onClick={exportXLSX} disabled={exporting} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#1a7f43", color: "#fff", border: 0, borderRadius: 10, padding: "9px 15px", fontSize: 13.5, fontWeight: 700, cursor: exporting ? "default" : "pointer", opacity: exporting ? .6 : 1 }}>{exporting ? t("db_building_file") : t("db_download_excel")}</button>
             </div>
           </div>}
+          {/* 🎟️ เครดิตตัดต่อ — เห็นตลอดว่าเหลือกี่คลิป และวันไหนสั่งทีมตัดไปแล้ว
+              คิมเคาะ 2 ส.ค.: ซื้อเครดิตไว้ก่อน แล้วเดินดูตารางเลือกเองว่าจะให้ทีมตัดวันไหน */}
+          {!demo && (editCredits > 0 || editDays.size > 0) && (
+            <div className="card" style={{ marginTop: 0, marginBottom: 12, background: "#F5F1FD", border: "1px solid #DDD2F0", padding: "12px 15px" }}>
+              <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+                <span style={{ fontWeight: 800, fontSize: 14 }}>
+                  🎬 เครดิตตัดต่อคงเหลือ <span style={{ color: "var(--blue)" }}>{editCredits} คลิป</span>
+                  {editDays.size > 0 && <span className="muted" style={{ fontWeight: 500 }}> · สั่งทีมตัดแล้ว {editDays.size} วัน</span>}
+                </span>
+                <Link className="link" to="/edit" style={{ fontSize: 13, fontWeight: 700 }}>ซื้อเครดิตเพิ่ม →</Link>
+              </div>
+              {editCredits > 0 && <div className="muted" style={{ fontSize: 12.5, marginTop: 5, lineHeight: 1.6 }}>
+                แตะวันไหนก็ได้ในตาราง แล้วกด “ให้ทีมตัดวันนี้” ได้เลยค่ะ
+              </div>}
+            </div>
+          )}
           <div ref={calRef} style={{ scrollMarginTop: 70, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10, marginBottom: 18 }}>
-            {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
+            {(bp.calendar || []).map(c => { const done = uploaded.has(c.d); const edited = editDays.has(c.d); return <button key={c.d} onClick={() => selectDay(c.d)} style={{ border: sel === c.d ? "2px solid var(--blue)" : done ? "1.5px solid #4caf7d" : "1px solid var(--border)", borderRadius: 12, padding: 12, background: done ? "#e8f5ee" : sel === c.d ? "#EAF3FD" : "#fff", cursor: "pointer", textAlign: "left" }}>
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}{t("db_day")} {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
               <div style={{ fontSize: 10, color: G_COLORS[c.g] || "var(--muted)", fontWeight: 700, margin: "2px 0 5px" }}>{G_LABEL[c.g] || c.g}</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", color: done ? "#1a7f43" : "inherit" }}>{c.t}</div>
+              {edited && <div style={{ marginTop: 6, fontSize: 10.5, fontWeight: 800, color: "#6E63A6", background: "#F0EBFA", borderRadius: 20, padding: "3px 8px", display: "inline-block" }}>🎬 ทีมกำลังตัด</div>}
             </button>; })}
           </div>
           {script && (() => {
@@ -398,16 +440,46 @@ export default function Dashboard() {
                   คิมเคาะ 2 ส.ค.: ราคาเห็นเฉพาะคนที่มีเล่ม ไม่โชว์สาธารณะ */}
               {!demo && (() => {
                 const cal = (bp.calendar || []).find(c => Number(c.d) === Number(script.d)) || {};
-                const brief = encodeURIComponent(JSON.stringify({ d: script.d, t: cal.t || title, h: cal.h || "" }));
-                const to = `/edit?clips=1&bp=${encodeURIComponent(bpId || "")}&cycle=${encodeURIComponent(cycle || "")}&day=${script.d}&brief=${brief}`;
+                const ordered = editDays.has(Number(script.d));
+                const box = { display: "flex", gap: 12, alignItems: "center", textDecoration: "none", color: "inherit",
+                  marginTop: 14, borderRadius: 14, padding: "13px 15px", width: "100%", textAlign: "left" };
+
+                // สั่งไปแล้ว = บอกสถานะ ไม่ต้องชวนซื้ออีก
+                if (ordered) return (
+                  <Link to="/edit" style={{ ...box, background: "#F2F7F3", border: "1px solid #cfe3d6" }}>
+                    <span style={{ fontSize: 24 }}>✅</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 800, fontSize: 14.5 }}>สั่งให้ทีมตัดคลิปนี้แล้ว</span>
+                      <span className="muted" style={{ display: "block", fontSize: 12.5, marginTop: 2 }}>ส่งฟุตเทจให้ทีมได้ที่หน้างานตัดต่อ</span>
+                    </span>
+                    <span style={{ color: "#1a7f43", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>ดูงาน →</span>
+                  </Link>
+                );
+
+                // มีเครดิตอยู่แล้ว = กดใช้ได้เลย ไม่ต้องไปหน้าจ่ายเงินอีก
+                if (editCredits > 0) return (
+                  <button type="button" onClick={() => useEditCredit(script.d)} disabled={usingCredit}
+                    style={{ ...box, background: "linear-gradient(135deg,#F3EFFC,#FAF8FE)", border: "1px solid #DDD2F0", cursor: usingCredit ? "default" : "pointer", fontFamily: "inherit" }}>
+                    <span style={{ fontSize: 24 }}>🎬</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 800, fontSize: 14.5 }}>ให้ทีมตัดคลิปนี้</span>
+                      <span className="muted" style={{ display: "block", fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
+                        ใช้เครดิต 1 คลิป (เหลือ {editCredits}) · ทีมตัดจากสคริปต์นี้ให้ ไม่ต้องเขียนบรีฟ
+                      </span>
+                    </span>
+                    <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>{usingCredit ? "กำลังส่ง…" : "ใช้เครดิต →"}</span>
+                  </button>
+                );
+
+                // ยังไม่มีเครดิต = ชวนไปซื้อ
                 return (
-                  <Link to={to} style={{ display: "flex", gap: 12, alignItems: "center", textDecoration: "none", color: "inherit",
-                    marginTop: 14, background: "linear-gradient(135deg,#F3EFFC,#FAF8FE)", border: "1px solid #DDD2F0", borderRadius: 14, padding: "13px 15px" }}>
+                  <Link to={`/edit?bp=${encodeURIComponent(bpId || "")}&cycle=${encodeURIComponent(cycle || "")}`}
+                    style={{ ...box, background: "linear-gradient(135deg,#F3EFFC,#FAF8FE)", border: "1px solid #DDD2F0" }}>
                     <span style={{ fontSize: 24 }}>🎬</span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontWeight: 800, fontSize: 14.5 }}>ไม่มีเวลาตัดคลิปนี้? ให้ทีมทำให้</span>
                       <span className="muted" style={{ display: "block", fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
-                        ส่งฟุตเทจมา เดี๋ยวทีมตัดจากสคริปต์นี้ให้ — ไม่ต้องเขียนบรีฟ
+                        ซื้อเครดิตตัดต่อไว้ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง
                       </span>
                     </span>
                     <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>ดูราคา →</span>

@@ -30,19 +30,26 @@ export default function EditOrder() {
   const [msg, setMsg] = useState("");
   const brief = (() => { try { return JSON.parse(decodeURIComponent(sp.get("brief") || "")); } catch { return null; } })();
 
-  const load = () => { if (session.token) api("/api/edit/my", { token: session.token }).then(d => setOrders(d.orders || [])).catch(() => {}); };
+  const [credits, setCredits] = useState(0);
+  const load = () => {
+    if (!session.token) return;
+    api("/api/edit/my", { token: session.token }).then(d => setOrders(d.orders || [])).catch(() => {});
+    api("/api/edit/credits", { token: session.token }).then(d => setCredits(Number(d.credits || 0))).catch(() => {});
+  };
   useEffect(() => { api(`/api/edit/price?clips=${clips}`).then(setPrice).catch(() => {}); }, [clips]);
   useEffect(load, []);   // eslint-disable-line
 
+  // 🎟️ ซื้อเครดิตตัดต่อ — ไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน ไปเลือกในตาราง 30 วันทีหลัง
+  // (คิมเคาะ 2 ส.ค.: เดิมบังคับเลือกจำนวนคลิปพร้อมบรีฟวันเดียว ลูกค้างงว่าอีก 29 คลิปคืออะไร)
   async function order() {
-    if (!session.token) { setMsg("เข้าสู่ระบบก่อนสั่งงานนะคะ"); return; }
+    if (!session.token) { setMsg("เข้าสู่ระบบก่อนนะคะ"); return; }
     setBusy(true); setMsg("");
     try {
-      await api("/api/edit/order", { method: "POST", token: session.token, body: {
-        clips, note, brief, ref_links: refLinks, ref_picks: picks, blueprint_id: sp.get("bp") || undefined,
-        billing_cycle: sp.get("cycle") || undefined, script_day: sp.get("day") || undefined } });
-      setMsg("รับงานแล้วค่ะ 🎉 ส่งลิงก์ฟุตเทจให้ทีมได้เลยด้านล่าง"); setNote(""); setRefLinks(""); setPicks([]); load();
-    } catch (e) { setMsg(e.message || "สั่งงานไม่สำเร็จ"); }
+      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips } });
+      setCredits(Number(r.credits || 0));
+      setMsg(`ได้เครดิตตัดต่อ ${clips} คลิปแล้วค่ะ 🎉 เปิดเล่มของคุณ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง`);
+      setNote(""); setRefLinks(""); setPicks([]); load();
+    } catch (e) { setMsg(e.message || "ไม่สำเร็จ ลองใหม่นะคะ"); }
     finally { setBusy(false); }
   }
 
@@ -51,19 +58,27 @@ export default function EditOrder() {
       <div className="brand">BABE HOUSE · PRODUCTION</div>
       <h1 className="page" style={{ marginBottom: 4 }}>ให้ทีมช่วยลงมือทำ</h1>
       <p className="sub" style={{ marginBottom: 20 }}>
-        มีแผนแล้วแต่ไม่มีเวลาตัด — ส่งฟุตเทจมา เดี๋ยวทีมครูพี่คิมตัดให้จากสคริปต์ในแผนของคุณเอง
+        มีแผนแล้วแต่ไม่มีเวลาตัด — ซื้อเครดิตตัดต่อไว้ แล้วเปิดเล่มเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง
       </p>
 
-      {brief && (
-        <div className="card" style={{ marginTop: 0, background: "#F4F8FD", border: "1px solid #d6e7fa" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--blue)", marginBottom: 4 }}>📋 บรีฟจากแผนของคุณ — ไม่ต้องเขียนเอง</div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>วันที่ {brief.d} · {brief.t || brief.title || ""}</div>
-          {brief.h && <div className="muted" style={{ fontSize: 13.5, marginTop: 4, lineHeight: 1.6 }}>ฮุก: {brief.h}</div>}
+      {/* เครดิตคงเหลือ — เห็นทันทีว่ามีสิทธิ์ค้างอยู่กี่คลิป */}
+      {credits > 0 && (
+        <div className="card" style={{ marginTop: 0, background: "#F5F1FD", border: "1px solid #DDD2F0" }}>
+          <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 15 }}>🎬 คุณมีเครดิตตัดต่อ <span style={{ color: "var(--blue)" }}>{credits} คลิป</span></span>
+            <Link className="link" to="/account" style={{ fontSize: 13.5, fontWeight: 700 }}>เปิดเล่มไปเลือกวัน →</Link>
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 5, lineHeight: 1.6 }}>
+            เข้าเล่มของคุณ → แท็บคอนเทนต์ → แตะวันที่อยากให้ทีมตัด แล้วกด “ให้ทีมตัดคลิปนี้” ได้เลยค่ะ
+          </div>
         </div>
       )}
 
-      <div className="card" style={{ marginTop: brief ? 12 : 0 }}>
-        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>อยากให้ตัดกี่คลิป?</div>
+      <div className="card" style={{ marginTop: credits > 0 ? 12 : 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>ซื้อเครดิตตัดต่อกี่คลิปดีคะ?</div>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
+          1 เครดิต = ตัดให้ 1 คลิป · ยังไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน · ซื้อเยอะราคาต่อคลิปถูกลง
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           {PACKS.map(n => (
             <button key={n} onClick={() => setClips(n)}
@@ -117,7 +132,7 @@ export default function EditOrder() {
           placeholder="อยากบอกทีมอะไรเพิ่มไหมคะ เช่น เพลงที่อยากได้ สิ่งที่ไม่ชอบ (ไม่มีก็เว้นว่างได้)"
           style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "11px 13px", borderRadius: 12, border: "1px solid var(--border)", fontFamily: "inherit", marginBottom: 12 }} />
 
-        <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…" : `สั่งงาน ${clips} คลิป · ${money(price?.total)}`}</button>
+        <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…" : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
         {price?.eta_if_send_now && (

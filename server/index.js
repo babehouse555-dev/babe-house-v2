@@ -2353,6 +2353,64 @@ app.get("/api/edit/price", (req, res) => {
     eta_if_send_now: thDate(addWorkDays(new Date(), leadDaysFor(n))) });
 });
 
+// ===== 🎟️ เครดิตตัดต่อ — ซื้อไว้ก่อน แล้วค่อยเลือกว่าจะให้ทีมตัดวันไหนในตาราง 30 วัน =====
+// คิมเคาะ 2 ส.ค.: "น่าจะซื้อเครดิตตัดต่อ แล้วมาเลือกว่าจะให้เค้าตัดคลิปไหน"
+// เดิมบังคับเลือกจำนวนคลิปตอนสั่ง ทั้งที่บรีฟมีวันเดียว → ลูกค้างงว่าอีก 29 คลิปคืออะไร และไม่กล้าจ่าย
+
+// เครดิตคงเหลือ + วันที่สั่งตัดไปแล้วในเล่มนี้ (ไว้ให้ตาราง 30 วันขึ้นป้ายว่าวันไหนทีมกำลังตัด)
+app.get("/api/edit/credits", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const c = await one(`SELECT COALESCE(edit_credits,0) n FROM customers WHERE lower(email)=lower($1)`, [email]);
+    const bp = String(req.query.blueprint_id || "").trim();
+    const rows = bp
+      ? await q(`SELECT script_day, order_id, status FROM edit_orders WHERE lower(email)=lower($1) AND blueprint_id=$2 AND script_day IS NOT NULL`, [email, bp])
+      : [];
+    res.json({ ok: true, credits: Number(c?.n || 0),
+      used_days: rows.map(r => ({ day: Number(r.script_day), order_id: r.order_id, status: r.status })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// ซื้อเครดิต — ยิ่งซื้อเยอะ ราคาต่อคลิปยิ่งถูก (ใช้ตารางราคาเดิม)
+app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
+  const n = Math.max(1, Math.min(200, Number(req.body?.credits) || 1));
+  const per = editPrice(n), total = per * n;
+  try {
+    const id = uid("ecp");
+    await run(`INSERT INTO edit_credit_purchases (purchase_id,email,credits,price_per_clip,amount_satang,payment_status,provider)
+      VALUES ($1,lower($2),$3,$4,$5,'paid','mock')`, [id, email, n, per, total * 100]);
+    await run(`UPDATE customers SET edit_credits=COALESCE(edit_credits,0)+$1 WHERE lower(email)=lower($2)`, [n, email]);
+    const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
+    res.json({ ok: true, purchase_id: id, credits_added: n, price_per_clip: per, total, credits: Number(c?.x || 0) });
+  } catch (e) { res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
+});
+
+// ใช้ 1 เครดิตกับวันใดวันหนึ่งในแผน → กลายเป็นงานตัดต่อ 1 ชิ้น (บรีฟ = สคริปต์วันนั้น)
+app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
+  const bp = String(req.body?.blueprint_id || "").trim();
+  const day = Number(req.body?.script_day);
+  if (!bp || !Number.isFinite(day)) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องระบุเล่มและวัน" });
+  try {
+    const dup = await one(`SELECT order_id FROM edit_orders WHERE lower(email)=lower($1) AND blueprint_id=$2 AND script_day=$3`, [email, bp, day]);
+    if (dup) return res.status(409).json({ ok: false, error: "ALREADY_ORDERED", order_id: dup.order_id, message: "วันนี้สั่งให้ทีมตัดไปแล้วค่ะ" });
+    // หักเครดิตแบบมีเงื่อนไข — ถ้าเครดิตไม่พอจะไม่มีแถวไหนถูกแก้ (กันติดลบตอนกดรัวๆ)
+    const upd = await run(`UPDATE customers SET edit_credits=edit_credits-1 WHERE lower(email)=lower($1) AND COALESCE(edit_credits,0) > 0`, [email]);
+    if (!upd?.rowCount) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตตัดต่อหมดแล้วค่ะ ซื้อเพิ่มได้เลยนะคะ" });
+    const id = uid("eo");
+    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note)
+      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7)`,
+      [id, email, bp, req.body?.billing_cycle || null, day,
+       req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
+       String(req.body?.note || "").slice(0, 2000)]);
+    const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
+    res.json({ ok: true, order_id: id, script_day: day, credits_left: Number(c?.x || 0) });
+  } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }
+});
+
 // สั่งงาน — บรีฟมาจากสคริปต์ในแผนลูกค้าเอง ไม่ต้องเขียนใหม่
 app.post("/api/edit/order", rateLimit(30, M10), async (req, res) => {
   const email = await authEmail(req);

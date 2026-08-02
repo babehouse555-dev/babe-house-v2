@@ -95,6 +95,29 @@ const GUIDE = {
     example:
       "เพิ่มยอดสมัครคอร์ส All in Your Phone ให้ได้ 30 คนในเดือนนี้ + อุดรอยรั่ว Link-in-bio ให้คนกดลิงก์มากขึ้น เน้นคอนเทนต์สาย Conversion ที่พาคนจากผู้ชมมาเป็นนักเรียน",
   },
+  // 🎯 2 ช่องนี้เพิ่ม 2 ส.ค. — ลูกค้า 3 รายในวันเดียวบอกว่า "แผนไม่ตรงแนวที่อยากทำ"
+  // สาเหตุเดียวกันหมด: AI ตีความอาชีพ/สินค้าเป็นแนวคอนเทนต์ (ออกกำลังกาย→ช่องสอนฟิตเนส, บิวตี้→รีวิวสกินแคร์)
+  // ถามตรงๆ ตั้งแต่ต้นทางว่า "อยากได้แนวไหน / ไม่อยากได้แนวไหน" จบปัญหาตั้งแต่ก่อนเจน
+  content_want: {
+    title: "เดือนนี้อยากได้คอนเทนต์แนวไหน",
+    bullets: [
+      "ฟอร์แมตที่ชอบ (เช่น vlog ชีวิตประจำวัน / GRWM / พาไปคาเฟ่ / รีวิวของที่ใช้ / เล่าเรื่อง)",
+      "โทนที่อยากได้ (เม้าท์มอยเป็นเพื่อน / เล่าเป็นเรื่องราว / ให้ความรู้ / ตลก)",
+      "อยากให้คนดูรู้สึกยังไงกับช่องคุณ",
+    ],
+    example:
+      "อยากได้แนวเม้าท์มอยเหมือนเพื่อนสาวคุยกัน เล่าชีวิตประจำวัน พาไปคาเฟ่ แต่งตัวไปเรียน (GRWM) เล่าแบบมีเรื่องราว ไม่ใช่ท่องข้อมูล อยากให้คนดูรู้สึกสบายใจเหมือนมีเพื่อน",
+  },
+  content_avoid: {
+    title: "แนวไหนที่ไม่อยากได้",
+    bullets: [
+      "ฟอร์แมตที่ไม่ถนัดหรือไม่ชอบ",
+      "โทนที่ไม่ใช่ตัวเอง (เช่น สอนแบบผู้เชี่ยวชาญ / ขายตรงแรงๆ)",
+      "เรื่องที่ไม่อยากพูดถึงเลย",
+    ],
+    example:
+      "ไม่อยากได้คอนเทนต์สอนแบบความรู้จ๋า เช่น 3 ท่าออกกำลังกาย ไม่เอารีวิวสกินแคร์ ไม่เอาขายตรงแรงๆ ไม่ถนัดพูดหน้ากล้องยาวๆ",
+  },
   competitor_1: {
     title: "คู่แข่ง / ช่องที่ชื่นชม",
     bullets: [
@@ -216,7 +239,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
-  const [f, setF] = useState({ email: "", phone: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", phone: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", content_want: "", content_avoid: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -301,6 +324,7 @@ export default function Form() {
           experience: f.experience, goal_primary: (f.goal_primary || []).join(", "),
           monthly_goal: `${(f.goal_primary || []).join(" + ") || "(ไม่ได้ระบุ — ให้ครูพี่คิมวิเคราะห์เป้าหมายที่เหมาะสมจากช่อง/รูป Insight)"}${f.q_vision ? " — " + f.q_vision : ""}`.trim(),
           starting_point: [f.q_origin && `จุดเริ่มต้น/ทำไมถึงทำ: ${f.q_origin}`, f.q_diff && `จุดที่ต่างจากคนอื่น: ${f.q_diff}`, f.q_vision && `อยากโต/เป้าหมายระยะยาว: ${f.q_vision}`].filter(Boolean).join("\n"),
+          content_want: f.content_want, content_avoid: f.content_avoid,
           competitor_1: f.competitor_1, competitor_2: f.competitor_2, display_name: f.display_name, phone: f.phone.trim(),
           self_term: f.self_term.trim(), audience_term: f.audience_term.trim(), catchphrases: f.catchphrases.trim(), tone: f.tone
         },
@@ -467,6 +491,14 @@ export default function Form() {
             {showExtra && <div style={{ marginTop: 18 }}>
               <div className="field"><label>{t("fm_diff_q")} <span className="muted">{t("fm_diff_tag")}</span></label><textarea value={f.q_diff} onChange={upd("q_diff")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder={t("fm_diff_ph")} /></div>
               <div className="field"><label>{t("fm_vision_q")} <span className="muted">{t("fm_vision_tag")}</span></label><textarea value={f.q_vision} onChange={upd("q_vision")} onFocus={() => setFocus(null)} style={{ minHeight: 64 }} placeholder={t("fm_vision_ph")} /></div>
+              {/* 🎯 2 ช่องนี้กันเคส "แผนไม่ตรงแนวที่อยากทำ" — เจอจริง 3 รายในวันเดียว (2 ส.ค.)
+                  ถามตรงๆ ดีกว่าให้ AI เดาจากอาชีพ/สินค้าที่กรอกมา */}
+              <div className="field"><label>{t("fm_want_q")} <span className="muted">{t("fm_want_tag")}</span></label>
+                <textarea value={f.content_want} onChange={upd("content_want")} onFocus={() => setFocus("content_want")} style={{ minHeight: 76 }} placeholder={t("fm_want_ph")} />
+                <div className="hint">{t("fm_want_hint")}</div></div>
+              <div className="field"><label>{t("fm_avoid_q")} <span className="muted">{t("fm_avoid_tag")}</span></label>
+                <textarea value={f.content_avoid} onChange={upd("content_avoid")} onFocus={() => setFocus("content_avoid")} style={{ minHeight: 68 }} placeholder={t("fm_avoid_ph")} />
+                <div className="hint">{t("fm_avoid_hint")}</div></div>
               <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", margin: "4px 0 14px", fontSize: 12.5 }}>{t("fm_voice_note")}</div>
               <div className="field"><label>{t("fm_self_q")}</label><input value={f.self_term} onChange={upd("self_term")} onFocus={() => setFocus(null)} placeholder={t("fm_self_ph")} />
                 <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>{t("fm_self_chips").map(c => <button key={c} type="button" onClick={() => setVal("self_term", c)} style={{ background: f.self_term === c ? "#EAF3FD" : "#fff", border: `1px solid ${f.self_term === c ? "var(--blue)" : "var(--border)"}`, color: f.self_term === c ? "var(--blue-d)" : "var(--ink)", borderRadius: 20, padding: "6px 15px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>{c}</button>)}</div>

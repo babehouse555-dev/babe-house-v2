@@ -1920,6 +1920,29 @@ app.post("/api/admin/academy/submission/feature", async (req, res) => {
 // สุขภาพข้อมูลคอร์ส — บทเรียนที่ยังไม่มีลิงก์วิดีโอ (กันลูกค้าจ่ายเงินแล้วเจอบทว่าง)
 // 🚦 ตรวจความพร้อมก่อนเปิดตัว — ลูกค้าเก่ากี่คนที่ login แล้ว "เห็นคอร์สจริง"
 // อ่านอย่างเดียว คืนเฉพาะตัวเลขรวม ไม่มีข้อมูลส่วนตัวลูกค้า
+// 🗑️➡️ กู้เล่มที่ลูกค้าเผลอลบ — ระบบลบแบบซ่อนไว้ ข้อมูลยังอยู่ครบ
+app.get("/api/admin/deleted-books", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = normEmail(req.query.email || "");
+  const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.deleted_at, b.created_at,
+      r.email, r.instagram_account
+    FROM blueprints b LEFT JOIN blueprint_requests r ON b.request_id=r.request_id
+    WHERE b.deleted_at IS NOT NULL ${email ? "AND lower(r.email)=lower($1)" : ""}
+    ORDER BY b.deleted_at DESC LIMIT 50`, email ? [email] : []);
+  res.json({ ok: true, count: rows.length, books: rows });
+});
+app.post("/api/admin/restore-book", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  if (!bpId) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const b = await one(`SELECT * FROM blueprints WHERE blueprint_id=$1`, [bpId]);
+  if (!b) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (!b.deleted_at) return res.json({ ok: true, already_active: true, blueprint_id: bpId });
+  await run(`UPDATE blueprints SET deleted_at=NULL WHERE blueprint_id=$1`, [bpId]);
+  const bp = safeJson(b.blueprint_json) || {};
+  res.json({ ok: true, restored: bpId, billing_cycle: b.billing_cycle,
+    scripts: (bp.scripts || []).length, theme: bp.theme || null });
+});
 app.get("/api/admin/academy/coverage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const hidden = [...HIDDEN_COURSES];

@@ -76,6 +76,25 @@ export default function WorkshopDetail() {
               <p style={{ fontSize: 14.5, lineHeight: 1.9, margin: 0, whiteSpace: "pre-wrap" }}>{w.what_you_get}</p>
             </div>}
 
+            {/* 📍 สถานที่เรียน — ที่อยู่ · แผนที่ · ที่จอดรถ · รถรับส่ง (ดึงจากโน้ตของรอบที่เลือก) */}
+            {(() => {
+              const sel = (d.sessions || []).find(x => x.session_id === pick) || (d.sessions || [])[0];
+              if (!sel?.note) return null;
+              const lines = String(sel.note).split(/\n+/).map(x => x.trim()).filter(Boolean);
+              const linkify = (txt) => txt.split(/(https?:\/\/\S+)/g).map((part, i) =>
+                /^https?:\/\//.test(part)
+                  ? <a key={i} className="link" href={part} target="_blank" rel="noreferrer">เปิดแผนที่ →</a>
+                  : <span key={i}>{part}</span>);
+              return (
+                <div className="card" style={{ borderRadius: 16, background: "#F7F5FC", border: "1px solid #DDD2F0" }}>
+                  <h3 style={{ fontSize: 16, margin: "0 0 10px" }}>📍 สถานที่เรียน</h3>
+                  {lines.map((ln, i) => (
+                    <div key={i} style={{ fontSize: 14, lineHeight: 1.85, marginBottom: 4 }}>{linkify(ln)}</div>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* 🎬 รีวิวจากคนที่เรียนจริง — ฝังคลิปจาก Instagram โดยตรง เห็นหน้าปกจริง กดเล่นได้ในหน้าเว็บ
                 คิมขอ 2 ส.ค.: "เอาหน้าปกคลิปขึ้นแทนได้ไหม" — ทดสอบแล้วเปิดได้โดยไม่ต้อง login */}
             {d.showcase?.length > 0 && (() => {

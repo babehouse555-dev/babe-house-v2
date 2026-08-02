@@ -55,6 +55,23 @@ npm run play:reset    # ล้างข้อมูลเริ่มใหม�
 - เส้นทาง API ต้องประกาศ**ก่อน** `app.get("*")` ของ SPA ไม่งั้นถูกหน้าเว็บกลืน
 - เมลหลังบ้านทุกฉบับใช้ `OPS_EMAIL` (→ babehouse.work@gmail.com) ห้ามส่งเข้า babehouse555 เพราะทีมเห็น
 
+## 🛡️ ด่านตรวจก่อนขึ้นเว็บ (ติดตั้ง 2 ส.ค. หลังล่ม 2 ครั้งในวันเดียว)
+
+**ห้ามทดสอบจากโฟลเดอร์เครื่องตัวเอง — ต้องทดสอบจากต้นไม้ของคอมมิตที่จะขึ้นจริง**
+(เหตุล่มครั้งที่ 2: ไฟล์บนสายที่ push ขาด `seed-playground.js` แต่เครื่องเรามีไฟล์นั้น เลยทดสอบผ่าน)
+
+```bash
+bash scripts/preflight.sh <commit>   # ตรวจ: ไวยากรณ์ · import ครบ · บูตติดจริง
+```
+
+- **pre-push hook รันด่านนี้เองอัตโนมัติ** ทุกครั้งที่ push ไป main/staging — ไม่ผ่าน = push ไม่ได้
+- hook อยู่ที่ `.git/hooks/pre-push` (โคลนใหม่ต้องติดตั้งซ้ำ: `cp scripts/pre-push.hook .git/hooks/pre-push && chmod +x .git/hooks/pre-push`)
+- `--no-verify` ใช้ได้เฉพาะไฟไหม้จริงเท่านั้น
+- **ห้าม `git checkout สายอื่น -- ไฟล์` ลงสายที่จะ deploy** — ไฟล์อาจเรียกหาเพื่อนบ้านที่ไม่มีในสายนั้น ให้แก้บนสายนั้นตรงๆ แล้วรัน preflight
+
+**Railway Healthcheck (คิมตั้งครั้งเดียว):** Service → Settings → Deploy → Healthcheck Path = `/api/health`
+→ ตัวใหม่พังบูตไม่ขึ้น Railway จะไม่สลับ traffic และคงตัวเก่าไว้ = **เว็บไม่ดับแม้ deploy พัง**
+
 ## 🔍 เวลาเว็บล่ม
 
 1. บอกคิมกดปุ่มใน Railway ทันที (`Restart` → ถ้าไม่หาย `View logs` ส่งภาพมา) — Claude เข้า Railway เองไม่ได้

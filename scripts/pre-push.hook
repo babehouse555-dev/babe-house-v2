@@ -1,0 +1,16 @@
+#!/bin/bash
+# 🛡️ บังคับผ่านด่านตรวจก่อนขึ้น main (prod) และ staging — ติดตั้ง 2 ส.ค. หลังเว็บล่ม 2 ครั้งในวันเดียว
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/staging)
+      [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+      echo "🛡️ pre-push: ตรวจ $local_sha ก่อนขึ้น ${remote_ref#refs/heads/} ..."
+      bash "$(git rev-parse --show-toplevel)/scripts/preflight.sh" "$local_sha" || {
+        echo ""
+        echo "⛔ ด่านตรวจไม่ผ่าน — ยกเลิกการ push เพื่อป้องกันเว็บล่ม"
+        echo "   (ถ้าฉุกเฉินจริงและเข้าใจความเสี่ยง: git push --no-verify)"
+        exit 1
+      };;
+  esac
+done
+exit 0

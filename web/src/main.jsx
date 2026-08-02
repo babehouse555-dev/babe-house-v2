@@ -128,6 +128,7 @@ import Projects from "./pages/Projects.jsx";
 import EditOrder from "./pages/EditOrder.jsx";
 import EditJob from "./pages/EditJob.jsx";
 import SiteMap from "./pages/SiteMap.jsx";
+import Studio from "./pages/Studio.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import VideoAudit from "./pages/VideoAudit.jsx";
 import Production from "./pages/Production.jsx";
@@ -163,6 +164,8 @@ createRoot(document.getElementById("root")).render(
       <Route path="/edit" element={<EditOrder />} />
       <Route path="/edit/:id" element={<EditJob />} />
       <Route path="/map" element={<SiteMap />} />
+      {/* 🎬 หน้าเฉพาะทีมตัดต่อ — เข้าด้วยรหัสทีม ไม่เห็นยอดขาย/ลูกค้าฝั่งอื่น (คิมสั่ง 2 ส.ค.) */}
+      <Route path="/studio" element={<Studio />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/video-audit" element={<VideoAudit />} />
       <Route path="/production" element={<Production />} />

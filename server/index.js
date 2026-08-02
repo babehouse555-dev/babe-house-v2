@@ -1193,6 +1193,13 @@ app.post("/api/me/feedback", async (req, res) => {
 
 // ---------- admin ----------
 const isAdmin = (req) => !!process.env.ADMIN_KEY && (req.headers["x-admin-key"] || req.query.admin_key) === process.env.ADMIN_KEY;
+// 🎬 รหัสของทีมตัดต่อ — แยกจากรหัสแอดมิน เพื่อให้ทีมเข้าได้เฉพาะคิวงานของตัวเอง
+// คิมสั่ง 2 ส.ค.: "ทำหน้าแยกสำหรับทีม production เขาจะได้ไม่ต้องมายุ่งกับสินค้าอื่น"
+// ⛔ ทีมต้องไม่เห็นยอดขาย/ลูกค้า Blueprint/สถิติ — ดูได้แค่งานที่ต้องตัดเท่านั้น
+const isTeam = (req) => {
+  const k = req.headers["x-team-key"] || req.query.team_key || req.headers["x-admin-key"] || req.query.admin_key;
+  return isAdmin(req) || (!!process.env.TEAM_KEY && k === process.env.TEAM_KEY);
+};
 // funnel: นับจำนวน session ต่อขั้น (N วันล่าสุด) + % ที่ผ่านแต่ละขั้น
 app.get("/api/admin/funnel", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -2516,6 +2523,53 @@ app.post("/api/edit/approve", async (req, res) => {
   if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   await run(`UPDATE edit_orders SET status='done', final_url=COALESCE(draft_url, final_url), updated_at=now() WHERE order_id=$1`, [o.order_id]);
   res.json({ ok: true });
+});
+
+// ===== 🎬 หน้าเฉพาะทีมตัดต่อ (/studio) — เข้าด้วยรหัสทีม ไม่ใช่รหัสแอดมิน =====
+// ⛔ ไม่ส่งยอดเงินออกไปเลย (ตัด amount_satang / price_per_clip ทิ้งก่อนตอบ) — ทีมไม่ต้องเห็นรายได้
+app.get("/api/team/jobs", async (req, res) => {
+  if (!isTeam(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const rows = await q(`SELECT order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,
+      footage_url,voice_url,note,status,draft_url,final_url,revisions_used,due_at,ref_links,ref_picks,assignee,paid_by,created_at,updated_at
+      FROM edit_orders ORDER BY (status='done' OR status='canceled'), due_at NULLS LAST, created_at DESC`);
+    const cs = await q(`SELECT order_id, COUNT(*) n FROM edit_comments GROUP BY order_id`);
+    const cmap = Object.fromEntries(cs.map(c => [c.order_id, Number(c.n)]));
+    res.json({ ok: true, statuses: EDIT_STATUS, hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
+      orders: rows.map(({ email, ...r }) => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status, comments: cmap[r.order_id] || 0,
+        ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json), due_th: r.due_at ? thDate(r.due_at) : null,
+        // 🔒 ไม่ส่งอีเมลลูกค้าให้ทีม — ส่งแค่ชื่อย่อไว้แยกว่างานไหนของลูกค้าคนเดียวกัน (คุยกันผ่านกล่องคอมเมนต์ในระบบ)
+        customer: String(email || "").split("@")[0].slice(0, 3) + "•••" })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ทีมอัปเดตงาน — เปลี่ยนสถานะ · แนบงานที่ตัดเสร็จ · รับงานเป็นของตัวเอง (ไม่มีสิทธิ์แตะเรื่องเงิน)
+app.post("/api/team/job/update", async (req, res) => {
+  if (!isTeam(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || "");
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [id]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const sets = [], vals = [];
+  const put = (col, v) => { vals.push(v); sets.push(`${col}=$${vals.length}`); };
+  if (typeof req.body?.status === "string" && EDIT_STATUS[req.body.status]) put("status", req.body.status);
+  if (typeof req.body?.draft_url === "string") put("draft_url", req.body.draft_url.trim() || null);
+  if (typeof req.body?.assignee === "string") put("assignee", req.body.assignee.trim() || null);
+  if (!sets.length) return res.status(400).json({ ok: false, error: "NOTHING_TO_UPDATE" });
+  try {
+    vals.push(id);
+    await run(`UPDATE edit_orders SET ${sets.join(",")}, updated_at=now() WHERE order_id=$${vals.length}`, vals);
+    res.json({ ok: true, order_id: id, updated: sets.length });
+  } catch (e) { res.status(500).json({ ok: false, error: "UPDATE_FAILED", message: e.message }); }
+});
+// ทีมตอบลูกค้าในงานนั้น (ใช้กล่องคอมเมนต์เดียวกับที่ลูกค้าเห็น)
+app.post("/api/team/job/comment", async (req, res) => {
+  if (!isTeam(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || ""), text = String(req.body?.text || "").trim();
+  if (!id || !text) return res.status(400).json({ ok: false, error: "MISSING" });
+  try {
+    await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text) VALUES ($1,$2,'team',$3,$4)`,
+      [uid("ec"), id, String(req.body?.author_name || "ทีม Babe House").slice(0, 60), text.slice(0, 3000)]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
 // ===== หลังบ้านทีม =====

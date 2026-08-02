@@ -10,7 +10,7 @@
     "dev:web": "cd web && npm run dev",
     "build": "cd web && npm install && npm run build",
     "start": "node server/index.js",
-    "play": "LOCAL_DB=1 EMAIL_ENABLED=0 PAY_PROVIDER=mock ADMIN_KEY=play node server/index.js",
+    "play": "LOCAL_DB=1 EMAIL_ENABLED=0 PAY_PROVIDER=mock ADMIN_KEY=play TEAM_KEY=team node server/index.js",
     "play:reset": "rm -rf .localdb && echo 'ล้างสนามเด็กเล่นแล้ว เริ่มใหม่ด้วย npm run play'"
   },
   "dependencies": {

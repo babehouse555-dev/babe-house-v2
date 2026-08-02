@@ -2204,12 +2204,14 @@ app.post("/api/edit/order", rateLimit(30, M10), async (req, res) => {
   const clips = Math.max(1, Math.min(200, Number(req.body?.clips) || 1));
   const per = editPrice(clips), total = per * clips;
   const id = uid("eo");
-  await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,note)
-    VALUES ($1,lower($2),$3,$4,$5,$6,$7,$8,$9,'pending','mock',$10)`,
+  await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,note,ref_links,ref_picks)
+    VALUES ($1,lower($2),$3,$4,$5,$6,$7,$8,$9,'pending','mock',$10,$11,$12)`,
     [id, email, req.body?.blueprint_id || null, req.body?.billing_cycle || null,
      req.body?.script_day != null ? Number(req.body.script_day) : null,
      req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
-     clips, per, total * 100, String(req.body?.note || "").slice(0, 2000)]);
+     clips, per, total * 100, String(req.body?.note || "").slice(0, 2000),
+     String(req.body?.ref_links || "").slice(0, 2000) || null,
+     Array.isArray(req.body?.ref_picks) && req.body.ref_picks.length ? JSON.stringify(req.body.ref_picks.slice(0, 12)) : null]);
   res.json({ ok: true, order_id: id, clips, price_per_clip: per, total });
 });
 
@@ -2227,7 +2229,7 @@ app.get("/api/edit/order/:id", async (req, res) => {
   const isTeam = isAdmin(req);
   if (!isTeam && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
   const comments = await q(`SELECT * FROM edit_comments WHERE order_id=$1 ORDER BY created_at`, [o.order_id]);
-  res.json({ ok: true, order: { ...o, status_th: EDIT_STATUS[o.status] || o.status, brief: safeJson(o.brief_json),
+  res.json({ ok: true, order: { ...o, status_th: EDIT_STATUS[o.status] || o.status, brief: safeJson(o.brief_json), ref_picks: safeJson(o.ref_picks) || [],
     due_th: o.due_at ? thDate(o.due_at) : null }, comments, free_revisions: EDIT_FREE_REVISIONS,
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
 });
@@ -2308,7 +2310,8 @@ app.get("/api/admin/edit-orders", async (req, res) => {
   const rows = await q(`SELECT * FROM edit_orders ORDER BY (status='done'), created_at DESC`);
   const cs = await q(`SELECT order_id, COUNT(*) n FROM edit_comments GROUP BY order_id`);
   const cmap = Object.fromEntries(cs.map(c => [c.order_id, Number(c.n)]));
-  res.json({ ok: true, orders: rows.map(r => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status, comments: cmap[r.order_id] || 0 })), statuses: EDIT_STATUS });
+  res.json({ ok: true, orders: rows.map(r => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status,
+    comments: cmap[r.order_id] || 0, ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json) })), statuses: EDIT_STATUS });
 });
 app.post("/api/admin/edit-order/update", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

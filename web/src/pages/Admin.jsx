@@ -302,6 +302,8 @@ export default function Admin() {
 }
 
 // 🎬 แผงงานตัดต่อสำหรับทีม — เห็นงานเข้าใหม่ เปลี่ยนสถานะ แนบงาน มอบหมายคน
+const STYLE_LABEL = { amabella: "สายบิวตี้ จังหวะไว", panpuri: "พรีเมียม คุมโทน", irvin: "ร้านอาหาร น่ากิน",
+  spicy: "สินค้า สนุกดึงดูด", may: "รีวิวไลฟ์สไตล์", kim: "สอน/ให้ความรู้" };
 function EditOrdersPanel({ adminKey }) {
   const [d, setD] = useState(null);
   const [draft, setDraft] = useState({});
@@ -329,6 +331,13 @@ function EditOrdersPanel({ adminKey }) {
             {o.revisions_used > 0 && <>· ✏️ แก้ไปแล้ว {o.revisions_used} ครั้ง </>}
             {o.assignee && <>· 👤 {o.assignee}</>}
           </div>
+          {o.brief && <div style={{ fontSize: 12.5, marginBottom: 6, background: "#F4F8FD", borderRadius: 9, padding: "7px 10px" }}>
+            📋 บรีฟจากแผน: วันที่ {o.brief.d} · {o.brief.t || ""}</div>}
+          {(o.ref_picks || []).length > 0 && <div style={{ fontSize: 12.5, marginBottom: 6 }}>
+            🎨 อยากได้แนว: <b>{o.ref_picks.map(k => STYLE_LABEL[k] || k).join(" · ")}</b></div>}
+          {o.ref_links && <div style={{ fontSize: 12.5, marginBottom: 6, lineHeight: 1.8 }}>
+            🔗 ตัวอย่างที่ลูกค้าส่งมา:<br />{String(o.ref_links).split(/\n+/).filter(Boolean).map((u, i) =>
+              <a key={i} className="link" href={u} target="_blank" rel="noreferrer" style={{ display: "block" }}>{u}</a>)}</div>}
           {o.note && <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>📝 {o.note}</div>}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <select value={o.status} onChange={e => upd(o.order_id, { status: e.target.value })}

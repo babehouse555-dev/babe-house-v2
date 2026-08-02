@@ -239,6 +239,8 @@ export async function initDb() {
       final_url TEXT,
       revisions_used INTEGER DEFAULT 0,
       due_at TIMESTAMPTZ,              -- วันที่คาดว่าจะส่งงาน (คิดจากวันทำการจริง)
+      ref_links TEXT,                  -- ลิงก์ตัวอย่างที่ลูกค้าแปะมาเอง (คั่นบรรทัด)
+      ref_picks TEXT,                  -- งานเก่าของเราที่ลูกค้ากดเลือก (JSON array)
       assignee TEXT,
       created_at TIMESTAMPTZ DEFAULT now(),
       updated_at TIMESTAMPTZ DEFAULT now()

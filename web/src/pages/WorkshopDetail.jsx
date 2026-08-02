@@ -88,7 +88,7 @@ export default function WorkshopDetail() {
                 <div className="card" style={{ borderRadius: 16 }}>
                   <h3 style={{ fontSize: 16, margin: "0 0 3px" }}>🎬 รีวิวจากคนที่เรียนจริง</h3>
                   <p className="muted" style={{ fontSize: 12.5, margin: "0 0 13px" }}>{clips.length} คลิป · กดเล่นได้เลย</p>
-                  <div className="rv-grid">
+                  <div className="rv-row">
                     {show.map((c, i2) => (
                       <div key={c.code} className="rv-box">
                         <iframe src={`https://www.instagram.com/reel/${c.code}/embed`}
@@ -102,11 +102,15 @@ export default function WorkshopDetail() {
                     </button>
                   )}
                   <style>{`
-                    .rv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 12px; }
-                    .rv-box { position: relative; border-radius: 14px; overflow: hidden; background: var(--soft);
-                      border: 1px solid var(--border); height: 560px; }
-                    .rv-box iframe { width: 100%; height: 100%; border: 0; display: block; }
-                    @media (max-width: 520px) { .rv-box { height: 520px; } }
+                    /* คิมชอบขนาดเล็กแบบการ์ด (2 ส.ค.) — Instagram ฝังมาที่ความกว้างคงที่ 326px
+                       ย่อไม่ได้ตรงๆ เลยใช้วิธี "ย่อทั้งกล่อง" ด้วย scale แทน ได้หน้าปกจริงในขนาดที่เล็กลง */
+                    .rv-row { display: flex; flex-wrap: wrap; gap: 10px; }
+                    .rv-box { --w: 150px; --scale: 0.46;          /* 150 ÷ 326 ≈ 0.46 */
+                      position: relative; width: var(--w); height: 296px; border-radius: 12px;
+                      overflow: hidden; background: var(--soft); border: 1px solid var(--border); }
+                    .rv-box iframe { width: 326px; height: 640px; border: 0; display: block;
+                      transform: scale(var(--scale)); transform-origin: top left; }
+                    @media (max-width: 420px) { .rv-box { --w: 132px; --scale: 0.405; height: 262px; } }
                   `}</style>
                 </div>
               );

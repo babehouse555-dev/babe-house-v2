@@ -141,7 +141,9 @@ export function ToolsAndServices({ channel, cycle, demo }) {
       </div>
     </div>
     {panel === "shoot" && <div style={{ marginTop: 14 }}><ShootingGuide startOpen /></div>}
-    <ServicesBlock />
+    {/* ⛔ เอา ServicesBlock ออก 2 ส.ค. (คิมสั่ง: "ซ้ำซ้อนมาก")
+        เดิมกล่องนี้โฆษณา Academy + Production ในหน้าเล่ม แต่ตอนนี้ทั้งสองอย่างมีเมนูบนหัวเว็บแล้ว
+        และในสคริปต์รายวันก็มีปุ่ม "ให้ทีมตัดให้" อยู่แล้ว → หน้าเดียวชวนขาย 3-4 จุด = รกและดูยัดขาย */}
   </div>;
 }
 

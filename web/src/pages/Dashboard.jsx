@@ -434,32 +434,6 @@ export default function Dashboard() {
             </div>;
           })()}
 
-          {/* 🎬 เห็นทั้งเดือนแล้วรู้ตัวว่าทำไม่ไหว — เสนอแพ็กหลายคลิป (ถูกกว่าสั่งทีละคลิปมาก)
-              ต่างจากปุ่มในสคริปต์รายวัน (clips=1) ตรงที่อันนั้นคือ "คลิปนี้ทำไม่ทัน" อันนี้คือ "ทั้งเดือนทำไม่ไหว" */}
-          {!demo && (() => {
-            const left = Math.max(0, (bp.calendar || []).length - uploaded.size);
-            if (left < 5) return null;   // เหลือน้อยแล้ว = เขาทำไหว ไม่ต้องเสนอ
-            const packs = [10, 20, 30].filter(n => n <= Math.max(10, left));
-            const suggest = packs[packs.length - 1] || 10;
-            return (
-              <div className="card" style={{ background: "linear-gradient(135deg,#F5F1FD,#FBFAFE)", border: "1px solid #DDD2F0", marginTop: 18 }}>
-                <div className="row" style={{ gap: 11, alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 26 }}>🎬</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15.5 }}>เหลืออีก {left} คลิปในเดือนนี้ — ถ่ายไหวไหมคะ</div>
-                    <div className="muted" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.7 }}>
-                      ถ้าไม่ไหว ส่งฟุตเทจมาให้ทีมครูพี่คิมตัดให้ได้เลยค่ะ ใช้สคริปต์ในเล่มนี้เป็นบรีฟ ไม่ต้องเขียนอะไรเพิ่ม
-                      <br />สั่งหลายคลิปพร้อมกัน<b> ถูกกว่าสั่งทีละคลิปมาก</b>
-                    </div>
-                    <Link className="btn" to={`/edit?clips=${suggest}&bp=${encodeURIComponent(bpId || "")}&cycle=${encodeURIComponent(cycle || "")}`}
-                      style={{ marginTop: 12, display: "inline-block", padding: "11px 22px", fontSize: 14 }}>
-                      ดูราคาแพ็ก {suggest} คลิป →
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
 
           <AddScript channel={bp.instagram_account} cycle={cycle} demo={demo} />
           <ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} />

@@ -2155,7 +2155,11 @@ app.post("/api/admin/regen-content", async (req, res) => {
 const WORK_DAYS = [1, 2, 3, 4, 5];          // จ-ศ
 const WORK_START = 12, WORK_END = 19;        // เวลาไทย
 const EDIT_DAYS_PER_CLIP = Number(process.env.EDIT_DAYS_PER_CLIP) || 3;   // คิมเคาะ 2 ส.ค.: 3 วันทำการต่อคลิป
-const leadDaysFor = (clips) => Math.max(1, EDIT_DAYS_PER_CLIP * Math.max(1, Number(clips) || 1));
+// ทีมทำหลายคลิปขนานกันได้ (พี่ก้อง + โบว์ + ฟรีแลนซ์) — ไม่ใช่ทำทีละคลิปจนจบ
+// ⚠️ เลข 3 นี้เป็นสมมติฐาน ปรับได้ที่ EDIT_PARALLEL — ยิ่งมากยิ่งสัญญาเร็ว ต้องแน่ใจว่าทีมทำทัน
+const EDIT_PARALLEL = Number(process.env.EDIT_PARALLEL) || 3;
+const leadDaysFor = (clips) => Math.max(EDIT_DAYS_PER_CLIP,
+  Math.ceil(EDIT_DAYS_PER_CLIP * Math.max(1, Number(clips) || 1) / EDIT_PARALLEL));
 // วันหยุดนักขัตฤกษ์ที่วันที่ตายตัวทุกปี — วันหยุดตามจันทรคติ (มาฆบูชา/วิสาขบูชา/อาสาฬหบูชา) เปลี่ยนทุกปี
 // ⚠️ ต้องให้คิมใส่เพิ่มเอง อย่าเดา — ใส่ผ่าน env HOLIDAYS="2026-03-03,2026-05-31" (คั่นด้วยจุลภาค)
 const FIXED_HOLIDAYS = ["01-01", "04-06", "04-13", "04-14", "04-15", "05-01", "07-28", "08-12", "10-13", "10-23", "12-05", "12-10", "12-31"];
@@ -2193,7 +2197,7 @@ const EDIT_STATUS = {
 app.get("/api/edit/price", (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
   res.json({ ok: true, clips: n, price_per_clip: editPrice(n), total: editPrice(n) * n, tiers: EDIT_TIERS,
-    free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, lead_days: leadDaysFor(n),
+    free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, parallel: EDIT_PARALLEL, lead_days: leadDaysFor(n),
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
     eta_if_send_now: thDate(addWorkDays(new Date(), leadDaysFor(n))) });
 });

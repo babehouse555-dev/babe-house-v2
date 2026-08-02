@@ -1328,7 +1328,9 @@ app.post("/api/admin/academy/lesson-url", async (req, res) => {
 // ซ่อนที่โค้ดแทนการแก้ธง is_active ใน DB → ลูกค้าเก่าที่ซื้อไปแล้วยังเข้าเรียนได้ตามปกติ
 // "15" = Creative Thinking (คอร์สเก่ามาก คิมไม่อยากขายต่อ)
 // "40","41","42" = Sky Drawing ของครูมู (จบความร่วมมือ 2026-08-01 · ขายได้ 0 ออเดอร์)
-const HIDDEN_COURSES = new Set(["15", "40", "41", "42"]);
+// "21" = เทคนิคการตัดต่อ ADVANCE ของพี่ก้อง (คิมสั่งเลิกขาย 2026-08-02: คอร์สเก่าแล้ว)
+//        ⚠️ คนละคอร์สกับ "57" ตัดต่อ Advance ของครูพี่คิม — ชื่อคล้ายกันจนสับสน เลยเหลือขายตัวเดียว
+const HIDDEN_COURSES = new Set(["15", "21", "40", "41", "42"]);
 app.get("/api/academy/catalog", async (req, res) => {
   try {
     const all = await q(`SELECT c.legacy_id, c.name, c.price, c.price_sale, c.flag_sale, c.category, c.instructor, c.featured_image_url, c.duration,

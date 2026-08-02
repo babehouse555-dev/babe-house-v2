@@ -20,6 +20,7 @@ export default function Account() {
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState({}); // ช่องไหนกางอยู่ (accordion) — หลายช่องจะพับไว้ กันหน้ายาว
   const [chQ, setChQ] = useState(""); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
+  const [deleted, setDeleted] = useState([]);   // เล่มที่ลบไปแล้วแต่ยังกู้ได้ 30 วัน
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
@@ -32,6 +33,7 @@ export default function Account() {
   async function loadMonths() {
     try {
       const d = await api("/api/me/blueprints", { token: session.token });
+      loadDeleted();
       setData(d); setStep("list");
       api("/api/me/referral", { token: session.token }).then(setRef).catch(() => {});
     } catch { session.clear(); setStep("email"); }
@@ -49,10 +51,29 @@ export default function Account() {
     catch (e) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }
   }
   function logout() { session.clear(); setData(null); setStep("email"); }
+  // 🗑️ ลบเล่ม — ต้องพิมพ์ชื่อเดือนยืนยัน (มีลูกค้าเผลอกดลบจริง 2 ส.ค.)
   async function deleteBook(bpId, cycle) {
-    if (!window.confirm(`${t("ac_delete_confirm_a")} ${String(cycle).replace("_", " ")}${t("ac_delete_confirm_b")}`)) return;
-    try { await api("/api/me/delete-book", { method: "POST", token: session.token, body: { blueprint_id: bpId } }); loadMonths(); }
-    catch (e) { alert(e.message || t("ac_delete_fail")); }
+    const label = String(cycle).replace("_", " ");
+    const typed = window.prompt(
+      `⚠️ กำลังจะลบเล่ม "${label}"\n\nเล่มนี้จะหายจากหน้าบัญชี แต่กู้คืนเองได้ภายใน 30 วัน\n\nถ้าแน่ใจ พิมพ์ชื่อเดือนให้ตรงเพื่อยืนยัน:\n${label}`);
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== label.trim().toLowerCase()) { alert("ชื่อเดือนไม่ตรงค่ะ ยกเลิกการลบแล้วนะคะ 🩵"); return; }
+    try {
+      await api("/api/me/delete-book", { method: "POST", token: session.token, body: { blueprint_id: bpId } });
+      alert(`ลบเล่ม "${label}" แล้วค่ะ — ถ้าเปลี่ยนใจ กดกู้คืนได้ที่ท้ายหน้านี้ภายใน 30 วันนะคะ`);
+      loadMonths(); loadDeleted();
+    } catch (e) { alert(e.message || t("ac_delete_fail")); }
+  }
+  // เล่มที่ลบไปแล้วแต่ยังกู้ได้
+  async function loadDeleted() {
+    if (!session.token) return;
+    try { const d = await api("/api/me/deleted-books", { token: session.token }); setDeleted(d.books || []); }
+    catch { setDeleted([]); }
+  }
+  async function restoreBook(bpId) {
+    try { await api("/api/me/restore-book", { method: "POST", token: session.token, body: { blueprint_id: bpId } });
+      alert("กู้เล่มกลับมาแล้วค่ะ 🩵"); loadMonths(); loadDeleted(); }
+    catch (e) { alert(e.message || "กู้คืนไม่สำเร็จ"); }
   }
   // สร้างลิงก์จาก origin จริงของเบราว์เซอร์ — ถูกเสมอแม้ APP_BASE_URL บนเซิร์ฟเวอร์จะไม่ถูกตั้ง
   const refLink = ref ? `${window.location.origin}/?ref=${encodeURIComponent(ref.code)}` : "";
@@ -153,6 +174,22 @@ export default function Account() {
           channelCount={(data.channels || []).length}
           bookCount={(data.channels || []).reduce((a, ch) => a + (ch.months || []).length, 0)}
         />
+        {deleted.length > 0 && (
+          <div className="card" style={{ background: "#FDF7EE", border: "1px solid #EFDFC4" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>🗑️ เล่มที่ลบไป — กู้คืนได้</div>
+            <div className="muted" style={{ fontSize: 12.5, margin: "3px 0 10px" }}>เล่มที่ลบยังเก็บไว้ให้ 30 วัน กดกู้กลับมาได้เลยค่ะ</div>
+            {deleted.map(b => (
+              <div key={b.blueprint_id} className="between" style={{ gap: 8, flexWrap: "wrap", padding: "9px 0", borderTop: "1px solid var(--border)" }}>
+                <span>
+                  <b style={{ fontSize: 14.5 }}>{String(b.billing_cycle).replace("_", " ")}</b>
+                  <span className="muted" style={{ fontSize: 12.5, display: "block" }}>{b.instagram_account} · เหลือเวลากู้อีก {b.days_left} วัน</span>
+                </span>
+                <button className="btn" onClick={() => restoreBook(b.blueprint_id)} style={{ padding: "8px 16px", fontSize: 13.5 }}>กู้คืนเล่มนี้</button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>{t("ac_ref_desc_a")} <b style={{ color: "#2C8E8C" }}>{t("ac_ref_desc_b")} {ref.percent}% {t("ac_ref_desc_c")}</b> <b style={{ color: "#2C8E8C" }}>{t("ac_ref_desc_d")}</b> {t("ac_ref_desc_e")}</div>

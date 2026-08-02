@@ -1025,7 +1025,33 @@ app.post("/api/me/delete-book", async (req, res) => {
   if (!row) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   if (normEmail(row.owner_email) !== normEmail(email)) return res.status(403).json({ ok: false, error: "NOT_OWNER" }); // ลบได้เฉพาะเล่มตัวเอง
   await run(`UPDATE blueprints SET deleted_at=now() WHERE blueprint_id=$1`, [bpId]);
-  res.json({ ok: true });
+  res.json({ ok: true, restorable_days: RESTORE_DAYS });
+});
+// 🗑️➡️ ลูกค้ากู้เล่มตัวเองได้ภายใน 30 วัน — ไม่ต้องรอทักแอดมิน (เจอเคสจริง 2 ส.ค.)
+const RESTORE_DAYS = 30;
+app.get("/api/me/deleted-books", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const rows = await q(`SELECT b.blueprint_id, b.billing_cycle, b.deleted_at, r.instagram_account
+    FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+    WHERE lower(r.email)=lower($1) AND b.deleted_at IS NOT NULL
+      AND b.deleted_at > now() - interval '${RESTORE_DAYS} days'
+    ORDER BY b.deleted_at DESC`, [email]);
+  res.json({ ok: true, restorable_days: RESTORE_DAYS, books: rows.map(b => ({ ...b,
+    days_left: Math.max(0, RESTORE_DAYS - Math.floor((Date.now() - new Date(b.deleted_at).getTime()) / 86400000)) })) });
+});
+app.post("/api/me/restore-book", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || ""); if (!bpId) return res.status(400).json({ ok: false, error: "MISSING" });
+  const row = await one(`SELECT b.blueprint_id, b.deleted_at, r.email AS owner_email FROM blueprints b
+    JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.blueprint_id=$1`, [bpId]);
+  if (!row) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (normEmail(row.owner_email) !== normEmail(email)) return res.status(403).json({ ok: false, error: "NOT_OWNER" });
+  if (!row.deleted_at) return res.json({ ok: true, already_active: true });
+  const days = (Date.now() - new Date(row.deleted_at).getTime()) / 86400000;
+  if (days > RESTORE_DAYS) return res.status(410).json({ ok: false, error: "TOO_OLD",
+    message: `เล่มนี้ลบไปเกิน ${RESTORE_DAYS} วันแล้วค่ะ ทักครูพี่คิมมาได้เลยนะคะ เดี๋ยวช่วยดูให้` });
+  await run(`UPDATE blueprints SET deleted_at=NULL WHERE blueprint_id=$1`, [bpId]);
+  res.json({ ok: true, restored: bpId });
 });
 // โปรไฟล์เดือนล่าสุด (สำหรับเดือน 2+ ไม่ต้องกรอกซ้ำ) — เอาข้อมูลเดิมมาใช้ ลูกค้าแค่ใส่รูป Insight เดือนใหม่
 app.get("/api/me/last-profile", async (req, res) => {

@@ -383,7 +383,11 @@ export async function generateAnalysis(parsed, lang = "th") {
   const parts = [];
   for (const img of images) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
   // ถ้าไม่มีรูปใหม่ แต่มีสถิติที่วิเคราะห์ไว้แล้วรอบก่อน (รูปถูกลบทิ้งเพื่อประหยัดดิสก์) → ให้ AI ใช้ตัวเลขเดิมต่อ อย่าบอกลูกค้าว่า "ไม่ได้แนบสถิติ"
-  const pm = parsed.prior_metrics;
+  // ⛔ ตัด engagement_rate ที่เวอร์เกินจริงจากเล่มเก่าทิ้ง (เคยเป็นค่าที่ AI คำนวณเอง) ไม่งั้นค่าปลอมวนกลับเข้าไปทุกครั้งที่วิเคราะห์ซ้ำ
+  const pmSrc = parsed.prior_metrics;
+  const pm = (pmSrc && typeof pmSrc === "object" && typeof pmSrc.engagement_rate === "number"
+    && (pmSrc.engagement_rate >= 40 || (pmSrc.engagement_rate >= 15 && Number(pmSrc.followers) >= 10000)))
+    ? { ...pmSrc, engagement_rate: null } : pmSrc;
   const hasPrior = pm && typeof pm === "object" && Object.values(pm).some(v => typeof v === "number" && v > 0);
   const priorNote = (!images.length && hasPrior)
     ? `\n\n📊 สถิติหลังบ้านที่วิเคราะห์ไว้แล้ว (ลูกค้าแนบรูปมาแล้วรอบก่อน ระบบลบรูปทิ้งเพื่อประหยัดพื้นที่ แต่ตัวเลขนี้คือของจริง): ${JSON.stringify(pm)} — ⭐ ใช้ตัวเลขเหล่านี้ใส่ metrics + วิเคราะห์ what_we_see จากตัวเลขนี้ต่อได้เลย ⛔ ห้ามบอกลูกค้าว่า "ยังไม่ได้แนบสถิติ/ให้ส่งรูปมาเพิ่ม" เด็ดขาด เพราะลูกค้าแนบแล้ว`
@@ -970,8 +974,11 @@ export function checkBlueprintQuality(bp, hasImage) {
   const m = bp.metrics || {};
   const hasNums = m && Object.values(m).some(v => typeof v === "number" && v > 0);
   if (!hasImage && hasNums) flags.push("มีตัวเลขสถิติทั้งที่ไม่มีรูป (เสี่ยงแต่งตัวเลข)");
-  // engagement rate เกินจริง = AI คำนวณเอง (ถูกใจ÷ผู้ติดตาม) ไม่ได้อ่านจากป้ายในรูป — ทั้งวงการอยู่ราว 1-8%
-  if (typeof m.engagement_rate === "number" && m.engagement_rate >= 15) flags.push(`อัตราการมีส่วนร่วม ${m.engagement_rate}% สูงเกินจริง (น่าจะคำนวณเอง ไม่ได้อ่านจากรูป)`);
+  // engagement rate เกินจริง = AI คำนวณเอง (ถูกใจ÷ผู้ติดตาม) ไม่ได้อ่านจากป้ายในรูป
+  // ⚠️ ช่องเล็ก ER ต่อ reach สูงได้จริง (เช่น 175 การตอบโต้ / เข้าถึง 521 = 33%) → เตือนเฉพาะช่องใหญ่ที่เป็นไปไม่ได้ หรือค่าเวอร์เกินทุกขนาด
+  const er = m.engagement_rate;
+  if (typeof er === "number" && (er >= 40 || (er >= 15 && Number(m.followers) >= 10000)))
+    flags.push(`อัตราการมีส่วนร่วม ${er}% สูงเกินจริงสำหรับช่องขนาดนี้ (น่าจะคำนวณเอง ไม่ได้อ่านจากรูป)`);
   // สคริปต์ซ้ำกัน
   const says = scripts.map(s => (s.beats || []).map(b => String(b.say || "")).join("|"));
   const dup = says.filter(Boolean).length - new Set(says.filter(Boolean)).size;

@@ -1941,6 +1941,22 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
     JOIN academy_courses c ON c.legacy_id = COALESCE(NULLIF(o.course_id,''), l.course_id)
     WHERE o.status='Close' AND c.is_active='0' AND COALESCE(u.email,'') <> ''
     GROUP BY c.legacy_id, c.name ORDER BY students DESC LIMIT 10`);
+  // 🔍 ไล่ทีละขั้นว่าข้อมูลขาดตอนตรงไหน
+  const diag = {
+    orders_total: Number((await one(`SELECT COUNT(*) c FROM academy_orders`))?.c || 0),
+    orders_closed: Number((await one(`SELECT COUNT(*) c FROM academy_orders WHERE status='Close'`))?.c || 0),
+    status_values: await q(`SELECT status, COUNT(*) c FROM academy_orders GROUP BY status ORDER BY c DESC LIMIT 6`),
+    closed_with_user: Number((await one(`SELECT COUNT(*) c FROM academy_orders o JOIN academy_users u ON u.legacy_id=o.legacy_user_id WHERE o.status='Close'`))?.c || 0),
+    closed_with_email: Number((await one(`SELECT COUNT(*) c FROM academy_orders o JOIN academy_users u ON u.legacy_id=o.legacy_user_id WHERE o.status='Close' AND COALESCE(u.email,'')<>''`))?.c || 0),
+    closed_with_courseid: Number((await one(`SELECT COUNT(*) c FROM academy_orders o WHERE o.status='Close' AND COALESCE(o.course_id,'')<>''`))?.c || 0),
+    lines_total: Number((await one(`SELECT COUNT(*) c FROM academy_order_lines`))?.c || 0),
+    lines_matching_order: Number((await one(`SELECT COUNT(*) c FROM academy_order_lines l JOIN academy_orders o ON o.legacy_id=l.order_id`))?.c || 0),
+    courseid_matches_course: Number((await one(`SELECT COUNT(*) c FROM academy_orders o JOIN academy_courses c ON c.legacy_id=o.course_id WHERE o.status='Close'`))?.c || 0),
+    courses_active0: Number((await one(`SELECT COUNT(*) c FROM academy_courses WHERE is_active='0'`))?.c || 0),
+    is_active_values: await q(`SELECT is_active, COUNT(*) c FROM academy_courses GROUP BY is_active`),
+    sample_order: await one(`SELECT legacy_id, legacy_user_id, course_id, status FROM academy_orders WHERE status='Close' LIMIT 1`),
+    sample_user_id: await one(`SELECT legacy_id FROM academy_users LIMIT 1`),
+  };
   const lessons = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') <> ''`);
   const noVideo = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') = ''`);
   const wsSessions = await one(`SELECT COUNT(*) c FROM workshop_sessions WHERE status='open' AND starts_at > now()`);
@@ -1950,7 +1966,7 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
     lessons_with_video: Number(lessons?.c || 0),
     lessons_missing_video: Number(noVideo?.c || 0),
     workshop_open_sessions: Number(wsSessions?.c || 0),
-    top_courses: q3 });
+    top_courses: q3, diag });
 });
 app.get("/api/admin/academy/health", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

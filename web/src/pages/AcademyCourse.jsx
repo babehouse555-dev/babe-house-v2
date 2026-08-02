@@ -14,6 +14,8 @@ function ytEmbed(url) {
   const v = u.match(/[?&]v=([\w-]{11})/) || u.match(/youtu\.be\/([\w-]{11})/) || u.match(/youtube\.com\/embed\/([\w-]{11})/);
   return v ? `https://www.youtube.com/embed/${v[1]}` : null;
 }
+// ดึงรหัสรีล Instagram จากลิงก์ (รองรับทั้ง /reel/ /reels/ /p/ /tv/) → เอาไปฝังเล่นในหน้าได้เลย
+const igCode = (u) => (String(u || "").match(/instagram\.com\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/) || [])[1] || null;
 
 export default function AcademyCourse() {
   const { id } = useParams();
@@ -89,20 +91,45 @@ export default function AcademyCourse() {
             {previews.length > 0 && <div className="card" style={{ borderRadius: 16 }}>
               <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>🎬 ดูตัวอย่างการสอนก่อนตัดสินใจ</h3>
               <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>คลิปตัวอย่างจากในคอร์สจริง</p>
-              {previews.map((s, i) => {
-                const em = ytEmbed(s.url);
-                return em ? (
-                  <div key={i} style={{ position: "relative", paddingTop: "56.25%", borderRadius: 12, overflow: "hidden", background: "#000", marginBottom: i < previews.length - 1 ? 12 : 0 }}>
-                    <iframe src={em} title={s.caption || "ตัวอย่างบทเรียน"} loading="lazy" allowFullScreen
-                      allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
-                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} />
+              {/* YouTube = จอกว้าง 16:9 · Instagram Reel = การ์ดทรงรีลเลื่อนดูได้ (แบบเดียวกับหน้าเวิร์กช็อป) */}
+              {previews.filter(s => ytEmbed(s.url)).map((s, i, arr) => (
+                <div key={"yt" + i} style={{ position: "relative", paddingTop: "56.25%", borderRadius: 12, overflow: "hidden", background: "#000", marginBottom: i < arr.length - 1 ? 12 : 0 }}>
+                  <iframe src={ytEmbed(s.url)} title={s.caption || "ตัวอย่างบทเรียน"} loading="lazy" allowFullScreen
+                    allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} />
+                </div>
+              ))}
+              {(() => {
+                const reels = previews.map(s => ({ ...s, code: igCode(s.url) })).filter(s => s.code && !ytEmbed(s.url));
+                if (!reels.length) return null;
+                return (
+                  <div className="rv-row" style={{ marginTop: previews.some(s => ytEmbed(s.url)) ? 12 : 0 }}>
+                    {reels.map((s, i) => (
+                      <div key={s.code} className="rv-box">
+                        <iframe src={`https://www.instagram.com/reel/${s.code}/embed`}
+                          title={s.caption || `ตัวอย่างที่ ${i + 1}`} loading="lazy" scrolling="no" frameBorder="0" allowFullScreen />
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <a key={i} className="link" href={s.url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 14, padding: "10px 0" }}>
-                    ▶️ {s.caption || "ดูตัวอย่างบทเรียน"}
-                  </a>
                 );
-              })}
+              })()}
+              {previews.filter(s => !ytEmbed(s.url) && !igCode(s.url)).map((s, i) => (
+                <a key={"lk" + i} className="link" href={s.url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 14, padding: "10px 0" }}>
+                  ▶️ {s.caption || "ดูตัวอย่างบทเรียน"}
+                </a>
+              ))}
+              <style>{`
+                .rv-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
+                  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+                .rv-row::-webkit-scrollbar { height: 7px; }
+                .rv-row::-webkit-scrollbar-thumb { background: #d9d5e2; border-radius: 20px; }
+                .rv-box { --w: 150px; --scale: 0.46; flex: 0 0 auto; scroll-snap-align: start;
+                  position: relative; width: var(--w); height: 296px; border-radius: 12px;
+                  overflow: hidden; background: var(--soft); border: 1px solid var(--border); }
+                .rv-box iframe { width: 326px; height: 640px; border: 0; display: block;
+                  transform: scale(var(--scale)); transform-origin: top left; }
+                @media (max-width: 420px) { .rv-box { --w: 132px; --scale: 0.405; height: 262px; } }
+              `}</style>
             </div>}
 
             {/* ⭐ รีวิว/ผลงานนักเรียน — ช่วยให้คนตัดสินใจซื้อง่ายขึ้น (คิมใส่ลิงก์เองในหน้าแอดมิน) */}

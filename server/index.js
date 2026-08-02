@@ -1300,6 +1300,24 @@ app.post("/api/admin/academy-import", async (req, res) => {
     res.json({ ok: true, table, upserted });
   } catch (e) { console.error("academy-import", e.message); res.status(500).json({ ok: false, error: "IMPORT_FAILED", message: e.message, upserted }); }
 });
+// แก้ "รายละเอียดคอร์ส" อย่างเดียว — ส่งฟิลด์ไหนมาก็แก้เฉพาะฟิลด์นั้น ไม่แตะที่เหลือ
+// (คิมส่งรายละเอียดคอร์สมาทีละตัวจากเอกสาร ต้องแก้ได้โดยไม่กระทบราคา/รูป/ผู้สอน)
+app.post("/api/admin/academy/course-detail", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.course_id || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const FIELDS = ["detail", "duration", "material", "tag"];   // ⛔ ไม่เปิดให้แก้ราคา/ธงลดราคา/is_active ทางนี้
+  const sets = [], vals = [];
+  for (const f of FIELDS) if (typeof req.body?.[f] === "string") { vals.push(req.body[f]); sets.push(`${f}=$${vals.length}`); }
+  if (!sets.length) return res.status(400).json({ ok: false, error: "NOTHING_TO_UPDATE", message: `ส่งได้: ${FIELDS.join(", ")}` });
+  try {
+    const before = await one(`SELECT legacy_id, name, detail FROM academy_courses WHERE legacy_id=$1`, [id]);
+    if (!before) return res.status(404).json({ ok: false, error: "COURSE_NOT_FOUND" });
+    vals.push(id);
+    await run(`UPDATE academy_courses SET ${sets.join(",")} WHERE legacy_id=$${vals.length}`, vals);
+    res.json({ ok: true, course_id: id, name: before.name, updated: sets.length, was_len: (before.detail || "").length });
+  } catch (e) { res.status(500).json({ ok: false, error: "UPDATE_FAILED", message: e.message }); }
+});
 // แก้ลิงก์วิดีโอบทเรียน "ทีละบท" — ใช้ตอนเจอบทที่วิดีโอหาย (เจอจริง 2 ส.ค.: Creative Thinking บทที่ 8)
 // ⛔ ห้ามใช้ academy-import แก้บทเดียว เพราะเป็น upsert ทั้งแถว → ฟิลด์ที่ไม่ได้ส่ง (time/parent_line_id) จะกลายเป็น null
 app.post("/api/admin/academy/lesson-url", async (req, res) => {

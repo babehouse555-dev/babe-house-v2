@@ -1910,23 +1910,28 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const hidden = [...HIDDEN_COURSES];
   const q1 = await one(`SELECT COUNT(DISTINCT lower(email)) c FROM academy_users WHERE COALESCE(email,'') <> ''`);
+  // ⚠️ ต้องอ่าน "ทั้งสองทาง" แบบเดียวกับ academyOwnedCourseIds เป๊ะ
+  // ออเดอร์เก่าส่วนใหญ่ course_id='0' แล้วคอร์สจริงอยู่ใน academy_order_lines
   const q2 = await one(`
     SELECT COUNT(DISTINCT lower(u.email)) c FROM academy_users u
     WHERE COALESCE(u.email,'') <> '' AND EXISTS (
-      SELECT 1 FROM academy_orders o
-      LEFT JOIN academy_order_lines l ON l.order_id = o.legacy_id
-      JOIN academy_courses c ON c.legacy_id = COALESCE(NULLIF(o.course_id,''), l.course_id)
-      WHERE o.legacy_user_id = u.legacy_id AND o.status='Close' AND c.is_active='0'
-        AND COALESCE(NULLIF(o.course_id,''), l.course_id) <> ALL($1::text[])
+      SELECT 1 FROM academy_orders o WHERE o.legacy_user_id=u.legacy_id AND o.status='Close'
+        AND EXISTS (SELECT 1 FROM academy_courses c WHERE c.legacy_id=o.course_id AND c.is_active='0' AND c.legacy_id <> ALL($1::text[]))
+      UNION ALL
+      SELECT 1 FROM academy_orders o JOIN academy_order_lines l ON l.order_id=o.legacy_id
+      WHERE o.legacy_user_id=u.legacy_id AND o.status='Close'
+        AND EXISTS (SELECT 1 FROM academy_courses c WHERE c.legacy_id=l.course_id AND c.is_active='0' AND c.legacy_id <> ALL($1::text[]))
     )`, [hidden]);
   const q3 = await q(`
-    SELECT c.legacy_id, c.name, COUNT(DISTINCT lower(u.email)) students
-    FROM academy_orders o
-    LEFT JOIN academy_order_lines l ON l.order_id = o.legacy_id
-    JOIN academy_users u ON u.legacy_id = o.legacy_user_id
-    JOIN academy_courses c ON c.legacy_id = COALESCE(NULLIF(o.course_id,''), l.course_id)
-    WHERE o.status='Close' AND c.is_active='0' AND COALESCE(u.email,'') <> ''
-    GROUP BY c.legacy_id, c.name ORDER BY students DESC LIMIT 10`);
+    SELECT c.legacy_id, c.name, COUNT(DISTINCT x.email) students FROM (
+      SELECT lower(u.email) email, o.course_id cid FROM academy_orders o
+        JOIN academy_users u ON u.legacy_id=o.legacy_user_id WHERE o.status='Close' AND COALESCE(u.email,'')<>''
+      UNION
+      SELECT lower(u.email) email, l.course_id cid FROM academy_orders o
+        JOIN academy_order_lines l ON l.order_id=o.legacy_id
+        JOIN academy_users u ON u.legacy_id=o.legacy_user_id WHERE o.status='Close' AND COALESCE(u.email,'')<>''
+    ) x JOIN academy_courses c ON c.legacy_id=x.cid
+    WHERE c.is_active='0' GROUP BY c.legacy_id, c.name ORDER BY students DESC LIMIT 10`);
   // 🔍 ไล่ทีละขั้นว่าข้อมูลขาดตอนตรงไหน
   const diag = {
     orders_total: Number((await one(`SELECT COUNT(*) c FROM academy_orders`))?.c || 0),

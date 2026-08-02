@@ -12,7 +12,6 @@ export default function WorkshopDetail() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(false);
   const [pick, setPick] = useState(null);
-  const [allRv, setAllRv] = useState(false);   // กดดูรีวิวทั้งหมด (โหลดทีละ 3 ก่อน ไม่ให้หน้าหนัก)
   const [form, setForm] = useState({ name: "", phone: "", qty: 1, code: "", food_note: "", needs_parking: false, customer_note: "" });
   const [promo, setPromo] = useState(null);
   const [codeMsg, setCodeMsg] = useState("");
@@ -83,29 +82,30 @@ export default function WorkshopDetail() {
               const code = (u) => (String(u || "").match(/\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/) || [])[1];
               const clips = d.showcase.map(x => ({ ...x, code: code(x.url) })).filter(x => x.code);
               if (!clips.length) return null;
-              const show = allRv ? clips : clips.slice(0, 3);
               return (
                 <div className="card" style={{ borderRadius: 16 }}>
                   <h3 style={{ fontSize: 16, margin: "0 0 3px" }}>🎬 รีวิวจากคนที่เรียนจริง</h3>
-                  <p className="muted" style={{ fontSize: 12.5, margin: "0 0 13px" }}>{clips.length} คลิป · กดเล่นได้เลย</p>
+                  <p className="muted" style={{ fontSize: 12.5, margin: "0 0 13px" }}>{clips.length} คลิป · เลื่อนไปทางขวาดูต่อได้เลย →</p>
                   <div className="rv-row">
-                    {show.map((c, i2) => (
+                    {clips.map((c, i2) => (
                       <div key={c.code} className="rv-box">
                         <iframe src={`https://www.instagram.com/reel/${c.code}/embed`}
                           title={`รีวิวที่ ${i2 + 1}`} loading="lazy" scrolling="no" frameBorder="0" allowFullScreen />
                       </div>
                     ))}
                   </div>
-                  {clips.length > 3 && (
-                    <button className="btn ghost" onClick={() => setAllRv(v => !v)} style={{ marginTop: 12, padding: "9px 18px", fontSize: 13.5 }}>
-                      {allRv ? "ย่อรีวิว" : `ดูรีวิวทั้งหมด (${clips.length} คลิป) →`}
-                    </button>
-                  )}
+
                   <style>{`
                     /* คิมชอบขนาดเล็กแบบการ์ด (2 ส.ค.) — Instagram ฝังมาที่ความกว้างคงที่ 326px
                        ย่อไม่ได้ตรงๆ เลยใช้วิธี "ย่อทั้งกล่อง" ด้วย scale แทน ได้หน้าปกจริงในขนาดที่เล็กลง */
-                    .rv-row { display: flex; flex-wrap: wrap; gap: 10px; }
+                    /* เลื่อนขวาดูต่อ ไม่ต้องกดปุ่ม — คิมบอก 2 ส.ค. "คนอาจจะขี้เกียจกดปุ่ม" */
+                    .rv-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
+                      scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+                    .rv-row::-webkit-scrollbar { height: 7px; }
+                    .rv-row::-webkit-scrollbar-thumb { background: #d9d5e2; border-radius: 20px; }
+                    .rv-row::-webkit-scrollbar-track { background: transparent; }
                     .rv-box { --w: 150px; --scale: 0.46;          /* 150 ÷ 326 ≈ 0.46 */
+                      flex: 0 0 auto; scroll-snap-align: start;
                       position: relative; width: var(--w); height: 296px; border-radius: 12px;
                       overflow: hidden; background: var(--soft); border: 1px solid var(--border); }
                     .rv-box iframe { width: 326px; height: 640px; border: 0; display: block;

@@ -5,6 +5,16 @@ import { api, session } from "../api.js";
 // หน้ารายละเอียดคอร์ส — อ่านก่อน ตัดสินใจก่อน แล้วค่อยซื้อ (ตาม feedback คิม: ไม่เอาปุ่มซื้อโดดใส่หน้าแรก)
 const BLUE = "var(--blue)";
 
+// แปลงลิงก์ YouTube (คลิปเดี่ยว / เพลย์ลิสต์ / youtu.be) → ลิงก์ฝังที่เล่นในหน้าเราได้เลย
+// ไม่ใช่ YouTube (เช่น TikTok, ไดรฟ์) คืน null → หน้าเว็บจะแสดงเป็นลิงก์กดออกไปแทน
+function ytEmbed(url) {
+  const u = String(url || "");
+  const list = u.match(/[?&]list=([\w-]+)/);
+  if (list) return `https://www.youtube.com/embed/videoseries?list=${list[1]}`;
+  const v = u.match(/[?&]v=([\w-]{11})/) || u.match(/youtu\.be\/([\w-]{11})/) || u.match(/youtube\.com\/embed\/([\w-]{11})/);
+  return v ? `https://www.youtube.com/embed/${v[1]}` : null;
+}
+
 export default function AcademyCourse() {
   const { id } = useParams();
   const [d, setD] = useState(null);
@@ -45,6 +55,9 @@ export default function AcademyCourse() {
 
   const c = d.course;
   const owned = (mine || []).some(m => m.id === c.id);
+  // แยก "ตัวอย่างบทเรียน" (preview) ออกจาก "รีวิวผู้เรียน" (clip/work/quote) — คนละบทบาทกันในการตัดสินใจซื้อ
+  const previews = (d.showcase || []).filter(s => s.kind === "preview");
+  const reviews = (d.showcase || []).filter(s => s.kind !== "preview");
   const sale = c.flag_sale && c.price_sale > 0;
   const finalPrice = sale ? c.price_sale : c.price;
 
@@ -71,12 +84,33 @@ export default function AcademyCourse() {
               </ol>
             </div>
 
+            {/* 🎬 ตัวอย่างบทเรียน — เล่นได้ในหน้าเลย ไม่ต้องกดออกไปที่อื่น
+                (คนตัดสินใจซื้อคอร์สจากการได้เห็นสไตล์การสอนจริง มากกว่าอ่านคำบรรยาย) */}
+            {previews.length > 0 && <div className="card" style={{ borderRadius: 16 }}>
+              <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>🎬 ดูตัวอย่างการสอนก่อนตัดสินใจ</h3>
+              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>คลิปตัวอย่างจากในคอร์สจริง</p>
+              {previews.map((s, i) => {
+                const em = ytEmbed(s.url);
+                return em ? (
+                  <div key={i} style={{ position: "relative", paddingTop: "56.25%", borderRadius: 12, overflow: "hidden", background: "#000", marginBottom: i < previews.length - 1 ? 12 : 0 }}>
+                    <iframe src={em} title={s.caption || "ตัวอย่างบทเรียน"} loading="lazy" allowFullScreen
+                      allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} />
+                  </div>
+                ) : (
+                  <a key={i} className="link" href={s.url} target="_blank" rel="noreferrer" style={{ display: "block", fontSize: 14, padding: "10px 0" }}>
+                    ▶️ {s.caption || "ดูตัวอย่างบทเรียน"}
+                  </a>
+                );
+              })}
+            </div>}
+
             {/* ⭐ รีวิว/ผลงานนักเรียน — ช่วยให้คนตัดสินใจซื้อง่ายขึ้น (คิมใส่ลิงก์เองในหน้าแอดมิน) */}
-            {d.showcase?.length > 0 && <div className="card" style={{ borderRadius: 16 }}>
+            {reviews.length > 0 && <div className="card" style={{ borderRadius: 16 }}>
               <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>เสียงจากคนที่เรียนจริง</h3>
-              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>{d.showcase.length} รีวิว</p>
+              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 12px" }}>{reviews.length} รีวิว</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {d.showcase.map((s, i) => s.kind === "quote" ? (
+                {reviews.map((s, i) => s.kind === "quote" ? (
                   <div key={i} style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 15px" }}>
                     <div style={{ fontSize: 14, lineHeight: 1.8 }}>“{s.caption}”</div>
                     {s.student_name && <div className="muted" style={{ fontSize: 12.5, marginTop: 5 }}>— {s.student_name}</div>}

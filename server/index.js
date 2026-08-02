@@ -1900,7 +1900,8 @@ app.post("/api/admin/academy/showcase", async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       ON CONFLICT (showcase_id) DO UPDATE SET kind=EXCLUDED.kind, url=EXCLUDED.url, caption=EXCLUDED.caption,
         student_name=EXCLUDED.student_name, seq=EXCLUDED.seq, active=EXCLUDED.active`,
-      [id, String(b.course_id || ""), ["clip", "work", "quote"].includes(b.kind) ? b.kind : "clip", String(b.url || ""),
+      // preview = คลิปตัวอย่างบทเรียนของคอร์ส (คนละอันกับ clip = รีวิวจากผู้เรียน) — ช่วยตัดสินใจซื้อมากที่สุด
+      [id, String(b.course_id || ""), ["clip", "work", "quote", "preview"].includes(b.kind) ? b.kind : "clip", String(b.url || ""),
        String(b.caption || ""), String(b.student_name || ""), Number(b.seq) || 1, b.active !== false]);
     res.json({ ok: true, showcase: await one(`SELECT * FROM academy_showcase WHERE showcase_id=$1`, [id]) });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }

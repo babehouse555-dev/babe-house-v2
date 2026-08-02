@@ -124,7 +124,8 @@ export default function EditOrder() {
           <div style={{ marginTop: 12, background: "#F2F7F3", border: "1px solid #cfe3d6", borderRadius: 12, padding: "11px 14px", fontSize: 13.5, lineHeight: 1.7 }}>
             📅 ส่งฟุตเทจวันนี้ <b>ได้งานประมาณ {price.eta_if_send_now}</b><br />
             <span className="muted" style={{ fontSize: 12.5 }}>
-              ทีมทำงาน {price.hours} · {price.working_now ? "ตอนนี้เปิดทำการอยู่ค่ะ" : "ตอนนี้นอกเวลาทำการ"} · นับเฉพาะวันทำการ ไม่รวมวันหยุด
+              {clips} คลิป × {price.days_per_clip} วันทำการ = {price.lead_days} วันทำการ · ทีมทำงาน {price.hours}<br />
+              นับเฉพาะวันทำการ ไม่รวมเสาร์-อาทิตย์และวันหยุด
             </span>
           </div>
         )}

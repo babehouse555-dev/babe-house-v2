@@ -2154,7 +2154,8 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // ⏰ เวลาทำงานจริงของทีม (คิมให้ข้อมูล 2026-08-02): จันทร์-ศุกร์ 12:00-19:00 · ส่งงาน ~3 วันทำการ
 const WORK_DAYS = [1, 2, 3, 4, 5];          // จ-ศ
 const WORK_START = 12, WORK_END = 19;        // เวลาไทย
-const EDIT_LEAD_DAYS = Number(process.env.EDIT_LEAD_DAYS) || 3;
+const EDIT_DAYS_PER_CLIP = Number(process.env.EDIT_DAYS_PER_CLIP) || 3;   // คิมเคาะ 2 ส.ค.: 3 วันทำการต่อคลิป
+const leadDaysFor = (clips) => Math.max(1, EDIT_DAYS_PER_CLIP * Math.max(1, Number(clips) || 1));
 // วันหยุดนักขัตฤกษ์ที่วันที่ตายตัวทุกปี — วันหยุดตามจันทรคติ (มาฆบูชา/วิสาขบูชา/อาสาฬหบูชา) เปลี่ยนทุกปี
 // ⚠️ ต้องให้คิมใส่เพิ่มเอง อย่าเดา — ใส่ผ่าน env HOLIDAYS="2026-03-03,2026-05-31" (คั่นด้วยจุลภาค)
 const FIXED_HOLIDAYS = ["01-01", "04-06", "04-13", "04-14", "04-15", "05-01", "07-28", "08-12", "10-13", "10-23", "12-05", "12-10", "12-31"];
@@ -2192,9 +2193,9 @@ const EDIT_STATUS = {
 app.get("/api/edit/price", (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
   res.json({ ok: true, clips: n, price_per_clip: editPrice(n), total: editPrice(n) * n, tiers: EDIT_TIERS,
-    free_revisions: EDIT_FREE_REVISIONS, lead_days: EDIT_LEAD_DAYS,
+    free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, lead_days: leadDaysFor(n),
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
-    eta_if_send_now: thDate(addWorkDays(new Date(), EDIT_LEAD_DAYS)) });
+    eta_if_send_now: thDate(addWorkDays(new Date(), leadDaysFor(n))) });
 });
 
 // สั่งงาน — บรีฟมาจากสคริปต์ในแผนลูกค้าเอง ไม่ต้องเขียนใหม่
@@ -2242,7 +2243,7 @@ app.post("/api/edit/files", async (req, res) => {
   if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   const f = String(req.body?.footage_url || "").trim(), v = String(req.body?.voice_url || "").trim();
   if (!/^https?:\/\//.test(f)) return res.status(400).json({ ok: false, error: "BAD_LINK", message: "ใส่ลิงก์ฟุตเทจให้ถูกต้องนะคะ (ขึ้นต้นด้วย http)" });
-  const due = addWorkDays(new Date(), EDIT_LEAD_DAYS);
+  const due = addWorkDays(new Date(), leadDaysFor(o.clips));
   await run(`UPDATE edit_orders SET footage_url=$1, voice_url=$2, due_at=COALESCE(due_at,$3),
     status=CASE WHEN status='awaiting_files' THEN 'editing' ELSE status END, updated_at=now() WHERE order_id=$4`,
     [f, v || null, due.toISOString(), o.order_id]);
@@ -2286,7 +2287,7 @@ app.post("/api/edit/comment", async (req, res) => {
   }
   // ลูกค้าคอมเมนต์ตอนงานส่งมาแล้ว = ขอแก้ → นับรอบแก้ + เด้งทีม
   if (!team && o.status === "draft_sent") {
-    const redue = addWorkDays(new Date(), Math.max(1, EDIT_LEAD_DAYS - 1));
+    const redue = addWorkDays(new Date(), Math.max(1, EDIT_DAYS_PER_CLIP - 1));   // รอบแก้เร็วกว่ารอบแรก
     await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1, due_at=$2, updated_at=now() WHERE order_id=$1`, [orderId, redue.toISOString()]);
     sendEmail(OPS_EMAIL, `💬 ลูกค้าขอแก้งาน — ${o.email}`, wrap(
       `งาน <b>${orderId}</b> · แก้ครั้งที่ ${Number(o.revisions_used) + 1} (ฟรี ${EDIT_FREE_REVISIONS} ครั้ง)<br><br>“${text.slice(0, 300)}”<br><br>${btn(`${appBaseUrl()}/admin`, "เปิดหลังบ้าน")}`)).catch(() => {});

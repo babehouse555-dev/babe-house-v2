@@ -307,22 +307,116 @@ const STYLE_LABEL = { amabella: "สายบิวตี้ จังหวะ�
 function EditOrdersPanel({ adminKey }) {
   const [d, setD] = useState(null);
   const [draft, setDraft] = useState({});
+  const [who, setWho] = useState("");        // กรอง "งานของฉัน" — ทีมมีหลายคน
+  const [showDone, setShowDone] = useState(false);
   const load = () => api("/api/admin/edit-orders", { adminKey }).then(setD).catch(() => {});
   useEffect(() => { if (adminKey) load(); }, [adminKey]);   // eslint-disable-line
   if (!d || !(d.orders || []).length) return null;
-  const open = d.orders.filter(o => o.status !== "done" && o.status !== "canceled");
   const upd = async (id, body) => { await api("/api/admin/edit-order/update", { method: "POST", adminKey, body: { order_id: id, ...body } }); load(); };
+
+  // 🗂️ จัดคิวงานให้ทีม (คิมขอ 2 ส.ค.: "ให้ดูเป็นระเบียบและดูง่ายสำหรับทีมมากที่สุด")
+  // เดิมเป็นรายการยาวเรียงตามวันที่ ทีมต้องเลื่อนหาเองว่าอะไรต้องทำก่อน
+  const DAY = 86400000, now = Date.now();
+  const dueInfo = (o) => {
+    if (!o.due_at || o.status === "done" || o.status === "canceled") return null;
+    const left = Math.ceil((new Date(o.due_at).getTime() - now) / DAY);
+    if (left < 0) return { txt: `เลยกำหนด ${-left} วัน`, bg: "#FDE8E8", fg: "#b3261e" };
+    if (left === 0) return { txt: "ครบกำหนดวันนี้", bg: "#FFF3E0", fg: "#B26A00" };
+    if (left <= 1) return { txt: "ครบกำหนดพรุ่งนี้", bg: "#FFF8E6", fg: "#8a6d1f" };
+    return { txt: `อีก ${left} วัน`, bg: "var(--soft)", fg: "var(--muted)" };
+  };
+  // เรียงตามความด่วน: ใกล้ครบกำหนดขึ้นก่อน · ไม่มีกำหนด (ยังไม่ส่งไฟล์) ไปท้าย
+  const byUrgency = (a, b) => {
+    const A = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+    const B = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+    return A - B;
+  };
+  const people = [...new Set(d.orders.map(o => o.assignee).filter(Boolean))];
+  const visible = who ? d.orders.filter(o => o.assignee === who) : d.orders;
+  // เรียงกลุ่มตามลำดับการทำงานจริง — งานที่ทีมต้องลงมือขึ้นก่อน
+  const GROUPS = [
+    { k: "editing", label: "🎬 ทีมกำลังตัด", tone: "#5a3fc0" },
+    { k: "revising", label: "✏️ กำลังแก้ตามคอมเมนต์", tone: "#B26A00" },
+    { k: "awaiting_files", label: "⏳ รอลูกค้าส่งไฟล์", tone: "#8a7f9c" },
+    { k: "draft_sent", label: "👀 ส่งให้ลูกค้าดูแล้ว รอตอบ", tone: "#1a7f43" },
+  ];
+  const late = visible.filter(o => dueInfo(o)?.fg === "#b3261e").length;
+  const openCount = visible.filter(o => o.status !== "done" && o.status !== "canceled").length;
+
   return (
     <div className="card" style={{ border: "1px solid #DDD2F0", background: "#FBFAFE" }}>
-      <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0, color: "#5a3fc0" }}>🎬 งานตัดต่อ ({open.length} งานที่ยังไม่จบ)</h3>
-        <span className="muted" style={{ fontSize: 12.5 }}>ทั้งหมด {d.orders.length} งาน</span>
+      <div className="between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        <h3 style={{ margin: 0, color: "#5a3fc0" }}>🎬 คิวงานตัดต่อ</h3>
+        <span className="muted" style={{ fontSize: 12.5 }}>ยังไม่จบ {openCount} · ทั้งหมด {d.orders.length}</span>
       </div>
-      {d.orders.slice(0, 15).map(o => (
-        <div key={o.order_id} style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
+
+      {/* แถบสรุป — มองปุ๊บรู้ว่าต้องรีบอะไร */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {late > 0 && <span style={{ background: "#FDE8E8", color: "#b3261e", fontWeight: 800, fontSize: 12.5, borderRadius: 20, padding: "5px 12px" }}>🔴 เลยกำหนด {late} งาน</span>}
+        {GROUPS.map(g => {
+          const n = visible.filter(o => o.status === g.k).length;
+          return n ? <span key={g.k} style={{ background: "#fff", border: "1px solid var(--border)", color: g.tone, fontWeight: 700, fontSize: 12.5, borderRadius: 20, padding: "5px 12px" }}>{g.label} {n}</span> : null;
+        })}
+      </div>
+
+      {/* กรองตามคนรับงาน — น้องแต่ละคนกดดูเฉพาะงานตัวเองได้ */}
+      {people.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+          <span className="muted" style={{ fontSize: 12.5 }}>ดูงานของ:</span>
+          {["", ...people].map(p => (
+            <button key={p || "all"} onClick={() => setWho(p)}
+              style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontFamily: "inherit",
+                border: who === p ? "1.5px solid #5a3fc0" : "1px solid var(--border)",
+                background: who === p ? "#F0EBFA" : "#fff", color: who === p ? "#5a3fc0" : "var(--muted)" }}>
+              {p || "ทุกคน"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {GROUPS.map(g => {
+        const rows = visible.filter(o => o.status === g.k).sort(byUrgency);
+        if (!rows.length) return null;
+        return (
+          <div key={g.k} style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, fontSize: 13.5, color: g.tone, background: "#fff", borderRadius: 9, padding: "7px 11px", border: "1px solid var(--border)" }}>
+              {g.label} ({rows.length})
+            </div>
+            {rows.map(o => <OrderRow key={o.order_id} o={o} d={d} upd={upd} draft={draft} setDraft={setDraft} due={dueInfo(o)} />)}
+          </div>
+        );
+      })}
+
+      {/* งานที่จบแล้ว — พับไว้ ไม่ให้รก */}
+      {(() => {
+        const closed = visible.filter(o => o.status === "done" || o.status === "canceled").sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        if (!closed.length) return null;
+        return (
+          <div>
+            <button onClick={() => setShowDone(s => !s)} style={{ background: "none", border: 0, color: "var(--muted)", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "6px 0", fontFamily: "inherit" }}>
+              {showDone ? "▾" : "▸"} งานที่จบแล้ว ({closed.length})
+            </button>
+            {showDone && closed.slice(0, 30).map(o => <OrderRow key={o.order_id} o={o} d={d} upd={upd} draft={draft} setDraft={setDraft} due={null} />)}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// การ์ดงาน 1 ชิ้น — ข้อมูลที่ทีมต้องใช้ตัดจริงอยู่ครบในที่เดียว
+function OrderRow({ o, d, upd, draft, setDraft, due }) {
+  return (
+        <div style={{ borderTop: "1px solid var(--border)", padding: "12px 0" }}>
           <div className="between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
-            <b style={{ fontSize: 14 }}>{o.email} · {o.clips} คลิป · ฿{Number((o.amount_satang || 0) / 100).toLocaleString()}</b>
-            <span className="muted" style={{ fontSize: 12 }}>{String(o.created_at).slice(0, 10)}</span>
+            <b style={{ fontSize: 14 }}>
+              {o.email} · {o.clips} คลิป · {o.paid_by === "credit" ? <span style={{ color: "#5a3fc0" }}>ใช้เครดิต</span> : `฿${Number((o.amount_satang || 0) / 100).toLocaleString()}`}
+            </b>
+            <span style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+              {/* ⏰ วันครบกำหนด — ของเดิมมีในระบบแต่ไม่เคยแสดง ทีมเลยไม่รู้ว่างานไหนต้องรีบ */}
+              {due && <span style={{ background: due.bg, color: due.fg, fontWeight: 800, fontSize: 11.5, borderRadius: 20, padding: "3px 10px" }}>{due.txt}</span>}
+              <span className="muted" style={{ fontSize: 12 }}>{String(o.created_at).slice(0, 10)}</span>
+            </span>
           </div>
           <div style={{ fontSize: 13, lineHeight: 1.9, marginBottom: 8 }}>
             {o.footage_url ? <>🎞️ <a className="link" href={o.footage_url} target="_blank" rel="noreferrer">ฟุตเทจ</a> </> : <span style={{ color: "#C77700" }}>⏳ ยังไม่ส่งไฟล์ </span>}
@@ -354,7 +448,5 @@ function EditOrdersPanel({ adminKey }) {
               style={{ background: "#5a3fc0", color: "#fff", border: 0, borderRadius: 9, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>บันทึก</button>
           </div>
         </div>
-      ))}
-    </div>
   );
 }

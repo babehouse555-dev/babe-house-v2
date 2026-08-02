@@ -82,6 +82,14 @@ export default function EditOrder() {
         <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…" : `สั่งงาน ${clips} คลิป · ${money(price?.total)}`}</button>
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
+        {price?.eta_if_send_now && (
+          <div style={{ marginTop: 12, background: "#F2F7F3", border: "1px solid #cfe3d6", borderRadius: 12, padding: "11px 14px", fontSize: 13.5, lineHeight: 1.7 }}>
+            📅 ส่งฟุตเทจวันนี้ <b>ได้งานประมาณ {price.eta_if_send_now}</b><br />
+            <span className="muted" style={{ fontSize: 12.5 }}>
+              ทีมทำงาน {price.hours} · {price.working_now ? "ตอนนี้เปิดทำการอยู่ค่ะ" : "ตอนนี้นอกเวลาทำการ"} · นับเฉพาะวันทำการ ไม่รวมวันหยุด
+            </span>
+          </div>
+        )}
         <div className="muted" style={{ fontSize: 12.5, marginTop: 12, lineHeight: 1.75 }}>
           ✅ ตัดต่อ + ใส่ซับ + เอฟเฟกต์ + กราฟิกประกอบ · แก้ฟรี {price?.free_revisions ?? 2} ครั้ง<br />
           📎 คุณส่งฟุตเทจและไฟล์เสียงมาเอง (ลิงก์ Drive ก็ได้)<br />

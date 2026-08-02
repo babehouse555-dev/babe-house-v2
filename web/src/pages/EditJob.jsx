@@ -50,6 +50,14 @@ export default function EditJob() {
           ))}
         </div>
         <div className="center" style={{ marginTop: 12, fontWeight: 800, fontSize: 15.5, color: "var(--blue)" }}>{o.status_th}</div>
+        {o.due_th && o.status !== "done" && (
+          <div className="center" style={{ marginTop: 6, fontSize: 13.5 }}>
+            📅 คาดว่าได้งาน <b>{o.due_th}</b>
+          </div>
+        )}
+        <div className="center muted" style={{ marginTop: 6, fontSize: 12 }}>
+          ทีมทำงาน {d.hours}{d.working_now ? "" : " · ตอนนี้นอกเวลาทำการ"}
+        </div>
       </div>
 
       {o.brief && (

@@ -2151,6 +2151,33 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // ===== 🎬 ให้ทีมช่วยลงมือทำ (ตัดต่อจากแผนของลูกค้า) =====
 // ราคาคิมเคาะ 2026-08-02 — ยิ่งสั่งเยอะยิ่งถูกลง ไม่มีเพดาน · ต้นทุนฟรีแลนซ์ ~400/คลิป
 // ⛔ ไม่รับงานถ่ายในเว็บ (ตัวแปรเยอะ ตั้งราคาตายตัวแล้วขาดทุน) → มีปุ่มให้ทีมโทรกลับแทน
+// ⏰ เวลาทำงานจริงของทีม (คิมให้ข้อมูล 2026-08-02): จันทร์-ศุกร์ 12:00-19:00 · ส่งงาน ~3 วันทำการ
+const WORK_DAYS = [1, 2, 3, 4, 5];          // จ-ศ
+const WORK_START = 12, WORK_END = 19;        // เวลาไทย
+const EDIT_LEAD_DAYS = Number(process.env.EDIT_LEAD_DAYS) || 3;
+// วันหยุดนักขัตฤกษ์ที่วันที่ตายตัวทุกปี — วันหยุดตามจันทรคติ (มาฆบูชา/วิสาขบูชา/อาสาฬหบูชา) เปลี่ยนทุกปี
+// ⚠️ ต้องให้คิมใส่เพิ่มเอง อย่าเดา — ใส่ผ่าน env HOLIDAYS="2026-03-03,2026-05-31" (คั่นด้วยจุลภาค)
+const FIXED_HOLIDAYS = ["01-01", "04-06", "04-13", "04-14", "04-15", "05-01", "07-28", "08-12", "10-13", "10-23", "12-05", "12-10", "12-31"];
+const EXTRA_HOLIDAYS = new Set(String(process.env.HOLIDAYS || "").split(",").map(x => x.trim()).filter(Boolean));
+const bkk = (d) => new Date(d.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+function isHoliday(d) {
+  const mm = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
+  return FIXED_HOLIDAYS.includes(`${mm}-${dd}`) || EXTRA_HOLIDAYS.has(`${d.getFullYear()}-${mm}-${dd}`);
+}
+const isWorkDay = (d) => WORK_DAYS.includes(d.getDay()) && !isHoliday(d);
+// นับไปข้างหน้า n วันทำการ (ข้ามเสาร์-อาทิตย์ + วันหยุด)
+function addWorkDays(from, n) {
+  const d = bkk(from); let left = n;
+  while (left > 0) { d.setDate(d.getDate() + 1); if (isWorkDay(d)) left--; }
+  d.setHours(WORK_END, 0, 0, 0);
+  return d;
+}
+function isWorkingNow() {
+  const d = bkk(new Date());
+  return isWorkDay(d) && d.getHours() >= WORK_START && d.getHours() < WORK_END;
+}
+const thDate = (d) => new Date(d).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long" });
+
 const EDIT_TIERS = [
   { min: 30, price: 1250 }, { min: 20, price: 1350 }, { min: 10, price: 1500 },
   { min: 4, price: 1700 }, { min: 1, price: 1900 },
@@ -2164,7 +2191,10 @@ const EDIT_STATUS = {
 
 app.get("/api/edit/price", (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
-  res.json({ ok: true, clips: n, price_per_clip: editPrice(n), total: editPrice(n) * n, tiers: EDIT_TIERS, free_revisions: EDIT_FREE_REVISIONS });
+  res.json({ ok: true, clips: n, price_per_clip: editPrice(n), total: editPrice(n) * n, tiers: EDIT_TIERS,
+    free_revisions: EDIT_FREE_REVISIONS, lead_days: EDIT_LEAD_DAYS,
+    hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
+    eta_if_send_now: thDate(addWorkDays(new Date(), EDIT_LEAD_DAYS)) });
 });
 
 // สั่งงาน — บรีฟมาจากสคริปต์ในแผนลูกค้าเอง ไม่ต้องเขียนใหม่
@@ -2197,7 +2227,9 @@ app.get("/api/edit/order/:id", async (req, res) => {
   const isTeam = isAdmin(req);
   if (!isTeam && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
   const comments = await q(`SELECT * FROM edit_comments WHERE order_id=$1 ORDER BY created_at`, [o.order_id]);
-  res.json({ ok: true, order: { ...o, status_th: EDIT_STATUS[o.status] || o.status, brief: safeJson(o.brief_json) }, comments, free_revisions: EDIT_FREE_REVISIONS });
+  res.json({ ok: true, order: { ...o, status_th: EDIT_STATUS[o.status] || o.status, brief: safeJson(o.brief_json),
+    due_th: o.due_at ? thDate(o.due_at) : null }, comments, free_revisions: EDIT_FREE_REVISIONS,
+    hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
 });
 
 // ลูกค้าส่งลิงก์ฟุตเทจ/เสียง → เด้งให้ทีมรู้
@@ -2208,8 +2240,12 @@ app.post("/api/edit/files", async (req, res) => {
   if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   const f = String(req.body?.footage_url || "").trim(), v = String(req.body?.voice_url || "").trim();
   if (!/^https?:\/\//.test(f)) return res.status(400).json({ ok: false, error: "BAD_LINK", message: "ใส่ลิงก์ฟุตเทจให้ถูกต้องนะคะ (ขึ้นต้นด้วย http)" });
-  await run(`UPDATE edit_orders SET footage_url=$1, voice_url=$2, status=CASE WHEN status='awaiting_files' THEN 'editing' ELSE status END, updated_at=now() WHERE order_id=$3`,
-    [f, v || null, o.order_id]);
+  const due = addWorkDays(new Date(), EDIT_LEAD_DAYS);
+  await run(`UPDATE edit_orders SET footage_url=$1, voice_url=$2, due_at=COALESCE(due_at,$3),
+    status=CASE WHEN status='awaiting_files' THEN 'editing' ELSE status END, updated_at=now() WHERE order_id=$4`,
+    [f, v || null, due.toISOString(), o.order_id]);
+  await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
+    [uid("ec"), o.order_id, `ได้รับไฟล์แล้วค่ะ 🩵 ทีมจะเริ่มตัดให้เลยนะคะ — คาดว่าส่งงานให้ดูได้ประมาณ ${thDate(due)} ค่ะ`]);
   sendEmail(OPS_EMAIL, `🎬 ลูกค้าส่งไฟล์แล้ว — ${o.email}`, wrap(
     `งาน <b>${o.order_id}</b> · ${o.clips} คลิป<br>ฟุตเทจ: ${f}<br>${v ? `เสียง: ${v}<br>` : ""}<br>${btn(`${appBaseUrl()}/admin`, "เปิดหลังบ้าน")}`)).catch(() => {});
   res.json({ ok: true });
@@ -2241,13 +2277,15 @@ app.post("/api/edit/comment", async (req, res) => {
         revising: "รับเรื่องเพิ่มแล้วค่ะ 🩵 ทีมจะรวมแก้ไปพร้อมกันในรอบนี้เลยนะคะ",
         done: "รับเรื่องแล้วค่ะ 🩵 งานนี้ปิดไปแล้ว เดี๋ยวทีมอ่านแล้วติดต่อกลับนะคะ",
       };
+      const offHours = isWorkingNow() ? "" : " (ตอนนี้นอกเวลาทำการนะคะ ทีมทำงาน จันทร์-ศุกร์ 12:00-19:00 น. เดี๋ยวเปิดทำการแล้วทีมจะเห็นเลยค่ะ)";
       await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
-        [uid("ec"), orderId, ACK[o.status] || ACK.editing]);
+        [uid("ec"), orderId, (ACK[o.status] || ACK.editing) + offHours]);
     }
   }
   // ลูกค้าคอมเมนต์ตอนงานส่งมาแล้ว = ขอแก้ → นับรอบแก้ + เด้งทีม
   if (!team && o.status === "draft_sent") {
-    await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1, updated_at=now() WHERE order_id=$1`, [orderId]);
+    const redue = addWorkDays(new Date(), Math.max(1, EDIT_LEAD_DAYS - 1));
+    await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1, due_at=$2, updated_at=now() WHERE order_id=$1`, [orderId, redue.toISOString()]);
     sendEmail(OPS_EMAIL, `💬 ลูกค้าขอแก้งาน — ${o.email}`, wrap(
       `งาน <b>${orderId}</b> · แก้ครั้งที่ ${Number(o.revisions_used) + 1} (ฟรี ${EDIT_FREE_REVISIONS} ครั้ง)<br><br>“${text.slice(0, 300)}”<br><br>${btn(`${appBaseUrl()}/admin`, "เปิดหลังบ้าน")}`)).catch(() => {});
   }

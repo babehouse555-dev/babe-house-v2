@@ -1017,10 +1017,16 @@ export function checkMetricsSanity(m) {
   // (ข) engagement rate สูงเกินจริง (รับได้ทั้งรูปแบบ 0-1 และ 0-100)
   const erPct = er == null ? null : (er <= 1 ? er * 100 : er);
   if (erPct != null && erPct > 30) flags.push(`🔢 อัตราการมีส่วนร่วม ${erPct.toFixed(1)}% สูงผิดปกติ — น่าจะอ่านตัวเลขผิด`);
-  // (ค) followers กับ reach สลับกันแบบชัดเจนมาก (reach มากกว่าผู้ติดตาม 50 เท่าขึ้นไป)
-  // ใช้เกณฑ์สูงมากเพราะคลิปไวรัลทำ reach ทะลุผู้ติดตามหลายเท่าได้จริง ไม่ใช่ความผิดพลาด
-  if (reach && followers && reach > followers * 50) {
-    flags.push(`🔢 ผู้ติดตาม ${followers.toLocaleString()} แต่การเข้าถึง ${reach.toLocaleString()} (ต่างกันเกิน 50 เท่า) — เช็กว่าอ่านสลับกันไหม`);
+  // (ค) reach ทะลุผู้ติดตามหลายเท่า = คลิปไวรัล ไม่ใช่ความผิดพลาด — อย่าเตือนลอยๆ
+  // เจอจริง 2 ส.ค.: @jabo0oo (130 ฟอล / 9,200 reach) และ @todaysmoment.khao (106 / 27,700) ถูกเตือนทั้งที่ตัวเลขสมเหตุสมผล
+  // เตือนเฉพาะตอน "ขัดแย้งกันเอง" เท่านั้น: reach สูงลิ่วแต่คนเข้าโปรไฟล์กลับน้อยกว่าผู้ติดตาม = อ่านสลับช่องแน่
+  const pv = n(m.profile_visits);
+  if (reach && followers && reach > followers * 50 && pv && pv < followers) {
+    flags.push(`🔢 การเข้าถึง ${reach.toLocaleString()} สูงกว่าผู้ติดตาม ${followers.toLocaleString()} มาก แต่คนเข้าโปรไฟล์แค่ ${pv.toLocaleString()} — ตัวเลขขัดกันเอง น่าจะอ่านสลับช่อง`);
+  }
+  // (ง) reach น้อยกว่าผู้ติดตาม 100 เท่า = อ่านผิดแน่ (เจอจริง: @jeowfee 1,300 ฟอล แต่ reach 2)
+  if (reach && followers && followers > 200 && reach < followers / 100) {
+    flags.push(`🔢 ผู้ติดตาม ${followers.toLocaleString()} แต่การเข้าถึงแค่ ${reach.toLocaleString()} — ต่ำผิดปกติ น่าจะอ่านตัวเลขผิดช่อง`);
   }
   return flags;
 }

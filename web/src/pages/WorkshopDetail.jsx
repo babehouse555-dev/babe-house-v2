@@ -12,6 +12,7 @@ export default function WorkshopDetail() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(false);
   const [pick, setPick] = useState(null);
+  const [allRv, setAllRv] = useState(false);   // กดดูรีวิวทั้งหมด (โหลดทีละ 3 ก่อน ไม่ให้หน้าหนัก)
   const [form, setForm] = useState({ name: "", phone: "", qty: 1, code: "", food_note: "", needs_parking: false, customer_note: "" });
   const [promo, setPromo] = useState(null);
   const [codeMsg, setCodeMsg] = useState("");
@@ -76,36 +77,40 @@ export default function WorkshopDetail() {
               <p style={{ fontSize: 14.5, lineHeight: 1.9, margin: 0, whiteSpace: "pre-wrap" }}>{w.what_you_get}</p>
             </div>}
 
-            {/* 🎬 รีวิวจากคนที่เรียนจริง — คิมบอก 2 ส.ค. "คลิปรีวิวของเพื่อนๆ ทำให้นักเรียนตัดสินใจง่ายขึ้นอีก"
-                เดิมเป็นลิงก์ตัวหนังสือ ไม่มีใครกด → ทำเป็นการ์ดทรงรีลให้เห็นว่าเป็นคลิป */}
-            {d.showcase?.length > 0 && <div className="card" style={{ borderRadius: 16 }}>
-              <h3 style={{ fontSize: 16, margin: "0 0 3px" }}>🎬 รีวิวจากคนที่เรียนจริง</h3>
-              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 13px" }}>
-                {d.showcase.length} คลิป · กดดูได้เลย เปิดใน Instagram
-              </p>
-              <div className="rv-row">
-                {d.showcase.map((s, i) => (
-                  <a key={i} className="rv" href={s.url} target="_blank" rel="noreferrer">
-                    <span className="rv-play">▶</span>
-                    <span className="rv-tag">รีวิวที่ {i + 1}</span>
-                    {s.caption && <span className="rv-cap">{s.caption}</span>}
-                  </a>
-                ))}
-              </div>
-              <style>{`
-                .rv-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
-                .rv { position: relative; flex: 0 0 auto; width: 116px; aspect-ratio: 9/16; border-radius: 13px; overflow: hidden;
-                  text-decoration: none; scroll-snap-align: start; display: flex; flex-direction: column;
-                  align-items: center; justify-content: center; gap: 7px;
-                  background: linear-gradient(140deg,#F9CE34 0%,#EE2A7B 46%,#6228D7 100%);
-                  box-shadow: 0 3px 10px rgba(90,40,120,.20); transition: transform .16s, box-shadow .16s; }
-                .rv:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(90,40,120,.30); }
-                .rv-play { width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.94);
-                  color: #EE2A7B; font-size: 15px; display: flex; align-items: center; justify-content: center; padding-left: 3px; }
-                .rv-tag { color: #fff; font-size: 12px; font-weight: 800; text-shadow: 0 1px 3px rgba(0,0,0,.28); }
-                .rv-cap { color: rgba(255,255,255,.92); font-size: 10.5px; padding: 0 8px; text-align: center; line-height: 1.4; }
-              `}</style>
-            </div>}
+            {/* 🎬 รีวิวจากคนที่เรียนจริง — ฝังคลิปจาก Instagram โดยตรง เห็นหน้าปกจริง กดเล่นได้ในหน้าเว็บ
+                คิมขอ 2 ส.ค.: "เอาหน้าปกคลิปขึ้นแทนได้ไหม" — ทดสอบแล้วเปิดได้โดยไม่ต้อง login */}
+            {d.showcase?.length > 0 && (() => {
+              const code = (u) => (String(u || "").match(/\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/) || [])[1];
+              const clips = d.showcase.map(x => ({ ...x, code: code(x.url) })).filter(x => x.code);
+              if (!clips.length) return null;
+              const show = allRv ? clips : clips.slice(0, 3);
+              return (
+                <div className="card" style={{ borderRadius: 16 }}>
+                  <h3 style={{ fontSize: 16, margin: "0 0 3px" }}>🎬 รีวิวจากคนที่เรียนจริง</h3>
+                  <p className="muted" style={{ fontSize: 12.5, margin: "0 0 13px" }}>{clips.length} คลิป · กดเล่นได้เลย</p>
+                  <div className="rv-grid">
+                    {show.map((c, i2) => (
+                      <div key={c.code} className="rv-box">
+                        <iframe src={`https://www.instagram.com/reel/${c.code}/embed`}
+                          title={`รีวิวที่ ${i2 + 1}`} loading="lazy" scrolling="no" frameBorder="0" allowFullScreen />
+                      </div>
+                    ))}
+                  </div>
+                  {clips.length > 3 && (
+                    <button className="btn ghost" onClick={() => setAllRv(v => !v)} style={{ marginTop: 12, padding: "9px 18px", fontSize: 13.5 }}>
+                      {allRv ? "ย่อรีวิว" : `ดูรีวิวทั้งหมด (${clips.length} คลิป) →`}
+                    </button>
+                  )}
+                  <style>{`
+                    .rv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 12px; }
+                    .rv-box { position: relative; border-radius: 14px; overflow: hidden; background: var(--soft);
+                      border: 1px solid var(--border); height: 560px; }
+                    .rv-box iframe { width: 100%; height: 100%; border: 0; display: block; }
+                    @media (max-width: 520px) { .rv-box { height: 520px; } }
+                  `}</style>
+                </div>
+              );
+            })()}
           </div>
 
           {/* กล่องจอง */}

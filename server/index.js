@@ -1942,6 +1942,19 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
     is_active_values: await q(`SELECT is_active, COUNT(*) c FROM academy_courses GROUP BY is_active`),
     sample_order: await one(`SELECT legacy_id, legacy_user_id, course_id, status FROM academy_orders WHERE status='Close' LIMIT 1`),
     sample_user_id: await one(`SELECT legacy_id FROM academy_users LIMIT 1`),
+    // คอร์สที่ออเดอร์อ้างถึงแต่เราไม่มีข้อมูล = ต้องขอ ZeroDesign เพิ่ม
+    distinct_course_ids_in_orders: Number((await one(`SELECT COUNT(DISTINCT COALESCE(NULLIF(o.course_id,''), l.course_id)) c
+      FROM academy_orders o LEFT JOIN academy_order_lines l ON l.order_id=o.legacy_id WHERE o.status='Close'`))?.c || 0),
+    courses_we_have: Number((await one(`SELECT COUNT(*) c FROM academy_courses`))?.c || 0),
+    missing_courses: await q(`
+      SELECT cid, COUNT(*) orders, COUNT(DISTINCT lower(u.email)) students FROM (
+        SELECT COALESCE(NULLIF(o.course_id,''), l.course_id) cid, o.legacy_user_id
+        FROM academy_orders o LEFT JOIN academy_order_lines l ON l.order_id=o.legacy_id
+        WHERE o.status='Close'
+      ) x LEFT JOIN academy_users u ON u.legacy_id = x.legacy_user_id
+      WHERE cid IS NOT NULL AND cid <> '' AND NOT EXISTS (SELECT 1 FROM academy_courses c WHERE c.legacy_id = x.cid)
+      GROUP BY cid ORDER BY students DESC LIMIT 25`),
+    users_no_email: Number((await one(`SELECT COUNT(*) c FROM academy_users WHERE COALESCE(email,'')=''`))?.c || 0),
   };
   const lessons = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') <> ''`);
   const noVideo = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') = ''`);

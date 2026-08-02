@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { ACADEMY_LIVE } from "../config.js";
+import { workshopForCourse, shouldSuggestWorkshop } from "../workshopMap.js";
 
 // 🏠 "ของทั้งหมดที่ฉันซื้อ" — คอร์ส · ประกาศนียบัตร · workshop
 // หลักคิด (คิมสั่ง 2026-08-01): ลูกค้าเข้ามาต้องเจอ "ทุกอย่างที่เขาซื้อ" ในที่เดียว ดูง่าย
@@ -91,6 +92,23 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
                   <Link className="btn" to={`/academy/learn?course=${c.id}`} style={{ padding: "8px 16px", fontSize: 13.5, whiteSpace: "nowrap", background: done ? "#1a7f43" : undefined }}>
                     {done ? "ทบทวน →" : c.done > 0 ? "เรียนต่อ →" : "เริ่มเรียน →"}
                   </Link>
+                  {/* 🎟️ ซื้อคอร์สแล้วแต่ยังเรียนไม่จบ → ชวนมาลงมือทำในคลาสสดเรื่องเดียวกัน
+                      (คิมยืนยัน 2 ส.ค.: คนที่ขี้เกียจเรียนออนไลน์แล้วมาเข้าคลาสสด "ได้ผลจริง")
+                      ⛔ ไม่ขึ้นกับคนที่เรียนจบแล้ว — เขาทำเองได้แล้ว ไม่ต้องยัดขาย */}
+                  {ACADEMY_LIVE && shouldSuggestWorkshop(c.id, pct) && (() => {
+                    const w = workshopForCourse(c.id);
+                    return (
+                      <div style={{ width: "100%", background: "#F2F7F3", border: "1px solid #cfe3d6", borderRadius: 12, padding: "11px 14px", marginTop: 2 }}>
+                        <div style={{ fontSize: 13.5, lineHeight: 1.65 }}>
+                          🎟️ <b>เรียนแล้วยังไม่ได้ลงมือทำใช่ไหมคะ</b> — มาทำจริงกับครูพี่คิมในคลาสสดได้นะคะ
+                          <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>{w.why}</div>
+                        </div>
+                        <Link className="link" to={`/workshop/${w.id}`} style={{ fontSize: 13, fontWeight: 700, display: "inline-block", marginTop: 7 }}>
+                          ดูรอบเรียน →
+                        </Link>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

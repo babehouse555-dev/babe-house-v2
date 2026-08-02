@@ -102,6 +102,40 @@ export default function Compare() {
             {METRICS.map(([k, label, ic, suf], i) => first.metrics?.[k] != null && (() => { const c = [["#ECEAF6", "#6E63A6"], ["#E7EDF8", "#3F6BAE"], ["#E4F4F3", "#2C8E8C"], ["#F3F0F5", "#7E7392"], ["#F7F4EA", "#9A8458"]][i % 5]; return <div key={k} style={{ background: c[0], borderRadius: 16, padding: "16px 14px" }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{ic} {label}</div><div style={{ fontSize: 24, fontWeight: 800, color: c[1], marginTop: 4 }}>{fmt(first.metrics[k])}{suf || ""}</div></div>; })())}
           </div>
         </div>
+        {/* 🔭 โชว์ให้เห็นตั้งแต่เดือนแรกว่าเดือนหน้าจะได้อะไร — เดิมของนี้ซ่อนอยู่หลังกำแพง "ต้องซื้อเดือน 2 ก่อน"
+            ทำให้ไม่มีลูกค้าสักคนรู้ว่ามี (ตรวจจริง 2 ส.ค. 2569: ลูกค้า 193 คน ต่อเดือน 2 = 0 คน) */}
+        <div className="card" style={{ position: "relative", background: "#FBFAFD", border: "1px dashed #C9C2DE" }}>
+          <div style={{ position: "absolute", top: 14, right: 14, background: "#6E63A6", color: "#fff", fontSize: 10.5, fontWeight: 800, letterSpacing: 1, padding: "4px 10px", borderRadius: 999 }}>{t("cmp_peek_demo")}</div>
+          <h3 style={{ marginBottom: 4 }}>🔭 {t("cmp_peek_title")}</h3>
+          <p className="muted" style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{t("cmp_peek_sub")}</p>
+
+          <div style={{ background: "linear-gradient(135deg,#8E86BC,#5FA9A7)", color: "#fff", borderRadius: 18, padding: "20px 18px", textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: .92 }}>{t("cmp_peek_grew")}</div>
+            <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.15, margin: "2px 0" }}>▲ +47%</div>
+            <div style={{ opacity: .92, fontSize: 13.5 }}>1,240 → 1,820</div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 108, marginTop: 16 }}>
+            {[[1240, "เดือน 1"], [1520, "เดือน 2"], [1820, "เดือน 3"]].map(([v, lb], i) => (
+              <div key={lb} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, height: "100%", justifyContent: "flex-end" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: i === 2 ? "#2C8E8C" : "var(--muted)" }}>{fmt(v)}</div>
+                <div style={{ width: "100%", maxWidth: 46, height: `${Math.round(v / 1820 * 78)}%`, borderRadius: "9px 9px 0 0",
+                  background: i === 2 ? "linear-gradient(180deg,#2C8E8C,#75C9C8)" : "linear-gradient(180deg,#A9B4E0,#D6D1E8)" }} />
+                <div style={{ fontSize: 10.5, fontWeight: i === 2 ? 800 : 500, color: i === 2 ? "#2C8E8C" : "var(--muted)" }}>{lb}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 16, fontSize: 13.5, lineHeight: 1.95 }}>
+            {[t("cmp_peek_b1"), t("cmp_peek_b2"), t("cmp_peek_b3")].map(x => (
+              <div key={x} style={{ display: "flex", gap: 8 }}><span style={{ color: "#2C8E8C", fontWeight: 800 }}>✓</span><span>{x}</span></div>
+            ))}
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 12, lineHeight: 1.6, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+            🩵 {t("cmp_peek_note")}
+          </div>
+        </div>
+
         <Link className="btn full" to={renewLink} style={{ marginBottom: 16 }}>{t("cmp_unlock_next")}</Link>
       </> : <>
         <div style={{ background: "linear-gradient(135deg,#3F6BAE,#2C8E8C)", color: "#fff", borderRadius: 22, padding: "28px 24px", textAlign: "center", boxShadow: "0 16px 38px rgba(63,107,174,.34)", marginBottom: 16 }}>

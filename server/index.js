@@ -1918,6 +1918,40 @@ app.post("/api/admin/academy/submission/feature", async (req, res) => {
   } catch (e) { console.error("feature", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 // สุขภาพข้อมูลคอร์ส — บทเรียนที่ยังไม่มีลิงก์วิดีโอ (กันลูกค้าจ่ายเงินแล้วเจอบทว่าง)
+// 🚦 ตรวจความพร้อมก่อนเปิดตัว — ลูกค้าเก่ากี่คนที่ login แล้ว "เห็นคอร์สจริง"
+// อ่านอย่างเดียว คืนเฉพาะตัวเลขรวม ไม่มีข้อมูลส่วนตัวลูกค้า
+app.get("/api/admin/academy/coverage", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const hidden = [...HIDDEN_COURSES];
+  const q1 = await one(`SELECT COUNT(DISTINCT lower(email)) c FROM academy_users WHERE COALESCE(email,'') <> ''`);
+  const q2 = await one(`
+    SELECT COUNT(DISTINCT lower(u.email)) c FROM academy_users u
+    WHERE COALESCE(u.email,'') <> '' AND EXISTS (
+      SELECT 1 FROM academy_orders o
+      LEFT JOIN academy_order_lines l ON l.order_id = o.legacy_id
+      JOIN academy_courses c ON c.legacy_id = COALESCE(NULLIF(o.course_id,''), l.course_id)
+      WHERE o.legacy_user_id = u.legacy_id AND o.status='Close' AND c.is_active='0'
+        AND COALESCE(NULLIF(o.course_id,''), l.course_id) <> ALL($1::text[])
+    )`, [hidden]);
+  const q3 = await q(`
+    SELECT c.legacy_id, c.name, COUNT(DISTINCT lower(u.email)) students
+    FROM academy_orders o
+    LEFT JOIN academy_order_lines l ON l.order_id = o.legacy_id
+    JOIN academy_users u ON u.legacy_id = o.legacy_user_id
+    JOIN academy_courses c ON c.legacy_id = COALESCE(NULLIF(o.course_id,''), l.course_id)
+    WHERE o.status='Close' AND c.is_active='0' AND COALESCE(u.email,'') <> ''
+    GROUP BY c.legacy_id, c.name ORDER BY students DESC LIMIT 10`);
+  const lessons = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') <> ''`);
+  const noVideo = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') = ''`);
+  const wsSessions = await one(`SELECT COUNT(*) c FROM workshop_sessions WHERE status='open' AND starts_at > now()`);
+  res.json({ ok: true,
+    emails_total: Number(q1?.c || 0),
+    emails_with_visible_course: Number(q2?.c || 0),
+    lessons_with_video: Number(lessons?.c || 0),
+    lessons_missing_video: Number(noVideo?.c || 0),
+    workshop_open_sessions: Number(wsSessions?.c || 0),
+    top_courses: q3 });
+});
 app.get("/api/admin/academy/health", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const missing = await q(`SELECT l.course_id, c.name AS course_name, l.legacy_id, l.name, l.seq

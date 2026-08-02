@@ -33,8 +33,6 @@ function TopBar() {
           {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
           {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
           {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
-          {/* 🩵 ทางเข้า Club — คิมขอให้อยู่ด้านบนใกล้บัญชีของฉัน เหมือนปุ่มอัปเกรดแผน */}
-          {ACADEMY_LIVE && <Link to="/plans" style={{ fontWeight: 800, fontSize: 13.5, color: "#0e7a63", background: "linear-gradient(135deg,#DFF3EC,#EAF8F3)", border: "1px solid #BFE5D8", borderRadius: 20, padding: "5px 13px" }}>🩵 Club</Link>}
           <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>
           <LangToggle />
         </div>
@@ -138,8 +136,6 @@ import AcademyLearn from "./pages/AcademyLearn.jsx";
 import AcademyCourse from "./pages/AcademyCourse.jsx";
 import AcademyPaid from "./pages/AcademyPaid.jsx";
 import AcademyCertificate from "./pages/AcademyCertificate.jsx";
-import Plans from "./pages/Plans.jsx";
-import ClubDemo from "./pages/ClubDemo.jsx";
 import PreviewAccount from "./pages/PreviewAccount.jsx";
 import Workshops from "./pages/Workshops.jsx";
 import WorkshopDetail from "./pages/WorkshopDetail.jsx";
@@ -176,8 +172,6 @@ createRoot(document.getElementById("root")).render(
       <Route path="/academy/paid" element={<AcademyPaid />} />
       <Route path="/academy/certificate/:id" element={<AcademyCertificate />} />
       <Route path="/preview/account" element={<PreviewAccount />} />
-      <Route path="/plans" element={<Plans />} />
-      <Route path="/club" element={<ClubDemo />} />
       <Route path="/workshop" element={<Workshops />} />
       <Route path="/workshop/paid" element={<WorkshopPaid />} />
       <Route path="/workshop/:id" element={<WorkshopDetail />} />

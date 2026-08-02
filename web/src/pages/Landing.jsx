@@ -80,7 +80,6 @@ export default function Landing() {
             {/* สินค้าอื่นต้องโผล่บนหน้าแรกด้วย — หน้าแรกคือหน้าที่ลูกค้าเจอเยอะสุด ถ้าไม่มีตรงนี้ก็ไม่มีใครหาเจอ */}
             {ACADEMY_LIVE && <Link to="/academy" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
             {ACADEMY_LIVE && <Link to="/workshop" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
-            {ACADEMY_LIVE && <Link to="/plans" style={{ fontWeight: 800, fontSize: 13.5, color: "#0e7a63", background: "linear-gradient(135deg,#DFF3EC,#EAF8F3)", border: "1px solid #BFE5D8", borderRadius: 20, padding: "5px 13px", whiteSpace: "nowrap" }}>🩵 Club</Link>}
             <Link to="/account" className="link" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{t("nav_login")}</Link>
             <LangToggle />
           </div>

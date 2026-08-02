@@ -1300,6 +1300,19 @@ app.post("/api/admin/academy-import", async (req, res) => {
     res.json({ ok: true, table, upserted });
   } catch (e) { console.error("academy-import", e.message); res.status(500).json({ ok: false, error: "IMPORT_FAILED", message: e.message, upserted }); }
 });
+// แก้ลิงก์วิดีโอบทเรียน "ทีละบท" — ใช้ตอนเจอบทที่วิดีโอหาย (เจอจริง 2 ส.ค.: Creative Thinking บทที่ 8)
+// ⛔ ห้ามใช้ academy-import แก้บทเดียว เพราะเป็น upsert ทั้งแถว → ฟิลด์ที่ไม่ได้ส่ง (time/parent_line_id) จะกลายเป็น null
+app.post("/api/admin/academy/lesson-url", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.lesson_id || "").trim(), url = String(req.body?.url || "").trim();
+  if (!id || !/^https?:\/\//.test(url)) return res.status(400).json({ ok: false, error: "BAD_INPUT", message: "ต้องมี lesson_id และ url ที่ขึ้นต้นด้วย http" });
+  try {
+    const before = await one(`SELECT legacy_id, course_id, name, url FROM academy_course_lines WHERE legacy_id=$1`, [id]);
+    if (!before) return res.status(404).json({ ok: false, error: "LESSON_NOT_FOUND" });
+    await run(`UPDATE academy_course_lines SET url=$1 WHERE legacy_id=$2`, [url, id]);
+    res.json({ ok: true, course_id: before.course_id, lesson: before.name, was: before.url, now: url });
+  } catch (e) { res.status(500).json({ ok: false, error: "UPDATE_FAILED", message: e.message }); }
+});
 // แคตตาล็อกคอร์ส (อ่านอย่างเดียว) — สำหรับหน้าพรีวิว /academy (ยังไม่ลิงก์จากเมนู ลูกค้าไม่เจอ)
 // ⚠️ ธง isActive ของระบบเก่ากลับด้าน: '0' = คอร์สที่แสดงบนเว็บจริง (ตรวจเทียบเว็บเก่า 21 คอร์สแล้ว) · '1' = ซ่อน/เวอร์ชันเก่า
 // ⛔ ไม่ส่ง url วิดีโอบทเรียนออกไปเด็ดขาด (เป็นคอนเทนต์ที่ลูกค้าจ่ายเงิน) — url ใช้เฉพาะฝั่งแอดมิน/ระบบเรียนในเฟสถัดไป

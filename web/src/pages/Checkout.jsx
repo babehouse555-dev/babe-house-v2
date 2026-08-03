@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, baht, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
+import { PlanCards } from "../PlanCards.jsx";
 
 export default function Checkout() {
   const { t } = useI18n();
@@ -34,7 +35,12 @@ export default function Checkout() {
     try { const d = await api("/api/order/set-plan", { method: "POST", body: { order_id: orderId, plan: k } }); setPrice(d.amount_satang); setCodeMsg(null); }
     catch (e) { setPlan(prev); alert(e.message); }
   }
-  useEffect(() => { if (orderId && plans.length) pickPlan("12m", true); }, [orderId, plans.length]);   // eslint-disable-line
+  // ตั้งต้นตามแพ็กที่ลูกค้าเลือกมาจากหน้าแรก ถ้าไม่ได้เลือกมาให้ตั้งที่คุ้มที่สุด
+  useEffect(() => {
+    if (!orderId || !plans.length || !order) return;
+    // เลือกมาจากหน้าแรก = เคารพที่เขาเลือก · ยังไม่ได้เลือก = ตั้งที่คุ้มที่สุดให้ (กดเปลี่ยนได้ 1 ครั้ง)
+    pickPlan(order.plan_chosen ? order.plan : "12m", true);
+  }, [orderId, plans.length, order?.order_id]);   // eslint-disable-line
 
   async function pay() {
     if (!orderId) return; setBusy(true);
@@ -58,33 +64,12 @@ export default function Checkout() {
       <h1 className="page">{t("co_title")}</h1>
       <p className="sub">{t("co_sub")}</p>
       <div className="card">
-        {/* เลือกแพ็ก — ยิ่งยาวยิ่งถูก และแผนยิ่งแม่นเพราะระบบเรียนรู้จากคลิปที่ลงจริงทุกเดือน */}
+        {/* เลือกแพ็ก — การ์ดแนวตั้งเห็นรายละเอียดครบ (คิมสั่ง 3 ส.ค. "เหมือนตอนที่ทำคลับ") */}
         {plans.length > 0 && <>
-          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{t("co_pick_plan")}</div>
-          <p className="muted" style={{ fontSize: 13, margin: "0 0 12px", lineHeight: 1.7 }}>{t("co_pick_plan_sub")}</p>
-          <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
-            {plans.map(p => {
-              const on = plan === p.plan;
-              return <button key={p.plan} type="button" onClick={() => pickPlan(p.plan)}
-                style={{ position: "relative", textAlign: "left", cursor: "pointer", borderRadius: 14, padding: "14px 16px",
-                  border: `2px solid ${on ? "var(--blue)" : "var(--border)"}`, background: on ? "#EAF3FD" : "#fff" }}>
-                {p.off > 0 && <span style={{ position: "absolute", top: -9, right: 12, background: p.off >= 50 ? "#1a7f43" : "#B26A00", color: "#fff", fontSize: 11.5, fontWeight: 800, padding: "3px 10px", borderRadius: 999 }}>
-                  {t("co_save")} {p.off}%
-                </span>}
-                <div className="between" style={{ alignItems: "flex-start", gap: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 15.5 }}>{t("co_plan_name")[p.plan]}</div>
-                    <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-                      {p.months > 1 ? `${t("co_permonth_a")} ${p.per_month.toLocaleString()}฿ ${t("co_permonth_b")}` : t("co_monthly_note")}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 21, fontWeight: 800, color: on ? "var(--blue-d)" : "var(--ink)" }}>{p.baht.toLocaleString()}฿</div>
-                    {p.months > 1 && <div className="muted" style={{ fontSize: 11.5, textDecoration: "line-through" }}>{(1590 * p.months).toLocaleString()}฿</div>}
-                  </div>
-                </div>
-              </button>;
-            })}
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{t("co_pick_plan")}</div>
+          <p className="muted" style={{ fontSize: 13.5, margin: "0 0 22px", lineHeight: 1.7 }}>{t("co_pick_plan_sub")}</p>
+          <div style={{ marginBottom: 20 }}>
+            <PlanCards selected={plan} onPick={pickPlan} busy={busy} compact />
           </div>
         </>}
         <div className="between" style={{ background: "var(--soft)", borderRadius: 14, padding: 14, marginBottom: 12 }}>

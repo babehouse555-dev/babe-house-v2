@@ -321,11 +321,12 @@ app.post("/api/checkout", async (req, res) => {
       if (Number(r.n) >= LOYALTY_MIN_MONTHS) { discountPct = LOYALTY_PERCENT; finalAmount = Math.round(PRICE_SATANG * (100 - LOYALTY_PERCENT) / 100); }
     }
     // 💳 แพ็ก 6/12 เดือน — ราคาแพ็กมาก่อนส่วนลดอื่นเสมอ (แพ็กลด 30-50% อยู่แล้ว ห้ามลดซ้อน)
-    const plan = planOf(req.body?.plan || payload.plan);
+    const chosen = String(req.body?.plan || payload.plan || "");
+    const plan = planOf(chosen);
     if (plan.months > 1) { finalAmount = plan.satang; discountPct = plan.off; refValid = null; }
     const checkoutUrl = `/checkout?order_id=${encodeURIComponent(orderId)}`;
     await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,referred_by,discount_percent,checkout_url,source) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13)`,
-      [orderId, payload.user_id, payload.instagram_account, payload.email || null, parsed.tier, payload.meta_purchase.billing_cycle, JSON.stringify({ ...payload, plan: plan.plan }), PROVIDER, finalAmount, refValid, discountPct, checkoutUrl,
+      [orderId, payload.user_id, payload.instagram_account, payload.email || null, parsed.tier, payload.meta_purchase.billing_cycle, JSON.stringify({ ...payload, plan: plan.plan, plan_chosen: !!chosen }), PROVIDER, finalAmount, refValid, discountPct, checkoutUrl,
        (String(req.body?.source || payload.source || "").slice(0, 60)) || null]);
     res.json({ ok: true, order_id: orderId, checkout_url: checkoutUrl, provider: PROVIDER, payment_status: "pending", plan: plan.plan, amount_satang: finalAmount });
   } catch (err) { console.error(err); res.status(400).json({ ok: false, error: "CHECKOUT_FAILED", message: err.message }); }
@@ -398,7 +399,7 @@ app.post("/api/order/set-plan", rateLimit(60, M10), async (req, res) => {
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   if (["paid", "mock_paid"].includes(o.payment_status)) return res.status(409).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้จ่ายแล้วค่ะ" });
   // ⛔ แพ็กยาวลด 30-50% อยู่แล้ว ห้ามเอาโค้ด/ส่วนลดแนะนำเพื่อนมาลดซ้อน
-  const payload = { ...(safeJson(o.order_payload_json) || {}), plan: plan.plan };
+  const payload = { ...(safeJson(o.order_payload_json) || {}), plan: plan.plan, plan_chosen: true };
   await run(`UPDATE blueprint_orders SET final_amount_satang=$1, discount_percent=$2, order_payload_json=$3, discount_code=NULL, referred_by=NULL WHERE order_id=$4`,
     [plan.satang, plan.off || null, JSON.stringify(payload), orderId]);
   res.json({ ok: true, plan: plan.plan, months: plan.months, amount_satang: plan.satang, ...vatSplit(plan.satang) });
@@ -434,7 +435,8 @@ app.post("/api/subscription/claim-month", rateLimit(20, M10), async (req, res) =
 app.get("/api/orders/:orderId", async (req, res) => {
   const o = await getOrder(req.params.orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
-  res.json({ ok: true, order: { order_id: o.order_id, user_id: o.user_id, instagram_account: o.instagram_account, tier: o.tier, billing_cycle: o.billing_cycle, payment_status: o.payment_status, provider: o.provider, blueprint_id: o.blueprint_id, generation_status: o.generation_status || "pending", generation_error: o.generation_error, discount_code: o.discount_code, discount_percent: o.discount_percent, final_amount_satang: o.final_amount_satang, created_at: o.created_at, paid_at: o.paid_at } });
+  const pl = safeJson(o.order_payload_json) || {};
+  res.json({ ok: true, order: { plan: pl.plan || "monthly", plan_chosen: !!pl.plan_chosen, order_id: o.order_id, user_id: o.user_id, instagram_account: o.instagram_account, tier: o.tier, billing_cycle: o.billing_cycle, payment_status: o.payment_status, provider: o.provider, blueprint_id: o.blueprint_id, generation_status: o.generation_status || "pending", generation_error: o.generation_error, discount_code: o.discount_code, discount_percent: o.discount_percent, final_amount_satang: o.final_amount_satang, created_at: o.created_at, paid_at: o.paid_at } });
 });
 
 app.post("/api/mock-payment-complete", async (req, res) => {

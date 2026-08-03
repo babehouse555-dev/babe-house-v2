@@ -58,8 +58,8 @@ const GUIDE_EN = {
 };
 const DICT = {
   // ราคา (EN โชว์ ฿ + ประมาณ $ ให้ฝรั่งเทียบง่าย — จ่ายจริงเป็น THB ผ่าน Stripe)
-  price_full: { th: "1,590฿", en: "฿1,590 (~$44)" },
-  price_promo: { th: "1,590฿", en: "฿1,590 (~$45)" },
+  price_full: { th: "1,590฿", en: "฿1,590 (~$44)" },        // รายเดือน
+  price_promo: { th: "795฿", en: "฿795 (~$22)" },           // ถูกสุด = แพ็ก 12 เดือน (ตกเดือนละ)
 
   // เมนูบน + ทั่วไป
   nav_promo: { th: "โปรเปิดตัว", en: "Launch offer" },
@@ -74,7 +74,7 @@ const DICT = {
   hero_title_a: { th: "ทำคอนเทนต์มานาน", en: "Posting for months," },
   hero_title_b: { th: "แต่ช่องไม่โตสักที?", en: "but not growing?" },
   hero_sub: { th: "ครูพี่คิมอ่าน Insight ของคุณ แล้ววางแผนคอนเทนต์ 30 วัน พร้อมสคริปต์และแคปชัน", en: "Kim reads your Insights and builds a 30-day content plan — scripts and captions included." },
-  hero_for_launch: { th: "ราคาโปรเปิดตัว · จ่ายหลังดูสรุปแล้ว", en: "Launch price · pay only after you see the summary" },
+  hero_for_launch: { th: "ต่อเดือน เมื่อเลือกแพ็ก 12 เดือน · จ่ายหลังดูสรุปแล้ว", en: "per month on the 12-month plan · pay only after you see the summary" },
   // พรีวิวเล่ม (ภาพสินค้าใน hero)
   preview_label: { th: "เล่ม 30 วันของคุณ", en: "Your 30-Day Blueprint" },
   preview_cal: { th: "📅 ปฏิทินคอนเทนต์ 30 วัน", en: "📅 30-Day Content Calendar" },

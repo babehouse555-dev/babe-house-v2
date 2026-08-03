@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, track } from "../api.js";
 import { ACADEMY_LIVE } from "../config.js";
 import { useI18n, LangToggle } from "../i18n.jsx";
+import { PlanCards } from "../PlanCards.jsx";
 
 // เสียงจากคนใช้จริง — โชว์เฉพาะรีวิวที่แอดมินอนุมัติแล้ว (social proof)
 function SocialProof() {
@@ -135,19 +136,17 @@ export default function Landing() {
       </div></section>
 
       {/* 5. LAUNCH OFFER PRICE CARD */}
+      {/* 5. แพ็กราคา — คิมสั่ง 3 ส.ค. "ให้เห็นรายละเอียดชัดๆ เหมือนตอนที่ทำคลับ"
+           วางไว้ก่อนฟอร์ม เพื่อให้ลูกค้ารู้ราคาก่อนเสียเวลากรอก (เดิมเห็นราคาตอนหน้าจ่ายเงินอย่างเดียว) */}
       <section id="offer" style={{ padding: "52px 0" }}><div className="wrap">
-        <p className="center" style={labelStyle}>{t("launch_label")}</p>
-        <h2 className="center serif" style={{ ...h2Style, marginBottom: 26 }}>{t("launch_title")}</h2>
-        <div className="card" style={{ maxWidth: 430, margin: "0 auto", border: "2px solid var(--blue)", borderRadius: 26, textAlign: "center", padding: "32px 28px", boxShadow: "0 14px 40px rgba(46,134,222,.18)" }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Babe House AI Creator Blueprint</div>
-          <div style={{ margin: "16px 0 6px" }}><PriceTag big={56} /></div>
-          <div style={{ display: "inline-block", background: "#E8F5EE", color: "var(--up)", fontWeight: 700, fontSize: 13.5, padding: "5px 14px", borderRadius: 20, marginBottom: 18 }}>{t("launch_save")}</div>
-          <ul style={{ listStyle: "none", textAlign: "left", margin: "6px 0 22px" }}>
-            {t("card_includes").map((x) => <li key={x} style={{ padding: "9px 0 9px 28px", position: "relative", fontSize: 15, borderBottom: "1px solid var(--border)" }}><span style={{ position: "absolute", left: 0, color: "var(--blue)", fontWeight: 800 }}>✓</span>{x}</li>)}
-          </ul>
-          <Link className="btn full" to="/form">{t("cta_start")}</Link>
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>{t("card_nocharge")}</p>
-        </div>
+        <p className="center" style={labelStyle}>แพ็กและราคา</p>
+        <h2 className="center serif" style={{ ...h2Style, marginBottom: 8 }}>เลือกแพ็กที่ใช่สำหรับคุณ</h2>
+        <p className="center muted" style={{ maxWidth: 620, margin: "0 auto 34px", fontSize: 15, lineHeight: 1.75 }}>
+          ยิ่งอยู่กับเรานาน แผนยิ่งแม่นขึ้น — เพราะทุกเดือนครูพี่คิมจะเรียนรู้จากคลิปที่คุณลงจริง
+          แล้วปรับแผนเดือนถัดไปให้ตรงคนดูของคุณมากขึ้น
+        </p>
+        <PlanCards ctaLabel="เริ่มเลย →" />
+        <p className="center muted" style={{ fontSize: 13, marginTop: 22 }}>{t("card_nocharge")}</p>
       </div></section>
 
       {/* 6. ตัวอย่าง Blueprint */}

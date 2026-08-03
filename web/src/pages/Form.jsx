@@ -239,6 +239,7 @@ export default function Form() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
+  const pickedPlan = sp.get("plan") || "";   // 💳 แพ็กที่ลูกค้าเลือกมาจากหน้าแรก — ส่งต่อให้หน้าจ่ายเงินเลือกไว้ให้
   const [f, setF] = useState({ email: "", phone: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", content_want: "", content_avoid: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
@@ -330,7 +331,7 @@ export default function Form() {
         },
         insight_images: images, insight_screenshot_base64: images[0] || null
       };
-      const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
+      const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", plan: pickedPlan || undefined, payload } });
       track("form_submit");
       if (r.existing) alert(r.message || t("fm_exists"));
       nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);
@@ -359,7 +360,7 @@ export default function Form() {
         const c = await api("/api/subscription/claim-month", { method: "POST", body: { tier: "Premium_490", payload } });
         if (c?.ok) { track("form_submit"); nav(c.redirect_url); return; }
       } catch { /* ไม่มีแพ็ก/ปลดไปแล้ว → ไปหน้าจ่ายเงินตามปกติ */ }
-      const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
+      const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", plan: pickedPlan || undefined, payload } });
       track("form_submit");
       if (r.existing) alert(r.message || t("fm_exists2"));
       nav(r.checkout_url || `/checkout?order_id=${r.order_id}`);

@@ -157,6 +157,26 @@ export async function initDb() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_uses_uniq ON subscription_uses(subscription_id, billing_cycle);
 
 
+    -- ═══════ 📅 ตารางว่าง + มอบหมายงานอัตโนมัติ (คิมสั่ง 3 ส.ค. 2569) ═══════
+    -- "ให้ลูกตาลเห็นตารางงานของทุกคนว่าโปรเซสไปถึงไหนแล้ว แต่ให้ระบบเป็นคนแอสไซน์งานให้แทน
+    --  ก็จะลดขั้นตอนการทำงานของลูกตาลไป · แต่เราต้องมีระบบที่แท็กการทำงานของทุกคน
+    --  จะได้รู้ว่าใครว่างอยู่ · ฟรีแลนซ์ที่เราไม่รู้ว่าเค้าว่างไหม ก็ให้เค้าลงเองในปฏิทินว่าว่างวันไหน"
+    CREATE TABLE IF NOT EXISTS team_availability (
+      avail_id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL,
+      day DATE NOT NULL,
+      slots INTEGER DEFAULT 2,       -- วันนั้นรับได้กี่คลิป (0 = ไม่ว่าง)
+      note TEXT,
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_avail_uniq ON team_availability(member_id, day);
+    CREATE INDEX IF NOT EXISTS idx_avail_day ON team_availability(day);
+    -- ระบบมอบหมายให้ใคร เพราะอะไร — ไว้ตรวจย้อนหลังเวลาลูกตาลสงสัยว่าทำไมงานไปที่คนนี้
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assigned_by TEXT;        -- 'system' | ชื่อคนที่มอบหมาย
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assign_reason TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ; -- ส่งถึงลูกค้าเมื่อไหร่ (ไว้วัดตรงเวลา)
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS reject_count INTEGER DEFAULT 0; -- โดนตีกลับกี่รอบ
+
     -- ═══════ 🧾 ใบกำกับภาษี (คิมสั่ง 3 ส.ค. 2569) ═══════
     -- "ทุกการจ่ายเงินเราต้องออกใบกำกับภาษีอยู่แล้ว เอาไปส่งบัญชีรายเดือน"
     -- ลูกค้าทั่วไป: ออกอัตโนมัติด้วยชื่อที่มีอยู่ ไม่ต้องกรอกอะไรเพิ่ม

@@ -3209,6 +3209,142 @@ app.get("/api/team/me", async (req, res) => {
   } catch (e) { console.error("team/me", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
+// ═══════ 📅 ตารางว่าง + ระบบมอบหมายงานอัตโนมัติ (คิมสั่ง 3 ส.ค. 2569) ═══════
+// "ให้ระบบเป็นคนแอสไซน์งานให้แทน ก็จะลดขั้นตอนการทำงานของลูกตาล"
+// วิธีเลือกคน (โปร่งใส บอกเหตุผลได้ทุกครั้ง):
+//   1. ต้องลงว่าว่างในช่วงก่อนถึงกำหนดส่ง (ฟรีแลนซ์ลงเอง เราไม่ต้องเดา)
+//   2. เลือกคนที่ "โหลดเทียบกับที่รับไหว" ต่ำสุด — ไม่ใช่แค่จำนวนงานน้อยสุด
+//   3. คะแนนการทำงานดีกว่าได้เปรียบเล็กน้อย (ตรงเวลา + โดนตีกลับน้อย)
+// ⛔ ระบบไม่แตะงานที่มีคนทำอยู่แล้ว และลูกตาลเปลี่ยนตัวคนทำทีหลังได้เสมอ
+
+const AVAIL_DAYS = 14;   // มองไปข้างหน้า 14 วัน
+
+// โหลดปัจจุบันของแต่ละคน + ที่ว่างที่ลงไว้
+async function teamWorkload(days = AVAIL_DAYS) {
+  const members = await q(`SELECT member_id, name, role, position FROM team_members
+    WHERE active AND role IN ('editor','senior','ae') ORDER BY name`);
+  const load = await q(`SELECT assigned_to, COUNT(*) jobs, COALESCE(SUM(clips),1) clips
+    FROM edit_orders WHERE assigned_to IS NOT NULL AND status NOT IN ('done','canceled','draft_sent')
+    GROUP BY assigned_to`);
+  const avail = await q(`SELECT member_id, day, slots FROM team_availability
+    WHERE day >= CURRENT_DATE AND day < CURRENT_DATE + $1::int ORDER BY day`, [days]);
+  const lm = Object.fromEntries(load.map(r => [r.assigned_to, r]));
+  const am = {};
+  for (const a of avail) (am[a.member_id] ||= []).push({ day: String(a.day).slice(0, 10), slots: Number(a.slots || 0) });
+  return members.map(m => {
+    const a = am[m.member_id] || [];
+    const capacity = a.reduce((t, x) => t + x.slots, 0);          // รับได้รวมกี่คลิปใน 14 วัน
+    const busy = Number(lm[m.member_id]?.clips || 0);
+    return { ...m, open_jobs: Number(lm[m.member_id]?.jobs || 0), busy_clips: busy,
+      capacity, free_slots: Math.max(0, capacity - busy), days: a,
+      load_pct: capacity ? Math.min(999, Math.round(busy / capacity * 100)) : null };
+  });
+}
+
+// คะแนนการทำงานรายคน — ส่งตรงเวลาไหม · โดนตีกลับบ่อยไหม
+async function teamScorecard(month) {
+  const m = month || new Date().toISOString().slice(0, 7);
+  const rows = await q(`SELECT o.assigned_to, t.name,
+      COUNT(*) FILTER (WHERE o.delivered_at IS NOT NULL) delivered,
+      COUNT(*) FILTER (WHERE o.delivered_at IS NOT NULL AND o.due_at IS NOT NULL AND o.delivered_at <= o.due_at) on_time,
+      COALESCE(SUM(o.reject_count),0) rejects, COUNT(*) total
+    FROM edit_orders o JOIN team_members t ON t.member_id = o.assigned_to
+    WHERE to_char(COALESCE(o.delivered_at, o.created_at) AT TIME ZONE 'Asia/Bangkok','YYYY-MM') = $1
+    GROUP BY o.assigned_to, t.name ORDER BY t.name`, [m]);
+  return rows.map(r => ({ member_id: r.assigned_to, name: r.name,
+    total: Number(r.total), delivered: Number(r.delivered), on_time: Number(r.on_time),
+    on_time_pct: Number(r.delivered) ? Math.round(Number(r.on_time) / Number(r.delivered) * 100) : null,
+    rejects: Number(r.rejects),
+    rejects_per_job: Number(r.total) ? +(Number(r.rejects) / Number(r.total)).toFixed(2) : 0 }));
+}
+
+// เลือกคนที่เหมาะที่สุดสำหรับงานหนึ่ง — คืนเหตุผลกลับไปด้วยเสมอ
+async function pickAssignee(job) {
+  const wl = await teamWorkload();
+  const score = await teamScorecard();
+  const sm = Object.fromEntries(score.map(s => [s.member_id, s]));
+  // ต้องมีที่ว่างเหลือ — ใครไม่ลงปฏิทินเลย ระบบไม่กล้ายัดงานให้ (โดยเฉพาะฟรีแลนซ์)
+  const eligible = wl.filter(m => m.capacity > 0 && m.free_slots >= (Number(job.clips) || 1));
+  if (!eligible.length) return { member: null, reason: "ยังไม่มีใครลงว่างพอสำหรับงานนี้" };
+  const rank = eligible.map(m => {
+    const s = sm[m.member_id] || {};
+    const onTime = s.on_time_pct == null ? 85 : s.on_time_pct;      // คนใหม่ให้กลางๆ ไม่เสียเปรียบ
+    const penalty = (s.rejects_per_job || 0) * 5;
+    return { m, points: (100 - (m.load_pct ?? 0)) + (onTime - 85) / 2 - penalty };
+  }).sort((a, b) => b.points - a.points);
+  const best = rank[0].m;
+  return { member: best,
+    reason: `ว่างเหลือ ${best.free_slots} คลิป · โหลดตอนนี้ ${best.load_pct ?? 0}%` +
+            (sm[best.member_id]?.on_time_pct != null ? ` · ตรงเวลา ${sm[best.member_id].on_time_pct}%` : " · ยังไม่มีสถิติ") };
+}
+
+// 📅 ลงวันว่างของตัวเอง (ทุกคนลงของตัวเองได้ · AE/คิม ดูของทุกคนได้)
+app.get("/api/team/availability", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const all = ["owner", "ae"].includes(me.role) && req.query.all === "1";
+  const rows = await q(`SELECT member_id, day, slots FROM team_availability
+    WHERE day >= CURRENT_DATE AND day < CURRENT_DATE + $1::int ${all ? "" : "AND member_id = $2"} ORDER BY day`,
+    all ? [AVAIL_DAYS] : [AVAIL_DAYS, me.member_id]);
+  res.json({ ok: true, days: AVAIL_DAYS, availability: rows.map(r => ({ ...r, day: String(r.day).slice(0, 10) })) });
+});
+app.post("/api/team/availability", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const day = String(req.body?.day || "").slice(0, 10);
+  const slots = Math.max(0, Math.min(20, Number(req.body?.slots) || 0));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ ok: false, error: "BAD_DAY" });
+  // ⛔ ลงได้เฉพาะของตัวเอง (AE/คิม ลงแทนคนอื่นได้ เผื่อฟรีแลนซ์โทรมาบอก)
+  const target = (["owner", "ae"].includes(me.role) && req.body?.member_id) ? String(req.body.member_id) : me.member_id;
+  if (slots === 0) { await run(`DELETE FROM team_availability WHERE member_id=$1 AND day=$2`, [target, day]); return res.json({ ok: true, cleared: true }); }
+  await run(`INSERT INTO team_availability (avail_id,member_id,day,slots) VALUES ($1,$2,$3,$4)
+    ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, updated_at=now()`, [uid("av"), target, day, slots]);
+  res.json({ ok: true, day, slots });
+});
+
+// 👀 ภาพรวมตารางงานทุกคน (AE/คิม) — ใครว่าง ใครเต็ม โปรเซสไปถึงไหน
+app.get("/api/team/workload", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae", "senior"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  try {
+    const [wl, score] = await Promise.all([teamWorkload(), teamScorecard(String(req.query.month || "") || undefined)]);
+    const sm = Object.fromEntries(score.map(s => [s.member_id, s]));
+    const waiting = await q(`SELECT order_id, clips, due_at, status, brief_json FROM edit_orders
+      WHERE assigned_to IS NULL AND status NOT IN ('done','canceled') ORDER BY due_at NULLS LAST, created_at LIMIT 50`);
+    res.json({ ok: true, days: AVAIL_DAYS,
+      people: wl.map(m => ({ ...m, score: sm[m.member_id] || null })),
+      unassigned: waiting.map(w => ({ ...w, brief: safeJson(w.brief_json), due_th: w.due_at ? thDate(w.due_at) : null })) });
+  } catch (e) { console.error("workload", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 🤖 ให้ระบบมอบหมายงานให้เอง (งานเดียว หรือทั้งหมดที่ยังไม่มีคนทำ)
+app.post("/api/team/auto-assign", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  try {
+    const one_id = String(req.body?.order_id || "");
+    const jobs = one_id
+      ? await q(`SELECT * FROM edit_orders WHERE order_id=$1 AND assigned_to IS NULL AND status NOT IN ('done','canceled')`, [one_id])
+      : await q(`SELECT * FROM edit_orders WHERE assigned_to IS NULL AND status NOT IN ('done','canceled') ORDER BY due_at NULLS LAST, created_at LIMIT 30`);
+    const done = [], skipped = [];
+    for (const job of jobs) {
+      const { member, reason } = await pickAssignee(job);
+      if (!member) { skipped.push({ order_id: job.order_id, reason }); continue; }
+      await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), assigned_by='system', assign_reason=$3,
+         status=CASE WHEN status='awaiting_files' THEN status ELSE 'assigned' END, updated_at=now() WHERE order_id=$2`,
+        [member.member_id, job.order_id, reason]);
+      teamLog(job.order_id, "ระบบ", "assign", job.status, "assigned", `ระบบเลือก ${member.name} — ${reason}`);
+      await teamComment(job.order_id, "ระบบ", `🤖 มอบหมายให้ ${member.name} อัตโนมัติ — ${reason}`);
+      const m = await one(`SELECT email, name FROM team_members WHERE member_id=$1`, [member.member_id]);
+      if (m?.email) sendEmail(m.email, `🎬 มีงานตัดต่อใหม่รอคุณอยู่`,
+        wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>ระบบมอบหมายงานใหม่ให้คุณแล้วนะคะ<br><br>
+          เข้าไปดูได้ที่ <b>${appBaseUrl()}/team</b><br><br>ขอบคุณค่ะ`)).catch(() => {});
+      done.push({ order_id: job.order_id, to: member.name, reason });
+    }
+    res.json({ ok: true, assigned: done.length, skipped: skipped.length, done, skipped });
+  } catch (e) { console.error("auto-assign", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 // 🎯 AE มอบหมายงานให้คนตัด
 app.post("/api/team/assign", async (req, res) => {
   const me = await teamWho(req);
@@ -3261,7 +3397,8 @@ app.post("/api/team/review", async (req, res) => {
     if (!pass) {   // ตีกลับให้แก้ — งานกลับไปหาคนตัด
       // ⚠️ ไม่อนุมัติต้องบอกเหตุผลเสมอ ไม่งั้นคนตัดไม่รู้ว่าต้องแก้อะไร
       if (!note) return res.status(400).json({ ok: false, error: "NEED_NOTE", message: "เขียนบอกด้วยนะคะว่าต้องแก้อะไร คนตัดจะได้รู้" });
-      await run(`UPDATE edit_orders SET status='editing', updated_at=now() WHERE order_id=$1`, [id]);
+      // นับรอบตีกลับไว้วัดคุณภาพงานรายคน (คิม: "feedback แก้บ่อยเกินไปหรือเปล่า")
+      await run(`UPDATE edit_orders SET status='editing', reject_count=COALESCE(reject_count,0)+1, updated_at=now() WHERE order_id=$1`, [id]);
       await teamComment(id, me.name, `❌ ไม่อนุมัติ — ${note}`);
       teamLog(id, me.name, "reject", o.status, "editing", note);
       return res.json({ ok: true, status: "editing", message: "ตีกลับให้แก้แล้วค่ะ" });
@@ -3277,7 +3414,8 @@ app.post("/api/team/review", async (req, res) => {
         message: me.role === "senior" ? "ผ่านแล้วค่ะ ส่งต่อให้ AE ตรวจ" : "รับแทนหัวหน้าแล้วค่ะ — กดตรวจอีกครั้งเพื่อส่งให้ลูกค้า" });
     }
     if (!["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "ด่านนี้ AE เป็นคนตรวจค่ะ" });
-    await run(`UPDATE edit_orders SET status='draft_sent', ae_by=$2, ae_at=now(), updated_at=now() WHERE order_id=$1`, [id, me.name]);
+    // delivered_at = เวลาที่งานถึงลูกค้าจริง ใช้เทียบกับ due_at เพื่อวัด "ส่งตรงเวลาไหม"
+    await run(`UPDATE edit_orders SET status='draft_sent', ae_by=$2, ae_at=now(), delivered_at=COALESCE(delivered_at, now()), updated_at=now() WHERE order_id=$1`, [id, me.name]);
     teamLog(id, me.name, "deliver", o.status, "draft_sent", note);
     await teamComment(id, me.name, `🎉 อนุมัติด่านสุดท้าย ส่งให้ลูกค้าแล้ว${note ? ` — ${note}` : ""}`);
     res.json({ ok: true, status: "draft_sent", message: "ส่งงานให้ลูกค้าแล้วค่ะ 🎉" });

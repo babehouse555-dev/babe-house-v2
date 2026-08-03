@@ -83,6 +83,8 @@ export default function Team() {
   const [sub, setSub] = useState("review");   // แท็บย่อย: รอตรวจ / งานฉัน / ดูรายคน
   const [person, setPerson] = useState(null); // ดูงานของใครอยู่ (มุมมองรายคน)
   const [ov, setOv] = useState(null);
+  const [wl, setWl] = useState(null);      // 📅 ตารางงานทุกคน (AE/คิม)
+  const [myAvail, setMyAvail] = useState([]);
 
   const load = (c) => {
     const use = c ?? code; if (!use) return;
@@ -94,6 +96,12 @@ export default function Team() {
   useEffect(() => { if (!d) return; const t = setInterval(() => load(), 60000); return () => clearInterval(t); }, [d, code]);   // eslint-disable-line
   useEffect(() => { if (tab === "money" && d?.me?.role === "owner" && !ov)
     api(`/api/team/overview?code=${encodeURIComponent(code)}`).then(setOv).catch(() => {}); }, [tab, d, ov, code]);
+  const loadCal = () => {
+    api(`/api/team/availability?code=${encodeURIComponent(code)}`).then(r => setMyAvail(r.availability || [])).catch(() => {});
+    if (["owner", "ae", "senior"].includes(d?.me?.role))
+      api(`/api/team/workload?code=${encodeURIComponent(code)}`).then(setWl).catch(() => {});
+  };
+  useEffect(() => { if (tab === "cal" && d) loadCal(); }, [tab, d]);   // eslint-disable-line
 
   const post = async (path, body, id) => {
     setBusy(id); setErr("");
@@ -125,7 +133,7 @@ export default function Team() {
   const mine = active.filter(j => j.assigned_to === me.member_id).length;
   const toReview = active.filter(j => reviewGate(j, me)).length;
 
-  const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["teach", "🎓 คลาสที่สอน", (d.teach || []).length]]
+  const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null], ["teach", "🎓 คลาสที่สอน", (d.teach || []).length]]
     .concat(isOwner ? [["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
 
   return (
@@ -275,6 +283,112 @@ export default function Team() {
             <div key={j.order_id} style={{ ...card, marginTop: 10, opacity: .7, fontSize: 14 }}>
               <b>#{j.order_id.slice(-6)}</b> · {j.status_th} · {j.assignee_name || "ยังไม่ระบุคนทำ"}
             </div>)}
+        </>;
+      })()}
+
+      {/* ═══════ 📅 ตารางงาน — ใครว่าง ใครเต็ม + ให้ระบบจัดงานให้ (คิมสั่ง 3 ส.ค.) ═══════
+           "ลูกตาลต้องเห็นภาพรวมตารางงานของทุกคน ไม่งั้นจะรู้ได้ไงว่าจะเอางานนี้ไปใส่ให้ใคร
+            ... หรือระบบแอสไซน์งานให้แทนเลยได้ป่ะ ... ฟรีแลนซ์ที่เราไม่รู้ว่าเค้าว่างไหม
+            ก็ต้องให้เค้าลงเองว่าว่างวันไหน" */}
+      {tab === "cal" && (() => {
+        const days = Array.from({ length: 14 }, (_, i) => {
+          const dt = new Date(); dt.setDate(dt.getDate() + i);
+          return { key: dt.toISOString().slice(0, 10), lbl: dt.toLocaleDateString("th-TH", { day: "numeric", month: "short" }),
+                   dow: dt.toLocaleDateString("th-TH", { weekday: "narrow" }), weekend: [0, 6].includes(dt.getDay()) };
+        });
+        const mine = Object.fromEntries(myAvail.filter(a => a.member_id === me.member_id).map(a => [a.day, a.slots]));
+        const setDay = async (day, slots) => { await post("/api/team/availability", { day, slots }, "cal"); loadCal(); };
+        return <>
+          {/* ลงวันว่างของตัวเอง — ทุกคนทำได้ รวมฟรีแลนซ์ */}
+          <div style={card}>
+            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📗 ลงวันว่างของฉัน</h3>
+            <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
+              แตะวันที่ว่างแล้วเลือกว่ารับได้กี่คลิป — <b>ระบบจะส่งงานมาให้เฉพาะวันที่คุณลงว่างไว้</b>
+              ไม่ลงไว้ = ระบบจะไม่ยัดงานให้ค่ะ
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
+              {days.map(dd => {
+                const n = mine[dd.key] || 0;
+                return (
+                  <button key={dd.key} onClick={() => setDay(dd.key, n >= 4 ? 0 : n + 1)}
+                    style={{ borderRadius: 10, padding: "9px 4px", cursor: "pointer", fontFamily: "inherit",
+                      border: `1.5px solid ${n ? C.green : "#e5ded6"}`, background: n ? "#eaf6ee" : dd.weekend ? "#faf8f6" : "#fff" }}>
+                    <div style={{ fontSize: 10.5, color: "#a89f96" }}>{dd.dow}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700 }}>{dd.lbl}</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: n ? C.green : "#d8d2cb", marginTop: 2 }}>{n ? `${n} คลิป` : "—"}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8 }}>แตะซ้ำเพื่อเพิ่มจำนวน · แตะจนครบ 4 แล้วแตะอีกครั้งเพื่อล้าง</p>
+          </div>
+
+          {/* ภาพรวมทุกคน — เฉพาะคนที่ดูแลงาน */}
+          {wl && <>
+            <div style={{ ...card, background: "#fbf7f3" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <h3 style={{ fontSize: 16, margin: 0 }}>👥 ตารางงานทุกคน</h3>
+                  <p style={{ fontSize: 13, color: "#7c7268", margin: "3px 0 0" }}>
+                    งานที่ยังไม่มีคนทำ <b>{wl.unassigned.length}</b> ชิ้น
+                  </p>
+                </div>
+                {(isOwner || isAE) && wl.unassigned.length > 0 &&
+                  <button style={btn("#5a3fc0")} disabled={busy === "auto"}
+                    onClick={async () => { const r = await post("/api/team/auto-assign", {}, "auto");
+                      if (r) { alert(`ระบบจัดให้แล้ว ${r.assigned} งาน${r.skipped ? ` · ยังจัดไม่ได้ ${r.skipped} งาน (ไม่มีใครลงว่างพอ)` : ""}`); loadCal(); } }}>
+                    🤖 ให้ระบบจัดงานให้
+                  </button>}
+              </div>
+            </div>
+
+            {wl.people.map(m => {
+              const pct = m.load_pct;
+              const bar = pct == null ? "#e5ded6" : pct >= 100 ? C.red : pct >= 70 ? C.yellow : C.green;
+              return (
+                <div key={m.member_id} style={card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <div>
+                      <b style={{ fontSize: 15 }}>{m.name}</b>
+                      <span style={{ color: "#a89f96", fontSize: 12.5, marginLeft: 6 }}>{m.position || ROLE_TH[m.role]}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "#7c7268" }}>
+                      ลงว่าง {m.capacity} คลิป · รับไปแล้ว {m.busy_clips} · <b style={{ color: bar }}>เหลือ {m.free_slots}</b>
+                    </div>
+                  </div>
+                  <div style={{ height: 8, background: "#f2ece6", borderRadius: 999, marginTop: 9, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.min(100, pct ?? 0)}%`, height: "100%", background: bar }} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "#a89f96", marginTop: 6 }}>
+                    {pct == null ? "⚠️ ยังไม่ได้ลงวันว่าง — ระบบจะไม่ส่งงานให้" : `โหลด ${pct}%`}
+                    {m.score && m.score.on_time_pct != null && ` · ตรงเวลา ${m.score.on_time_pct}% · ตีกลับเฉลี่ย ${m.score.rejects_per_job} ครั้ง/งาน`}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* คะแนนการทำงานรายเดือน */}
+            {wl.people.some(m => m.score) && (
+              <div style={card}>
+                <h3 style={{ fontSize: 15, margin: "0 0 4px" }}>📊 คะแนนการทำงานเดือนนี้</h3>
+                <p style={{ fontSize: 12, color: "#a89f96", margin: "0 0 10px" }}>ส่งตรงเวลาไหม · โดนตีกลับบ่อยไหม</p>
+                <table style={{ width: "100%", fontSize: 13.5, borderCollapse: "collapse" }}>
+                  <thead><tr style={{ color: "#7c7268", textAlign: "left", fontSize: 12 }}>
+                    <th style={{ padding: "6px 4px" }}>คน</th><th>งาน</th><th>ส่งแล้ว</th><th>ตรงเวลา</th><th>ตีกลับ/งาน</th>
+                  </tr></thead>
+                  <tbody>{wl.people.filter(m => m.score).map(m => (
+                    <tr key={m.member_id} style={{ borderTop: "1px solid #f2ece6" }}>
+                      <td style={{ padding: "8px 4px" }}>{m.name}</td>
+                      <td>{m.score.total}</td><td>{m.score.delivered}</td>
+                      <td style={{ fontWeight: 700, color: m.score.on_time_pct == null ? "#a89f96" : m.score.on_time_pct >= 80 ? C.green : C.red }}>
+                        {m.score.on_time_pct == null ? "—" : m.score.on_time_pct + "%"}
+                      </td>
+                      <td style={{ color: m.score.rejects_per_job > 1 ? C.red : "#7c7268" }}>{m.score.rejects_per_job}</td>
+                    </tr>))}</tbody>
+                </table>
+              </div>
+            )}
+          </>}
         </>;
       })()}
 

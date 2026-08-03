@@ -58,6 +58,7 @@ export default function Team() {
   const [note, setNote] = useState({});
   const [open, setOpen] = useState({});
   const [showDone, setShowDone] = useState(false);
+  const [sub, setSub] = useState("review");   // แท็บย่อยในงานตัดต่อ: รอตรวจ / งานฉัน / งานอื่น
   const [ov, setOv] = useState(null);
 
   const load = (c) => {
@@ -138,44 +139,67 @@ export default function Team() {
       {err && <div style={{ ...card, background: "#fde8e8", color: "#b42318", fontSize: 14 }}>{err}</div>}
 
       {/* ═══ งานตัดต่อ ═══ */}
-      {tab === "jobs" && (<>
-        {active.length === 0 && <div style={{ ...card, textAlign: "center", color: "#7c7268" }}>
-          ยังไม่มีงานที่ต้องทำตอนนี้ค่ะ พักได้เลย 🌿</div>}
+      {/* ═══ งานตัดต่อ — แยก "งานตรวจ" กับ "งานตัด" คนละแท็บ (คิมทัก 3 ส.ค.) ═══
+           "หน้าการทำงานตอนนี้งงมาก แยกงานตรวจ กับ งานตัด แล้วถ้ามี 10 ต้องเลื่อนจนตาลายแน่
+            มีปุ่มเปิดปิดย่อช่องได้ด้วย"
+           → การ์ดย่อทุกใบเป็นค่าเริ่มต้น เห็นได้ 10-15 งานในจอเดียว กดเปิดเฉพาะใบที่จะทำ */}
+      {tab === "jobs" && (() => {
+        const inReview = active.filter(j => reviewGate(j, me));
+        const mine = active.filter(j => j.assigned_to === me.member_id && !reviewGate(j, me));
+        const others = active.filter(j => !inReview.includes(j) && !mine.includes(j));
+        const BUCKETS = [
+          ["review", "🔍 รอฉันตรวจ", inReview, "#0b6ea8"],
+          ["mine", "✂️ งานที่ฉันต้องตัด", mine, "#5a3fc0"],
+          ...((isOwner || isAE) ? [["others", "👀 งานอื่นในระบบ", others, "#8a7f9c"]] : []),
+        ].filter(([, , list], i) => list.length || i < 2);
+        const cur = BUCKETS.find(b => b[0] === sub) || BUCKETS[0];
+        const list = cur ? cur[2] : [];
 
-        {/* 🔔 กล่องนี้ปักไว้บนสุดเสมอ — งานที่รอ "เรา" ตรวจ จะได้ไม่ต้องเลื่อนหา */}
-        {canReview && toReview > 0 && (
-          <div style={{ ...card, background: "#f0f7fb", border: "2px solid #bcdcee", padding: 14 }}>
-            <h3 style={{ fontSize: 15, color: "#0b6ea8", margin: "0 0 4px" }}>🔔 รอคุณตรวจ {toReview} งาน</h3>
-            <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
-              กดดูงาน แล้วเลือก <b>อนุมัติ</b> หรือ <b>ไม่อนุมัติ</b> (ถ้าไม่อนุมัติต้องเขียนบอกด้วยว่าแก้อะไร)
-            </p>
-            {active.filter(j => reviewGate(j, me)).map(j =>
-              <Job key={"r" + j.order_id} j={j} me={me} d={d} isOwner={isOwner} isAE={isAE} spotlight
-                open={!!open["r" + j.order_id]} toggle={() => setOpen(o => ({ ...o, ["r" + j.order_id]: !o["r" + j.order_id] }))}
-                draftUrl={draftUrl} setDraftUrl={setDraftUrl} note={note} setNote={setNote} busy={busy} post={post} />)}
-          </div>
-        )}
+        return <>
+          {active.length === 0 && <div style={{ ...card, textAlign: "center", color: "#7c7268" }}>
+            ยังไม่มีงานที่ต้องทำตอนนี้ค่ะ พักได้เลย 🌿</div>}
 
-        {GROUPS.map(g => {
-          const list = active.filter(j => j.status === g.k);
-          if (!list.length) return null;
-          return (
-            <div key={g.k} style={{ marginBottom: 22 }}>
-              <h3 style={{ fontSize: 15, color: g.tone, margin: "0 0 8px" }}>{g.label} ({list.length})</h3>
-              {list.map(j => <Job key={j.order_id} j={j} me={me} d={d} isOwner={isOwner} isAE={isAE}
-                open={!!open[j.order_id]} toggle={() => setOpen(o => ({ ...o, [j.order_id]: !o[j.order_id] }))}
-                draftUrl={draftUrl} setDraftUrl={setDraftUrl} note={note} setNote={setNote} busy={busy} post={post} />)}
+          {active.length > 0 && <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              {BUCKETS.map(([k, label, l, tone]) => {
+                const on = cur && cur[0] === k;
+                return <button key={k} onClick={() => setSub(k)}
+                  style={{ borderRadius: 999, padding: "9px 16px", fontSize: 14, cursor: "pointer", fontWeight: 700,
+                    border: `1.5px solid ${on ? tone : "#ddd2c8"}`, background: on ? tone : "#fff", color: on ? "#fff" : "#2f2a26" }}>
+                  {label} ({l.length})
+                </button>;
+              })}
             </div>
-          );
-        })}
-        <button style={{ ...ghost, fontSize: 13 }} onClick={() => setShowDone(v => !v)}>
-          {showDone ? "ซ่อน" : "ดู"}งานที่จบแล้ว ({jobs.length - active.length})
-        </button>
-        {showDone && jobs.filter(j => ["done", "canceled"].includes(j.status)).map(j =>
-          <div key={j.order_id} style={{ ...card, marginTop: 10, opacity: .7, fontSize: 14 }}>
-            <b>#{j.order_id.slice(-6)}</b> · {j.status_th} · {j.assignee_name || "ยังไม่ระบุคนทำ"}
-          </div>)}
-      </>)}
+
+            {cur && cur[0] === "review" && list.length > 0 && <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
+              กดที่งานเพื่อเปิดดู แล้วเลือก <b>อนุมัติ</b> หรือ <b>ไม่อนุมัติ</b> (ถ้าไม่อนุมัติต้องเขียนบอกด้วยว่าแก้อะไร)
+            </p>}
+
+            {list.length === 0 && <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>
+              ไม่มีงานในหมวดนี้ค่ะ</div>}
+
+            {/* กางทั้งหมด/ย่อทั้งหมด — เวลามีงานเยอะๆ */}
+            {list.length > 1 && <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <button style={{ ...ghost, fontSize: 12.5, padding: "6px 12px" }}
+                onClick={() => setOpen(o => ({ ...o, ...Object.fromEntries(list.map(j => [j.order_id, true])) }))}>กางทั้งหมด</button>
+              <button style={{ ...ghost, fontSize: 12.5, padding: "6px 12px" }}
+                onClick={() => setOpen(o => ({ ...o, ...Object.fromEntries(list.map(j => [j.order_id, false])) }))}>ย่อทั้งหมด</button>
+            </div>}
+
+            {list.map(j => <Job key={j.order_id} j={j} me={me} d={d} isOwner={isOwner} isAE={isAE}
+              open={!!open[j.order_id]} toggle={() => setOpen(o => ({ ...o, [j.order_id]: !o[j.order_id] }))}
+              draftUrl={draftUrl} setDraftUrl={setDraftUrl} note={note} setNote={setNote} busy={busy} post={post} />)}
+          </>}
+
+          <button style={{ ...ghost, fontSize: 13, marginTop: 8 }} onClick={() => setShowDone(v => !v)}>
+            {showDone ? "ซ่อน" : "ดู"}งานที่จบแล้ว ({jobs.length - active.length})
+          </button>
+          {showDone && jobs.filter(j => ["done", "canceled"].includes(j.status)).map(j =>
+            <div key={j.order_id} style={{ ...card, marginTop: 10, opacity: .7, fontSize: 14 }}>
+              <b>#{j.order_id.slice(-6)}</b> · {j.status_th} · {j.assignee_name || "ยังไม่ระบุคนทำ"}
+            </div>)}
+        </>;
+      })()}
 
       {/* ═══ คลาสที่สอน + ค่าคอม 10% ═══ */}
       {tab === "teach" && (<>
@@ -218,7 +242,7 @@ function Stat({ n, label, tone }) {
 // ── การ์ดงาน 1 ชิ้น ──
 function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, note, setNote, busy, post, spotlight }) {
   const [msg, setMsg] = useState("");
-  const [showThread, setShowThread] = useState(!!spotlight);   // งานที่รอเราตรวจ กางสายสนทนาให้เลย
+  const [showThread, setShowThread] = useState(false);
   const chip = dueChip(j.due_at);
   const b = j.brief || {};
   const canAssign = isOwner || isAE;
@@ -229,24 +253,29 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
   const rejectNote = (note[j.order_id] || "").trim();
 
   return (
-    <div style={{ ...card, borderLeft: chip?.c === "#b42318" ? "3px solid #b42318" : "1px solid #eee4dc" }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
+    <div style={{ ...card, padding: open ? 16 : "11px 14px", marginBottom: open ? 12 : 7,
+      borderLeft: chip?.c === "#b42318" ? "3px solid #b42318" : "1px solid #eee4dc" }}>
+      {/* หัวการ์ด — กดตรงไหนก็เปิด/ย่อได้ (คิมขอ "มีปุ่มเปิดปิดย่อช่องได้ด้วย") */}
+      <div onClick={toggle} style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
+        <span style={{ fontSize: 13, color: "#a89f96", width: 14, flexShrink: 0 }}>{open ? "▾" : "▸"}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <b style={{ fontSize: 15 }}>{b.title || b.hook || `งานตัดต่อ #${j.order_id.slice(-6)}`}</b>
             {chip && <span style={{ background: chip.bg, color: chip.c, borderRadius: 999, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>{chip.t}</span>}
+            <span style={{ background: "#f4f0ea", color: "#7c7268", borderRadius: 999, padding: "2px 10px", fontSize: 11.5, fontWeight: 600 }}>{j.status_th}</span>
           </div>
-          <div style={{ color: "#7c7268", fontSize: 13, marginTop: 4 }}>
-            ลูกค้า {j.customer} · {j.clips || 1} คลิป{j.script_day ? ` · วันที่ ${j.script_day} ของแผน` : ""}
-            {j.due_th ? ` · ส่ง ${j.due_th}` : ""}
-          </div>
-          <div style={{ color: "#a89f96", fontSize: 12, marginTop: 3 }}>
-            {j.assignee_name ? `คนตัด: ${j.assignee_name}` : "⚠️ ยังไม่มีคนทำ"}
-            {j.senior_by ? ` · หัวหน้าตรวจแล้ว (${j.senior_by})` : ""}{j.ae_by ? ` · AE ผ่านแล้ว (${j.ae_by})` : ""}
+          {/* ตอนย่อโชว์บรรทัดเดียวพอ — มีงาน 10 ชิ้นก็ยังเห็นครบในจอเดียว */}
+          <div style={{ color: "#a89f96", fontSize: 12.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            ลูกค้า {j.customer} · {j.clips || 1} คลิป{j.assignee_name ? ` · คนตัด ${j.assignee_name}` : " · ⚠️ ยังไม่มีคนทำ"}
+            {j.comments ? ` · 💬 ${j.comments}` : ""}
           </div>
         </div>
-        <button style={{ ...ghost, fontSize: 13 }} onClick={toggle}>{open ? "ย่อ" : "ดูบรีฟ"}</button>
       </div>
+
+      {open && <div style={{ color: "#a89f96", fontSize: 12, marginTop: 8, paddingLeft: 24 }}>
+        {j.script_day ? `วันที่ ${j.script_day} ของแผน · ` : ""}{j.due_th ? `กำหนดส่ง ${j.due_th}` : "ยังไม่มีกำหนดส่ง"}
+        {j.senior_by ? ` · หัวหน้าตรวจแล้ว (${j.senior_by})` : ""}{j.ae_by ? ` · AE ผ่านแล้ว (${j.ae_by})` : ""}
+      </div>}
 
       {open && (
         <div style={{ background: "#fbf7f3", borderRadius: 10, padding: 12, marginTop: 10, fontSize: 14, lineHeight: 1.7 }}>
@@ -263,7 +292,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       )}
 
       {/* 🔴 โดนตีกลับ — ขึ้นให้เห็นเต็มๆ เลย คนตัดจะได้ไม่ต้องไปกดหาในสายสนทนา */}
-      {(() => {
+      {open && (() => {
         const last = [...thread].reverse().find(c => c.internal && c.text.startsWith("❌"));
         return last && ["editing", "assigned"].includes(j.status) ? (
           <div style={{ marginTop: 10, background: "#fdf0ef", border: "1px solid #f3cdc7", borderRadius: 10, padding: "10px 12px" }}>
@@ -276,7 +305,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       })()}
 
       {/* AE กระจายงาน */}
-      {canAssign && (
+      {open && canAssign && (
         <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "#7c7268" }}>มอบหมายให้:</span>
           <select style={{ ...input, width: "auto", padding: "7px 10px", fontSize: 14 }} value={j.assigned_to || ""}
@@ -290,7 +319,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       )}
 
       {/* คนตัดส่งงาน */}
-      {canSubmit && ["assigned", "editing", "revising"].includes(j.status) && (
+      {open && canSubmit && ["assigned", "editing", "revising"].includes(j.status) && (
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <input style={{ ...input, flex: 1, minWidth: 200 }} placeholder="วางลิงก์งานที่ตัดเสร็จ (Drive / Frame.io)"
             value={draftUrl[j.order_id] || ""} onChange={e => setDraftUrl(s => ({ ...s, [j.order_id]: e.target.value }))} />
@@ -302,7 +331,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       )}
 
       {/* ══ ตรวจงาน — ปุ่มอนุมัติ / ไม่อนุมัติ + ช่องบอกว่าต้องแก้อะไร ══ */}
-      {iReview && (
+      {open && iReview && (
         <div style={{ marginTop: 10, background: "#f0f7fb", borderRadius: 10, padding: 14, border: "1px solid #d6e9f4" }}>
           <div style={{ fontSize: 14, color: "#0b6ea8", marginBottom: 10, fontWeight: 700 }}>
             {j.status === "senior_review"
@@ -337,7 +366,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       )}
 
       {/* ══ 💬 คุยกันในทีมใต้งานชิ้นนี้ — ⛔ ลูกค้าไม่เห็น ══ */}
-      <div style={{ marginTop: 10, borderTop: "1px solid #f2ece6", paddingTop: 10 }}>
+      {open && <div style={{ marginTop: 10, borderTop: "1px solid #f2ece6", paddingTop: 10 }}>
         <button style={{ background: "none", border: 0, color: "#7c7268", fontSize: 13, cursor: "pointer", padding: 0, fontFamily: "inherit" }}
           onClick={() => setShowThread(v => !v)}>
           💬 คุยกันในทีม ({thread.length}) {showThread ? "▾" : "▸"}
@@ -371,7 +400,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
             🔒 ม่วง = ทีมคุยกันเอง ลูกค้าไม่เห็น · 💬 ส้ม = ลูกค้าพิมพ์มา
           </p>
         </>)}
-      </div>
+      </div>}
     </div>
   );
 }

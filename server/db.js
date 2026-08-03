@@ -186,6 +186,10 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_inv_order ON tax_invoices(order_id);
+    -- ⚠️ ธงกันออกใบซ้ำ: ออเดอร์เก่าที่คิมออกใบมือไว้ใน FlowAccount แล้ว ห้ามระบบส่งขึ้นไปอีก
+    -- ออกใบกำกับซ้ำ = เลขที่เอกสารซ้ำ = ยื่นภาษีผิด เรื่องใหญ่กว่าการไม่มีใบ
+    ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS issued_manually BOOLEAN DEFAULT false;
+    ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS backfilled BOOLEAN DEFAULT false;
     CREATE INDEX IF NOT EXISTS idx_tax_inv_status ON tax_invoices(status, created_at DESC);
 
     -- ═══════ 📈 ผลจริงรายคลิป — หัวใจของ "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════

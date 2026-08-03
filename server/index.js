@@ -455,6 +455,94 @@ app.get("/api/admin/tax-invoices.csv", async (req, res) => {
     res.send(csv);
   } catch (e) { res.status(500).send("failed: " + e.message); }
 });
+// 🕰️ ทำใบกำกับย้อนหลังให้ยอดที่เข้ามาแล้วก่อนมีระบบนี้
+// ⚠️ อันตราย: ถ้าคิมออกใบมือไว้แล้วใน FlowAccount การส่งซ้ำ = เลขที่เอกสารซ้ำ = ยื่นภาษีผิด
+//    เพราะงั้น: (1) มีโหมด "ดูก่อนทำ" (2) ใบที่สร้างย้อนหลังจะไม่ถูกส่งขึ้น FlowAccount อัตโนมัติ
+//    ต้องมากดสั่งทีหลังเอง หลังเช็คแล้วว่าใบไหนยังไม่เคยออก
+app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const from = String(b.from || "2000-01-01"), to = String(b.to || "2999-12-31");
+  const dryRun = b.dry_run !== false;                       // ค่าเริ่มต้น = ดูก่อน ไม่เขียนอะไร
+  const alreadyIssued = !!b.already_issued_manually;        // ติ๊กถ้าใบพวกนี้ออกมือไว้แล้ว
+  try {
+    const rows = await q(`SELECT o.* FROM blueprint_orders o
+      LEFT JOIN tax_invoices t ON t.order_id = o.order_id
+      WHERE o.payment_status IN ('paid','mock_paid') AND COALESCE(o.final_amount_satang,0) > 0
+        AND t.invoice_id IS NULL
+        AND COALESCE(o.paid_at, o.created_at) >= $1::date
+        AND COALESCE(o.paid_at, o.created_at) < ($2::date + interval '1 day')
+      ORDER BY COALESCE(o.paid_at, o.created_at)`, [from, to]);
+
+    const preview = rows.map(o => {
+      const payload = safeJson(o.order_payload_json) || {};
+      const tier = String(o.tier || "");
+      const kind = tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+      const amount = Number(o.final_amount_satang || 0);
+      const v = splitVat(amount);
+      const t = payload.tax || {};
+      return { order_id: o.order_id, paid_at: o.paid_at || o.created_at, email: o.email, kind,
+        name: String(t.name || payload.form_responses?.display_name || o.instagram_account || String(o.email || "").split("@")[0] || "ลูกค้าทั่วไป"),
+        is_company: !!t.is_company, baht: amount / 100, net_baht: v.net / 100, vat_baht: v.vat / 100 };
+    });
+    const sum = (k) => preview.reduce((s, x) => s + x[k], 0);
+    // ⚠️ paid_at เป็น Date object — String(date).slice(0,7) ได้ "Mon Aug" ไม่ใช่ "2026-08"
+    const monthKey = (d) => { try { return new Date(d).toISOString().slice(0, 7); } catch { return "-"; } };
+    const byMonth = {};
+    for (const p of preview) {
+      const m = monthKey(p.paid_at);
+      (byMonth[m] ||= { month: m, count: 0, baht: 0 });
+      byMonth[m].count++; byMonth[m].baht += p.baht;
+    }
+    const summary = { count: preview.length, total_baht: sum("baht"), net_baht: sum("net_baht"), vat_baht: sum("vat_baht"),
+      by_month: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)) };
+
+    if (dryRun) return res.json({ ok: true, dry_run: true, ...summary,
+      note: "ยังไม่ได้สร้างอะไรเลย — ส่ง dry_run:false เพื่อสร้างจริง",
+      sample: preview.slice(0, 10) });
+
+    let made = 0;
+    for (const o of rows) {
+      const payload = safeJson(o.order_payload_json) || {};
+      const tier = String(o.tier || "");
+      const kind = tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+      const plan = planOf(payload.plan);
+      const desc = KIND_LABEL[kind] || (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
+      const r = await issueTaxInvoice({ orderId: o.order_id, kind, email: o.email,
+        amountSatang: Number(o.final_amount_satang || 0), description: desc,
+        tax: { ...(payload.tax || {}), fallback_name: payload.form_responses?.display_name || o.instagram_account || "" } });
+      if (r?.invoice_id) {
+        // ⛔ ใบย้อนหลังไม่ส่งขึ้น FlowAccount อัตโนมัติ — ต้องเช็คก่อนว่าไม่ซ้ำกับที่ออกมือไว้
+        await run(`UPDATE tax_invoices SET backfilled=true, issued_manually=$2, status='manual', provider='manual'
+          WHERE invoice_id=$1`, [r.invoice_id, alreadyIssued]);
+        made++;
+      }
+    }
+    res.json({ ok: true, dry_run: false, created: made, ...summary,
+      marked_already_issued: alreadyIssued,
+      note: alreadyIssued
+        ? "สร้างแล้วและติ๊กว่า 'ออกมือไว้แล้ว' — ระบบจะไม่ส่งซ้ำขึ้น FlowAccount"
+        : "สร้างแล้ว · ยังไม่ส่งขึ้น FlowAccount — ตรวจก่อนแล้วค่อยกดส่ง" });
+  } catch (e) { console.error("backfill", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ติ๊ก/ยกเลิกติ๊ก "ออกใบมือไว้แล้ว" เป็นชุด (ตามเดือน หรือระบุใบ)
+app.post("/api/admin/tax-invoices/mark-issued", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {}, val = b.value !== false;
+  try {
+    if (Array.isArray(b.invoice_ids) && b.invoice_ids.length) {
+      const r = await run(`UPDATE tax_invoices SET issued_manually=$1 WHERE invoice_id = ANY($2)`, [val, b.invoice_ids]);
+      return res.json({ ok: true, updated: r.rowCount });
+    }
+    if (b.month) {
+      const r = await run(`UPDATE tax_invoices SET issued_manually=$1
+        WHERE to_char(created_at AT TIME ZONE 'Asia/Bangkok','YYYY-MM')=$2`, [val, String(b.month)]);
+      return res.json({ ok: true, updated: r.rowCount, month: b.month });
+    }
+    res.status(400).json({ ok: false, error: "MISSING", message: "ระบุ month หรือ invoice_ids" });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 // ลองออกใบที่ค้างใหม่ (ใช้หลังตั้งรหัส FlowAccount เสร็จ)
 app.post("/api/admin/tax-invoices/retry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

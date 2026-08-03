@@ -121,9 +121,11 @@ export async function issueTaxInvoice({ orderId, kind, email, amountSatang, desc
 }
 
 // ลองออกใบที่ค้างอยู่ใหม่ (แอดมินกดเอง หรือหลังตั้งรหัส FlowAccount เสร็จ)
+// ⛔ ข้ามใบที่ทำมือไว้แล้วเสมอ — ออกซ้ำ = เลขที่เอกสารซ้ำ = ยื่นภาษีผิด
 export async function retryPendingInvoices(limit = 50) {
   if (!flowAccountReady()) return { ok: false, reason: "ยังไม่ได้ตั้งรหัส FlowAccount" };
-  const rows = await q(`SELECT * FROM tax_invoices WHERE status IN ('failed','manual','pending') ORDER BY created_at LIMIT $1`, [limit]);
+  const rows = await q(`SELECT * FROM tax_invoices WHERE status IN ('failed','manual','pending')
+    AND issued_manually = false ORDER BY created_at LIMIT $1`, [limit]);
   let done = 0, failed = 0;
   for (const inv of rows) {
     try {

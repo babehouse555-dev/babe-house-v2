@@ -13,6 +13,11 @@ export default function Checkout() {
   const [code, setCode] = useState("");
   const [codeMsg, setCodeMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  // 🧾 ใบกำกับภาษี — คิมสั่ง 3 ส.ค.: ออกให้ทุกคนอยู่แล้วด้วยชื่อที่มี
+  // ติ๊กช่องนี้เฉพาะคนที่ต้องการ "ในนามบริษัท" จะได้ไม่ต้องให้ลูกค้าทั่วไปกรอกเยอะ
+  const [wantCompany, setWantCompany] = useState(false);
+  const [taxF, setTaxF] = useState({ name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
+  const [taxMsg, setTaxMsg] = useState(null);
   const [price, setPrice] = useState(159000);
   // 💳 3 แพ็ก (คิมเคาะ 3 ส.ค.) — ข้อมูลจริงตอนตัดสินใจ: ลูกค้า 232 คน 231 คนซื้อเดือนเดียวแล้วหาย
   // จ่ายก้อนเดียวล่วงหน้าจึงคุ้มกว่ามากทั้งสองฝ่าย: ลูกค้าถูกลง 30-50% เราได้เงินก้อนและได้เวลา 6-12 เดือนไปพิสูจน์ของ
@@ -43,9 +48,16 @@ export default function Checkout() {
   }, [orderId, plans.length, order?.order_id]);   // eslint-disable-line
 
   async function pay() {
-    if (!orderId) return; setBusy(true);
-    try { const d = await api("/api/create-payment-session", { method: "POST", body: { order_id: orderId } }); location.href = d.redirect_url; }
-    catch (e) { alert(e.message); setBusy(false); }
+    if (!orderId) return;
+    setBusy(true); setTaxMsg(null);
+    try {
+      // บันทึกข้อมูลใบกำกับก่อนจ่าย — จ่ายแล้วแก้ไม่ได้ (ใบออกอัตโนมัติทันทีที่เงินเข้า)
+      if (wantCompany) {
+        await api("/api/order/tax-info", { method: "POST", body: { order_id: orderId, is_company: true, ...taxF } });
+      }
+      const d = await api("/api/create-payment-session", { method: "POST", body: { order_id: orderId } });
+      location.href = d.redirect_url;
+    } catch (e) { setTaxMsg({ k: "err", t: e.message }); setBusy(false); }
   }
   async function useCode() {
     if (!code.trim()) { setCodeMsg({ k: "err", t: t("co_code_empty") }); return; }
@@ -78,6 +90,33 @@ export default function Checkout() {
         </div>
         <p className="muted" style={{ fontSize: 12, textAlign: "right", margin: "-6px 0 12px" }}>{t("co_vat_note")}</p>
         {order?.discount_percent > 0 && order.discount_percent < 100 && <p style={{ textAlign: "right", color: "var(--up)", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{order.discount_percent}% {t("co_off")}</p>}
+        {/* 🧾 ใบกำกับภาษี — ออกให้ทุกคนอยู่แล้ว ติ๊กเฉพาะคนที่ต้องการในนามบริษัท */}
+        <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+          <label className="row" style={{ gap: 9, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
+            <input type="checkbox" style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }}
+              checked={wantCompany} onChange={e => { setWantCompany(e.target.checked); setTaxMsg(null); }} />
+            <span>ต้องการ<b>ใบกำกับภาษีในนามบริษัท</b>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
+                ไม่ติ๊กก็ได้ใบกำกับนะคะ — ระบบออกให้อัตโนมัติในนามของคุณทุกครั้งที่ชำระเงิน
+              </div>
+            </span>
+          </label>
+          {wantCompany && <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <input placeholder="ชื่อบริษัท (เช่น บริษัท เอบีซี จำกัด)" value={taxF.name}
+              onChange={e => setTaxF(v => ({ ...v, name: e.target.value }))} />
+            <input inputMode="numeric" placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" value={taxF.tax_id}
+              onChange={e => setTaxF(v => ({ ...v, tax_id: e.target.value.replace(/\D/g, "").slice(0, 13) }))} />
+            <input placeholder="สำนักงานใหญ่ / สาขาที่ ..." value={taxF.branch}
+              onChange={e => setTaxF(v => ({ ...v, branch: e.target.value }))} />
+            <textarea placeholder="ที่อยู่บริษัทตามที่จดทะเบียน" value={taxF.address} style={{ minHeight: 62 }}
+              onChange={e => setTaxF(v => ({ ...v, address: e.target.value }))} />
+            <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.6 }}>
+              ⚠️ ตรวจให้ถูกก่อนชำระเงินนะคะ — ใบกำกับจะออกทันทีที่ชำระสำเร็จ แก้เองทีหลังไม่ได้ค่ะ
+            </p>
+          </div>}
+        </div>
+        {taxMsg && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{taxMsg.t}</div>}
+
         {isMock ? <>
           <button className="btn full" onClick={pay} disabled={busy} style={{ marginBottom: 10 }}>{t("co_pay_mock")}</button>
         </> : <button className="btn full" onClick={pay} disabled={busy}>{t("co_pay")}</button>}

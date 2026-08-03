@@ -157,6 +157,37 @@ export async function initDb() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_uses_uniq ON subscription_uses(subscription_id, billing_cycle);
 
 
+    -- ═══════ 🧾 ใบกำกับภาษี (คิมสั่ง 3 ส.ค. 2569) ═══════
+    -- "ทุกการจ่ายเงินเราต้องออกใบกำกับภาษีอยู่แล้ว เอาไปส่งบัญชีรายเดือน"
+    -- ลูกค้าทั่วไป: ออกอัตโนมัติด้วยชื่อที่มีอยู่ ไม่ต้องกรอกอะไรเพิ่ม
+    -- ลูกค้าบริษัท: ติ๊กที่หน้าจ่ายเงินแล้วกรอกชื่อบริษัท/ที่อยู่/เลขผู้เสียภาษี
+    -- ⚠️ ราคาทุกอย่างที่ขายผ่านเว็บ "รวม VAT แล้ว" → ต้องถอด VAT ออกมาแสดงในใบกำกับ
+    CREATE TABLE IF NOT EXISTS tax_invoices (
+      invoice_id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      order_kind TEXT,                 -- blueprint | credits | video | edit | workshop | academy
+      email TEXT,
+      customer_name TEXT NOT NULL,     -- ชื่อที่จะขึ้นบนใบ (บุคคล = ชื่อลูกค้า · บริษัท = ชื่อบริษัท)
+      is_company BOOLEAN DEFAULT false,
+      tax_id TEXT,                     -- เลขประจำตัวผู้เสียภาษี 13 หลัก (เฉพาะบริษัท)
+      branch TEXT,                     -- สำนักงานใหญ่ / สาขาที่ ...
+      address TEXT,
+      description TEXT,                -- รายการสินค้าที่ขึ้นบนใบ
+      amount_satang INTEGER NOT NULL,  -- ยอดที่ลูกค้าจ่ายจริง (รวม VAT แล้ว)
+      net_satang INTEGER NOT NULL,     -- ก่อน VAT
+      vat_satang INTEGER NOT NULL,     -- VAT 7%
+      status TEXT DEFAULT 'pending',   -- pending | issued | failed | manual
+      provider TEXT,                   -- flowaccount | manual
+      provider_doc_id TEXT,            -- id เอกสารฝั่ง FlowAccount
+      doc_number TEXT,                 -- เลขที่เอกสาร เช่น INV2026080001
+      receipt_number TEXT,             -- เลขที่ใบเสร็จ (RE...)
+      error TEXT,
+      issued_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_inv_order ON tax_invoices(order_id);
+    CREATE INDEX IF NOT EXISTS idx_tax_inv_status ON tax_invoices(status, created_at DESC);
+
     -- ═══════ 📈 ผลจริงรายคลิป — หัวใจของ "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
     -- "ฉันไม่ได้อยากให้ลูกค้าเริ่มใหม่ทุกเดือน เค้าต้องได้ต่อยอดจากที่ถูกคิดมาแล้วแล้วเอาไปทำจริง
     --  จะได้รู้ว่าอันไหนเวิร์กหรือไม่เวิร์ก"

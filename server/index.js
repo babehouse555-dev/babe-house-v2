@@ -10,6 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -200,6 +201,7 @@ async function markOrderPaid(orderId, provider = "mock", sid = "") {
   const upd = await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4 AND payment_status<>'paid'`, [provider, sid || null, liveMode, orderId]);
   grantCreditsIfCreditOrder(orderId).catch(e => console.error("grant-credits", e.message));
   activatePlanIfLongOrder(orderId).catch(e => console.error("activate-plan", e.message));
+  issueInvoiceForOrder(orderId).catch(e => console.error("tax-invoice", e.message));   // 🧾 ออกใบกำกับภาษีทุกการจ่ายเงิน
   processReferralReward(orderId).catch(e => console.error("referral", e.message));
   if (upd.rowCount === 1) notifyAdminPurchase(orderId, provider, liveMode).catch(() => {}); // แจ้งเตือน "มีคนซื้อ"
 }
@@ -215,6 +217,25 @@ async function notifyAdminPurchase(orderId, provider, liveMode) {
   await sendEmail(ADMIN_ALERT_EMAIL, `💰 มีคนซื้อ! ฿${baht} · ${o.email || "-"}`,
     wrap(`<b>มีลูกค้าซื้อเข้ามาค่ะ 🎉</b><br><br>📧 อีเมล: <b>${o.email || "-"}</b><br>🛒 สินค้า: ${kind}<br>💵 ยอด: <b>฿${baht}</b><br>📱 ช่อง: ${o.instagram_account || "-"}<br>🕐 เวลา: ${when}<br>ช่องทาง: ${via}`)).catch(() => {});
 }
+// 🧾 ออกใบกำกับภาษีจากออเดอร์ที่จ่ายแล้ว — คิมสั่ง "ทุกการจ่ายเงินต้องออกใบกำกับ"
+// ⛔ ห้ามพังการจ่ายเงินไม่ว่าจะเกิดอะไรขึ้น (เรียกแบบ fire-and-forget + จับ error ครบ)
+const KIND_LABEL = { credits: "แพ็กเครดิตสคริปต์", video: "บริการตรวจคลิป (Video Audit)" };
+async function issueInvoiceForOrder(orderId) {
+  const o = await getOrder(orderId); if (!o) return;
+  const amount = Number(o.final_amount_satang || 0);
+  if (amount <= 0) return;                                  // ฟรี/โค้ด 100% ไม่มียอด ไม่ต้องออกใบ
+  const payload = safeJson(o.order_payload_json) || {};
+  const tier = String(o.tier || "");
+  const kind = tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+  const plan = planOf(payload.plan);
+  const desc = KIND_LABEL[kind] ||
+    (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
+  await issueTaxInvoice({
+    orderId, kind, email: o.email, amountSatang: amount, description: desc,
+    tax: { ...(payload.tax || {}), fallback_name: payload.form_responses?.display_name || o.instagram_account || "" },
+  });
+}
+
 // ออเดอร์แพ็ก 6/12 เดือน จ่ายแล้ว → เปิดสิทธิ์ให้ (idempotent กัน webhook ยิงซ้ำ)
 // เดือนแรกหักสิทธิ์ทันที เพราะเล่มเดือนนี้ถูกสร้างจากออเดอร์นี้อยู่แล้ว
 async function activatePlanIfLongOrder(orderId) {
@@ -403,6 +424,65 @@ app.post("/api/order/set-plan", rateLimit(60, M10), async (req, res) => {
   await run(`UPDATE blueprint_orders SET final_amount_satang=$1, discount_percent=$2, order_payload_json=$3, discount_code=NULL, referred_by=NULL WHERE order_id=$4`,
     [plan.satang, plan.off || null, JSON.stringify(payload), orderId]);
   res.json({ ok: true, plan: plan.plan, months: plan.months, amount_satang: plan.satang, ...vatSplit(plan.satang) });
+});
+
+// 🧾 แอดมิน: ใบกำกับภาษีทั้งหมด + ส่งออกให้นักบัญชีรายเดือน
+app.get("/api/admin/tax-invoices", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const month = String(req.query.month || "") || new Date().toISOString().slice(0, 7);
+    const rows = await q(`SELECT * FROM tax_invoices
+      WHERE to_char(created_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM') = $1 ORDER BY created_at DESC`, [month]);
+    const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
+    const byStatus = {};
+    for (const r of rows) byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+    res.json({ ok: true, month, flowaccount_ready: flowAccountReady(),
+      count: rows.length, by_status: byStatus,
+      net_baht: sum("net_satang") / 100, vat_baht: sum("vat_satang") / 100, total_baht: sum("amount_satang") / 100,
+      invoices: rows.map(r => ({ ...r, net_baht: r.net_satang / 100, vat_baht: r.vat_satang / 100, total_baht: r.amount_satang / 100 })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ไฟล์ส่งนักบัญชี (เปิดใน Excel ได้เลย)
+app.get("/api/admin/tax-invoices.csv", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).send("unauthorized");
+  const month = String(req.query.month || "") || new Date().toISOString().slice(0, 7);
+  try {
+    const { csv } = await invoicesCsv(month);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    // ⚠️ ชื่อไฟล์ภาษาไทยใส่ตรงๆ ใน header ไม่ได้ (Invalid character) — ต้อง encode ตาม RFC 5987
+    res.setHeader("Content-Disposition",
+      `attachment; filename="tax-invoices-${month}.csv"; filename*=UTF-8''${encodeURIComponent(`ใบกำกับภาษี-${month}.csv`)}`);
+    res.send(csv);
+  } catch (e) { res.status(500).send("failed: " + e.message); }
+});
+// ลองออกใบที่ค้างใหม่ (ใช้หลังตั้งรหัส FlowAccount เสร็จ)
+app.post("/api/admin/tax-invoices/retry", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  res.json(await retryPendingInvoices(Number(req.body?.limit) || 50));
+});
+
+// 🧾 ลูกค้าบริษัทกรอกข้อมูลใบกำกับที่หน้าจ่ายเงิน — ลูกค้าทั่วไปไม่ต้องกรอกอะไรเลย
+app.post("/api/order/tax-info", rateLimit(60, M10), async (req, res) => {
+  const orderId = String(req.body?.order_id || "");
+  const o = await getOrder(orderId);
+  if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+  if (["paid", "mock_paid"].includes(o.payment_status)) return res.status(409).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้จ่ายแล้วค่ะ ทักทีมงานเพื่อแก้ใบกำกับนะคะ" });
+  const b = req.body || {};
+  const isCompany = !!b.is_company;
+  const name = String(b.name || "").trim();
+  const taxId = String(b.tax_id || "").replace(/\D/g, "");
+  if (isCompany) {
+    if (!name) return res.status(400).json({ ok: false, error: "NEED_NAME", message: "ใส่ชื่อบริษัทด้วยนะคะ" });
+    if (taxId.length !== 13) return res.status(400).json({ ok: false, error: "BAD_TAX_ID", message: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ" });
+    if (!String(b.address || "").trim()) return res.status(400).json({ ok: false, error: "NEED_ADDRESS", message: "ใส่ที่อยู่บริษัทด้วยนะคะ" });
+  }
+  const payload = { ...(safeJson(o.order_payload_json) || {}),
+    tax: isCompany ? { is_company: true, name, tax_id: taxId,
+                       branch: String(b.branch || "สำนักงานใหญ่").slice(0, 100),
+                       address: String(b.address || "").slice(0, 500) }
+                   : { is_company: false, name: name || undefined } };
+  await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`, [JSON.stringify(payload), orderId]);
+  res.json({ ok: true, tax: payload.tax });
 });
 
 // เล่มเดือนใหม่ของคนที่มีแพ็กอยู่แล้ว — ไม่ต้องจ่ายซ้ำ สร้างออเดอร์ที่จ่ายแล้วให้เลย

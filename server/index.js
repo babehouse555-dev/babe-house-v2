@@ -1397,9 +1397,66 @@ async function academyOwnedCourseIds(email) {
         JOIN academy_orders o ON o.legacy_id = l.order_id
         JOIN academy_users u ON u.legacy_id = o.legacy_user_id
         WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(l.course_id,'') <> ''
+      UNION
+      -- 🎁 สิทธิ์ที่ทีมเปิดให้เพิ่ม (ลูกค้าจ่ายผ่านแอดมิน/LINE แต่ออเดอร์ในระบบเก่าค้างสถานะ Open)
+      SELECT g.course_id FROM academy_grants g WHERE lower(g.email) = lower($1)
     ) x`, [email]);
   return rows.map(r => r.course_id);
 }
+// 🙋 ลูกค้าเก่าแจ้ง "ไม่เจอคอร์สที่เคยซื้อ" — เก็บคำขอ + เตือนทีมทางเมลทันที
+// ทำแทนการไล่เทียบสลิปย้อนหลัง (คิมบอก 3 ส.ค.: ของเยอะมาก + ชื่อลูกค้าไม่ตรงกับสลิป เทียบไม่ไหวจริง)
+app.post("/api/academy/claim", rateLimit(5, M10), async (req, res) => {
+  const email = await authEmail(req);
+  if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
+  const note = String(req.body?.note || "").trim().slice(0, 2000);
+  try {
+    const dup = await one(`SELECT claim_id FROM academy_claims WHERE lower(email)=lower($1) AND status='open'`, [email]);
+    if (dup) return res.json({ ok: true, already: true, message: "เราได้รับเรื่องของคุณแล้วนะคะ ทีมกำลังตรวจสอบให้อยู่ค่ะ" });
+    const id = uid("clm");
+    await run(`INSERT INTO academy_claims (claim_id,email,note) VALUES ($1,lower($2),$3)`, [id, email, note || null]);
+    // เตือนทีมทันที — ลูกค้าที่จ่ายเงินแล้วแต่เข้าเรียนไม่ได้ ต้องรีบที่สุด
+    sendEmail(OPS_EMAIL, `🙋 ลูกค้าแจ้งไม่เจอคอร์สที่เคยซื้อ — ${email}`,
+      wrap(`<b>${email}</b> แจ้งว่าเข้าระบบแล้วไม่เห็นคอร์สที่เคยซื้อค่ะ<br><br>
+        <b>สิ่งที่ลูกค้าเล่ามา:</b><br>${(note || "(ไม่ได้เขียนเพิ่ม)").replace(/\n/g, "<br>")}<br><br>
+        เปิดสิทธิ์ให้ได้ที่หน้าหลังบ้าน → หัวข้อ "🙋 ลูกค้าแจ้งไม่เจอคอร์ส"`)).catch(() => {});
+    res.json({ ok: true, claim_id: id });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ทีมดูรายการคำขอ + ประวัติสิทธิ์ที่เปิดให้
+app.get("/api/admin/academy/claims", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const claims = await q(`SELECT * FROM academy_claims ORDER BY (status<>'open'), created_at DESC LIMIT 200`);
+    // แนบออเดอร์ค้างของอีเมลนั้นมาให้ทีมดูประกอบการตัดสินใจ (ซื้ออะไรไว้ เมื่อไหร่ ยอดเท่าไหร่)
+    const out = [];
+    for (const c of claims) {
+      const orders = await q(`SELECT o.legacy_id, o.status, o.total, o.legacy_created,
+          COALESCE(NULLIF(o.course_id,'0'), (SELECT l.course_id FROM academy_order_lines l WHERE l.order_id=o.legacy_id LIMIT 1)) cid
+        FROM academy_orders o JOIN academy_users u ON u.legacy_id=o.legacy_user_id
+        WHERE lower(u.email)=lower($1) ORDER BY o.legacy_created DESC LIMIT 20`, [c.email]);
+      const names = await q(`SELECT legacy_id, name FROM academy_courses`);
+      const nmap = Object.fromEntries(names.map(n => [n.legacy_id, n.name]));
+      out.push({ ...c, orders: orders.map(o => ({ ...o, course_name: nmap[o.cid] || (o.cid ? `คอร์ส ${o.cid}` : "(ไม่ระบุคอร์ส)") })) });
+    }
+    const grants = await q(`SELECT * FROM academy_grants ORDER BY created_at DESC LIMIT 100`);
+    const courses = await q(`SELECT legacy_id id, name FROM academy_courses ORDER BY legacy_id::int`);
+    res.json({ ok: true, claims: out, grants, courses });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// ทีมเปิดสิทธิ์เรียนให้ลูกค้า (ทีละคอร์ส) — ไม่แตะออเดอร์เก่า เก็บเป็นสิทธิ์เพิ่มแยกไว้
+app.post("/api/admin/academy/grant", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = normEmail(req.body?.email || ""), courseId = String(req.body?.course_id || "").trim();
+  if (!email || !courseId) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีอีเมลและคอร์ส" });
+  try {
+    await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,$4,$5)
+      ON CONFLICT (lower(email), course_id) DO NOTHING`,
+      [uid("gr"), email, courseId, String(req.body?.granted_by || "kim").slice(0, 40), String(req.body?.note || "").slice(0, 500)]);
+    if (req.body?.claim_id) await run(`UPDATE academy_claims SET status='granted', handled_by=$2, handled_at=now() WHERE claim_id=$1`,
+      [String(req.body.claim_id), String(req.body?.granted_by || "kim").slice(0, 40)]);
+    res.json({ ok: true, email, course_id: courseId });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.get("/api/academy/my-courses", async (req, res) => {
   try {
     const email = await authEmail(req);

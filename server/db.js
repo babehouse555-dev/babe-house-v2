@@ -550,6 +550,29 @@ export async function initDb() {
       PRIMARY KEY (email, course_id, lesson_id)
     );
     CREATE INDEX IF NOT EXISTS idx_academy_progress_email ON academy_progress(email, course_id);
+    -- 🙋 ลูกค้าเก่าแจ้งว่า "ไม่เจอคอร์สที่เคยซื้อ" (คิมเคาะ 3 ส.ค.)
+    -- ที่มา: ระบบเก่ามีออเดอร์ค้างสถานะ Open 806 รายการ (2.37 ล้านบาท) เพราะลูกค้าจ่ายผ่านแอดมิน/LINE
+    -- แล้วแอดมินไม่ได้กลับมาปิดออเดอร์ · เทียบสลิปย้อนหลังไม่ไหว (เยอะ + ชื่อไม่ตรง) → ให้ลูกค้าแจ้งเองแทน
+    CREATE TABLE IF NOT EXISTS academy_claims (
+      claim_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      note TEXT,                       -- ลูกค้าเล่าว่าซื้อคอร์สอะไร จ่ายยังไง เมื่อไหร่
+      status TEXT DEFAULT 'open',      -- open | granted | rejected
+      handled_by TEXT,
+      handled_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_academy_claims_status ON academy_claims(status, created_at DESC);
+    -- 🎁 สิทธิ์เรียนที่ทีมเปิดให้เพิ่ม (ไม่แตะออเดอร์เก่า — เก็บแยกเพื่อให้ย้อนดูได้ว่าใครเปิดให้ใคร)
+    CREATE TABLE IF NOT EXISTS academy_grants (
+      grant_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      granted_by TEXT,
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_academy_grants_uniq ON academy_grants(lower(email), course_id);
     CREATE INDEX IF NOT EXISTS idx_academy_users_email ON academy_users(lower(email));
     CREATE INDEX IF NOT EXISTS idx_academy_orders_user ON academy_orders(legacy_user_id);
     CREATE INDEX IF NOT EXISTS idx_academy_order_lines_order ON academy_order_lines(order_id);

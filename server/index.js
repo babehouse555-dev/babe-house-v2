@@ -2046,6 +2046,20 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
       WHERE cid IS NOT NULL AND cid <> '' AND NOT EXISTS (SELECT 1 FROM academy_courses c WHERE c.legacy_id = x.cid)
       GROUP BY cid ORDER BY students DESC LIMIT 25`),
     users_no_email: Number((await one(`SELECT COUNT(*) c FROM academy_users WHERE COALESCE(email,'')=''`))?.c || 0),
+    // 🎯 ตัวเลขที่ตรงกับ "ล็อกอินแล้วเห็นคอร์สจริงไหม" — นับทุกคอร์สที่เคยซื้อสำเร็จ ไม่สนว่าคอร์สนั้นยังเปิดขายอยู่ไหม
+    // (เกณฑ์ด้านบนตัดคอร์สที่ปิด/ซ่อนออก ทำให้ตัวเลข "คนเห็นคอร์ส" ต่ำกว่าความจริง —
+    //  เพราะหน้าเรียนจริง /api/academy/my-courses ไม่ได้กรองคอร์สที่ปิด ลูกค้าเก่ายังเห็นของตัวเองครบ)
+    emails_owning_any_course: Number((await one(`
+      SELECT COUNT(DISTINCT lower(u.email)) c FROM academy_users u
+      WHERE COALESCE(u.email,'') <> '' AND EXISTS (
+        SELECT 1 FROM academy_orders o WHERE o.legacy_user_id=u.legacy_id AND o.status='Close'
+          AND (EXISTS (SELECT 1 FROM academy_courses c WHERE c.legacy_id=o.course_id)
+               OR EXISTS (SELECT 1 FROM academy_order_lines l JOIN academy_courses c2 ON c2.legacy_id=l.course_id WHERE l.order_id=o.legacy_id)))`))?.c || 0),
+    // คนที่มีอีเมลแต่ไม่มีออเดอร์สำเร็จเลย (กดสั่งแล้วไม่จ่าย/ยกเลิก) — กลุ่มนี้ "ควร" เห็นหน้าว่างอยู่แล้ว
+    emails_no_closed_order: Number((await one(`
+      SELECT COUNT(DISTINCT lower(u.email)) c FROM academy_users u
+      WHERE COALESCE(u.email,'') <> '' AND NOT EXISTS (
+        SELECT 1 FROM academy_orders o WHERE o.legacy_user_id=u.legacy_id AND o.status='Close')`))?.c || 0),
   };
   const lessons = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') <> ''`);
   const noVideo = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') = ''`);

@@ -85,6 +85,8 @@ export default function Team() {
   const [ov, setOv] = useState(null);
   const [wl, setWl] = useState(null);      // 📅 ตารางงานทุกคน (AE/คิม)
   const [myAvail, setMyAvail] = useState([]);
+  const [ext, setExt] = useState([]);                 // 📦 งานนอกเว็บ
+  const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "" });
 
   const load = (c) => {
     const use = c ?? code; if (!use) return;
@@ -98,8 +100,9 @@ export default function Team() {
     api(`/api/team/overview?code=${encodeURIComponent(code)}`).then(setOv).catch(() => {}); }, [tab, d, ov, code]);
   const loadCal = () => {
     api(`/api/team/availability?code=${encodeURIComponent(code)}`).then(r => setMyAvail(r.availability || [])).catch(() => {});
-    if (["owner", "ae", "senior"].includes(d?.me?.role))
-      api(`/api/team/workload?code=${encodeURIComponent(code)}`).then(setWl).catch(() => {});
+    const all = ["owner", "ae", "senior"].includes(d?.me?.role);
+    if (all) api(`/api/team/workload?code=${encodeURIComponent(code)}`).then(setWl).catch(() => {});
+    api(`/api/team/external?code=${encodeURIComponent(code)}${all ? "&all=1" : ""}`).then(r => setExt(r.jobs || [])).catch(() => {});
   };
   useEffect(() => { if (tab === "cal" && d) loadCal(); }, [tab, d]);   // eslint-disable-line
 
@@ -323,6 +326,42 @@ export default function Team() {
             <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8 }}>แตะซ้ำเพื่อเพิ่มจำนวน · แตะจนครบ 4 แล้วแตะอีกครั้งเพื่อล้าง</p>
           </div>
 
+          {/* 📦 งานนอกเว็บ — คิมถาม "ทีม production ก็มีงานที่อยู่ใน production ด้วย
+              ลูกตาลจะต้องมาเป็นคนกรอกงานแล้วก็แอสไซน์เองหรอ"
+              → ไม่ต้อง คนทำงานเพิ่มของตัวเอง กรอก 3 ช่องจบ แล้วมันไปกินที่ว่างเอง */}
+          <div style={card}>
+            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📦 งานนอกเว็บที่ฉันรับอยู่</h3>
+            <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
+              งานโปรดักชั่น/งานที่รับตรง ที่ไม่ได้มาจากเว็บ — <b>ใส่ไว้ด้วยนะคะ</b> ระบบจะได้ไม่ส่งงานมาให้เกินที่รับไหว
+            </p>
+            {ext.filter(x => x.member_id === me.member_id || ["owner", "ae", "senior"].includes(me.role)).map(x => (
+              <div key={x.ext_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+                background: "#fbf7f3", borderRadius: 10, padding: "9px 12px", marginBottom: 7, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 14 }}>
+                  <b>{x.title}</b>
+                  <span style={{ color: "#a89f96", fontSize: 12.5 }}>
+                    {" · "}{x.clips} คลิป{x.client ? ` · ${x.client}` : ""}{x.due_th ? ` · ส่ง ${x.due_th}` : ""}
+                    {x.member_name && x.member_id !== me.member_id ? ` · ${x.member_name}` : ""}
+                  </span>
+                </div>
+                <button style={{ ...ghost, fontSize: 12.5, padding: "5px 12px" }} disabled={busy === "ext"}
+                  onClick={async () => { await post("/api/team/external", { action: "done", ext_id: x.ext_id }, "ext"); loadCal(); }}>
+                  ✓ เสร็จแล้ว
+                </button>
+              </div>
+            ))}
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "2fr 0.7fr 1fr 1fr auto", marginTop: 10, alignItems: "center" }}>
+              <input style={input} placeholder="ชื่องาน" value={extF.title} onChange={e => setExtF(v => ({ ...v, title: e.target.value }))} />
+              <input style={input} inputMode="numeric" placeholder="คลิป" value={extF.clips}
+                onChange={e => setExtF(v => ({ ...v, clips: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
+              <input style={input} placeholder="ลูกค้า" value={extF.client} onChange={e => setExtF(v => ({ ...v, client: e.target.value }))} />
+              <input style={input} type="date" value={extF.due_at} onChange={e => setExtF(v => ({ ...v, due_at: e.target.value }))} />
+              <button style={btn()} disabled={busy === "ext" || !extF.title.trim()}
+                onClick={async () => { await post("/api/team/external", { ...extF, clips: Number(extF.clips) || 1 }, "ext");
+                  setExtF({ title: "", clips: 1, client: "", due_at: "" }); loadCal(); }}>เพิ่ม</button>
+            </div>
+          </div>
+
           {/* ภาพรวมทุกคน — เฉพาะคนที่ดูแลงาน */}
           {wl && <>
             <div style={{ ...card, background: "#fbf7f3" }}>
@@ -353,7 +392,9 @@ export default function Team() {
                       <span style={{ color: "#a89f96", fontSize: 12.5, marginLeft: 6 }}>{m.position || ROLE_TH[m.role]}</span>
                     </div>
                     <div style={{ fontSize: 13, color: "#7c7268" }}>
-                      ลงว่าง {m.capacity} คลิป · รับไปแล้ว {m.busy_clips} · <b style={{ color: bar }}>เหลือ {m.free_slots}</b>
+                      ลงว่าง {m.capacity} คลิป · รับไปแล้ว {m.busy_clips}
+                      {m.ext_clips > 0 && <span style={{ color: "#a89f96" }}> (เว็บ {m.web_clips} + นอกเว็บ {m.ext_clips})</span>}
+                      {" · "}<b style={{ color: bar }}>เหลือ {m.free_slots}</b>
                     </div>
                   </div>
                   <div style={{ height: 8, background: "#f2ece6", borderRadius: 999, marginTop: 9, overflow: "hidden" }}>

@@ -3228,14 +3228,20 @@ async function teamWorkload(days = AVAIL_DAYS) {
     GROUP BY assigned_to`);
   const avail = await q(`SELECT member_id, day, slots FROM team_availability
     WHERE day >= CURRENT_DATE AND day < CURRENT_DATE + $1::int ORDER BY day`, [days]);
+  // 📦 งานนอกเว็บนับรวมด้วย — ไม่งั้นระบบจะคิดว่าคนว่างทั้งที่ติดงานโปรดักชั่นอยู่
+  const ext = await q(`SELECT member_id, COUNT(*) jobs, COALESCE(SUM(clips),0) clips
+    FROM external_jobs WHERE status='active' GROUP BY member_id`);
+  const em = Object.fromEntries(ext.map(r => [r.member_id, r]));
   const lm = Object.fromEntries(load.map(r => [r.assigned_to, r]));
   const am = {};
   for (const a of avail) (am[a.member_id] ||= []).push({ day: String(a.day).slice(0, 10), slots: Number(a.slots || 0) });
   return members.map(m => {
     const a = am[m.member_id] || [];
     const capacity = a.reduce((t, x) => t + x.slots, 0);          // รับได้รวมกี่คลิปใน 14 วัน
-    const busy = Number(lm[m.member_id]?.clips || 0);
+    const web = Number(lm[m.member_id]?.clips || 0), outside = Number(em[m.member_id]?.clips || 0);
+    const busy = web + outside;
     return { ...m, open_jobs: Number(lm[m.member_id]?.jobs || 0), busy_clips: busy,
+      web_clips: web, ext_clips: outside, ext_jobs: Number(em[m.member_id]?.jobs || 0),
       capacity, free_slots: Math.max(0, capacity - busy), days: a,
       load_pct: capacity ? Math.min(999, Math.round(busy / capacity * 100)) : null };
   });
@@ -3300,6 +3306,41 @@ app.post("/api/team/availability", async (req, res) => {
   await run(`INSERT INTO team_availability (avail_id,member_id,day,slots) VALUES ($1,$2,$3,$4)
     ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, updated_at=now()`, [uid("av"), target, day, slots]);
   res.json({ ok: true, day, slots });
+});
+
+// 📦 งานนอกเว็บ — ใครก็เพิ่มของตัวเองได้ (ไม่ต้องรอลูกตาลกรอกให้)
+app.get("/api/team/external", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const all = ["owner", "ae", "senior"].includes(me.role) && req.query.all === "1";
+  const rows = await q(`SELECT e.*, t.name member_name FROM external_jobs e
+    LEFT JOIN team_members t ON t.member_id = e.member_id
+    WHERE e.status='active' ${all ? "" : "AND e.member_id = $1"} ORDER BY e.due_at NULLS LAST, e.created_at`,
+    all ? [] : [me.member_id]);
+  res.json({ ok: true, jobs: rows.map(r => ({ ...r, due_th: r.due_at ? thDate(r.due_at) : null })) });
+});
+app.post("/api/team/external", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  if (b.action === "done" && b.ext_id) {
+    // ปิดได้เฉพาะงานตัวเอง (AE/คิม ปิดของใครก็ได้)
+    const own = ["owner", "ae"].includes(me.role) ? "" : " AND member_id = $2";
+    const r = await run(`UPDATE external_jobs SET status='done', done_at=now() WHERE ext_id=$1${own}`,
+      own ? [String(b.ext_id), me.member_id] : [String(b.ext_id)]);
+    return res.json({ ok: !!r.rowCount, done: !!r.rowCount });
+  }
+  const title = String(b.title || "").trim();
+  if (!title) return res.status(400).json({ ok: false, error: "MISSING", message: "ใส่ชื่องานด้วยนะคะ" });
+  // เพิ่มให้ตัวเองเป็นค่าเริ่มต้น — AE/คิม เพิ่มแทนคนอื่นได้
+  const target = (["owner", "ae"].includes(me.role) && b.member_id) ? String(b.member_id) : me.member_id;
+  await run(`INSERT INTO external_jobs (ext_id,member_id,title,clips,client,source,due_at,note,created_by)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [uid("ext"), target, title.slice(0, 200), Math.max(1, Math.min(99, Number(b.clips) || 1)),
+     String(b.client || "").slice(0, 120) || null, String(b.source || "manual").slice(0, 20),
+     /^\d{4}-\d{2}-\d{2}$/.test(String(b.due_at || "")) ? b.due_at : null,
+     String(b.note || "").slice(0, 500) || null, me.name]);
+  res.json({ ok: true });
 });
 
 // 👀 ภาพรวมตารางงานทุกคน (AE/คิม) — ใครว่าง ใครเต็ม โปรเซสไปถึงไหน

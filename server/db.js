@@ -170,6 +170,24 @@ export async function initDb() {
       updated_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_avail_uniq ON team_availability(member_id, day);
+    -- 📦 งานนอกเว็บ (คิมถาม 3 ส.ค.: "ทีม production เค้าก็จะมีงานที่อยู่ใน production ด้วย
+    --    ไม่งั้นเราจะไม่รู้ว่าใครทำงานอยู่หรือว่าว่างจริง")
+    -- ⚠️ ตั้งใจให้ "คนทำงานเพิ่มเอง" ไม่ใช่ให้ลูกตาลนั่งกรอกแทนทุกคน — กรอก 3 ช่องจบ
+    CREATE TABLE IF NOT EXISTS external_jobs (
+      ext_id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      clips INTEGER DEFAULT 1,        -- กินที่ว่างกี่คลิป (ใช้คำนวณโหลดเหมือนงานในเว็บ)
+      client TEXT,
+      source TEXT DEFAULT 'manual',   -- manual | trello | line
+      due_at DATE,
+      status TEXT DEFAULT 'active',   -- active | done
+      note TEXT,
+      created_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      done_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_ext_member ON external_jobs(member_id, status);
     CREATE INDEX IF NOT EXISTS idx_avail_day ON team_availability(day);
     -- ระบบมอบหมายให้ใคร เพราะอะไร — ไว้ตรวจย้อนหลังเวลาลูกตาลสงสัยว่าทำไมงานไปที่คนนี้
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assigned_by TEXT;        -- 'system' | ชื่อคนที่มอบหมาย

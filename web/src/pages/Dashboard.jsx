@@ -459,10 +459,10 @@ export default function Dashboard() {
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontWeight: 800, fontSize: 14.5 }}>ให้ทีมตัดคลิปนี้</span>
                       <span className="muted" style={{ display: "block", fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
-                        ใช้เครดิต 1 คลิป (เหลือ {editCredits}) · ทีมตัดจากสคริปต์นี้ให้ ไม่ต้องเขียนบรีฟ
+                        คุณมีเครดิตอยู่ {editCredits} คลิป · กดแล้วไปกรอกรายละเอียด <b>ยังไม่หักเครดิต</b>
                       </span>
                     </span>
-                    <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>{usingCredit ? "กำลังส่ง…" : "ใช้เครดิต →"}</span>
+                    <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>สั่งงาน →</span>
                   </button>
                 );
 

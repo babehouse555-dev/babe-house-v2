@@ -2,6 +2,18 @@ import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { api, session } from "../api.js";
 
+// 🎨 งานเก่าของทีมให้ลูกค้ากดเลือกว่าชอบสไตล์ไหน
+// ⚠️ ย้ายมาจากหน้าซื้อเครดิต (คิมทัก 3 ส.ค.: "เส้นทางการทำงานของลูกค้ามันซับซ้อนเกินไป")
+//    สไตล์เป็นเรื่องของ "คลิปนี้" ไม่ใช่เรื่องของ "การซื้อเครดิต" — ต้องถามตอนสั่งงานจริง
+const OUR_STYLES = [
+  { id: "amabella", label: "สายบิวตี้ · จังหวะไว", url: "https://www.tiktok.com/@amabella_official/video/7505059615051156754" },
+  { id: "panpuri", label: "พรีเมียม · คุมโทน", url: "https://www.tiktok.com/@panpuriofficial/video/7438944063224646919" },
+  { id: "irvin", label: "ร้านอาหาร · น่ากิน", url: "https://www.tiktok.com/@irvin_restaurant/video/7564034789829774613" },
+  { id: "spicy", label: "สินค้า · สนุกดึงดูด", url: "https://www.tiktok.com/@spicymonsters.sauce/video/7545445063556451591" },
+  { id: "may", label: "รีวิวไลฟ์สไตล์ · เป็นกันเอง", url: "https://www.tiktok.com/@may.primaya/video/7464965432118611218" },
+  { id: "kim", label: "สอน/ให้ความรู้ · ครูพี่คิม", url: "https://www.tiktok.com/@bearbykim/video/7475610078079405330" },
+];
+
 // ═══════ 🎬 หน้ากรอกรายละเอียดก่อนให้ทีมตัด (คิมสั่ง 3 ส.ค. 2569) ═══════
 // "หน้านี้ไปให้เขาใส่รายละเอียดก่อน แล้วหักเครดิตตอนกดปุ่มด้านในดีกว่า
 //  ขึ้นแบบนี้ลูกค้าไม่กล้ากด กลัวเครดิตหายเลย"
@@ -20,6 +32,7 @@ export default function EditBrief() {
   const [bp, setBp] = useState(null);
   const [credits, setCredits] = useState(null);
   const [f, setF] = useState({ footage_url: "", voice_url: "", ref_links: "", note: "" });
+  const [picks, setPicks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -41,7 +54,7 @@ export default function EditBrief() {
       const r = await api("/api/edit/use-credit", { method: "POST", token: session.token, body: {
         blueprint_id: bpId, billing_cycle: cycle, script_day: day,
         brief: { d: day, t: cal.t || "", h: cal.h || "", script },
-        ...f } });
+        ref_picks: picks, ...f } });
       nav(`/edit/${r.order_id}`);
     } catch (e) {
       setErr(e.message || "ส่งไม่สำเร็จ ลองใหม่นะคะ");
@@ -93,10 +106,26 @@ export default function EditBrief() {
           <input value={f.voice_url} onChange={e => setF(v => ({ ...v, voice_url: e.target.value }))}
             placeholder="ไม่มีก็เว้นว่างได้ค่ะ" />
         </div>
-        <div className="field">
-          <label>คลิปตัวอย่างที่ชอบ <span className="muted">(ทีมจะตัดให้ใกล้เคียงสไตล์นี้)</span></label>
+        {/* 🎨 อยากได้แนวไหน — เลือกจากงานเราหรือแปะลิงก์เอง */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>🎨 อยากได้คลิปแนวไหน?</div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>เลือกจากงานที่เราเคยทำ หรือแปะลิงก์คลิปที่ชอบมาก็ได้ค่ะ</div>
+          <div className="st-row">
+            {OUR_STYLES.map(x => {
+              const on = picks.includes(x.id);
+              return (
+                <div key={x.id} className={`st${on ? " on" : ""}`}>
+                  <button type="button" onClick={() => setPicks(p => on ? p.filter(i => i !== x.id) : [...p, x.id])} className="st-pick">
+                    <span className="st-check">{on ? "✓" : ""}</span>
+                    <span className="st-label">{x.label}</span>
+                  </button>
+                  <a href={x.url} target="_blank" rel="noreferrer" className="st-see">▶ ดูตัวอย่าง</a>
+                </div>
+              );
+            })}
+          </div>
           <input value={f.ref_links} onChange={e => setF(v => ({ ...v, ref_links: e.target.value }))}
-            placeholder="วางลิงก์ TikTok / Reels ที่ชอบ" />
+            placeholder="หรือแปะลิงก์ TikTok / Reels ที่ชอบ" style={{ marginTop: 10 }} />
         </div>
         <div className="field">
           <label>อยากบอกทีมเพิ่ม</label>

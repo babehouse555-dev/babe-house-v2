@@ -7,25 +7,12 @@ import { api, session } from "../api.js";
 const money = (n) => "฿" + Number(n || 0).toLocaleString();
 const PACKS = [1, 4, 10, 20, 30];
 
-// 🎨 งานเก่าของทีมให้ลูกค้ากดเลือกว่าชอบสไตล์ไหน — ดึงจากพอร์ตจริงในหน้า /production
-// คิมขอ 2 ส.ค.: "งานที่เราเคยทำแล้วเป็นเล็บให้เค้าเลือกกดปุ่มได้เลย"
-const OUR_STYLES = [
-  { id: "amabella", label: "สายบิวตี้ · จังหวะไว", url: "https://www.tiktok.com/@amabella_official/video/7505059615051156754" },
-  { id: "panpuri", label: "พรีเมียม · คุมโทน", url: "https://www.tiktok.com/@panpuriofficial/video/7438944063224646919" },
-  { id: "irvin", label: "ร้านอาหาร · น่ากิน", url: "https://www.tiktok.com/@irvin_restaurant/video/7564034789829774613" },
-  { id: "spicy", label: "สินค้า · สนุกดึงดูด", url: "https://www.tiktok.com/@spicymonsters.sauce/video/7545445063556451591" },
-  { id: "may", label: "รีวิวไลฟ์สไตล์ · เป็นกันเอง", url: "https://www.tiktok.com/@may.primaya/video/7464965432118611218" },
-  { id: "kim", label: "สอน/ให้ความรู้ · ครูพี่คิม", url: "https://www.tiktok.com/@bearbykim/video/7475610078079405330" },
-];
 
 export default function EditOrder() {
   const [sp] = useSearchParams();
   const [clips, setClips] = useState(Number(sp.get("clips")) || 1);
   const [price, setPrice] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [note, setNote] = useState("");
-  const [refLinks, setRefLinks] = useState("");
-  const [picks, setPicks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const brief = (() => { try { return JSON.parse(decodeURIComponent(sp.get("brief") || "")); } catch { return null; } })();
@@ -48,7 +35,7 @@ export default function EditOrder() {
       const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips } });
       setCredits(Number(r.credits || 0));
       setMsg(`ได้เครดิตตัดต่อ ${clips} คลิปแล้วค่ะ 🎉 เปิดเล่มของคุณ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง`);
-      setNote(""); setRefLinks(""); setPicks([]); load();
+      load();
     } catch (e) { setMsg(e.message || "ไม่สำเร็จ ลองใหม่นะคะ"); }
     finally { setBusy(false); }
   }
@@ -108,35 +95,9 @@ export default function EditOrder() {
           </div>
         )}
 
-        {/* 🎨 อยากได้แนวไหน — เลือกจากงานเราหรือแปะลิงก์เอง */}
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>🎨 อยากได้คลิปแนวไหน?</div>
-          <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>เลือกจากงานที่เราเคยทำ หรือแปะลิงก์คลิปที่ชอบมาก็ได้ค่ะ</div>
-
-          <div className="st-row">
-            {OUR_STYLES.map(x => {
-              const on = picks.includes(x.id);
-              return (
-                <div key={x.id} className={`st${on ? " on" : ""}`}>
-                  <button type="button" onClick={() => setPicks(p => on ? p.filter(i => i !== x.id) : [...p, x.id])} className="st-pick">
-                    <span className="st-check">{on ? "✓" : ""}</span>
-                    <span className="st-label">{x.label}</span>
-                  </button>
-                  <a href={x.url} target="_blank" rel="noreferrer" className="st-see">▶ ดูตัวอย่าง</a>
-                </div>
-              );
-            })}
-          </div>
-
-          <textarea value={refLinks} onChange={e => setRefLinks(e.target.value)} rows={2}
-            placeholder="หรือแปะลิงก์คลิป TikTok / Reels ที่อยากได้แนวนี้ (ใส่หลายอันได้ บรรทัดละอัน)"
-            style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "11px 13px", borderRadius: 12, border: "1px solid var(--border)", fontFamily: "inherit", marginTop: 10 }} />
-        </div>
-
-        <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
-          placeholder="อยากบอกทีมอะไรเพิ่มไหมคะ เช่น เพลงที่อยากได้ สิ่งที่ไม่ชอบ (ไม่มีก็เว้นว่างได้)"
-          style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "11px 13px", borderRadius: 12, border: "1px solid var(--border)", fontFamily: "inherit", marginBottom: 12 }} />
-
+        {/* ⛔ ตัดตัวเลือกสไตล์กับช่องโน้ตออกจากหน้านี้ (คิมทัก 3 ส.ค.)
+            "เส้นทางการทำงานของลูกค้ามันซับซ้อนเกินไป" — หน้านี้ทำอย่างเดียวคือ "ซื้อเครดิตกี่คลิป"
+            เรื่องสไตล์/ฟุตเทจ/โน้ต เป็นของ "คลิปนั้นๆ" ไปถามตอนสั่งงานจริงที่หน้าบรีฟ */}
         <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…" : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
@@ -156,18 +117,6 @@ export default function EditOrder() {
         </div>
       </div>
 
-      <style>{`
-        .st-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 8px; }
-        .st { border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; transition: border-color .15s, background .15s; }
-        .st.on { border-color: var(--blue); background: #EDF4FB; }
-        .st-pick { width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 11px 8px; background: none; border: 0; cursor: pointer; font-family: inherit; text-align: left; }
-        .st-check { flex: 0 0 auto; width: 19px; height: 19px; border-radius: 6px; border: 1.5px solid var(--border);
-          display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; color: #fff; background: #fff; }
-        .st.on .st-check { background: var(--blue); border-color: var(--blue); }
-        .st-label { font-size: 13px; font-weight: 700; line-height: 1.4; }
-        .st-see { display: block; padding: 6px 11px 9px; font-size: 11.5px; font-weight: 700; color: var(--blue); text-decoration: none; }
-        .st-see:hover { text-decoration: underline; }
-      `}</style>
 
       {orders.length > 0 && <>
         <h2 style={{ fontSize: 17, margin: "26px 0 10px" }}>งานของฉัน</h2>

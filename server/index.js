@@ -2971,14 +2971,15 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
     const id = uid("eo");
     // รับรายละเอียดที่ลูกค้ากรอกมาด้วย (ฟุตเทจ/เสียง/ตัวอย่างที่ชอบ/โน้ต)
     // คิมทัก 3 ส.ค.: "ให้เขาใส่รายละเอียดก่อน แล้วหักเครดิตตอนกดปุ่มด้านใน"
-    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links)
-      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10)`,
+    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,ref_picks)
+      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10,$11)`,
       [id, email, bp, req.body?.billing_cycle || null, day,
        req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
        String(req.body?.note || "").slice(0, 2000),
        String(req.body?.footage_url || "").slice(0, 1000) || null,
        String(req.body?.voice_url || "").slice(0, 1000) || null,
-       String(req.body?.ref_links || "").slice(0, 2000) || null]);
+       String(req.body?.ref_links || "").slice(0, 2000) || null,
+       Array.isArray(req.body?.ref_picks) && req.body.ref_picks.length ? JSON.stringify(req.body.ref_picks.slice(0, 12)) : null]);
     const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
     res.json({ ok: true, order_id: id, script_day: day, credits_left: Number(c?.x || 0) });
   } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }

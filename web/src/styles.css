@@ -64,3 +64,16 @@ th{font-weight:700;font-size:12px;color:var(--muted)}
   .form-layout{display:block;max-width:560px}
   .guide-aside{display:none}
 }
+
+/* ตัวเลือกสไตล์คลิป — ใช้ในหน้าบรีฟงานตัดต่อ (ย้ายมาจาก EditOrder 3 ส.ค.) */
+        .st-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 8px; }
+        .st { border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; transition: border-color .15s, background .15s; }
+        .st.on { border-color: var(--blue); background: #EDF4FB; }
+        .st-pick { width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 11px 8px; background: none; border: 0; cursor: pointer; font-family: inherit; text-align: left; }
+        .st-check { flex: 0 0 auto; width: 19px; height: 19px; border-radius: 6px; border: 1.5px solid var(--border);
+          display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; color: #fff; background: #fff; }
+        .st.on .st-check { background: var(--blue); border-color: var(--blue); }
+        .st-label { font-size: 13px; font-weight: 700; line-height: 1.4; }
+        .st-see { display: block; padding: 6px 11px 9px; font-size: 11.5px; font-weight: 700; color: var(--blue); text-decoration: none; }
+        .st-see:hover { text-decoration: underline; }
+      

@@ -573,6 +573,46 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_academy_grants_uniq ON academy_grants(lower(email), course_id);
+
+    -- ═══════════ 👥 Babe House Team — ระบบทำงานภายใน (คิมออกแบบ 3 ส.ค. 2569) ═══════════
+    -- ทุกคนมีรหัสของตัวเอง ล็อกอินแล้วเห็นเฉพาะสิ่งที่เกี่ยวกับตัวเอง
+    -- สายงาน: ลูกค้าสั่ง → AE มอบหมาย → คนตัด → หัวหน้าตรวจ → AE ตรวจอีกชั้น → ส่งลูกค้า
+    CREATE TABLE IF NOT EXISTS team_members (
+      member_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,              -- ชื่อเล่นที่ทีมเรียกกัน
+      code TEXT NOT NULL,              -- รหัสส่วนตัวไว้ล็อกอิน
+      role TEXT NOT NULL,              -- owner | ae | senior | editor | teacher
+      email TEXT,                      -- ไว้ส่งแจ้งเตือนงานใหม่
+      position TEXT,                   -- ตำแหน่งจริง เช่น "ตัดต่อ" "กราฟฟิก" "AE"
+      side TEXT DEFAULT 'production',  -- production | academy | both
+      teach_share INTEGER DEFAULT 10,  -- ส่วนแบ่งจากคลาสที่สอน (%)
+      active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_team_code ON team_members(code);
+    -- บันทึกทุกครั้งที่งานเปลี่ยนมือ/เปลี่ยนสถานะ — ไว้ย้อนดูว่าใครทำอะไรเมื่อไหร่ (กันงานหาย/เถียงกัน)
+    CREATE TABLE IF NOT EXISTS edit_events (
+      event_id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      actor TEXT,                      -- ชื่อคนที่ทำ
+      action TEXT,                     -- assign | submit | approve | reject | deliver
+      from_status TEXT,
+      to_status TEXT,
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_edit_events_order ON edit_events(order_id, created_at);
+    -- ตารางสอนคลาสสด + ค่าคอม 10% ของคนสอน (ผูกกับรอบเรียนจริงในระบบ)
+    CREATE TABLE IF NOT EXISTS teach_assignments (
+      teach_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,        -- รอบเรียนใน workshop_sessions
+      member_id TEXT NOT NULL,
+      share_percent INTEGER DEFAULT 10,
+      paid BOOLEAN DEFAULT false,      -- จ่ายค่าคอมแล้วหรือยัง
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_teach_uniq ON teach_assignments(session_id, member_id);
     CREATE INDEX IF NOT EXISTS idx_academy_users_email ON academy_users(lower(email));
     CREATE INDEX IF NOT EXISTS idx_academy_orders_user ON academy_orders(legacy_user_id);
     CREATE INDEX IF NOT EXISTS idx_academy_order_lines_order ON academy_order_lines(order_id);
@@ -586,6 +626,14 @@ export async function initDb() {
     -- (เดิมบังคับเลือกจำนวนคลิปตอนซื้อ ทั้งที่บรีฟมีวันเดียว → ลูกค้างงว่าอีก 29 คลิปคืออะไร)
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS edit_credits INTEGER DEFAULT 0;
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS paid_by TEXT;   -- 'credit' = หักจากเครดิตที่ซื้อไว้
+    -- 👥 สายงานภายในทีม (เพิ่ม 3 ส.ค.) — ใครทำ ใครตรวจ ผ่านด่านไหนแล้ว
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assigned_to TEXT;        -- member_id ของคนตัด
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS senior_by TEXT;          -- หัวหน้าที่ตรวจผ่าน (โบ/พี่ก้อง)
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS senior_at TIMESTAMPTZ;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ae_by TEXT;              -- AE ที่ตรวจด่านสุดท้าย (ลูกตาล)
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ae_at TIMESTAMPTZ;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS internal_note TEXT;      -- โน้ตภายในทีม ⛔ ลูกค้าไม่เห็น
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_data TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_mime TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS context TEXT;

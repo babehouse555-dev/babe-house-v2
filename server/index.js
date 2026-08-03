@@ -2401,16 +2401,34 @@ function isWorkingNow() {
 }
 const thDate = (d) => new Date(d).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long" });
 
+// 💰 ราคาปรับใหม่ 3 ส.ค. 2569 — ราคาเดิมขาดทุนจริง (คิมเคาะ: "ขึ้นราคาไปเลย เพราะคลิปส่วนใหญ่รวมกราฟฟิกอยู่แล้ว")
+// ต้นทุนจริงต่อคลิปสั้น: ตัดต่อฟรีแลนซ์ 600-800 (เฉลี่ย 700) + กราฟฟิก 500 = 1,200 บาท
+// ราคาเดิมแพ็ก 30 = 1,250 → หักค่าธรรมเนียม Stripe (3.65% + 11฿) แล้วเหลือกำไร 4 บาท/คลิป = ทำฟรี
+// ยังไม่นับเวลาตรวจ 2 ชั้น (senior editor + AE) ที่เป็นต้นทุนคนของเราเอง
+// ราคาใหม่ตั้งให้กำไรขั้นต้น 36-55% ทุกแพ็ก · ยิ่งซื้อเยอะยังถูกลงเหมือนเดิม
+const EDIT_COST_PER_CLIP = Number(process.env.EDIT_COST_PER_CLIP) || 1200;  // ต้นทุนจริง ใช้คำนวณกำไรในหลังบ้าน
 const EDIT_TIERS = [
-  { min: 30, price: 1250 }, { min: 20, price: 1350 }, { min: 10, price: 1500 },
-  { min: 4, price: 1700 }, { min: 1, price: 1900 },
+  { min: 30, price: 2000 }, { min: 20, price: 2200 }, { min: 10, price: 2400 },
+  { min: 4, price: 2600 }, { min: 1, price: 2900 },
 ];
 const editPrice = (n) => (EDIT_TIERS.find(t => Number(n) >= t.min) || EDIT_TIERS[EDIT_TIERS.length - 1]).price;
+// กำไรสุทธิต่อคลิปหลังหักต้นทุน + ค่าธรรมเนียมรับเงิน (ไว้โชว์ในหลังบ้านของคิมเท่านั้น ⛔ ไม่ส่งให้ลูกค้า/ทีม)
+const editMargin = (n) => {
+  const per = editPrice(n), clips = Math.max(1, Number(n) || 1);
+  const fee = (per * clips * 0.0365 + 11) / clips;          // Stripe 3.65% + 11฿ ต่อรายการ
+  const net = per - EDIT_COST_PER_CLIP - fee;
+  return { price_per_clip: per, cost: EDIT_COST_PER_CLIP, fee: Math.round(fee), net: Math.round(net), pct: Math.round(net / per * 100) };
+};
 const EDIT_FREE_REVISIONS = 2;
 const EDIT_STATUS = {
   awaiting_files: "รอไฟล์จากคุณ", editing: "ทีมกำลังตัด", draft_sent: "ส่งงานให้ดูแล้ว",
   revising: "กำลังแก้ตามคอมเมนต์", done: "เสร็จเรียบร้อย", canceled: "ยกเลิกแล้ว",
+  // 🔁 สถานะใหม่สำหรับสายตรวจงานภายใน (ลูกค้าไม่เห็นสถานะพวกนี้ — เห็นแค่ "ทีมกำลังตัด")
+  assigned: "มอบหมายแล้ว รอคนตัด", senior_review: "รอหัวหน้าตรวจ", ae_review: "รอ AE ตรวจก่อนส่ง",
 };
+// สถานะที่ลูกค้าเห็น — สถานะภายในทั้งหมดถูกแปลงเป็น "ทีมกำลังตัด" เพื่อไม่ให้ลูกค้าสับสนกับกระบวนการหลังบ้าน
+const INTERNAL_STATUSES = new Set(["assigned", "senior_review", "ae_review"]);
+const customerStatus = (s) => (INTERNAL_STATUSES.has(s) ? "editing" : s);
 
 app.get("/api/edit/price", (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
@@ -2501,7 +2519,9 @@ app.get("/api/edit/my", async (req, res) => {
   const email = await authEmail(req);
   if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
   const rows = await q(`SELECT * FROM edit_orders WHERE lower(email)=lower($1) ORDER BY created_at DESC`, [email]);
-  res.json({ ok: true, orders: rows.map(r => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status })), free_revisions: EDIT_FREE_REVISIONS });
+  res.json({ ok: true, orders: rows.map(r => { const s = customerStatus(r.status);   // ⛔ ลูกค้าไม่เห็นสถานะภายใน/ชื่อคนตัด
+    const { internal_note, assigned_to, assigned_at, senior_by, senior_at, ae_by, ae_at, ...pub } = r;
+    return { ...pub, status: s, status_th: EDIT_STATUS[s] || s }; }), free_revisions: EDIT_FREE_REVISIONS });
 });
 app.get("/api/edit/order/:id", async (req, res) => {
   const email = await authEmail(req);
@@ -2510,7 +2530,10 @@ app.get("/api/edit/order/:id", async (req, res) => {
   const isTeam = isAdmin(req);
   if (!isTeam && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
   const comments = await q(`SELECT * FROM edit_comments WHERE order_id=$1 ORDER BY created_at`, [o.order_id]);
-  res.json({ ok: true, order: { ...o, status_th: EDIT_STATUS[o.status] || o.status, brief: safeJson(o.brief_json), ref_picks: safeJson(o.ref_picks) || [],
+  // ⛔ ลูกค้าเห็นแค่ "ทีมกำลังตัด" — ไม่เห็นว่าอยู่ด่านตรวจไหน ใครตัด ใครตรวจ หรือโน้ตภายใน
+  const { internal_note, assigned_to, assigned_at, senior_by, senior_at, ae_by, ae_at, ...pub } = o;
+  const cs = isTeam ? o.status : customerStatus(o.status);
+  res.json({ ok: true, order: { ...(isTeam ? o : pub), status: cs, status_th: EDIT_STATUS[cs] || cs, brief: safeJson(o.brief_json), ref_picks: safeJson(o.ref_picks) || [],
     due_th: o.due_at ? thDate(o.due_at) : null }, comments, free_revisions: EDIT_FREE_REVISIONS,
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
 });
@@ -2583,6 +2606,245 @@ app.post("/api/edit/approve", async (req, res) => {
   if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   await run(`UPDATE edit_orders SET status='done', final_url=COALESCE(draft_url, final_url), updated_at=now() WHERE order_id=$1`, [o.order_id]);
   res.json({ ok: true });
+});
+
+// ═══════════ 👥 Babe House Team — ระบบทำงานภายใน (คิมออกแบบ 3 ส.ค. 2569) ═══════════
+// ทุกคนมีรหัสของตัวเอง · ล็อกอินแล้วเห็นเฉพาะสิ่งที่เกี่ยวกับตัวเอง · แยกฝั่งโปรดักชั่น/อะคาเดมี่
+// สายงาน: ลูกค้าสั่ง → AE มอบหมาย → คนตัด → หัวหน้าตรวจ → AE ตรวจอีกชั้น → ส่งลูกค้า
+// ⛔ ทุกบทบาทยกเว้น owner ไม่เห็นยอดเงิน/อีเมลลูกค้า
+
+// ตั้งทีมเริ่มต้นให้อัตโนมัติถ้ายังไม่มีใครในระบบ (ทีมจริงของคิม ณ 3 ส.ค. 2569)
+async function seedTeamIfEmpty() {
+  const n = Number((await one(`SELECT COUNT(*) c FROM team_members`))?.c || 0);
+  if (n > 0) return;
+  const T = [
+    ["คิม", "kim", "owner", "เจ้าของ", "both"],
+    ["ลูกตาล", "lookthan", "ae", "AE / Motion (AE)", "production"],
+    ["โบ", "bow", "senior", "ตัดต่อ", "both"],
+    ["พี่ก้อง", "gong", "senior", "ตัดต่อ", "production"],
+    ["กัน", "gun", "editor", "Content + ตัดต่อ", "both"],
+    ["เบนเซ่", "benz", "teacher", "คอนเทนต์ Academy", "academy"],
+    ["แฟรี่", "fairy", "teacher", "กราฟฟิก", "academy"],
+  ];
+  for (const [name, code, role, position, side] of T) {
+    await run(`INSERT INTO team_members (member_id,name,code,role,position,side) VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (code) DO NOTHING`, [uid("tm"), name, code, role, position, side]).catch(() => {});
+  }
+  console.log("[team] ตั้งทีมเริ่มต้น 7 คนแล้ว");
+}
+// หาว่าคนที่ยิงคำขอมาคือใคร (จากรหัสส่วนตัว) — แอดมินคีย์ของคิมนับเป็น owner เสมอ
+async function teamWho(req) {
+  const code = String(req.headers["x-team-code"] || req.query.code || "").trim();
+  if (code) {
+    const m = await one(`SELECT * FROM team_members WHERE code=$1 AND active`, [code]);
+    if (m) return m;
+  }
+  if (isAdmin(req)) return { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" };
+  return null;
+}
+const teamLog = (orderId, actor, action, from, to, note) =>
+  run(`INSERT INTO edit_events (event_id,order_id,actor,action,from_status,to_status,note) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [uid("ev"), orderId, actor || null, action, from || null, to || null, note || null]).catch(() => {});
+
+// เข้าสู่ระบบทีม — ส่งรหัสมา บอกกลับว่าเป็นใคร เห็นอะไรได้บ้าง
+app.post("/api/team/login", rateLimit(20, M10), async (req, res) => {
+  const code = String(req.body?.code || "").trim();
+  if (!code) return res.status(400).json({ ok: false, error: "NO_CODE" });
+  try {
+    await seedTeamIfEmpty();
+    const m = await one(`SELECT member_id,name,role,position,side FROM team_members WHERE code=$1 AND active`, [code]);
+    if (!m) {
+      if (isAdmin({ headers: {}, query: { admin_key: code } })) return res.json({ ok: true, me: { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" } });
+      return res.status(401).json({ ok: false, error: "BAD_CODE", message: "รหัสไม่ถูกต้องค่ะ" });
+    }
+    res.json({ ok: true, me: m });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 📋 หน้าหลักของแต่ละคน — เห็นเฉพาะสิ่งที่เกี่ยวกับตัวเอง ตามบทบาท
+app.get("/api/team/me", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const isOwner = me.role === "owner", isAE = me.role === "ae", isSenior = me.role === "senior";
+    // งานตัดต่อที่คนนี้ต้องเห็น
+    let where = "", params = [];
+    if (isOwner || isAE) where = "";                                   // เห็นทุกงาน
+    else if (isSenior) { params.push(me.member_id); where = `WHERE (o.assigned_to=$1 OR o.status='senior_review')`; }
+    else { params.push(me.member_id); where = `WHERE o.assigned_to=$1`; }  // คนตัด/ฟรีแลนซ์ เห็นเฉพาะของตัวเอง
+    const rows = await q(`SELECT o.order_id,o.blueprint_id,o.billing_cycle,o.script_day,o.brief_json,o.clips,
+        o.footage_url,o.voice_url,o.note,o.internal_note,o.status,o.draft_url,o.revisions_used,o.due_at,
+        o.ref_links,o.ref_picks,o.assigned_to,o.senior_by,o.ae_by,o.created_at,
+        ${isOwner ? "o.amount_satang, o.price_per_clip, o.email," : ""}
+        (SELECT name FROM team_members t WHERE t.member_id=o.assigned_to) assignee_name
+      FROM edit_orders o ${where}
+      ORDER BY (o.status IN ('done','canceled')), o.due_at NULLS LAST, o.created_at DESC LIMIT 300`, params);
+    const cs = await q(`SELECT order_id, COUNT(*) n FROM edit_comments GROUP BY order_id`);
+    const cmap = Object.fromEntries(cs.map(c => [c.order_id, Number(c.n)]));
+    const jobs = rows.map(({ email, ...r }) => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status,
+      comments: cmap[r.order_id] || 0, ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json),
+      due_th: r.due_at ? thDate(r.due_at) : null,
+      customer: isOwner ? email : (String(email || "").split("@")[0].slice(0, 3) + "•••") }));
+
+    // 🎓 ตารางสอนของคนนี้ (ฝั่ง Academy) + ค่าคอมที่จะได้
+    // ค่าคอมคิดจาก "ยอดที่เก็บได้จริง" ของรอบนั้น × ส่วนแบ่ง (ไม่ใช่ราคาป้าย — บางคนใช้โค้ดส่วนลด)
+    const teach = await q(`SELECT ta.teach_id, ta.share_percent, ta.paid, s.session_id, s.starts_at, s.seats, s.location,
+        w.name workshop_name,
+        (SELECT COALESCE(SUM(b.qty),0) FROM workshop_bookings b WHERE b.session_id=s.session_id AND b.status='paid') booked,
+        (SELECT COALESCE(SUM(b.amount_satang),0) FROM workshop_bookings b WHERE b.session_id=s.session_id AND b.status='paid') revenue_satang
+      FROM teach_assignments ta
+      JOIN workshop_sessions s ON s.session_id=ta.session_id
+      JOIN workshops w ON w.workshop_id=s.workshop_id
+      ${isOwner || isAE ? "" : "WHERE ta.member_id=$1"} ORDER BY s.starts_at`, (isOwner || isAE) ? [] : [me.member_id]);
+
+    // คนที่มอบหมายงานได้ (สำหรับ AE/owner) — เอาไว้ทำเมนูเลือกคน
+    const members = (isOwner || isAE)
+      ? await q(`SELECT member_id,name,role,position,side FROM team_members WHERE active ORDER BY role, name`) : [];
+
+    res.json({ ok: true, me, jobs, teach: teach.map(t => ({ ...t,
+        booked: Number(t.booked || 0), revenue_baht: Number(t.revenue_satang || 0) / 100,
+        share_baht: Math.round(Number(t.revenue_satang || 0) / 100 * (Number(t.share_percent || 10) / 100)),
+        starts_th: thDate(t.starts_at) })),
+      members, statuses: EDIT_STATUS, hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
+  } catch (e) { console.error("team/me", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 🎯 AE มอบหมายงานให้คนตัด
+app.post("/api/team/assign", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะ AE เท่านั้นค่ะ" });
+  const id = String(req.body?.order_id || ""), to = String(req.body?.assigned_to || "");
+  if (!id || !to) return res.status(400).json({ ok: false, error: "MISSING" });
+  try {
+    const o = await one(`SELECT status FROM edit_orders WHERE order_id=$1`, [id]);
+    if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const m = await one(`SELECT name,email FROM team_members WHERE member_id=$1`, [to]);
+    await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), status=CASE WHEN status='awaiting_files' THEN status ELSE 'assigned' END,
+       internal_note=COALESCE($3, internal_note), updated_at=now() WHERE order_id=$2`, [to, id, req.body?.internal_note || null]);
+    teamLog(id, me.name, "assign", o.status, "assigned", `มอบหมายให้ ${m?.name || to}`);
+    if (m?.email) sendEmail(m.email, `🎬 มีงานตัดต่อใหม่รอคุณอยู่`,
+      wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>มีงานใหม่ถูกมอบหมายให้คุณแล้วนะคะ<br><br>
+        เข้าไปดูรายละเอียดและส่งงานได้ที่หน้าทีม → <b>${appBaseUrl()}/team</b><br><br>ขอบคุณค่ะ`)).catch(() => {});
+    res.json({ ok: true, order_id: id, assigned_to: to });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// ✂️ คนตัดส่งงาน → เข้าคิวหัวหน้าตรวจ (ถ้าคนส่งเป็นหัวหน้าเอง ข้ามไปคิว AE เลย)
+app.post("/api/team/submit-work", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || ""), url = String(req.body?.draft_url || "").trim();
+  if (!id || !/^https?:\/\//.test(url)) return res.status(400).json({ ok: false, error: "BAD_URL", message: "ใส่ลิงก์งานที่ตัดเสร็จด้วยนะคะ" });
+  try {
+    const o = await one(`SELECT status, assigned_to FROM edit_orders WHERE order_id=$1`, [id]);
+    if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (me.role === "editor" && o.assigned_to !== me.member_id)
+      return res.status(403).json({ ok: false, error: "NOT_YOURS", message: "งานนี้ไม่ใช่ของคุณค่ะ" });
+    const next = ["senior", "ae", "owner"].includes(me.role) ? "ae_review" : "senior_review";
+    await run(`UPDATE edit_orders SET draft_url=$1, status=$2, updated_at=now() WHERE order_id=$3`, [url, next, id]);
+    teamLog(id, me.name, "submit", o.status, next, req.body?.note || null);
+    res.json({ ok: true, status: next, message: next === "ae_review" ? "ส่งให้ AE ตรวจแล้วค่ะ" : "ส่งให้หัวหน้าตรวจแล้วค่ะ" });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 👀 ตรวจงาน — หัวหน้าตรวจงานฟรีแลนซ์ · AE ตรวจด่านสุดท้ายแล้วส่งลูกค้า
+app.post("/api/team/review", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae", "senior"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const id = String(req.body?.order_id || ""), pass = req.body?.pass !== false, note = String(req.body?.note || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "MISSING" });
+  try {
+    const o = await one(`SELECT status, draft_url FROM edit_orders WHERE order_id=$1`, [id]);
+    if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (!pass) {   // ตีกลับให้แก้ — งานกลับไปหาคนตัด
+      await run(`UPDATE edit_orders SET status='editing', internal_note=$2, updated_at=now() WHERE order_id=$1`, [id, note || null]);
+      teamLog(id, me.name, "reject", o.status, "editing", note);
+      return res.json({ ok: true, status: "editing", message: "ตีกลับให้แก้แล้วค่ะ" });
+    }
+    // หัวหน้าผ่าน → เข้าคิว AE · AE ผ่าน → ส่งลูกค้าเลย
+    // ⚠️ งานที่ยังอยู่ด่านหัวหน้า ห้ามกระโดดถึงลูกค้ารวดเดียว — ต้องผ่าน 2 ตาเสมอตามที่คิมสั่ง
+    // ถ้าหัวหน้าไม่ว่าง AE กดผ่านแทนได้ แต่นับเป็นด่านหัวหน้า แล้วต้องกดตรวจอีกครั้งก่อนส่งจริง
+    if (o.status === "senior_review") {
+      await run(`UPDATE edit_orders SET status='ae_review', senior_by=$2, senior_at=now(), updated_at=now() WHERE order_id=$1`, [id, me.name]);
+      teamLog(id, me.name, "approve", o.status, "ae_review", note);
+      return res.json({ ok: true, status: "ae_review",
+        message: me.role === "senior" ? "ผ่านแล้วค่ะ ส่งต่อให้ AE ตรวจ" : "รับแทนหัวหน้าแล้วค่ะ — กดตรวจอีกครั้งเพื่อส่งให้ลูกค้า" });
+    }
+    if (!["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "ด่านนี้ AE เป็นคนตรวจค่ะ" });
+    await run(`UPDATE edit_orders SET status='draft_sent', ae_by=$2, ae_at=now(), updated_at=now() WHERE order_id=$1`, [id, me.name]);
+    teamLog(id, me.name, "deliver", o.status, "draft_sent", note);
+    res.json({ ok: true, status: "draft_sent", message: "ส่งงานให้ลูกค้าแล้วค่ะ 🎉" });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 👑 หน้าภาพรวมของคิม — เห็นทุกอย่างรวมเงินและกำไร (เฉพาะ owner)
+app.get("/api/team/overview", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  try {
+    const byStatus = await q(`SELECT status, COUNT(*) c FROM edit_orders GROUP BY status`);
+    const byPerson = await q(`SELECT t.name, t.position, t.role,
+        COUNT(o.order_id) FILTER (WHERE o.status NOT IN ('done','canceled')) open_jobs,
+        COUNT(o.order_id) FILTER (WHERE o.status='done') done_jobs
+      FROM team_members t LEFT JOIN edit_orders o ON o.assigned_to=t.member_id
+      WHERE t.active GROUP BY t.member_id, t.name, t.position, t.role ORDER BY t.role, t.name`);
+    const money = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) sum FROM edit_orders WHERE payment_status='paid' AND paid_by IS DISTINCT FROM 'credit'`);
+    const credits = await one(`SELECT COALESCE(SUM(credits),0) c, COALESCE(SUM(amount_satang),0) sum FROM edit_credit_purchases WHERE payment_status='paid'`);
+    const late = await one(`SELECT COUNT(*) c FROM edit_orders WHERE due_at < now() AND status NOT IN ('done','canceled')`);
+    const teachSoon = await q(`SELECT ta.teach_id, ta.paid, t.name, w.name workshop_name, s.starts_at, ta.share_percent,
+        (SELECT COALESCE(SUM(b.qty),0) FROM workshop_bookings b WHERE b.session_id=s.session_id AND b.status='paid') booked,
+        (SELECT COALESCE(SUM(b.amount_satang),0) FROM workshop_bookings b WHERE b.session_id=s.session_id AND b.status='paid') revenue_satang
+      FROM teach_assignments ta JOIN team_members t ON t.member_id=ta.member_id
+      JOIN workshop_sessions s ON s.session_id=ta.session_id JOIN workshops w ON w.workshop_id=s.workshop_id
+      WHERE s.starts_at > now() - interval '60 days' ORDER BY s.starts_at LIMIT 40`);
+    res.json({ ok: true,
+      by_status: byStatus, by_person: byPerson, late_jobs: Number(late?.c || 0),
+      revenue: { orders: Number(money?.n || 0), baht: Number(money?.sum || 0) / 100,
+                 credits_sold: Number(credits?.c || 0), credits_baht: Number(credits?.sum || 0) / 100 },
+      margins: [1, 4, 10, 20, 30].map(n => ({ clips: n, ...editMargin(n) })),
+      teach: teachSoon.map(t => ({ ...t, booked: Number(t.booked || 0), revenue_baht: Number(t.revenue_satang || 0) / 100,
+        starts_th: thDate(t.starts_at), share_baht: Math.round(Number(t.revenue_satang || 0) / 100 * (Number(t.share_percent || 10) / 100)) })) });
+  } catch (e) { console.error("team/overview", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 👥 จัดการสมาชิกทีม (เฉพาะคิม) — เพิ่มคน/ฟรีแลนซ์ · ตั้งรหัส · ปิดการใช้งาน
+app.get("/api/team/members", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  await seedTeamIfEmpty();
+  res.json({ ok: true, members: await q(`SELECT * FROM team_members ORDER BY active DESC, role, name`) });
+});
+app.post("/api/team/members/save", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const b = req.body || {};
+  const name = String(b.name || "").trim(), code = String(b.code || "").trim();
+  if (!name || !code) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีชื่อและรหัส" });
+  try {
+    if (b.member_id) {
+      await run(`UPDATE team_members SET name=$1, code=$2, role=$3, email=$4, position=$5, side=$6, active=$7 WHERE member_id=$8`,
+        [name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production"), b.active !== false, String(b.member_id)]);
+    } else {
+      await run(`INSERT INTO team_members (member_id,name,code,role,email,position,side) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [uid("tm"), name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production")]);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: /unique/i.test(e.message) ? "รหัสนี้มีคนใช้แล้วค่ะ" : e.message }); }
+});
+// 🎓 ผูกคนสอนกับรอบเรียน (เฉพาะคิม)
+app.post("/api/team/teach/save", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const b = req.body || {};
+  if (b.action === "delete" && b.teach_id) { await run(`DELETE FROM teach_assignments WHERE teach_id=$1`, [String(b.teach_id)]); return res.json({ ok: true, deleted: true }); }
+  const sid = String(b.session_id || ""), mid = String(b.member_id || "");
+  if (!sid || !mid) return res.status(400).json({ ok: false, error: "MISSING" });
+  try {
+    await run(`INSERT INTO teach_assignments (teach_id,session_id,member_id,share_percent,note) VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (session_id, member_id) DO UPDATE SET share_percent=EXCLUDED.share_percent, note=EXCLUDED.note`,
+      [uid("th"), sid, mid, Number(b.share_percent) || 10, b.note || null]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
 // ===== 🎬 หน้าเฉพาะทีมตัดต่อ (/studio) — เข้าด้วยรหัสทีม ไม่ใช่รหัสแอดมิน =====
@@ -3428,7 +3690,7 @@ async function connectDbWithRetry() {
 }
 connectDbWithRetry().then(async () => {
   // seed ล้มก็ไม่ควรทำเว็บดับ — ของพวกนี้เป็นข้อมูลตั้งต้น ไม่ใช่หัวใจการให้บริการ
-  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects], ["playground", seedPlayground]]) {
+  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects], ["playground", seedPlayground], ["team", seedTeamIfEmpty]]) {
     try { await fn(); } catch (e) { console.error(`[seed ${name}]`, e.message); }
   }
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI

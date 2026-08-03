@@ -71,7 +71,9 @@ function PlaygroundBar() {
 function Shell({ children }) {
   const loc = useLocation();
   // แสดงแถบบนทุกหน้า ยกเว้นหน้า Landing (ซึ่งมี nav ของตัวเอง)
-  return <><PlaygroundBar />{loc.pathname !== "/" && <TopBar />}{children}</>;
+  // และยกเว้นหน้าทำงานภายในทีม — คิมสั่ง "ทีมจะได้ไม่ต้องมายุ่งกับสินค้าอื่น"
+  const internal = ["/team", "/studio"].includes(loc.pathname);
+  return <><PlaygroundBar />{loc.pathname !== "/" && !internal && <TopBar />}{children}</>;
 }
 
 // 🔄 กู้อัตโนมัติเมื่อเว็บถูกอัปเดตระหว่างลูกค้าเปิดหน้าค้างอยู่
@@ -129,6 +131,7 @@ import EditOrder from "./pages/EditOrder.jsx";
 import EditJob from "./pages/EditJob.jsx";
 import SiteMap from "./pages/SiteMap.jsx";
 import Studio from "./pages/Studio.jsx";
+import Team from "./pages/Team.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import VideoAudit from "./pages/VideoAudit.jsx";
 import Production from "./pages/Production.jsx";
@@ -166,6 +169,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/map" element={<SiteMap />} />
       {/* 🎬 หน้าเฉพาะทีมตัดต่อ — เข้าด้วยรหัสทีม ไม่เห็นยอดขาย/ลูกค้าฝั่งอื่น (คิมสั่ง 2 ส.ค.) */}
       <Route path="/studio" element={<Studio />} />
+      <Route path="/team" element={<Team />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/video-audit" element={<VideoAudit />} />
       <Route path="/production" element={<Production />} />

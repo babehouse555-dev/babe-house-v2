@@ -97,9 +97,14 @@ export default function EditOrder() {
               <span style={{ fontWeight: 700 }}>รวม {clips} คลิป</span>
               <b style={{ fontSize: 22, color: "var(--blue)" }}>{money(price.total)}</b>
             </div>
-            {clips > 1 && <div style={{ fontSize: 12.5, color: "#1a7f43", marginTop: 6, fontWeight: 700 }}>
-              ถูกลงคลิปละ {money(1900 - price.price_per_clip)} จากสั่งทีละคลิป
-            </div>}
+            {/* ราคาตั้งต้น (สั่งทีละคลิป) ดึงจากเซิร์ฟเวอร์ ไม่ฝังตัวเลขไว้ในหน้าเว็บ — ขึ้นราคาทีเดียวจบ */}
+            {clips > 1 && (() => {
+              const base = Math.max(...(price.tiers || []).map(t => t.price), price.price_per_clip);
+              return base > price.price_per_clip ? (
+                <div style={{ fontSize: 12.5, color: "#1a7f43", marginTop: 6, fontWeight: 700 }}>
+                  ถูกลงคลิปละ {money(base - price.price_per_clip)} จากสั่งทีละคลิป
+                </div>) : null;
+            })()}
           </div>
         )}
 

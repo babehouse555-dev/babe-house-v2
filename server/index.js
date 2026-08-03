@@ -29,6 +29,17 @@ const app = express();
 // เคยพลาด: ตั้ง PLANS เป็นเลขตายตัว แต่ PRICE_SATANG ใน env เป็น 49000 → รายเดือนขึ้น 490 แต่แพ็กยาวขึ้นราคาใหม่
 // 🚨 ก่อนขึ้นเว็บจริง: ต้องแก้ PRICE_SATANG ใน Railway เป็น 159000 ไม่งั้นราคาไม่เปลี่ยน
 const PRICE_SATANG = Number(process.env.PRICE_SATANG || 159000);   // รายเดือน 1,590 (รวม VAT แล้ว)
+
+// ═══════ 🗓️ สลับราคาอัตโนมัติวันที่ 1 ก.ย. 2569 (คิมเคาะ 3 ส.ค.) ═══════
+// "โปรเปิดตัวราคา 490 บาท ตั้งแต่วันนี้ถึงสิ้นเดือนสิงหา วันที่ 1 กันยา ราคาปรับเป็น 3 แพ็คทันที
+//  เพราะฉะนั้นหน้าแพ็คเกจจะค่อยขึ้นวันที่ 1 กันยา"
+// → ก่อนถึงวัน: ขาย 490 อย่างเดียว ไม่มีหน้าแพ็ก · ถึงวัน: 3 แพ็กโผล่เอง ไม่ต้อง deploy ซ้ำ
+// ⚠️ ใช้เวลาไทย (+07:00) — ไม่งั้นจะสลับตอนบ่ายโมงของวันที่ 31 ส.ค.
+const PROMO_SATANG = Number(process.env.PROMO_SATANG || 49000);        // โปรเปิดตัว 490
+const PLANS_LIVE_AT = Date.parse(process.env.PLANS_LIVE_AT || "2026-09-01T00:00:00+07:00");
+const plansLive = () => Date.now() >= PLANS_LIVE_AT;
+// ราคาของ "1 เดือน" ตอนนี้ — ช่วงโปรคือ 490 หลังจากนั้นคือ 1,590
+const monthlySatang = () => (plansLive() ? PRICE_SATANG : PROMO_SATANG);
 // ปัด "ราคาต่อเดือน" ลงให้ลงท้าย 5 บาท แล้วค่อยคูณ — เลขที่ลูกค้าเห็นจะสวย (1,110 / 795)
 // ปัดลงเสมอ = ลูกค้าได้ส่วนลดไม่น้อยกว่าที่ประกาศไว้
 const planPrice = (months, off) => Math.floor(PRICE_SATANG * (100 - off) / 100 / 500) * 500 * months;
@@ -42,7 +53,11 @@ const PLANS = {
   "6m": mkPlan("6m", 6, 30),    // ลด 30%
   "12m": mkPlan("12m", 12, 50), // ลด 50%
 };
-const planOf = (k) => PLANS[String(k || "monthly")] || PLANS.monthly;
+const planOf = (k) => {
+  // ⛔ ช่วงโปรเปิดตัว ยังไม่เปิดขายแพ็กยาว — ใครยิงมาก็ได้รายเดือนราคาโปรเท่านั้น
+  if (!plansLive()) return { ...PLANS.monthly, satang: PROMO_SATANG, per_month: PROMO_SATANG / 100, off: 0, full_satang: PRICE_SATANG };
+  return PLANS[String(k || "monthly")] || PLANS.monthly;
+};
 // VAT รวมอยู่ในราคาแล้ว → ถอดออกมาโชว์ในใบกำกับ
 const vatSplit = (satang) => {
   const total = Math.round(Number(satang) || 0);
@@ -50,8 +65,6 @@ const vatSplit = (satang) => {
   return { total, net, vat: total - net };
 };
 const REFERRAL_PERCENT = Number(process.env.REFERRAL_PERCENT || 20);
-const LOYALTY_PERCENT = Number(process.env.LOYALTY_PERCENT || 10);
-const LOYALTY_MIN_MONTHS = Number(process.env.LOYALTY_MIN_MONTHS || 2);
 const HOMEWORK_MIN_UPLOADS = Number(process.env.HOMEWORK_MIN_UPLOADS || 5);
 const EMAIL_ENABLED = !!process.env.RESEND_API_KEY;
 const PROVIDER = process.env.PAYMENT_PROVIDER || "mock";
@@ -333,15 +346,13 @@ app.post("/api/checkout", async (req, res) => {
     await upsertUser({ user_id: payload.user_id, instagram_account: payload.instagram_account, business_type: payload.form_responses.business_type });
     await upsertCustomer(payload.email, payload.instagram_account);
     const refBy = String(payload.referred_by || "").trim().toUpperCase() || null;
-    let discountPct = null, finalAmount = PRICE_SATANG, refValid = null;
+    let discountPct = null, finalAmount = monthlySatang(), refValid = null;
     if (refBy) {
       const refC = await one(`SELECT email FROM customers WHERE referral_code=$1`, [refBy]);
-      if (refC && normEmail(refC.email) !== normEmail(payload.email)) { refValid = refBy; discountPct = REFERRAL_PERCENT; finalAmount = Math.round(PRICE_SATANG * (100 - REFERRAL_PERCENT) / 100); }
+      if (refC && normEmail(refC.email) !== normEmail(payload.email)) { refValid = refBy; discountPct = REFERRAL_PERCENT; finalAmount = Math.round(monthlySatang() * (100 - REFERRAL_PERCENT) / 100); }
     }
-    if (!discountPct && payload.email) {
-      const r = await one(`SELECT COUNT(DISTINCT billing_cycle) n FROM blueprint_requests WHERE email=$1`, [normEmail(payload.email)]);
-      if (Number(r.n) >= LOYALTY_MIN_MONTHS) { discountPct = LOYALTY_PERCENT; finalAmount = Math.round(PRICE_SATANG * (100 - LOYALTY_PERCENT) / 100); }
-    }
+    // ⛔ ตัดส่วนลดลูกค้าเก่า 10% ออก (คิมสั่ง 3 ส.ค.: "เขาจ่ายลด 50% ไปแล้ว จะลดอะไรอีก")
+    //    แพ็กยาวลด 30-50% อยู่แล้ว การลดซ้อนอีกชั้นทำให้ราคาที่ประกาศไว้ไม่จริง
     // 💳 แพ็ก 6/12 เดือน — ราคาแพ็กมาก่อนส่วนลดอื่นเสมอ (แพ็กลด 30-50% อยู่แล้ว ห้ามลดซ้อน)
     const chosen = String(req.body?.plan || payload.plan || "");
     const plan = planOf(chosen);
@@ -384,7 +395,10 @@ app.get("/api/plans", async (req, res) => {
   const email = normEmail(String(req.query.email || ""));
   const sub = email ? await activeSubscription(email, String(req.query.channel || "")) : null;
   res.json({ ok: true,
-    plans: Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true })),
+    live: plansLive(),                                    // false = ยังอยู่ช่วงโปร 490 ยังไม่โชว์หน้าแพ็ก
+    live_at: new Date(PLANS_LIVE_AT).toISOString(),
+    promo_baht: PROMO_SATANG / 100, full_baht: PRICE_SATANG / 100,
+    plans: plansLive() ? Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true })) : [],
     active: sub ? { plan: sub.plan, months_total: sub.months_total, months_used: sub.months_used,
                     months_left: sub.months_total - sub.months_used, channel: sub.instagram_account } : null });
 });
@@ -420,6 +434,7 @@ app.post("/api/order/set-plan", rateLimit(60, M10), async (req, res) => {
   const o = await getOrder(orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   if (["paid", "mock_paid"].includes(o.payment_status)) return res.status(409).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้จ่ายแล้วค่ะ" });
+  if (!plansLive()) return res.status(409).json({ ok: false, error: "PLANS_NOT_LIVE", message: "ช่วงนี้เป็นโปรเปิดตัวราคาเดียวค่ะ" });
   // ⛔ แพ็กยาวลด 30-50% อยู่แล้ว ห้ามเอาโค้ด/ส่วนลดแนะนำเพื่อนมาลดซ้อน
   const payload = { ...(safeJson(o.order_payload_json) || {}), plan: plan.plan, plan_chosen: true };
   await run(`UPDATE blueprint_orders SET final_amount_satang=$1, discount_percent=$2, order_payload_json=$3, discount_code=NULL, referred_by=NULL WHERE order_id=$4`,
@@ -664,7 +679,7 @@ async function applyCode(req, res) {
   }
   const upd = await run(`UPDATE promo_codes SET used_count=used_count+1 WHERE code=$1 AND active=1 AND (max_uses IS NULL OR used_count<max_uses)`, [code]);
   if (upd.rowCount !== 1) return res.status(400).json({ ok: false, error: "CODE_USED_UP", message: "โค้ดถูกใช้ครบแล้ว" });
-  const finalAmount = Math.round(PRICE_SATANG * (100 - percent) / 100);
+  const finalAmount = Math.round(monthlySatang() * (100 - percent) / 100);
   await run(`UPDATE blueprint_orders SET discount_code=$1, discount_percent=$2, final_amount_satang=$3 WHERE order_id=$4`, [code, percent, finalAmount, orderId]);
   // โค้ดที่แถมเครดิต (เช่น โค้ดทดลอง) → เติมเครดิตให้อีเมลนี้ตอนใช้โค้ด (1 ครั้ง/อีเมล จาก guard usedFreeCodeBefore ด้านบน)
   if (Number(row.credit_grant) > 0 && o.email) {
@@ -2954,11 +2969,16 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
     const upd = await run(`UPDATE customers SET edit_credits=edit_credits-1 WHERE lower(email)=lower($1) AND COALESCE(edit_credits,0) > 0`, [email]);
     if (!upd?.rowCount) return res.status(402).json({ ok: false, error: "NO_CREDITS", message: "เครดิตตัดต่อหมดแล้วค่ะ ซื้อเพิ่มได้เลยนะคะ" });
     const id = uid("eo");
-    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note)
-      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7)`,
+    // รับรายละเอียดที่ลูกค้ากรอกมาด้วย (ฟุตเทจ/เสียง/ตัวอย่างที่ชอบ/โน้ต)
+    // คิมทัก 3 ส.ค.: "ให้เขาใส่รายละเอียดก่อน แล้วหักเครดิตตอนกดปุ่มด้านใน"
+    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links)
+      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10)`,
       [id, email, bp, req.body?.billing_cycle || null, day,
        req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
-       String(req.body?.note || "").slice(0, 2000)]);
+       String(req.body?.note || "").slice(0, 2000),
+       String(req.body?.footage_url || "").slice(0, 1000) || null,
+       String(req.body?.voice_url || "").slice(0, 1000) || null,
+       String(req.body?.ref_links || "").slice(0, 2000) || null]);
     const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
     res.json({ ok: true, order_id: id, script_day: day, credits_left: Number(c?.x || 0) });
   } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }

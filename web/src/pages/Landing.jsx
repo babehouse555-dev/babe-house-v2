@@ -71,13 +71,16 @@ export default function Landing() {
   const { t } = useI18n();
   useEffect(() => { track("landing"); }, []);
   const FULL = t("price_full"), PROMO = t("price_promo");
+  // 🗓️ ถึงเวลาเปิดขายแพ็กหรือยัง (1 ก.ย. 2569) — ให้เซิร์ฟเวอร์ตัดสิน ไม่ใช่เช็คนาฬิกาในเครื่องลูกค้า
+  const [plansLive, setPlansLive] = useState(false);
+  useEffect(() => { api("/api/plans").then(d => setPlansLive(!!d.live)).catch(() => {}); }, []);
   return (
     <div>
       <nav style={{ position: "sticky", top: 0, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)", zIndex: 50 }}>
         <div className="wrap between" style={{ height: 60 }}>
           <div style={{ fontWeight: 800, fontSize: 18 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></div>
           <div className="row" style={{ gap: 14, alignItems: "center" }}>
-            <a href="#offer" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>{t("nav_promo")}</a>
+            <a href="#offer" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>{plansLive ? t("nav_plans") : t("nav_promo")}</a>
             {/* สินค้าอื่นต้องโผล่บนหน้าแรกด้วย — หน้าแรกคือหน้าที่ลูกค้าเจอเยอะสุด ถ้าไม่มีตรงนี้ก็ไม่มีใครหาเจอ */}
             {ACADEMY_LIVE && <Link to="/academy" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
             {ACADEMY_LIVE && <Link to="/workshop" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
@@ -122,7 +125,7 @@ export default function Landing() {
         <p className="center muted" style={{ fontSize: 14, marginTop: 22 }}>{t("how_note")}</p>
       </div></section>
 
-      {/* 4. โปรเปิดตัว 490 ได้อะไรบ้าง */}
+      {/* 4. ในแผนของคุณมีอะไรบ้าง */}
       <section style={{ background: "var(--soft)", padding: "52px 0" }}><div className="wrap narrow">
         <h2 className="center serif" style={h2Style}>{t("offer_title_pre")} {PROMO} {t("offer_title_post")}</h2>
         <p className="center muted" style={{ maxWidth: 600, margin: "0 auto 28px", fontSize: 15 }}>{t("offer_desc_a")} <span style={{ textDecoration: "line-through" }}>{FULL}</span> {t("offer_desc_b")} <b style={{ color: "var(--blue)" }}>{PROMO}</b></p>
@@ -135,17 +138,31 @@ export default function Landing() {
         <div className="center"><Link className="btn" to="/form">{t("offer_cta")} {PROMO}</Link></div>
       </div></section>
 
-      {/* 5. LAUNCH OFFER PRICE CARD */}
-      {/* 5. แพ็กราคา — คิมสั่ง 3 ส.ค. "ให้เห็นรายละเอียดชัดๆ เหมือนตอนที่ทำคลับ"
-           วางไว้ก่อนฟอร์ม เพื่อให้ลูกค้ารู้ราคาก่อนเสียเวลากรอก (เดิมเห็นราคาตอนหน้าจ่ายเงินอย่างเดียว) */}
+      {/* 5. ราคา — สลับอัตโนมัติวันที่ 1 ก.ย. 2569 (คิมเคาะ 3 ส.ค.)
+           ถึง 31 ส.ค. = การ์ดโปรเปิดตัว 490 ใบเดียว · ตั้งแต่ 1 ก.ย. = 3 แพ็กเรียงกัน
+           ไม่ต้อง deploy ซ้ำ — เซิร์ฟเวอร์เป็นคนบอกว่าถึงเวลาหรือยัง (/api/plans → live) */}
       <section id="offer" style={{ padding: "52px 0" }}><div className="wrap">
-        <p className="center" style={labelStyle}>แพ็กและราคา</p>
-        <h2 className="center serif" style={{ ...h2Style, marginBottom: 8 }}>เลือกแพ็กที่ใช่สำหรับคุณ</h2>
-        <p className="center muted" style={{ maxWidth: 620, margin: "0 auto 34px", fontSize: 15, lineHeight: 1.75 }}>
-          ยิ่งอยู่กับเรานาน แผนยิ่งแม่นขึ้น — เพราะทุกเดือนครูพี่คิมจะเรียนรู้จากคลิปที่คุณลงจริง
-          แล้วปรับแผนเดือนถัดไปให้ตรงคนดูของคุณมากขึ้น
-        </p>
-        <PlanCards ctaLabel="เริ่มเลย →" />
+        <p className="center" style={labelStyle}>{plansLive ? "แพ็กและราคา" : t("launch_label")}</p>
+        <h2 className="center serif" style={{ ...h2Style, marginBottom: plansLive ? 8 : 26 }}>
+          {plansLive ? "เลือกแพ็กที่ใช่สำหรับคุณ" : t("launch_title")}
+        </h2>
+        {plansLive ? <>
+          <p className="center muted" style={{ maxWidth: 620, margin: "0 auto 34px", fontSize: 15, lineHeight: 1.75 }}>
+            ยิ่งอยู่กับเรานาน แผนยิ่งแม่นขึ้น — เพราะทุกเดือนครูพี่คิมจะเรียนรู้จากคลิปที่คุณลงจริง
+            แล้วปรับแผนเดือนถัดไปให้ตรงคนดูของคุณมากขึ้น
+          </p>
+          <PlanCards ctaLabel="เริ่มเลย →" />
+        </> : (
+          <div className="card" style={{ maxWidth: 430, margin: "0 auto", border: "2px solid var(--blue)", borderRadius: 26, textAlign: "center", padding: "32px 28px", boxShadow: "0 14px 40px rgba(46,134,222,.18)" }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Babe House AI Creator Blueprint</div>
+            <div style={{ margin: "16px 0 6px" }}><PriceTag big={56} /></div>
+            <div style={{ display: "inline-block", background: "#E8F5EE", color: "var(--up)", fontWeight: 700, fontSize: 13.5, padding: "5px 14px", borderRadius: 20, marginBottom: 18 }}>{t("launch_save")}</div>
+            <ul style={{ listStyle: "none", textAlign: "left", margin: "6px 0 22px" }}>
+              {t("card_includes").map((x) => <li key={x} style={{ padding: "9px 0 9px 28px", position: "relative", fontSize: 15, borderBottom: "1px solid var(--border)" }}><span style={{ position: "absolute", left: 0, color: "var(--blue)", fontWeight: 800 }}>✓</span>{x}</li>)}
+            </ul>
+            <Link className="btn full" to="/form">{t("cta_start")}</Link>
+          </div>
+        )}
         <p className="center muted" style={{ fontSize: 13, marginTop: 22 }}>{t("card_nocharge")}</p>
       </div></section>
 

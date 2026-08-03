@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
 import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript, MonthReview } from "./Dashboard.parts.jsx";
@@ -12,6 +12,7 @@ const modH = { display: "flex", alignItems: "center", margin: 0 };
 
 export default function Dashboard() {
   const { t, lang } = useI18n();
+  const nav = useNavigate();
   const G_LABEL = t("db_glabel"), BEAT_LABEL = t("db_beat"), MONTHS_TH = t("db_months");
   const [sp] = useSearchParams();
   const demo = sp.get("demo") === "1";
@@ -55,18 +56,12 @@ export default function Dashboard() {
   };
   useEffect(loadEditCredits, [bpId, demo]);   // eslint-disable-line
   // ให้ทีมตัดคลิปของวันนี้ — หัก 1 เครดิต บรีฟใช้สคริปต์วันนั้นเอง
-  async function useEditCredit(day) {
-    if (usingCredit) return;
-    const cal = (bp.calendar || []).find(c => Number(c.d) === Number(day)) || {};
-    if (!window.confirm(`ให้ทีมครูพี่คิมตัดคลิปวันที่ ${day} ใช่ไหมคะ\n\n"${cal.t || ""}"\n\nจะหักเครดิตตัดต่อ 1 คลิป (เหลือ ${editCredits - 1} คลิป)`)) return;
-    setUsingCredit(true);
-    try {
-      await api("/api/edit/use-credit", { method: "POST", token: session.token, body: {
-        blueprint_id: bpId, billing_cycle: cycle, script_day: day, brief: { d: day, t: cal.t || "", h: cal.h || "" } } });
-      loadEditCredits();
-      alert(`รับงานวันที่ ${day} แล้วค่ะ 🎬\n\nส่งฟุตเทจให้ทีมได้ที่หน้า "งานตัดต่อของฉัน" ในบัญชีของคุณนะคะ`);
-    } catch (e) { alert(e.message || "ไม่สำเร็จ ลองใหม่นะคะ"); }
-    finally { setUsingCredit(false); }
+  // 🎬 คิมทัก 3 ส.ค.: "ให้เขาใส่รายละเอียดก่อน แล้วหักเครดิตตอนกดปุ่มด้านในดีกว่า
+  //     ขึ้นแบบนี้ลูกค้าไม่กล้ากด กลัวเครดิตหายเลย"
+  // → ไม่ถามยืนยันแล้ว ไม่หักตรงนี้แล้ว แค่พาไปหน้ากรอกรายละเอียด (หักตอนกดส่งที่นั่น)
+  function useEditCredit(day) {
+    if (demo) return;
+    nav(`/edit/new?blueprint_id=${encodeURIComponent(bpId)}&billing_cycle=${encodeURIComponent(cycle)}&user_id=${encodeURIComponent(userId)}&day=${day}`);
   }
   const latestUrl = `/api/blueprints/latest?user_id=${encodeURIComponent(userId || "")}&billing_cycle=${encodeURIComponent(cycle || "")}&blueprint_id=${encodeURIComponent(bpId || "")}`;
 

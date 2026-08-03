@@ -43,9 +43,10 @@ const FEATURES = {
   },
 };
 
+// 🗓️ ก่อน 1 ก.ย. 2569 = ช่วงโปรเปิดตัว 490 → การ์ดแพ็กจะไม่ขึ้นเลย (เซิร์ฟเวอร์ส่ง live:false)
 export function PlanCards({ selected, onPick, ctaLabel, busy, compact }) {
   const [plans, setPlans] = useState([]);
-  useEffect(() => { api("/api/plans").then(d => setPlans(d.plans || [])).catch(() => {}); }, []);
+  useEffect(() => { api("/api/plans").then(d => setPlans(d.live ? (d.plans || []) : [])).catch(() => {}); }, []);
   if (!plans.length) return null;
 
   return (

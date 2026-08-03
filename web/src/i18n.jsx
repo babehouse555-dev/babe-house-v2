@@ -59,10 +59,11 @@ const GUIDE_EN = {
 const DICT = {
   // ราคา (EN โชว์ ฿ + ประมาณ $ ให้ฝรั่งเทียบง่าย — จ่ายจริงเป็น THB ผ่าน Stripe)
   price_full: { th: "1,590฿", en: "฿1,590 (~$44)" },        // รายเดือน
-  price_promo: { th: "795฿", en: "฿795 (~$22)" },           // ถูกสุด = แพ็ก 12 เดือน (ตกเดือนละ)
+  price_promo: { th: "490฿", en: "฿490 (~$14)" },           // โปรเปิดตัว ถึง 31 ส.ค. 2569
 
   // เมนูบน + ทั่วไป
   nav_promo: { th: "โปรเปิดตัว", en: "Launch offer" },
+  nav_plans: { th: "แพ็กและราคา", en: "Plans & pricing" },   // ใช้ตั้งแต่ 1 ก.ย. 2569
   nav_login: { th: "เข้าสู่ระบบ", en: "Log in" },
   nav_home: { th: "หน้าแรก", en: "Home" },
   nav_account: { th: "บัญชีของฉัน", en: "My account" },
@@ -70,11 +71,11 @@ const DICT = {
   cta_see_demo: { th: "ดูตัวอย่างผลลัพธ์ก่อน", en: "See a sample result" },
 
   // HERO
-  hero_badge: { th: "🩵 โปรเปิดตัว — กลุ่มแรกเท่านั้น", en: "🩵 Launch offer — for our first members" },
+  hero_badge: { th: "🩵 โปรเปิดตัว — ถึง 31 ส.ค. นี้เท่านั้น", en: "🩵 Launch offer — until 31 Aug only" },
   hero_title_a: { th: "ทำคอนเทนต์มานาน", en: "Posting for months," },
   hero_title_b: { th: "แต่ช่องไม่โตสักที?", en: "but not growing?" },
   hero_sub: { th: "ครูพี่คิมอ่าน Insight ของคุณ แล้ววางแผนคอนเทนต์ 30 วัน พร้อมสคริปต์และแคปชัน", en: "Kim reads your Insights and builds a 30-day content plan — scripts and captions included." },
-  hero_for_launch: { th: "ต่อเดือน เมื่อเลือกแพ็ก 12 เดือน · จ่ายหลังดูสรุปแล้ว", en: "per month on the 12-month plan · pay only after you see the summary" },
+  hero_for_launch: { th: "โปรเปิดตัวถึง 31 ส.ค. · จ่ายหลังดูสรุปแล้ว", en: "Launch price until 31 Aug · pay only after you see the summary" },
   // พรีวิวเล่ม (ภาพสินค้าใน hero)
   preview_label: { th: "เล่ม 30 วันของคุณ", en: "Your 30-Day Blueprint" },
   preview_cal: { th: "📅 ปฏิทินคอนเทนต์ 30 วัน", en: "📅 30-Day Content Calendar" },
@@ -145,7 +146,7 @@ const DICT = {
   // LAUNCH PRICE CARD
   launch_label: { th: "LAUNCH OFFER", en: "LAUNCH OFFER" },
   launch_title: { th: "โปรเปิดตัว สำหรับกลุ่มแรก", en: "Launch offer for our first members" },
-  launch_save: { th: "ประหยัด 1,100฿ ในช่วงเปิดตัว", en: "Save ฿1,100 during launch" },
+  launch_save: { th: "ประหยัด 1,100฿ ถึง 31 ส.ค. นี้", en: "Save ฿1,100 — until 31 Aug" },
   card_includes: { th: [
     "วิเคราะห์ช่องจากข้อมูลจริงของคุณ",
     "แนบ Insight หลังบ้านได้หลายรูป",

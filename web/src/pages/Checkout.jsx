@@ -89,7 +89,10 @@ export default function Checkout() {
           <span>{t("co_total")}</span><span style={{ fontSize: 26, fontWeight: 800, color: "var(--blue-d)" }}>{baht(price)}</span>
         </div>
         <p className="muted" style={{ fontSize: 12, textAlign: "right", margin: "-6px 0 12px" }}>{t("co_vat_note")}</p>
-        {order?.discount_percent > 0 && order.discount_percent < 100 && <p style={{ textAlign: "right", color: "var(--up)", fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{order.discount_percent}% {t("co_off")}</p>}
+        {/* ⛔ เอาป้าย "N% แล้ว" ออก (คิมทัก 3 ส.ค.) — มันอ่านจาก order ที่โหลดมาตอนเปิดหน้า
+            พอกดสลับแพ็ก ยอดเปลี่ยนแต่ป้ายไม่เปลี่ยน → ขึ้นเลขเก่าค้างไว้ เช่นจ่าย 9,540 แต่ป้ายบอก 10%
+            ส่วนลดจริงโชว์อยู่บนการ์ดแพ็กแล้ว (−30% / −50%) และโค้ดส่วนลดมีข้อความบอกแยกอยู่แล้ว */
+        }
         {/* 🧾 ใบกำกับภาษี — ออกให้ทุกคนอยู่แล้ว ติ๊กเฉพาะคนที่ต้องการในนามบริษัท */}
         <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
           <label className="row" style={{ gap: 9, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>

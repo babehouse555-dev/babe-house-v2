@@ -32,6 +32,8 @@ function TopBar() {
         <Link to="/" style={{ fontWeight: 800, fontSize: 17 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></Link>
         <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap", rowGap: 6 }}>
           <Link to="/" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>{tb("nav_home")}</Link>
+          {/* ทางเข้าดูราคา — คิมสั่ง 3 ส.ค. "หน้านี้มันต้องมีในแถบด้านบนขวาด้วย" */}
+          <a href="/#offer" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>{tb("nav_promo")}</a>
           {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
           {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
           {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
@@ -131,6 +133,7 @@ import Admin from "./pages/Admin.jsx";
 import Projects from "./pages/Projects.jsx";
 import EditOrder from "./pages/EditOrder.jsx";
 import EditJob from "./pages/EditJob.jsx";
+import EditBrief from "./pages/EditBrief.jsx";
 import SiteMap from "./pages/SiteMap.jsx";
 import Studio from "./pages/Studio.jsx";
 import Team from "./pages/Team.jsx";
@@ -166,6 +169,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/admin" element={<Admin />} />
       <Route path="/projects" element={<Projects />} />
       <Route path="/edit" element={<EditOrder />} />
+      <Route path="/edit/new" element={<EditBrief />} />
       <Route path="/edit/:id" element={<EditJob />} />
       <Route path="/map" element={<SiteMap />} />
       {/* 🎬 หน้าเฉพาะทีมตัดต่อ — เข้าด้วยรหัสทีม ไม่เห็นยอดขาย/ลูกค้าฝั่งอื่น (คิมสั่ง 2 ส.ค.) */}

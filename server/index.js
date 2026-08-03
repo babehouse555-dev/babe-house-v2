@@ -14,7 +14,7 @@ import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
 import { seedAssignments } from "./seed-assignments.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint, reviewMonth, extractImages } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -164,8 +164,6 @@ async function langOfEmail(email) {
     return langOfPayload(safeJson(r?.order_payload_json));
   } catch { return "th"; }
 }
-const LINE_ACADEMY_URL = process.env.LINE_ACADEMY_URL || "https://line.me/R/ti/p/%40babehouse_academy";
-const LINE_WORK_URL = process.env.LINE_WORK_URL || "https://line.me/ti/p/0yBlh9zXFl";
 
 // ---------- payment / referral ----------
 async function markOrderPaid(orderId, provider = "mock", sid = "") {
@@ -495,6 +493,14 @@ async function getPrevContext(email, cycle, channel) {
       }
       const L = learnFromClips(all, calAll);
       if (L.enough) clipLearning = L;
+      // สรุปที่ AI อ่านจากแคปสิ้นเดือน — ใช้ได้แม้จับคู่รายวันไม่ได้ครบ
+      const mr = await one(`SELECT review_json, clips_done FROM month_reviews WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1`, [bps[0]?.user_id || ""]);
+      const rv = safeJson(mr?.review_json);
+      if (rv && (rv.worked?.length || rv.didnt_work?.length)) {
+        clipLearning = { ...(clipLearning || { enough: true, clips: 0 }),
+          worked: (rv.worked || []).slice(0, 6), didnt_work: (rv.didnt_work || []).slice(0, 6),
+          coach_summary: String(rv.summary || "").slice(0, 600), clips_done: mr?.clips_done ?? null };
+      }
     } catch (e) { console.warn("clip learning", e.message); }
 
     if (!latest.positioning && !latest.theme && !topics.length) return null;
@@ -889,6 +895,60 @@ app.post("/api/production/inquiry", rateLimit(10, M10), async (req, res) => {
 app.get("/api/admin/production-inquiries", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json({ ok: true, inquiries: await q(`SELECT * FROM production_inquiries ORDER BY created_at DESC LIMIT 200`) });
+});
+
+// 📸 สรุปสิ้นเดือน — ลูกค้าแคป Insight มาแค่รูปเดียว AI อ่านให้ทั้งเดือน
+// คิม: "ไม่ต้องให้เค้ามากรอกรายคลิป มันเยอะมาก · ทำแค่ตอนจบเดือนก็พอ"
+app.post("/api/month-review", rateLimit(10, M10), async (req, res) => {
+  const b = req.body || {};
+  const userId = String(b.user_id || ""), cycle = String(b.billing_cycle || ""), bpId = String(b.blueprint_id || "");
+  if (!userId || !cycle || !bpId) return res.status(400).json({ ok: false, error: "MISSING" });
+  try {
+    // ⚠️ ต้องอยู่ใน try — เคยพลาด: query พังนอก try = unhandled rejection = เซิร์ฟเวอร์ดับทั้งตัว
+    // instagram_account อยู่ที่ blueprint_requests ไม่ใช่ blueprints
+    const bp = await one(`SELECT b.blueprint_json, r.instagram_account FROM blueprints b
+      LEFT JOIN blueprint_requests r ON b.request_id=r.request_id
+      WHERE b.blueprint_id=$1 AND b.user_id=$2 AND b.billing_cycle=$3 AND b.deleted_at IS NULL`, [bpId, userId, cycle]);
+    if (!bp) return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "ไม่มีสิทธิ์แก้ไข" });
+    const images = extractImages({ insight_images: Array.isArray(b.images) ? b.images.slice(0, 4) : [] });
+    if (!images.length) return res.status(400).json({ ok: false, error: "NO_IMAGE", message: "แนบแคปหน้าสถิติมาด้วยนะคะ" });
+    const blueprint = safeJson(bp.blueprint_json) || {};
+    const { review, model, usage } = await reviewMonth({ images, calendar: blueprint.calendar || [], lang: b.lang === "en" ? "en" : "th" });
+    if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'month_review',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+    if (review?.readable === false) {
+      return res.json({ ok: false, error: "UNREADABLE", message: review.unreadable_reason || "อ่านรูปไม่ออกค่ะ ลองแคปหน้า Insights ที่เห็นยอดวิวของแต่ละโพสต์มานะคะ" });
+    }
+    // โพสต์ที่ AI จับคู่กับแผนได้แน่ๆ → เขียนลง clip_results ให้เลย (ระบบเรียนรู้เดิมใช้ต่อได้ทันที)
+    // ⛔ ที่ confidence ต่ำหรือจับคู่ไม่ได้ ไม่เขียน — ข้อมูลมั่วแย่กว่าไม่มีข้อมูล
+    let matched = 0;
+    for (const p of (review?.posts || [])) {
+      const day = Number(p.matched_day), views = Number(p.views);
+      if (!(day >= 1 && day <= 31) || !Number.isFinite(views) || views < 0) continue;
+      if (String(p.match_confidence || "").toLowerCase() === "low") continue;
+      await run(`INSERT INTO clip_results (result_id,user_id,instagram_account,billing_cycle,day,views,note)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (user_id,billing_cycle,day) DO UPDATE SET views=EXCLUDED.views, note=EXCLUDED.note, updated_at=now()`,
+        [uid("cr"), userId, bp.instagram_account || "", cycle, day, Math.round(views), String(p.label || "").slice(0, 300) || null]).catch(() => {});
+      matched++;
+    }
+    const clipsDone = Number(b.clips_done);
+    await run(`INSERT INTO month_reviews (review_id,user_id,email,instagram_account,billing_cycle,clips_done,review_json,matched_count)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (user_id,billing_cycle) DO UPDATE SET clips_done=EXCLUDED.clips_done, review_json=EXCLUDED.review_json, matched_count=EXCLUDED.matched_count, created_at=now()`,
+      [uid("mr"), userId, (await authEmail(req)) || null, bp.instagram_account || "", cycle,
+       Number.isFinite(clipsDone) ? Math.max(0, Math.min(31, clipsDone)) : null, JSON.stringify(review), matched]);
+    res.json({ ok: true, review, matched, posts_read: (review?.posts || []).length });
+  } catch (e) {
+    console.error("month-review", e.message);
+    res.status(500).json({ ok: false, error: "FAILED", message: "อ่านรูปไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" });
+  }
+});
+// สรุปสิ้นเดือนที่เคยส่งไว้ (ไว้โชว์ซ้ำโดยไม่ต้องอ่านรูปใหม่)
+app.get("/api/month-review", async (req, res) => {
+  const userId = String(req.query.user_id || ""), cycle = String(req.query.billing_cycle || "");
+  if (!userId || !cycle) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
+  const r = await one(`SELECT clips_done, review_json, matched_count, created_at FROM month_reviews WHERE user_id=$1 AND billing_cycle=$2`, [userId, cycle]);
+  res.json({ ok: true, review: r ? safeJson(r.review_json) : null, clips_done: r?.clips_done ?? null, matched: r?.matched_count ?? 0, at: r?.created_at || null });
 });
 
 // 🔍 แอดมิน: "ตอนเขียนแผนเดือนนี้ AI รู้อะไรเกี่ยวกับลูกค้าคนนี้บ้าง"
@@ -3474,13 +3534,46 @@ async function runMonthlyReminders(force = false) {
     const day = new Date().getDate(), startDay = Number(process.env.REMINDER_START_DAY) || 25;
     if (!force && day < startDay) return 0;
     const cycle = currentBillingCycle();
-    const rows = await q(`SELECT DISTINCT email FROM blueprint_requests WHERE email IS NOT NULL AND email NOT IN (SELECT email FROM blueprint_requests WHERE billing_cycle=$1 AND email IS NOT NULL) AND email NOT IN (SELECT email FROM month_reminders WHERE cycle=$1) LIMIT 200`, [cycle]);
+    // ดึงเล่มล่าสุดของแต่ละคนมาด้วย → ทำลิงก์พาไปหน้าส่งสถิติได้ตรงๆ ไม่ต้องให้เขาหาเอง
+    const rows = await q(`SELECT DISTINCT ON (lower(r.email)) r.email, b.blueprint_id, b.user_id, b.billing_cycle,
+        COALESCE(mp.uploaded_count,0) AS uploaded,
+        (SELECT 1 FROM month_reviews mr WHERE mr.user_id=b.user_id AND mr.billing_cycle=b.billing_cycle) AS reviewed
+      FROM blueprint_requests r
+      JOIN blueprints b ON b.request_id=r.request_id AND b.deleted_at IS NULL
+      LEFT JOIN marathon_progress mp ON mp.user_id=b.user_id AND mp.billing_cycle=b.billing_cycle
+      WHERE r.email IS NOT NULL
+        AND lower(r.email) NOT IN (SELECT lower(email) FROM blueprint_requests WHERE billing_cycle=$1 AND email IS NOT NULL)
+        AND lower(r.email) NOT IN (SELECT lower(email) FROM month_reminders WHERE cycle=$1)
+      ORDER BY lower(r.email), b.created_at DESC LIMIT 200`, [cycle]);
     let sent = 0;
-    for (const r of rows) { try { const l = await langOfEmail(r.email); await sendEmail(r.email,
-      tr(l, "เดือนใหม่แล้ว มาต่อแผนคอนเทนต์กันค่ะ 🩵", "A new month begins — let's plan your content 🩵"),
-      wrap(tr(l,
-        `เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(`${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`,
-        `It's a new month! Time to continue with this month's 30-day plan.<br><br>${btn(`${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`, "Unlock this month's plan (฿490)")}`))); } catch { continue; } await run(`INSERT INTO month_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
+    for (const r of rows) { try {
+      const l = await langOfEmail(r.email);
+      // 📸 ขอสถิติก่อน แล้วค่อยชวนต่อแผน — คิมสั่ง 3 ส.ค.
+      // "จบเดือนแล้วส่งเมลไปว่าเค้าทำ 30 คลิปครบหรือยัง ส่ง insight มาเพื่อเพิ่มแผนของเดือนต่อไป"
+      // ⛔ ถ้าส่งสถิติมาแล้ว ไม่ต้องขอซ้ำ — ชวนต่อแผนอย่างเดียว
+      const deep = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(r.user_id)}&billing_cycle=${encodeURIComponent(r.billing_cycle)}&blueprint_id=${encodeURIComponent(r.blueprint_id)}&tab=marathon`;
+      const renew = `${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`;
+      const askStats = !r.reviewed;
+      await sendEmail(r.email,
+        tr(l, askStats ? "เดือนนี้เป็นยังไงบ้างคะ? ส่งสถิติมาให้ครูพี่คิมดูหน่อย 🩵" : "เดือนใหม่แล้ว มาต่อแผนคอนเทนต์กันค่ะ 🩵",
+              askStats ? "How did this month go? Send me your stats 🩵" : "A new month begins — let's plan your content 🩵"),
+        wrap(tr(l,
+          askStats
+            ? `จบเดือนแล้ว เดือนนี้ลงคอนเทนต์ไปได้กี่คลิปคะ?${Number(r.uploaded) > 0 ? ` (ที่ติ๊กไว้ในระบบคือ <b>${r.uploaded} วัน</b>)` : ""}<br><br>
+               <b>ก่อนเริ่มเดือนใหม่ ขอสถิติหน่อยนะคะ</b> — แคปหน้า Insights มา<b>รูปเดียวก็พอ</b>
+               ครูพี่คิมจะอ่านให้เองว่าคลิปไหนไปได้ดี แล้ว<b>เขียนแผนเดือนหน้าจากของจริง</b> ไม่ใช่เริ่มคิดใหม่จากศูนย์ค่ะ<br><br>
+               ${btn(deep, "📸 ส่งสถิติเดือนนี้ (ใช้เวลาไม่ถึงนาที)")}<br><br>
+               ส่งแล้วค่อยมาต่อแผนเดือนใหม่กันนะคะ 🩵<br><br>${btn(renew, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`
+            : `เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(renew, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`,
+          askStats
+            ? `The month is wrapping up — how many clips did you post?${Number(r.uploaded) > 0 ? ` (You ticked <b>${r.uploaded} days</b> in the app.)` : ""}<br><br>
+               <b>Before we start the new month, send me your stats</b> — one screenshot of your Insights is enough.
+               I'll read it myself and build next month's plan from what actually worked.<br><br>
+               ${btn(deep, "📸 Send this month's stats (under a minute)")}<br><br>
+               ${btn(renew, "Unlock this month's plan (฿490)")}`
+            : `It's a new month! Time to continue with this month's 30-day plan.<br><br>${btn(renew, "Unlock this month's plan (฿490)")}`)));
+      } catch { continue; }
+      await run(`INSERT INTO month_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
     if (sent) console.log(`[reminders] ${cycle}: ${sent}`); return sent;
   } catch (e) { console.error("monthly", e.message); return 0; }
 }
@@ -3493,7 +3586,7 @@ async function runHomeworkReminders() {
     for (const r of rows) { try { const l = await langOfEmail(r.email); await sendEmail(r.email,
       tr(l, "อย่าลืมทำคอนเทนต์ตามแผนนะคะ 🩵", "Keep going with your content plan 🩵"),
       wrap(tr(l,
-        `เดือนนี้ทำไปแล้ว <b>${r.uploaded} วัน</b> สู้ๆ นะคะ! ความสม่ำเสมอคือกุญแจของการเติบโตค่ะ<br><br>${btn(`${appBaseUrl()}/account`, "เปิดแผนของฉัน ทำต่อ")}<br><br><b>ถ้าทำเองแล้วเริ่มเหนื่อย/ตัดต่อไม่ทัน — ครูพี่คิมมีตัวช่วยให้เป้าหมายคุณเป็นจริงค่ะ 🩵</b><br><br>🎓 อยากตัดต่อเองให้คล่อง เก่งขึ้นทุกคลิป:<br>${btn(LINE_ACADEMY_URL, "เรียนตัดต่อกับครูพี่คิม")}<br><br>🎬 ไม่มีเวลาทำเอง อยากให้มืออาชีพทำให้:<br>${btnG(LINE_WORK_URL, "ให้ทีม Babe House ทำให้")}`,
+        `เดือนนี้ทำไปแล้ว <b>${r.uploaded} วัน</b> สู้ๆ นะคะ! ความสม่ำเสมอคือกุญแจของการเติบโตค่ะ<br><br>${btn(`${appBaseUrl()}/account`, "เปิดแผนของฉัน ทำต่อ")}<br><br><b>ถ้าทำเองแล้วเริ่มเหนื่อย/ตัดต่อไม่ทัน — ครูพี่คิมมีตัวช่วยให้เป้าหมายคุณเป็นจริงค่ะ 🩵</b><br><br>🎓 อยากตัดต่อเองให้คล่อง เก่งขึ้นทุกคลิป:<br>${btn(appBaseUrl() + "/academy", "เรียนตัดต่อกับครูพี่คิม")}<br><br>🎬 ไม่มีเวลาทำเอง อยากให้มืออาชีพทำให้:<br>${btnG(appBaseUrl() + "/edit", "ให้ทีม Babe House ตัดให้")}`,
         // EN: ตัด upsell LINE ออก (แชท LINE เป็นภาษาไทย ยังไม่รองรับลูกค้าต่างชาติ)
         `You've done <b>${r.uploaded} days</b> this month — keep it up! Consistency is the key to growth.<br><br>${btn(`${appBaseUrl()}/account`, "Open my plan")}`))); } catch { continue; } await run(`INSERT INTO homework_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
     if (sent) console.log(`[homework] ${cycle}: ${sent}`); return sent;
@@ -3865,6 +3958,13 @@ const PORT = Number(process.env.PORT || 3000);
 // 🛟 เปิดเว็บให้ลูกค้าเข้าได้ "ก่อน" ต่อฐานข้อมูลเสมอ
 // บทเรียน 2 ส.ค.: เดิมถ้า initDb ล้มแม้แค่ชั่วคราว โค้ดสั่ง process.exit(1) → Railway รีสตาร์ท → ล้มซ้ำ → เว็บดับยาว
 // ตอนนี้: ฟังพอร์ตก่อน (เว็บไม่ดับ) แล้วค่อยลองต่อ DB ซ้ำเรื่อยๆ จนติด
+// 🛡️ ยามกันเว็บดับ — บั๊กจุดเดียวต้องไม่ล้มทั้งเว็บ
+// เจอจริง 3 ส.ค.: query ใหม่อ้างคอลัมน์ที่ไม่มี แล้วอยู่นอก try → unhandled rejection → Node ปิดตัวเอง
+// ลูกค้าที่กำลังใช้งานอยู่หลุดหมดทั้งที่เป็นบั๊กของ endpoint เดียว (บทเรียนเดียวกับที่เคยดับ 25 นาที)
+// ตั้งใจไม่ปิดโปรเซส: เว็บอยู่ต่อ แล้วเราไปตามแก้จาก log
+process.on("unhandledRejection", (e) => console.error("[unhandledRejection] เว็บยังทำงานต่อ:", e?.stack || e));
+process.on("uncaughtException", (e) => console.error("[uncaughtException] เว็บยังทำงานต่อ:", e?.stack || e));
+
 app.listen(PORT, () => console.log(`Babe House v2 running on :${PORT} | ai=${aiModelName()} | pay=${PROVIDER}`));
 
 async function connectDbWithRetry() {

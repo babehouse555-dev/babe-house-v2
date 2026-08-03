@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { sampleBlueprint } from "../sample.js";
-import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript, ClipResults } from "./Dashboard.parts.jsx";
+import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript, MonthReview } from "./Dashboard.parts.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 
@@ -544,9 +544,8 @@ export default function Dashboard() {
                 {Array.from({ length: 30 }, (_, i) => i + 1).map(d => <button key={d} onClick={() => toggleDay(d)} disabled={demo} style={{ aspectRatio: "1", border: 0, borderRadius: 10, cursor: demo ? "default" : "pointer", fontWeight: 700, background: uploaded.has(d) ? "var(--blue)" : "var(--soft)", color: uploaded.has(d) ? "#fff" : "var(--muted)" }}>{uploaded.has(d) ? "✓" : d}</button>)}
               </div>{demo && <p className="muted center" style={{ fontSize: 13, marginTop: 12 }}>{t("db_demo_tick")}</p>}
             </div>
-            {/* 📈 กรอกผลจริงของคลิปที่ลงแล้ว → เดือนหน้า AI วางแผนจากของจริง ไม่ใช่เริ่มใหม่ */}
-            <ClipResults userId={userId} cycle={cycle} bpId={bpId} channel={bp.instagram_account}
-              uploadedDays={[...uploaded]} calendar={bp.calendar} demo={demo} />
+            {/* 📸 จบเดือนแล้วแคปสถิติมารูปเดียว → AI อ่านให้ → เดือนหน้าวางแผนจากของจริง */}
+            <MonthReview userId={userId} cycle={cycle} bpId={bpId} demo={demo} />
             <ToolsAndServices channel={bp.instagram_account} cycle={cycle} demo={demo} />
           </>;
         })()}

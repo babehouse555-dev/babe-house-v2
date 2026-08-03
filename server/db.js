@@ -163,6 +163,20 @@ export async function initDb() {
       updated_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_clip_results_uniq ON clip_results(user_id, billing_cycle, day);
+    -- สรุปสิ้นเดือนจากแคป Insight รูปเดียว — คิมสั่ง "ไม่ต้องให้เค้ามากรอกรายคลิป มันเยอะมาก"
+    -- AI อ่านแคปแล้วจับคู่กับปฏิทินเอง แถวไหนจับคู่ได้จะไปลงใน clip_results ให้อัตโนมัติ
+    CREATE TABLE IF NOT EXISTS month_reviews (
+      review_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      email TEXT,
+      instagram_account TEXT,
+      billing_cycle TEXT NOT NULL,
+      clips_done INTEGER,              -- ลูกค้าบอกเองว่าลงไปกี่คลิปจาก 30
+      review_json TEXT,                -- ผลที่ AI อ่านได้ทั้งก้อน
+      matched_count INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_month_reviews_uniq ON month_reviews(user_id, billing_cycle);
     CREATE INDEX IF NOT EXISTS idx_clip_results_user ON clip_results(user_id, billing_cycle);
 
     CREATE TABLE IF NOT EXISTS marathon_events (

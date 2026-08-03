@@ -297,106 +297,102 @@ export function ShootingGuide({ startOpen }) {
   </div>;
 }
 
-// ═══════ 📈 ผลจริงรายคลิป — "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
-// "ฉันไม่ได้อยากให้ลูกค้าเริ่มใหม่ทุกเดือน เค้าต้องได้ต่อยอดจากที่ถูกคิดมาแล้วแล้วเอาไปทำจริง
-//  จะได้รู้ว่าอันไหนเวิร์กหรือไม่เวิร์ก · ยิ่งกลับมาใช้ ตัวคอนเทนต์ยิ่งเก่งขึ้น วิเคราะห์ได้ลึกขึ้น"
+
+// ═══════ 📸 สรุปสิ้นเดือน — "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
+// คิม: "ลูกค้าต้องมาส่ง insight หลายคลิปเลยหรอ มันเยอะมากเลยนะ 30 คลิป — ทำแค่ตอนจบเดือนก็พอ
+//       คือเราดูว่ายอดรายเดือนมันเพิ่มขึ้นจากคลิปไหน แล้วก็ให้ AI เอาข้อมูลนี้ไปทำงานต่อ
+//       ไม่ต้องให้เค้ามากรอกรายคลิป มันเยอะมาก"
 //
-// ลูกค้าติ๊กว่าลงคลิปวันไหนอยู่แล้ว → ที่นี่แค่กรอกเพิ่มว่า "วันนั้นได้กี่วิว"
-// พอครบ 4 คลิป ระบบเริ่มบอกได้ว่าคนดูของช่องนี้ชอบอะไร แล้วส่งต่อให้ AI เขียนแผนเดือนหน้า
-export function ClipResults({ userId, cycle, bpId, channel, uploadedDays, calendar, demo }) {
-  const [results, setResults] = useState({});
-  const [learning, setLearning] = useState(null);
-  const [saving, setSaving] = useState(null);
-  const [draft, setDraft] = useState({});
-  const days = [...(uploadedDays || [])].sort((a, b) => a - b);
-  const calBy = {};
-  for (const c of (calendar || [])) if (c && c.d) calBy[Number(c.d)] = c;
+// ลูกค้าแคปหน้าสถิติมารูปเดียว (สูงสุด 4) → AI อ่านทุกโพสต์ + จับคู่กับปฏิทิน 30 วันเอง
+// → เดือนหน้าแผนถูกเขียนจากของจริง ไม่ใช่เริ่มคิดใหม่จากศูนย์
+export function MonthReview({ userId, cycle, bpId, demo }) {
+  const [review, setReview] = useState(null);
+  const [clipsDone, setClipsDone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [open, setOpen] = useState(false);
 
-  const load = () => {
+  useEffect(() => {
     if (demo || !userId || !cycle) return;
-    api(`/api/marathon/clip-results?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}`)
-      .then(d => { setResults(d.results || {}); setLearning(d.learning || null); }).catch(() => {});
-  };
-  useEffect(load, [userId, cycle, demo]);   // eslint-disable-line
+    api(`/api/month-review?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}`)
+      .then(d => { if (d.review) { setReview(d.review); setClipsDone(d.clips_done ?? ""); } }).catch(() => {});
+  }, [userId, cycle, demo]);
 
-  const save = async (d) => {
-    const raw = String(draft[d] ?? "").replace(/[, ]/g, "");
-    if (raw === "" && !results[d]) return;
-    setSaving(d);
+  async function upload(e) {
+    const files = [...(e.target.files || [])].slice(0, 4);
+    e.target.value = "";
+    if (!files.length) return;
+    setBusy(true); setErr("");
     try {
-      await api("/api/marathon/clip-result", { method: "POST", body: {
-        user_id: userId, billing_cycle: cycle, blueprint_id: bpId, instagram_account: channel,
-        day: d, views: raw === "" ? null : Number(raw) } });
-      setDraft(s => { const n = { ...s }; delete n[d]; return n; });
-      load();
-    } catch {} finally { setSaving(null); }
-  };
+      const images = await filesToBase64(files);
+      const r = await api("/api/month-review", { method: "POST", body: {
+        user_id: userId, billing_cycle: cycle, blueprint_id: bpId, images,
+        clips_done: clipsDone === "" ? null : Number(clipsDone) } });
+      setReview(r.review);
+    } catch (e2) { setErr(e2.message || "อ่านรูปไม่สำเร็จ ลองใหม่อีกครั้งนะคะ"); }
+    finally { setBusy(false); }
+  }
 
   if (demo) return null;
-  const filled = days.filter(d => results[d]?.views > 0).length;
 
   return <div className="card" style={{ background: "linear-gradient(135deg,#F3F0FB,#F7F9FF)", border: "1px solid #e2dcf3" }}>
-    <h3 style={{ margin: 0 }}>📈 คลิปที่ลงไปแล้วได้กี่วิว</h3>
-    <p className="muted" style={{ fontSize: 13, margin: "6px 0 4px", lineHeight: 1.7 }}>
-      กรอกยอดวิวของคลิปที่ลงแล้ว — <b>เดือนหน้าครูพี่คิมจะวางแผนโดยรู้ว่าคนดูของคุณชอบอะไรจริงๆ</b> ไม่ใช่เริ่มคิดใหม่จากศูนย์
+    <h3 style={{ margin: 0 }}>📸 จบเดือนแล้ว ส่งสถิติมาให้ครูพี่คิมดู</h3>
+    <p className="muted" style={{ fontSize: 13.5, margin: "6px 0 0", lineHeight: 1.75 }}>
+      แคปหน้าสถิติมา<b>รูปเดียวก็พอ</b> — ครูพี่คิมจะอ่านให้เองว่าคลิปไหนไปได้ดี
+      แล้ว<b>เขียนแผนเดือนหน้าจากของจริง</b> ไม่ใช่เริ่มคิดใหม่จากศูนย์ค่ะ
     </p>
 
-    {days.length === 0 && <p className="muted" style={{ fontSize: 13.5, margin: "14px 0 0" }}>
-      ติ๊กวันที่ลงคลิปแล้วด้านบนก่อนนะคะ แล้วช่องกรอกวิวจะขึ้นมาให้ตรงนี้ค่ะ
-    </p>}
-
-    {days.length > 0 && <>
-      <div style={{ display: "grid", gap: 8, margin: "14px 0 0" }}>
-        {days.map(d => {
-          const c = calBy[d] || {}, r = results[d];
-          const val = draft[d] ?? (r?.views != null ? String(r.views) : "");
-          return <div key={d} style={{ display: "flex", gap: 10, alignItems: "center", background: "#fff", borderRadius: 10, padding: "9px 12px", flexWrap: "wrap" }}>
-            <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{d}</span>
-            <span style={{ flex: 1, minWidth: 130, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.t || `คลิปวันที่ ${d}`}</span>
-            <input inputMode="numeric" placeholder="วิว" value={val}
-              onChange={e => setDraft(s => ({ ...s, [d]: e.target.value.replace(/[^\d]/g, "") }))}
-              onBlur={() => draft[d] !== undefined && save(d)}
-              onKeyDown={e => e.key === "Enter" && e.currentTarget.blur()}
-              style={{ width: 96, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 14, fontFamily: "inherit", textAlign: "right" }} />
-            {saving === d && <span className="muted" style={{ fontSize: 12 }}>บันทึก…</span>}
-          </div>;
-        })}
+    {!review && <>
+      <div className="field" style={{ marginTop: 14, marginBottom: 10 }}>
+        <label style={{ fontSize: 13.5 }}>เดือนที่ผ่านมาลงไปกี่คลิป? <span className="muted">(ไม่ครบก็ไม่เป็นไรค่ะ)</span></label>
+        <input inputMode="numeric" value={clipsDone} placeholder="เช่น 18"
+          onChange={e => setClipsDone(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
+          style={{ maxWidth: 120 }} />
       </div>
-      <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-        กรอกแล้ว {filled}/{days.length} คลิป · ดูยอดวิวได้จาก Insights ในแอปของคุณ
+      <label className="btn full" style={{ display: "block", textAlign: "center", cursor: busy ? "default" : "pointer", opacity: busy ? .6 : 1 }}>
+        {busy ? "ครูพี่คิมกำลังอ่านสถิติ…" : "📷 แนบแคปหน้าสถิติ (สูงสุด 4 รูป)"}
+        <input type="file" accept="image/*" multiple hidden disabled={busy} onChange={upload} />
+      </label>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.7 }}>
+        💡 แคปหน้าที่เห็น<b>ยอดวิวของแต่ละโพสต์</b> — Instagram: โปรไฟล์ → ☰ → Insights → เนื้อหาที่คุณแชร์ ·
+        TikTok: โปรไฟล์ → ☰ → เครื่องมือครีเอเตอร์ → ข้อมูลเชิงลึก → เนื้อหา
       </p>
     </>}
 
-    {/* สิ่งที่ระบบเรียนรู้จากช่องนี้ — ของที่ลูกค้าจะอยากกลับมาดู */}
-    {learning && !learning.enough && filled > 0 && <div style={{ marginTop: 14, background: "#fff", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, lineHeight: 1.7 }}>
-      🔒 กรอกอีก <b>{Math.max(0, learning.need - learning.clips)} คลิป</b> ครูพี่คิมจะเริ่มบอกได้ว่าคนดูของคุณชอบแนวไหน
-      <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>ต้องมีอย่างน้อย {learning.need} คลิปถึงจะสรุปได้แม่น — น้อยกว่านั้นคือเดา</div>
-    </div>}
+    {err && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginTop: 12 }}>{err}</div>}
 
-    {learning?.enough && <div style={{ marginTop: 16, background: "#fff", borderRadius: 12, padding: "14px 16px" }}>
+    {review && <div style={{ marginTop: 16, background: "#fff", borderRadius: 12, padding: "14px 16px" }}>
       <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 8 }}>🧠 สิ่งที่เรารู้เกี่ยวกับคนดูของคุณแล้ว</div>
-      <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>จาก {learning.clips} คลิปจริง · เฉลี่ย {learning.avg_views.toLocaleString()} วิว/คลิป</div>
 
-      {learning.best?.length > 0 && <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a7f43", marginBottom: 4 }}>🏆 คลิปที่ไปได้ดีที่สุด</div>
-        {learning.best.map((b, i) => <div key={i} style={{ fontSize: 13.5, lineHeight: 1.7 }}>
-          • <b>{Number(b.views).toLocaleString()} วิว</b> — {b.title}
-        </div>)}
+      {review.summary && <div style={{ background: "#F3F0FB", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, lineHeight: 1.75, marginBottom: 12 }}>
+        💬 <b>ครูพี่คิม:</b> {review.summary}
       </div>}
 
-      {(learning.by_format?.length > 0 || learning.by_goal?.length > 0) && <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-        {[...(learning.by_format || []), ...(learning.by_goal || [])].slice(0, 4).map((x, i) =>
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "3px 0", gap: 10 }}>
-            <span>{x.key}</span>
-            <span style={{ fontWeight: 700, color: x.vs_avg >= 0 ? "#1a7f43" : "#b42318", flexShrink: 0 }}>
-              {x.vs_avg >= 0 ? "▲ +" : "▼ "}{Math.abs(x.vs_avg)}%
-            </span>
-          </div>)}
+      {review.worked?.length > 0 && <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a7f43", marginBottom: 4 }}>✅ แนวที่เวิร์กกับช่องคุณ</div>
+        {review.worked.map((w, i) => <div key={i} style={{ fontSize: 13.5, lineHeight: 1.75 }}>• {w}</div>)}
       </div>}
 
-      <div style={{ marginTop: 12, background: "#F3F0FB", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, lineHeight: 1.7 }}>
-        💬 <b>ครูพี่คิม:</b> ข้อมูลนี้จะถูกใช้เขียนแผนเดือนหน้าให้คุณโดยอัตโนมัติค่ะ —
-        เดือนหน้าเราจะทำแนวที่เวิร์กให้มากขึ้น และเลี่ยงแนวที่ยังไม่ไป 🩵
+      {review.didnt_work?.length > 0 && <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#B26A00", marginBottom: 4 }}>⚠️ แนวที่ยังไม่ไป</div>
+        {review.didnt_work.map((w, i) => <div key={i} style={{ fontSize: 13.5, lineHeight: 1.75 }}>• {w}</div>)}
+      </div>}
+
+      {review.posts?.length > 0 && <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--muted)" }}>ดูตัวเลขที่อ่านได้จากรูป ({review.posts.length} โพสต์)</summary>
+        <div style={{ marginTop: 8 }}>
+          {[...review.posts].sort((a, b) => (b.views || 0) - (a.views || 0)).map((p, i) =>
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, padding: "4px 0", borderTop: i ? "1px solid var(--border)" : 0 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.label}</span>
+              <span style={{ fontWeight: 700, flexShrink: 0 }}>{Number(p.views || 0).toLocaleString()}</span>
+            </div>)}
+        </div>
+      </details>}
+
+      <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 13, color: "var(--muted)" }}>
+        ✨ ข้อมูลนี้จะถูกใช้เขียนแผนเดือนหน้าให้คุณอัตโนมัติค่ะ
+        <button className="link" style={{ background: "none", border: 0, cursor: "pointer", padding: 0, marginLeft: 6, fontSize: 13 }}
+          onClick={() => { setReview(null); setOpen(true); }}>ส่งรูปใหม่</button>
       </div>
     </div>}
   </div>;

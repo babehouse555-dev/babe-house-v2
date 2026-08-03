@@ -271,12 +271,21 @@ ${topics ? `- ⛔ ห้ามใช้หัวข้อคอนเทนต�
 // 📈 ผลจริงรายคลิปของเดือนก่อน — ของจริงที่สุดที่เรามี สำคัญกว่าทฤษฎีทุกอย่าง
 // คิมสั่ง 3 ส.ค.: "ยิ่งลูกค้ากลับมาใช้ ตัวคอนเทนต์ยิ่งเก่งขึ้นไปเรื่อยๆ ช่องเค้ายิ่งเติบโต วิเคราะห์ได้ลึกขึ้น"
 function clipLearningBlock(L) {
-  if (!L || !L.enough) return "";
+  if (!L) return "";
+  // สรุปที่ครูพี่คิม (AI) อ่านจากแคปสิ้นเดือน — มาก่อนตัวเลขดิบ เพราะเป็นข้อสรุปที่ใช้ต่อได้เลย
+  const fromReview = (L.worked?.length || L.didnt_work?.length) ? `
+
+📸📸 *** สรุปสิ้นเดือนที่แล้ว จากสถิติจริงที่เจ้าของช่องส่งมา — ของจริงที่สุดที่เรามี ***
+${L.clips_done != null ? `- เดือนที่แล้วเขาลงไปจริง ${L.clips_done} คลิป จาก 30 วันในแผน${L.clips_done < 15 ? " (ลงได้ไม่ถึงครึ่ง → เดือนนี้ให้แผนทำง่ายขึ้น อย่าเพิ่มภาระ)" : ""}` : ""}
+${L.worked?.length ? `✅ แนวที่เวิร์กจริงกับช่องนี้ (→ ต่อยอด ทำซ้ำสูตรในมุมใหม่):\n${L.worked.map(x => "  • " + x).join("\n")}` : ""}
+${L.didnt_work?.length ? `❌ แนวที่ยังไม่ไป (→ เลี่ยง หรือเปลี่ยนวิธีนำเสนอใหม่หมด):\n${L.didnt_work.map(x => "  • " + x).join("\n")}` : ""}
+${L.coach_summary ? `- สรุปภาพรวมเดือนที่แล้ว: ${L.coach_summary}` : ""}` : "";
+  if (!L.enough) return fromReview;
   const fmtRow = (r) => `วันที่ ${r.day} · ${Number(r.views).toLocaleString()} วิว · "${r.title}"${r.format ? ` · ฟอร์แมต: ${r.format}` : ""}${r.goal ? ` · เป้า: ${r.goal}` : ""}`;
   const grp = (list, label) => list.length
     ? `\n- ${label}: ` + list.map(x => `${x.key} เฉลี่ย ${x.avg.toLocaleString()} วิว (${x.vs_avg >= 0 ? "+" : ""}${x.vs_avg}% จากค่าเฉลี่ยช่อง · ${x.clips} คลิป)`).join(" · ")
     : "";
-  return `
+  return `${fromReview}
 
 📈📈 *** ผลจริงจากคลิปที่เจ้าของช่องลงไปแล้ว ${L.clips} คลิป — ข้อมูลนี้สำคัญที่สุดในทั้งหมด ***
 นี่คือ "คนดูของช่องนี้จริงๆ" ไม่ใช่ทฤษฎีทั่วไป ⛔ ถ้าสิ่งที่คุณคิดว่าควรทำขัดกับตัวเลขพวกนี้ ให้เชื่อตัวเลขเสมอ
@@ -1123,4 +1132,60 @@ export async function auditBlueprintMatch(parsed, analysis, lang = "th") {
     if (hasNums) flags.push(...checkMetricsSanity(m));
     return flags;
   } catch (e) { console.warn("auditBlueprintMatch", e.message); return []; }
+}
+
+// ═══════ 📸 สรุปสิ้นเดือนจากแคป Insight — "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
+// คิม: "ลูกค้าต้องมาส่ง insight หลายคลิปเลยหรอ มันเยอะมากเลยนะ 30 คลิป — ทำแค่ตอนจบเดือนก็พอ
+//       คือเราดูว่ายอดรายเดือนมันเพิ่มขึ้นจากคลิปไหน แล้วก็ให้ AI เอาข้อมูลนี้ไปทำงานต่อ
+//       ไม่ต้องให้เค้ามากรอกรายคลิป มันเยอะมาก"
+//
+// ลูกค้าแคปหน้า Insights / Top content มาแค่รูปเดียว (หรือ 2-3 รูป) แล้ว AI อ่านให้ทั้งหมด
+// แล้วจับคู่กับปฏิทิน 30 วันของเดือนนั้น → รู้ว่าแผนวันไหนที่ลงจริงแล้วไปได้ดี
+const MONTH_REVIEW_SCHEMA = { type: Type.OBJECT, properties: {
+  readable: { type: Type.BOOLEAN },
+  unreadable_reason: { type: Type.STRING },
+  posts: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
+    label: { type: Type.STRING },              // ที่อ่านได้จากรูป (แคปชัน/หัวข้อ/สิ่งที่เห็นในภาพปก)
+    views: { type: Type.NUMBER },
+    matched_day: { type: Type.NUMBER },        // วันในแผนที่ตรงกัน · 0 = จับคู่ไม่ได้
+    match_confidence: { type: Type.STRING },   // high | medium | low
+  }, required: ["label", "views", "matched_day", "match_confidence"] } },
+  worked: { type: Type.ARRAY, items: { type: Type.STRING } },
+  didnt_work: { type: Type.ARRAY, items: { type: Type.STRING } },
+  summary: { type: Type.STRING },
+}, required: ["readable", "posts", "worked", "didnt_work", "summary"] };
+
+const MONTH_REVIEW_PROMPT = `คุณคือครูพี่คิม กำลังดู "แคปหน้าสถิติสิ้นเดือน" ที่ลูกค้าส่งมา เพื่อสรุปว่าเดือนที่ผ่านมาคอนเทนต์แนวไหนเวิร์ก
+
+หน้าที่:
+1. อ่านรูปให้ครบทุกโพสต์ที่เห็น — เอา "ยอดวิว/ยอดเข้าถึง" ของแต่ละโพสต์ กับสิ่งที่พอบอกได้ว่าโพสต์นั้นเกี่ยวกับอะไร (จากแคปชัน/ตัวหนังสือบนภาพปก/สิ่งที่เห็นในภาพ)
+2. จับคู่แต่ละโพสต์กับ "แผน 30 วัน" ที่ให้มา → ใส่ matched_day
+   - ตรงชัด (หัวข้อ/แคปชันตรงกัน) = high · พอเดาได้จากแนวเรื่อง = medium · เดาไม่ออก = low
+   - ⛔ ถ้าจับคู่ไม่ได้จริงๆ ให้ matched_day = 0 และ confidence = low — **ห้ามเดามั่วให้ครบ**
+3. สรุป worked / didnt_work เป็นข้อสั้นๆ ที่เอาไปใช้วางแผนต่อได้ (พูดถึง "แนว/ฟอร์แมต/วิธีเปิดเรื่อง" ไม่ใช่แค่ชื่อคลิป)
+4. summary = 2-3 ประโยคด้วยน้ำเสียงโค้ชที่อบอุ่น พูดกับเจ้าของช่องตรงๆ
+
+⛔ กฎเหล็ก:
+- ใช้เฉพาะตัวเลขที่เห็นในรูปจริงๆ ห้ามคำนวณเอง ห้ามเดา ห้ามแต่ง
+- ถ้ารูปเบลอ/ไม่ใช่หน้าสถิติ/อ่านไม่ออก → readable = false + บอกเหตุผลสั้นๆ ว่าให้แคปหน้าไหนมาแทน
+- ถ้าเห็นแค่ยอดรวมของช่อง ไม่เห็นรายโพสต์ → posts = [] แต่ยัง readable = true ได้ ถ้าสรุปภาพรวมได้`;
+
+// อ่านแคปสิ้นเดือน + จับคู่กับปฏิทินของเดือนนั้น
+export async function reviewMonth({ images, calendar, lang = "th" }) {
+  const cal = (Array.isArray(calendar) ? calendar : []).map(c => `วันที่ ${c.d} · ${c.g || ""} · ${c.f || ""} · ${c.t || ""}${c.h ? ` · ฮุก: ${c.h}` : ""}`).join("\n");
+  if (!ai) return {
+    review: { readable: true, posts: [], worked: ["(โหมดทดสอบ — ใส่ GEMINI_API_KEY เพื่อให้ครูพี่คิมอ่านแคปจริง)"], didnt_work: [], summary: "โหมดทดสอบค่ะ" },
+    model: "fallback-local", usage: { input: 0, output: 0, total: 0 },
+  };
+  const parts = [];
+  for (const img of (images || [])) parts.push({ inlineData: { mimeType: img.mediaType, data: img.data } });
+  parts.push({ text: `แผน 30 วันของเดือนที่ผ่านมา (ใช้จับคู่กับโพสต์ในรูป):\n${cal}\n\nอ่านรูปแล้วตอบตามสเปก JSON` });
+  const resp = await ai.models.generateContent({
+    model: MODEL, contents: [{ role: "user", parts }],
+    config: { systemInstruction: MONTH_REVIEW_PROMPT + langSuffix(lang), responseMimeType: "application/json",
+              responseSchema: MONTH_REVIEW_SCHEMA, maxOutputTokens: 6000, thinkingConfig: { thinkingBudget: 2048 } },
+  });
+  const u = resp.usageMetadata || {};
+  return { review: JSON.parse(resp.text), model: MODEL,
+           usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
 }

@@ -59,19 +59,20 @@ export default function Checkout() {
 
   const isMock = !order || order.provider === "mock";
   return (
-    <div className="wrap narrow page-pad">
+    <div className="wrap page-pad">
       <div className="brand">BABE HOUSE · SECURE CHECKOUT</div>
       <h1 className="page">{t("co_title")}</h1>
       <p className="sub">{t("co_sub")}</p>
-      <div className="card">
-        {/* เลือกแพ็ก — การ์ดแนวตั้งเห็นรายละเอียดครบ (คิมสั่ง 3 ส.ค. "เหมือนตอนที่ทำคลับ") */}
-        {plans.length > 0 && <>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{t("co_pick_plan")}</div>
-          <p className="muted" style={{ fontSize: 13.5, margin: "0 0 22px", lineHeight: 1.7 }}>{t("co_pick_plan_sub")}</p>
-          <div style={{ marginBottom: 20 }}>
-            <PlanCards selected={plan} onPick={pickPlan} busy={busy} compact />
-          </div>
-        </>}
+
+      {/* เลือกแพ็ก — 3 ช่องเรียงกัน เทียบง่ายในตาเดียว ไม่ต้องเลื่อนลงไปดู (คิมสั่ง 3 ส.ค.)
+          จอแคบจะเรียงลงมาเองอัตโนมัติ */}
+      {plans.length > 0 && <div style={{ marginBottom: 26 }}>
+        <div className="center" style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>{t("co_pick_plan")}</div>
+        <p className="center muted" style={{ fontSize: 13.5, margin: "0 auto 24px", lineHeight: 1.7, maxWidth: 620 }}>{t("co_pick_plan_sub")}</p>
+        <PlanCards selected={plan} onPick={pickPlan} busy={busy} />
+      </div>}
+
+      <div className="card" style={{ maxWidth: 460, margin: "0 auto" }}>
         <div className="between" style={{ background: "var(--soft)", borderRadius: 14, padding: 14, marginBottom: 12 }}>
           <span>{t("co_total")}</span><span style={{ fontSize: 26, fontWeight: 800, color: "var(--blue-d)" }}>{baht(price)}</span>
         </div>

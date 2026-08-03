@@ -195,6 +195,32 @@ export async function initDb() {
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ; -- ส่งถึงลูกค้าเมื่อไหร่ (ไว้วัดตรงเวลา)
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS reject_count INTEGER DEFAULT 0; -- โดนตีกลับกี่รอบ
 
+    -- ═══════ 🏢 งานลูกค้านอกเว็บ + ระบบตามงาน (คิมสั่ง 4 ส.ค. 2569) ═══════
+    -- "ลูกตาลเป็นด่านแรกในการรับหน้า รับบรีฟ เอาบรีฟมาลงในบอร์ดตัวเอง จากนั้นระบบเป็นคน assign งาน
+    --  หน้าที่ของลูกตาลก็จะเหลือแค่รับหน้าลูกค้าและตรวจงานแค่นั้น ไม่ต้องประสาน"
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'web';  -- web | ae (ลูกตาลกรอกเอง)
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_name TEXT;           -- ชื่อลูกค้านอกเว็บ
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_contact TEXT;        -- ไลน์/เบอร์ ไว้ให้ระบบตามงาน
+    -- ⏱️ นาฬิกาเริ่มนับเมื่อ "ได้ฟุตเทจครบ" ไม่ใช่วันรับงาน — กันโดนบีบเวลาเพราะลูกค้าส่งของช้า
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS files_ready_at TIMESTAMPTZ;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_due_at TIMESTAMPTZ;  -- เดดไลน์ที่ลูกค้าขอมา
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS deadline_risk TEXT;         -- ok | at_risk | slipped
+    -- 🔁 รอบแก้: แยกว่าใครผิด — ของเราแก้ฟรีเสมอ ของลูกค้าเปลี่ยนใจนับโควตา
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_revisions INTEGER DEFAULT 0;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS our_fix_count INTEGER DEFAULT 0;
+
+    -- 📮 ระบบตามงานลูกค้าอัตโนมัติ — กันงานตกหล่นเพราะคนลืมตาม
+    CREATE TABLE IF NOT EXISTS client_followups (
+      followup_id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      kind TEXT NOT NULL,              -- footage | feedback | approval
+      round INTEGER DEFAULT 1,         -- ตามรอบที่เท่าไหร่
+      sent_at TIMESTAMPTZ DEFAULT now(),
+      channel TEXT DEFAULT 'email',
+      note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_followup_order ON client_followups(order_id, kind, round);
+
     -- ═══════ 🧾 ใบกำกับภาษี (คิมสั่ง 3 ส.ค. 2569) ═══════
     -- "ทุกการจ่ายเงินเราต้องออกใบกำกับภาษีอยู่แล้ว เอาไปส่งบัญชีรายเดือน"
     -- ลูกค้าทั่วไป: ออกอัตโนมัติด้วยชื่อที่มีอยู่ ไม่ต้องกรอกอะไรเพิ่ม

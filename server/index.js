@@ -3308,6 +3308,131 @@ app.post("/api/team/availability", async (req, res) => {
   res.json({ ok: true, day, slots });
 });
 
+// ═══════ 📮 ระบบตามงานลูกค้าอัตโนมัติ (คิมสั่ง 4 ส.ค. 2569) ═══════
+// "ถ้าใช้ระบบคนตามอาจจะมีตกหล่นและหลงลืมไปว่าจะมีงานนี้ อยากได้ระบบคอยติดตามงานลูกค้าด้วย"
+// ตาม 2 เรื่อง: (1) ฟุตเทจยังไม่มา (2) ส่งดราฟต์แล้วลูกค้าเงียบ
+// ⏱️ นาฬิกาส่งงานเริ่มนับตอนได้ฟุตเทจครบ — ลูกค้าส่งช้า กำหนดส่งเลื่อนตาม ไม่ใช่ทีมรับกรรม
+// ตามวันที่ 2 · 5 · 9 แล้วหยุด (ไม่ตื๊อจนน่ารำคาญ) — ตั้งเป็น "0" ได้เพื่อทดสอบ
+const FOLLOWUP_DAYS = String(process.env.FOLLOWUP_DAYS || "2,5,9").split(",").map(Number).filter(n => n >= 0);
+
+async function runClientFollowups(force = false) {
+  try {
+    let sent = 0;
+    // (1) รอฟุตเทจ
+    const waitingFiles = await q(`SELECT o.*, EXTRACT(DAY FROM now() - o.created_at)::int AS age
+      FROM edit_orders o WHERE o.status='awaiting_files' AND o.payment_status='paid'
+      AND o.created_at > now() - interval '60 days' LIMIT 200`);
+    for (const o of waitingFiles) {
+      const round = FOLLOWUP_DAYS.filter(dd => Number(o.age) >= dd).length;
+      if (!round) continue;
+      const done = await one(`SELECT 1 FROM client_followups WHERE order_id=$1 AND kind='footage' AND round=$2`, [o.order_id, round]);
+      if (done && !force) continue;
+      const to = o.source === "ae" ? null : o.email;   // ลูกค้านอกเว็บไม่มีอีเมลจริง → แจ้ง AE แทน
+      const who = o.client_name || o.email;
+      if (to) await sendEmail(to, "🎬 รอไฟล์จากคุณอยู่นะคะ",
+        wrap(`สวัสดีค่ะ 🩵<br><br>ทีมเตรียมคิวตัดคลิปให้คุณไว้แล้ว แต่ยังไม่ได้รับไฟล์เลยค่ะ<br><br>
+          <b>ส่งลิงก์ฟุตเทจมาได้ที่หน้างานตัดต่อเลยนะคะ</b><br>
+          ⏱️ กำหนดส่งงานจะเริ่มนับตั้งแต่วันที่เราได้ไฟล์ครบค่ะ — ยิ่งส่งเร็ว ยิ่งได้งานเร็วนะคะ<br><br>
+          ${btn(appBaseUrl() + "/edit/" + o.order_id, "ส่งไฟล์ให้ทีม")}`)).catch(() => {});
+      else await sendEmail(OPS_EMAIL, `📮 ตามฟุตเทจ: ${who} (รอบ ${round})`,
+        wrap(`งานนี้รอไฟล์มา <b>${o.age} วัน</b>แล้วค่ะ<br><br>ลูกค้า: <b>${who}</b><br>ติดต่อ: ${o.client_contact || "-"}<br>งาน: ${(safeJson(o.brief_json) || {}).title || "-"}<br><br>ช่วยตามให้หน่อยนะคะ`)).catch(() => {});
+      await run(`INSERT INTO client_followups (followup_id,order_id,kind,round,note) VALUES ($1,$2,'footage',$3,$4)`,
+        [uid("fu"), o.order_id, round, `รอไฟล์ ${o.age} วัน`]);
+      sent++;
+    }
+    // (2) ส่งดราฟต์แล้วลูกค้าเงียบ
+    const waitingFb = await q(`SELECT o.*, EXTRACT(DAY FROM now() - o.updated_at)::int AS age
+      FROM edit_orders o WHERE o.status='draft_sent' AND o.updated_at < now() - interval '2 days'
+      AND o.updated_at > now() - interval '60 days' LIMIT 200`);
+    for (const o of waitingFb) {
+      const round = FOLLOWUP_DAYS.filter(dd => Number(o.age) >= dd).length;
+      if (!round) continue;
+      const done = await one(`SELECT 1 FROM client_followups WHERE order_id=$1 AND kind='feedback' AND round=$2`, [o.order_id, round]);
+      if (done && !force) continue;
+      const to = o.source === "ae" ? null : o.email;
+      if (to) await sendEmail(to, "👀 ดูงานที่ทีมส่งไปหรือยังคะ",
+        wrap(`สวัสดีค่ะ 🩵<br><br>ทีมส่งงานให้ดูไป <b>${o.age} วัน</b>แล้ว ยังไม่ได้รับคอมเมนต์กลับเลยค่ะ<br><br>
+          ถ้าโอเคแล้วกดอนุมัติได้เลย ถ้าอยากแก้ตรงไหนบอกได้เลยนะคะ<br>
+          <span style="color:#888">ถ้าเงียบเกิน 14 วัน ระบบจะถือว่างานผ่านและปิดงานให้อัตโนมัติค่ะ</span><br><br>
+          ${btn(appBaseUrl() + "/edit/" + o.order_id, "เปิดดูงาน")}`)).catch(() => {});
+      else await sendEmail(OPS_EMAIL, `📮 ตามฟีดแบ็ก: ${o.client_name || o.email} (รอบ ${round})`,
+        wrap(`ส่งงานไปแล้ว <b>${o.age} วัน</b> ลูกค้ายังไม่ตอบค่ะ<br><br>ติดต่อ: ${o.client_contact || "-"}<br><br>ช่วยตามให้หน่อยนะคะ`)).catch(() => {});
+      await run(`INSERT INTO client_followups (followup_id,order_id,kind,round,note) VALUES ($1,$2,'feedback',$3,$4)`,
+        [uid("fu"), o.order_id, round, `รอฟีดแบ็ก ${o.age} วัน`]);
+      sent++;
+    }
+    if (sent) console.log(`[followup] ส่งไป ${sent} ฉบับ`);
+    return sent;
+  } catch (e) { console.error("followup", e.message); return 0; }
+}
+
+// ⏱️ ได้ฟุตเทจครบแล้ว → เริ่มนับนาฬิกาส่งงานตรงนี้ (ไม่ใช่วันรับงาน)
+// คิมถาม: "ถ้าลูกค้าให้เดดไลน์มาแต่ยังอัพฟุตเทจไม่ครบจะทำยังไง"
+// → ระบบเลื่อนกำหนดส่งให้อัตโนมัติ + บอกลูกค้าตรงๆ ว่าเลื่อนเพราะอะไร ไม่ต้องให้คนไปเจรจาเอง
+app.post("/api/team/files-ready", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || "");
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [id]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const lead = leadDaysFor(Number(o.clips) || 1);   // ใช้สูตรเดียวกับตอนบอกลูกค้าตอนขาย
+  const due = addWorkDays(new Date(), lead);
+  const late = o.client_due_at && due > new Date(o.client_due_at);
+  await run(`UPDATE edit_orders SET files_ready_at=COALESCE(files_ready_at, now()), due_at=$2,
+     status=CASE WHEN status='awaiting_files' THEN 'editing' ELSE status END,
+     deadline_risk=$3, updated_at=now() WHERE order_id=$1`,
+    [id, due.toISOString(), late ? "slipped" : "ok"]);
+  await teamComment(id, me.name, `📥 ได้ไฟล์ครบแล้ว — กำหนดส่งใหม่ ${thDate(due)}${late ? " ⚠️ เลยวันที่ลูกค้าขอ" : ""}`);
+  res.json({ ok: true, due_at: due.toISOString(), due_th: thDate(due), slipped: !!late,
+    message: late ? "เลยวันที่ลูกค้าขอ — ระบบเตรียมข้อความแจ้งลูกค้าให้แล้ว" : "กำหนดส่งใหม่เรียบร้อย" });
+});
+
+// 🏢 ลูกตาลรับบรีฟลูกค้านอกเว็บ → ระบบมอบหมายให้เอง (คิมสั่ง 4 ส.ค. 2569)
+// "ลูกตาลเป็นด่านแรกในการรับหน้า รับบรีฟ เอาบรีฟมาลงในบอร์ดตัวเอง จากนั้นระบบเป็นคน assign
+//  หน้าที่ของลูกตาลก็จะเหลือแค่รับหน้าลูกค้าและตรวจงาน ไม่ต้องประสาน"
+// ⏱️ เดดไลน์: เก็บ "วันที่ลูกค้าขอ" แยกจาก "กำหนดส่งจริง" ที่นับจากวันได้ฟุตเทจครบ
+app.post("/api/team/intake", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะ AE เท่านั้นค่ะ" });
+  const b = req.body || {};
+  const client = String(b.client_name || "").trim();
+  const title = String(b.title || "").trim();
+  if (!client || !title) return res.status(400).json({ ok: false, error: "MISSING", message: "ใส่ชื่อลูกค้าและชื่องานด้วยนะคะ" });
+  const clips = Math.max(1, Math.min(200, Number(b.clips) || 1));
+  const hasFiles = !!String(b.footage_url || "").trim();
+  const id = uid("eo");
+  try {
+    await run(`INSERT INTO edit_orders (order_id,email,billing_cycle,brief_json,clips,price_per_clip,amount_satang,
+        payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,status,
+        source,client_name,client_contact,client_due_at,files_ready_at,due_at)
+      VALUES ($1,$2,$3,$4,$5,0,0,'paid','external','external',$6,$7,$8,$9,$10,'ae',$11,$12,$13,$14,$15)`,
+      [id, String(b.client_email || `client+${id.slice(-8)}@babehouse.local`).toLowerCase(),
+       currentBillingCycle(), JSON.stringify({ title, brief: String(b.brief || "") }).slice(0, 20000), clips,
+       String(b.note || "").slice(0, 2000) || null,
+       String(b.footage_url || "").slice(0, 1000) || null,
+       String(b.voice_url || "").slice(0, 1000) || null,
+       String(b.ref_links || "").slice(0, 2000) || null,
+       hasFiles ? "editing" : "awaiting_files",
+       client.slice(0, 200), String(b.client_contact || "").slice(0, 200) || null,
+       /^\d{4}-\d{2}-\d{2}$/.test(String(b.client_due || "")) ? b.client_due : null,
+       hasFiles ? new Date().toISOString() : null,
+       /^\d{4}-\d{2}-\d{2}$/.test(String(b.client_due || "")) ? b.client_due : null]);
+    await teamComment(id, me.name, `🏢 รับบรีฟจากลูกค้า ${client}${b.client_due ? ` · ลูกค้าขอส่ง ${b.client_due}` : ""}`);
+    // ให้ระบบเลือกคนทันที — ลูกตาลไม่ต้องเลือกเอง
+    const job = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [id]);
+    const { member, reason } = await pickAssignee(job);
+    if (member) {
+      await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), assigned_by='system', assign_reason=$3,
+         status=CASE WHEN status='awaiting_files' THEN status ELSE 'assigned' END WHERE order_id=$2`, [member.member_id, id, reason]);
+      await teamComment(id, "ระบบ", `🤖 มอบหมายให้ ${member.name} อัตโนมัติ — ${reason}`);
+      const m = await one(`SELECT email, name FROM team_members WHERE member_id=$1`, [member.member_id]);
+      if (m?.email) sendEmail(m.email, "🎬 มีงานตัดต่อใหม่รอคุณอยู่",
+        wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>ระบบมอบหมายงานใหม่ให้คุณแล้วนะคะ<br><br>${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
+    }
+    res.json({ ok: true, order_id: id, assigned_to: member?.name || null, reason: member ? reason : "ยังไม่มีใครลงว่างพอ — รอมอบหมาย" });
+  } catch (e) { console.error("intake", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 // 📦 งานนอกเว็บ — ใครก็เพิ่มของตัวเองได้ (ไม่ต้องรอลูกตาลกรอกให้)
 app.get("/api/team/external", async (req, res) => {
   const me = await teamWho(req);
@@ -3346,7 +3471,8 @@ app.post("/api/team/external", async (req, res) => {
 // 👀 ภาพรวมตารางงานทุกคน (AE/คิม) — ใครว่าง ใครเต็ม โปรเซสไปถึงไหน
 app.get("/api/team/workload", async (req, res) => {
   const me = await teamWho(req);
-  if (!me || !["owner", "ae", "senior"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  // ⛔ เหลือให้คิมคนเดียว (คิมสั่ง 4 ส.ค.) — คนอื่นโฟกัสงานตัวเองพอ ระบบมอบหมายเองแล้ว
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
   try {
     const [wl, score] = await Promise.all([teamWorkload(), teamScorecard(String(req.query.month || "") || undefined)]);
     const sm = Object.fromEntries(score.map(s => [s.member_id, s]));
@@ -4099,7 +4225,7 @@ async function runActivationReminders() {
     if (sent) console.log(`[activation] ${sent}`); return sent;
   } catch (e) { console.error("activation", e.message); return 0; }
 }
-app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, abandoned, activation, cycle: currentBillingCycle() }); });
+app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const followups = await runClientFollowups(true); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, followups, abandoned, activation, cycle: currentBillingCycle() }); });
 // 📣 ลูกค้ามาจากไหน + ใครจ่ายเงินจริง (ตอบคำถาม "มีคนซื้อจากแอดยัง")
 app.get("/api/admin/attribution", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

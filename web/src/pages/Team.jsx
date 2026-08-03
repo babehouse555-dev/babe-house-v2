@@ -205,7 +205,7 @@ export default function Team() {
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               {[["review", "🔍 รอฉันตรวจ", inReview.length, "#0b6ea8"],
                 ["mine", "✂️ งานที่ฉันต้องตัด", myJobs.length, "#5a3fc0"],
-                ...(canSeeTeam ? [["people", "👥 ดูรายคน", active.length, "#2f2a26"]] : [])]
+                ...(isOwner ? [["people", "👥 ดูรายคน", active.length, "#2f2a26"]] : [])]
                 .map(([k, label, n, tone]) => {
                   const on = sub === k;
                   return <button key={k} onClick={() => { setSub(k); setPerson(null); }}

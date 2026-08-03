@@ -13,7 +13,7 @@ const STAFF = { k: "staff", label: "ของคิม/ทีม", tone: "#2E86D
 
 const GROUPS = [
   {
-    name: "Blueprint — แผนคอนเทนต์ 490", emoji: "📘", color: "#C7DEF0",
+    name: "Blueprint — แผนคอนเทนต์รายเดือน", emoji: "📘", color: "#C7DEF0",
     flow: "ลูกค้าเห็นโฆษณา → หน้าแรก → กรอกฟอร์ม → จ่ายเงิน → รอเจน → เปิดเล่ม",
     pages: [
       ["/", "หน้าแรก (หน้าขาย)", "หน้าที่ลูกค้าเจอก่อนใคร ปุ่ม 'เริ่มสร้าง Blueprint'", LIVE],

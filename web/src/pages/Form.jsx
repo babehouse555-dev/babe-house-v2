@@ -353,6 +353,12 @@ export default function Form() {
         instagram_account: lastProfile.instagram_account || f.instagram_account,
         form_responses: fr, insight_images: images, insight_screenshot_base64: images[0] || null
       };
+      // 💳 มีแพ็ก 6/12 เดือนอยู่แล้ว → ปลดล็อกเลย ไม่ต้องผ่านหน้าจ่ายเงิน (คิมเคาะ 3 ส.ค.)
+      // ถ้าปลดไม่ได้ด้วยเหตุผลใดก็ตาม ให้ไหลไปทางจ่ายเงินปกติ — ลูกค้าต้องไม่ติดค้างกลางทาง
+      try {
+        const c = await api("/api/subscription/claim-month", { method: "POST", body: { tier: "Premium_490", payload } });
+        if (c?.ok) { track("form_submit"); nav(c.redirect_url); return; }
+      } catch { /* ไม่มีแพ็ก/ปลดไปแล้ว → ไปหน้าจ่ายเงินตามปกติ */ }
       const r = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload } });
       track("form_submit");
       if (r.existing) alert(r.message || t("fm_exists2"));

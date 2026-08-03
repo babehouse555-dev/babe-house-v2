@@ -20,7 +20,34 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
 const app = express();
 
-const PRICE_SATANG = Number(process.env.PRICE_SATANG || 49000);
+// ═══════ 💳 ราคา 3 แพ็ก (คิมเคาะ 3 ส.ค. 2569) ═══════
+// เหตุผลที่ขึ้นราคาและทำแพ็กยาว: ลูกค้าจ่ายเงิน 232 คน — 231 คนซื้อเดือนเดียวแล้วหาย (เฉลี่ย 1.01 เดือน)
+// จ่ายก้อนเดียวล่วงหน้า ทำให้เงินจริงต่อลูกค้า 1 คน จาก 429 บาท → 5,970 (6 เดือน) / 8,557 (12 เดือน)
+// ⚠️ ทุกราคา "รวม VAT 7% แล้ว" (ต่างจากงานโปรดักชั่น/บริษัท ที่บวก VAT เพิ่มตามใบกำกับเดิม)
+// ⚠️ ราคาทุกแพ็กคิดจาก PRICE_SATANG ตัวเดียว — แก้ที่เดียวแล้วทั้งระบบตามหมด ห้ามฝังเลขซ้ำ
+// เคยพลาด: ตั้ง PLANS เป็นเลขตายตัว แต่ PRICE_SATANG ใน env เป็น 49000 → รายเดือนขึ้น 490 แต่แพ็กยาวขึ้นราคาใหม่
+// 🚨 ก่อนขึ้นเว็บจริง: ต้องแก้ PRICE_SATANG ใน Railway เป็น 159000 ไม่งั้นราคาไม่เปลี่ยน
+const PRICE_SATANG = Number(process.env.PRICE_SATANG || 159000);   // รายเดือน 1,590 (รวม VAT แล้ว)
+// ปัด "ราคาต่อเดือน" ลงให้ลงท้าย 5 บาท แล้วค่อยคูณ — เลขที่ลูกค้าเห็นจะสวย (1,110 / 795)
+// ปัดลงเสมอ = ลูกค้าได้ส่วนลดไม่น้อยกว่าที่ประกาศไว้
+const planPrice = (months, off) => Math.floor(PRICE_SATANG * (100 - off) / 100 / 500) * 500 * months;
+const mkPlan = (plan, months, off) => {
+  const satang = months === 1 ? PRICE_SATANG : planPrice(months, off);
+  return { plan, months, satang, per_month: Math.round(satang / months / 100), off,
+           full_satang: PRICE_SATANG * months };
+};
+const PLANS = {
+  monthly: mkPlan("monthly", 1, 0),
+  "6m": mkPlan("6m", 6, 30),    // ลด 30%
+  "12m": mkPlan("12m", 12, 50), // ลด 50%
+};
+const planOf = (k) => PLANS[String(k || "monthly")] || PLANS.monthly;
+// VAT รวมอยู่ในราคาแล้ว → ถอดออกมาโชว์ในใบกำกับ
+const vatSplit = (satang) => {
+  const total = Math.round(Number(satang) || 0);
+  const net = Math.round(total / 1.07);
+  return { total, net, vat: total - net };
+};
 const REFERRAL_PERCENT = Number(process.env.REFERRAL_PERCENT || 20);
 const LOYALTY_PERCENT = Number(process.env.LOYALTY_PERCENT || 10);
 const LOYALTY_MIN_MONTHS = Number(process.env.LOYALTY_MIN_MONTHS || 2);
@@ -172,6 +199,7 @@ async function markOrderPaid(orderId, provider = "mock", sid = "") {
   // flip เฉพาะตอนยังไม่ paid → rowCount บอกว่า "เพิ่งจ่ายครั้งแรก" (กัน webhook ยิงซ้ำแล้วแจ้งเตือนซ้ำ)
   const upd = await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4 AND payment_status<>'paid'`, [provider, sid || null, liveMode, orderId]);
   grantCreditsIfCreditOrder(orderId).catch(e => console.error("grant-credits", e.message));
+  activatePlanIfLongOrder(orderId).catch(e => console.error("activate-plan", e.message));
   processReferralReward(orderId).catch(e => console.error("referral", e.message));
   if (upd.rowCount === 1) notifyAdminPurchase(orderId, provider, liveMode).catch(() => {}); // แจ้งเตือน "มีคนซื้อ"
 }
@@ -186,6 +214,35 @@ async function notifyAdminPurchase(orderId, provider, liveMode) {
   const via = liveMode ? "Stripe (เงินเข้าจริง 💵)" : `${provider}${provider === "code" ? " (ใช้โค้ดลด)" : ""}`;
   await sendEmail(ADMIN_ALERT_EMAIL, `💰 มีคนซื้อ! ฿${baht} · ${o.email || "-"}`,
     wrap(`<b>มีลูกค้าซื้อเข้ามาค่ะ 🎉</b><br><br>📧 อีเมล: <b>${o.email || "-"}</b><br>🛒 สินค้า: ${kind}<br>💵 ยอด: <b>฿${baht}</b><br>📱 ช่อง: ${o.instagram_account || "-"}<br>🕐 เวลา: ${when}<br>ช่องทาง: ${via}`)).catch(() => {});
+}
+// ออเดอร์แพ็ก 6/12 เดือน จ่ายแล้ว → เปิดสิทธิ์ให้ (idempotent กัน webhook ยิงซ้ำ)
+// เดือนแรกหักสิทธิ์ทันที เพราะเล่มเดือนนี้ถูกสร้างจากออเดอร์นี้อยู่แล้ว
+async function activatePlanIfLongOrder(orderId) {
+  const o = await getOrder(orderId); if (!o) return;
+  const payload = safeJson(o.order_payload_json) || {};
+  const plan = planOf(payload.plan);
+  if (plan.months <= 1) return;
+  const email = normEmail(o.email || ""); if (!email) return;
+  const exists = await one(`SELECT 1 FROM subscriptions WHERE order_id=$1`, [orderId]);
+  if (exists) return;                                    // เปิดไปแล้ว (webhook ยิงซ้ำ)
+  const subId = uid("sub");
+  // ⚠️ คิดวันหมดอายุใน JS ไม่ใช่ใน SQL — เคยพลาด: ใช้ $6 เป็นทั้งตัวเลขและต่อสตริง interval
+  // Postgres เดาชนิดไม่ได้ → "inconsistent types deduced" → แพ็กไม่เปิดเงียบๆ ทั้งที่ลูกค้าจ่ายแล้ว
+  // เผื่อเวลาเกินไว้ 2 เดือน เผื่อลูกค้าข้ามเดือน จะได้ไม่เสียสิทธิ์
+  const expires = new Date();
+  expires.setMonth(expires.getMonth() + plan.months + 2);
+  await run(`INSERT INTO subscriptions (subscription_id,email,user_id,instagram_account,plan,months_total,months_used,amount_satang,order_id,started_cycle,expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10)`,
+    [subId, email, o.user_id, o.instagram_account || null, plan.plan, plan.months, o.final_amount_satang || plan.satang, orderId, o.billing_cycle, expires.toISOString()]);
+  await run(`INSERT INTO subscription_uses (use_id,subscription_id,billing_cycle,order_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+    [uid("su"), subId, o.billing_cycle, orderId]).catch(() => {});
+  console.log(`[plan] เปิดแพ็ก ${plan.plan} (${plan.months} เดือน) ให้ ${email}`);
+  sendEmail(email, `แพ็ก ${plan.months} เดือนของคุณเปิดใช้แล้วค่ะ 🩵`,
+    wrap(`ขอบคุณที่ไว้ใจครูพี่คิมนะคะ 🩵<br><br>
+      แพ็ก <b>${plan.months} เดือน</b> ของคุณเปิดใช้เรียบร้อยแล้วค่ะ<br><br>
+      ทุกเดือนถัดจากนี้ <b>ไม่ต้องจ่ายอีก</b> — แค่เข้ามากดสร้างเล่มใหม่ได้เลย<br>
+      และยิ่งอยู่กับเรานาน แผนจะยิ่งแม่นขึ้น เพราะระบบเรียนรู้จากคลิปที่คุณลงจริงทุกเดือนค่ะ<br><br>
+      ${btn(appBaseUrl() + "/account", "เปิดบัญชีของฉัน")}`)).catch(() => {});
 }
 // ออเดอร์ซื้อเครดิต (tier Credits_N) จ่ายแล้ว → เติมเครดิต (idempotent กัน webhook ยิงซ้ำ)
 async function grantCreditsIfCreditOrder(orderId) {
@@ -263,12 +320,115 @@ app.post("/api/checkout", async (req, res) => {
       const r = await one(`SELECT COUNT(DISTINCT billing_cycle) n FROM blueprint_requests WHERE email=$1`, [normEmail(payload.email)]);
       if (Number(r.n) >= LOYALTY_MIN_MONTHS) { discountPct = LOYALTY_PERCENT; finalAmount = Math.round(PRICE_SATANG * (100 - LOYALTY_PERCENT) / 100); }
     }
+    // 💳 แพ็ก 6/12 เดือน — ราคาแพ็กมาก่อนส่วนลดอื่นเสมอ (แพ็กลด 30-50% อยู่แล้ว ห้ามลดซ้อน)
+    const plan = planOf(req.body?.plan || payload.plan);
+    if (plan.months > 1) { finalAmount = plan.satang; discountPct = plan.off; refValid = null; }
     const checkoutUrl = `/checkout?order_id=${encodeURIComponent(orderId)}`;
     await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,referred_by,discount_percent,checkout_url,source) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13)`,
-      [orderId, payload.user_id, payload.instagram_account, payload.email || null, parsed.tier, payload.meta_purchase.billing_cycle, JSON.stringify(payload), PROVIDER, finalAmount, refValid, discountPct, checkoutUrl,
+      [orderId, payload.user_id, payload.instagram_account, payload.email || null, parsed.tier, payload.meta_purchase.billing_cycle, JSON.stringify({ ...payload, plan: plan.plan }), PROVIDER, finalAmount, refValid, discountPct, checkoutUrl,
        (String(req.body?.source || payload.source || "").slice(0, 60)) || null]);
-    res.json({ ok: true, order_id: orderId, checkout_url: checkoutUrl, provider: PROVIDER, payment_status: "pending" });
+    res.json({ ok: true, order_id: orderId, checkout_url: checkoutUrl, provider: PROVIDER, payment_status: "pending", plan: plan.plan, amount_satang: finalAmount });
   } catch (err) { console.error(err); res.status(400).json({ ok: false, error: "CHECKOUT_FAILED", message: err.message }); }
+});
+
+// ═══════ 💳 แพ็กราย 6/12 เดือน — ลูกค้าจ่ายก้อนเดียว เดือนถัดไปปลดล็อกเอง ═══════
+
+// แพ็กที่ยังใช้ได้ของอีเมลนี้ (ผูกกับช่อง ถ้าระบุช่องมา)
+async function activeSubscription(email, channel) {
+  if (!email) return null;
+  const rows = await q(`SELECT * FROM subscriptions WHERE lower(email)=lower($1) AND status='active'
+    AND months_used < months_total AND (expires_at IS NULL OR expires_at > now()) ORDER BY created_at`, [email]);
+  if (!rows.length) return null;
+  if (!channel) return rows[0];
+  const norm = (s) => String(s || "").toLowerCase().replace(/[@\s._-]/g, "");
+  return rows.find(r => norm(r.instagram_account) === norm(channel)) || rows.find(r => !r.instagram_account) || null;
+}
+
+// ใช้สิทธิ์ 1 เดือน — กันปลดซ้ำเดือนเดียวกันด้วย unique index (กดรัวๆ ก็ไม่เสียสิทธิ์เกิน)
+async function useSubscriptionMonth(sub, cycle, orderId) {
+  try {
+    await run(`INSERT INTO subscription_uses (use_id,subscription_id,billing_cycle,order_id) VALUES ($1,$2,$3,$4)`,
+      [uid("su"), sub.subscription_id, cycle, orderId || null]);
+  } catch { return false; }   // เดือนนี้ปลดไปแล้ว
+  await run(`UPDATE subscriptions SET months_used = months_used + 1,
+      status = CASE WHEN months_used + 1 >= months_total THEN 'finished' ELSE status END, updated_at=now()
+    WHERE subscription_id=$1`, [sub.subscription_id]);
+  return true;
+}
+
+// ราคาทั้ง 3 แพ็ก (หน้าเว็บดึงไปโชว์ ไม่ฝังเลขไว้ในหน้าเว็บ)
+app.get("/api/plans", async (req, res) => {
+  const email = normEmail(String(req.query.email || ""));
+  const sub = email ? await activeSubscription(email, String(req.query.channel || "")) : null;
+  res.json({ ok: true,
+    plans: Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true })),
+    active: sub ? { plan: sub.plan, months_total: sub.months_total, months_used: sub.months_used,
+                    months_left: sub.months_total - sub.months_used, channel: sub.instagram_account } : null });
+});
+
+// 👑 แอดมิน: ลูกค้าแพ็กยาวยังใช้อยู่ไหม — ตัวเลขที่ต้องดูทุกเดือน
+// ถ้าคนซื้อ 12 เดือนแล้วเลิกเปิดตั้งแต่เดือนที่ 3 แปลว่าปีหน้าเขาไม่ต่อ ต้องรู้ก่อนจะสาย
+app.get("/api/admin/subscriptions", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const subs = await q(`SELECT subscription_id, email, instagram_account, plan, months_total, months_used,
+        amount_satang, status, started_cycle, expires_at, created_at FROM subscriptions ORDER BY created_at DESC LIMIT 500`);
+    const byPlan = {};
+    for (const s of subs) {
+      const k = s.plan;
+      (byPlan[k] ||= { plan: k, count: 0, baht: 0, months_sold: 0, months_used: 0 });
+      byPlan[k].count++; byPlan[k].baht += Number(s.amount_satang || 0) / 100;
+      byPlan[k].months_sold += Number(s.months_total || 0); byPlan[k].months_used += Number(s.months_used || 0);
+    }
+    // ใช้จริงกี่ % ของเดือนที่ขายไป — ต่ำ = ลูกค้าจ่ายแล้วไม่ได้ใช้ = ปีหน้าไม่ต่อ
+    const rows = Object.values(byPlan).map(x => ({ ...x, used_pct: x.months_sold ? Math.round(x.months_used / x.months_sold * 100) : 0 }));
+    const active = subs.filter(s => s.status === "active").length;
+    res.json({ ok: true, total: subs.length, active, by_plan: rows,
+      revenue_baht: subs.reduce((t, s) => t + Number(s.amount_satang || 0) / 100, 0),
+      subscriptions: subs.map(s => ({ ...s, months_left: Number(s.months_total) - Number(s.months_used),
+        amount_baht: Number(s.amount_satang || 0) / 100 })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// ลูกค้าเลือกแพ็กที่หน้าจ่ายเงิน — เปลี่ยนได้จนกว่าจะจ่าย
+app.post("/api/order/set-plan", rateLimit(60, M10), async (req, res) => {
+  const orderId = String(req.body?.order_id || "");
+  const plan = planOf(req.body?.plan);
+  const o = await getOrder(orderId);
+  if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+  if (["paid", "mock_paid"].includes(o.payment_status)) return res.status(409).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้จ่ายแล้วค่ะ" });
+  // ⛔ แพ็กยาวลด 30-50% อยู่แล้ว ห้ามเอาโค้ด/ส่วนลดแนะนำเพื่อนมาลดซ้อน
+  const payload = { ...(safeJson(o.order_payload_json) || {}), plan: plan.plan };
+  await run(`UPDATE blueprint_orders SET final_amount_satang=$1, discount_percent=$2, order_payload_json=$3, discount_code=NULL, referred_by=NULL WHERE order_id=$4`,
+    [plan.satang, plan.off || null, JSON.stringify(payload), orderId]);
+  res.json({ ok: true, plan: plan.plan, months: plan.months, amount_satang: plan.satang, ...vatSplit(plan.satang) });
+});
+
+// เล่มเดือนใหม่ของคนที่มีแพ็กอยู่แล้ว — ไม่ต้องจ่ายซ้ำ สร้างออเดอร์ที่จ่ายแล้วให้เลย
+app.post("/api/subscription/claim-month", rateLimit(20, M10), async (req, res) => {
+  try {
+    const parsed = CheckoutSchema.parse(req.body);
+    const payload = normalizePayload(parsed.payload);
+    const email = normEmail(payload.email || "");
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
+    const cycle = payload.meta_purchase.billing_cycle;
+    const sub = await activeSubscription(email, payload.instagram_account);
+    if (!sub) return res.status(404).json({ ok: false, error: "NO_SUBSCRIPTION", message: "ยังไม่มีแพ็กที่ใช้ได้ค่ะ" });
+
+    const orderId = uid("ord");
+    await upsertUser({ user_id: payload.user_id, instagram_account: payload.instagram_account, business_type: payload.form_responses.business_type });
+    await upsertCustomer(email, payload.instagram_account);
+    const used = await useSubscriptionMonth(sub, cycle, orderId);
+    if (!used) return res.status(409).json({ ok: false, error: "ALREADY_CLAIMED", message: "เดือนนี้ปลดล็อกไปแล้วค่ะ ดูได้ในบัญชีของฉัน" });
+
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url,paid_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'paid',$7,'subscription',0,$8,now())`,
+      [orderId, payload.user_id, payload.instagram_account, email, parsed.tier, cycle, JSON.stringify(payload),
+       `/processing?order_id=${encodeURIComponent(orderId)}`]);
+    res.json({ ok: true, order_id: orderId, from_subscription: true,
+      months_left: sub.months_total - sub.months_used - 1,
+      redirect_url: `/processing?order_id=${encodeURIComponent(orderId)}` });
+  } catch (err) { console.error("claim-month", err.message); res.status(400).json({ ok: false, error: "FAILED", message: err.message }); }
 });
 
 app.get("/api/orders/:orderId", async (req, res) => {
@@ -3563,8 +3723,8 @@ async function runMonthlyReminders(force = false) {
                <b>ก่อนเริ่มเดือนใหม่ ขอสถิติหน่อยนะคะ</b> — แคปหน้า Insights มา<b>รูปเดียวก็พอ</b>
                ครูพี่คิมจะอ่านให้เองว่าคลิปไหนไปได้ดี แล้ว<b>เขียนแผนเดือนหน้าจากของจริง</b> ไม่ใช่เริ่มคิดใหม่จากศูนย์ค่ะ<br><br>
                ${btn(deep, "📸 ส่งสถิติเดือนนี้ (ใช้เวลาไม่ถึงนาที)")}<br><br>
-               ส่งแล้วค่อยมาต่อแผนเดือนใหม่กันนะคะ 🩵<br><br>${btn(renew, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`
-            : `เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(renew, "ปลดล็อกแผนเดือนใหม่ (490฿)")}`,
+               ส่งแล้วค่อยมาต่อแผนเดือนใหม่กันนะคะ 🩵<br><br>${btn(renew, "ดูแพ็กและปลดล็อกแผนเดือนใหม่")}`
+            : `เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(renew, "ดูแพ็กและปลดล็อกแผนเดือนใหม่")}`,
           askStats
             ? `The month is wrapping up — how many clips did you post?${Number(r.uploaded) > 0 ? ` (You ticked <b>${r.uploaded} days</b> in the app.)` : ""}<br><br>
                <b>Before we start the new month, send me your stats</b> — one screenshot of your Insights is enough.
@@ -3609,7 +3769,7 @@ async function runAbandonedFollowups() {
       try { const l = await langOfEmail(r.email); await sendEmail(r.email,
         tr(l, "แผนคอนเทนต์ของคุณรอเปิดอยู่นะคะ 🩵", "Your content plan is waiting for you 🩵"),
         wrap(tr(l,
-          `เห็นว่าคุณเริ่มกรอกข้อมูลช่องไว้แล้ว แต่ยังไม่ได้เปิดดูแผนเต็มๆ เลยค่ะ<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> ไว้ให้แล้ว — กดปุ่มด้านล่างเพื่อดูสรุปและปลดล็อกได้เลยค่ะ<br><br>${btn(url, "ดูแผนของฉัน · ปลดล็อก 490฿")}<br><br><span style="color:#888;font-size:14px">โปรเปิดตัว 490฿ (จากเต็ม 1,590฿) มีจำนวนจำกัดนะคะ</span>`,
+          `เห็นว่าคุณเริ่มกรอกข้อมูลช่องไว้แล้ว แต่ยังไม่ได้เปิดดูแผนเต็มๆ เลยค่ะ<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> ไว้ให้แล้ว — กดปุ่มด้านล่างเพื่อดูสรุปและปลดล็อกได้เลยค่ะ<br><br>${btn(url, "ดูแผนของฉัน · ปลดล็อกเลย")}<br><br><span style="color:#888;font-size:14px">เลือกได้ทั้งรายเดือน 1,590฿ · 6 เดือน (ตกเดือนละ 1,110฿) · 12 เดือน (ตกเดือนละ 795฿) ทุกราคารวม VAT แล้วค่ะ</span>`,
           `We noticed you started filling in your channel info but haven't opened your full plan yet.<br><br>Kim has analyzed your channel and prepared a <b>30-day content plan + ready-to-use scripts</b> — tap below to see your summary and unlock it.<br><br>${btn(url, "See my plan · Unlock ฿490")}<br><br><span style="color:#888;font-size:14px">Launch offer ฿490 (regular ฿1,590) — limited spots</span>`))); }
       catch { continue; }
       await run(`INSERT INTO abandoned_reminders (email,order_id) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING`, [r.email, r.order_id]);

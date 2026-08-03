@@ -23,8 +23,18 @@ export default function Account() {
   const [deleted, setDeleted] = useState([]);   // เล่มที่ลบไปแล้วแต่ยังกู้ได้ 30 วัน
   const [folder, setFolder] = useState("plan");            // 🗂️ โฟลเดอร์ที่เปิดอยู่
   const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0, edits: 0 }); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
+  const [subs, setSubs] = useState({});          // 💳 แพ็ก 6/12 เดือนที่ใช้อยู่ ของแต่ละช่อง
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
+  // 💳 แพ็กที่ใช้อยู่ของแต่ละช่อง — โชว์ว่าเหลืออีกกี่เดือน ลูกค้าจะได้รู้ว่ายังไม่ต้องจ่ายเพิ่ม
+  useEffect(() => {
+    const chans = [...new Set((data?.months || []).map(m => m.instagram_account).filter(Boolean))];
+    if (!data?.email || !chans.length) return;
+    Promise.all(chans.map(c =>
+      api(`/api/plans?email=${encodeURIComponent(data.email)}&channel=${encodeURIComponent(c)}`)
+        .then(d => [c, d.active]).catch(() => [c, null])
+    )).then(rows => setSubs(Object.fromEntries(rows.filter(r => r[1]))));
+  }, [data?.email, (data?.months || []).length]);
   // ถ้ามีเล่มกำลังสร้าง → รีเฟรชเองทุก 15 วิ จนกว่าจะเสร็จ (ลูกค้าไม่ต้องกดเอง)
   useEffect(() => {
     if (step !== "list" || !(data?.pending || []).length) return;
@@ -185,8 +195,13 @@ export default function Account() {
                 </div>;
               })}
             </div>
+            {/* 💳 มีแพ็กยาวอยู่ = เดือนถัดไปไม่ต้องจ่ายเพิ่ม บอกให้ชัดจะได้ไม่กังวล */}
+            {subs[ch.channel] && <div style={{ background: "#EAF3FD", border: "1px solid #d6e7fa", borderRadius: 12, padding: "10px 13px", marginBottom: 10, fontSize: 13.5, lineHeight: 1.7 }}>
+              💳 <b>{t("ac_plan_active")}:</b> {t("co_plan_name")[subs[ch.channel].plan]} · {t("ac_plan_left")} <b>{subs[ch.channel].months_left}</b> {t("ac_plan_months")}
+              <div className="muted" style={{ fontSize: 12.5 }}>{t("ac_plan_note")}</div>
+            </div>}
             <div className="row" style={{ gap: 8 }}>
-              <Link className="btn" to={`/form?renew=1&email=${encodeURIComponent(data.email)}&channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>{t("ac_renew")}</Link>
+              <Link className="btn" to={`/form?renew=1&email=${encodeURIComponent(data.email)}&channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>{subs[ch.channel] ? t("ac_plan_unlock") : t("ac_renew")}</Link>
               {ch.count >= 1 && <Link className="btn ghost" to={`/compare?channel=${encodeURIComponent(ch.channel)}`} style={{ flex: 1, fontSize: 13, padding: "10px" }}>{t("ac_see_growth")}</Link>}
             </div>
             </>}

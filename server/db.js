@@ -124,6 +124,38 @@ export async function initDb() {
       updated_at TIMESTAMPTZ DEFAULT now(),
       UNIQUE (user_id, billing_cycle)
     );
+    -- ═══════ 💳 แพ็กราย 6/12 เดือน (คิมเคาะ 3 ส.ค. 2569) ═══════
+    -- ข้อมูลจริงตอนตัดสินใจ: ลูกค้าจ่ายเงิน 232 คน — 231 คนซื้อเดือนเดียวแล้วหาย (เฉลี่ย 1.01 เดือน)
+    -- จ่ายก้อนเดียวล่วงหน้า = ได้เงินจริงต่อลูกค้า 1 คน จาก 429 บาท → 8,557 บาท (รายปี)
+    -- 1 แถว = 1 ช่อง ของลูกค้า 1 คน (คนหนึ่งมีหลายช่องได้ แต่ละช่องซื้อแพ็กแยกกัน)
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      subscription_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      user_id TEXT,
+      instagram_account TEXT,
+      plan TEXT NOT NULL,              -- monthly | 6m | 12m
+      months_total INTEGER NOT NULL,
+      months_used INTEGER DEFAULT 0,   -- ใช้ไปแล้วกี่เดือน (นับตอนปลดล็อกเล่ม)
+      amount_satang INTEGER,           -- ยอดที่จ่ายจริงทั้งก้อน
+      order_id TEXT,                   -- ออเดอร์ที่ซื้อแพ็กนี้
+      status TEXT DEFAULT 'active',    -- active | finished | refunded | canceled
+      started_cycle TEXT,
+      expires_at TIMESTAMPTZ,          -- กันดองสิทธิ์ข้ามปี
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_subs_email ON subscriptions(lower(email), status);
+    -- เล่มไหนถูกปลดล็อกด้วยแพ็กไหน — กันปลดซ้ำเดือนเดียวกัน และไว้ตรวจย้อนหลัง
+    CREATE TABLE IF NOT EXISTS subscription_uses (
+      use_id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL,
+      billing_cycle TEXT NOT NULL,
+      order_id TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_uses_uniq ON subscription_uses(subscription_id, billing_cycle);
+
     -- 📮 คำขอจ้างงานโปรดักชั่นที่ส่งผ่านเว็บ (คิมสั่ง 3 ส.ค.: "เอา LINE ออก เราย้ายมาทำงานในเว็บได้แล้ว")
     -- เดิมหน้า /production คัดลอกบรีฟแล้วเด้งไป LINE — ไม่มีบันทึกอะไรในระบบเลย งานหายก็ไม่รู้
     CREATE TABLE IF NOT EXISTS production_inquiries (

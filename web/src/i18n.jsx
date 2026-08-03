@@ -59,7 +59,7 @@ const GUIDE_EN = {
 const DICT = {
   // ราคา (EN โชว์ ฿ + ประมาณ $ ให้ฝรั่งเทียบง่าย — จ่ายจริงเป็น THB ผ่าน Stripe)
   price_full: { th: "1,590฿", en: "฿1,590 (~$44)" },
-  price_promo: { th: "490฿", en: "฿490 (~$14)" },
+  price_promo: { th: "1,590฿", en: "฿1,590 (~$45)" },
 
   // เมนูบน + ทั่วไป
   nav_promo: { th: "โปรเปิดตัว", en: "Launch offer" },
@@ -111,7 +111,7 @@ const DICT = {
   ] },
   how_note: { th: "ยิ่งกรอกละเอียด ยิ่งได้ Blueprint ที่แม่นขึ้น แต่ถ้าไม่รู้บางข้อ เว้นว่างได้ค่ะ", en: "The more detail you give, the sharper your Blueprint — but feel free to leave blanks if you're unsure." },
 
-  // OFFER (490)
+  // OFFER (1,590 / 6,660 / 9,540 — คิมเคาะ 3 ส.ค. 2569)
   offer_title_pre: { th: "โปรเปิดตัว", en: "What's in the" },
   offer_title_post: { th: "ได้อะไรบ้าง?", en: "launch offer?" },
   offer_desc_a: { th: "จากราคาเต็ม", en: "Down from" },
@@ -229,7 +229,7 @@ const DICT = {
     ["หลังจ่ายเงินจะได้อะไร?", "คุณจะได้ Dashboard ส่วนตัวที่มีการวิเคราะห์ช่อง แผนคอนเทนต์ 30 วัน สคริปต์ แคปชัน และระบบติดตาม Marathon"],
     ["ใช้เวลาประมวลผลนานไหม?", "โดยทั่วไปใช้เวลาไม่นาน แต่ขึ้นอยู่กับจำนวนรูปและข้อมูลที่ส่งมา ระหว่างรอระบบจะพาไปหน้า Processing"],
     ["ทำไมควรสร้าง Blueprint ใหม่ทุกเดือน?", "เพราะทุกเดือนช่องของคุณมีข้อมูลใหม่ ระบบจะช่วยอ่านการเปลี่ยนแปลงและปรับแผนให้เหมาะกับการเติบโตเดือนถัดไป"],
-    ["ราคา 490฿ เป็นราคาปกติไหม?", "490฿ เป็นโปรเปิดตัวจากราคาเต็ม 1,590฿ สำหรับช่วงเปิดตัวเท่านั้น"],
+    ["มีแพ็กแบบไหนบ้าง?", "รายเดือน 1,590฿ · 6 เดือน 6,660฿ (ตกเดือนละ 1,110฿ ประหยัด 30%) · 12 เดือน 9,540฿ (ตกเดือนละ 795฿ ประหยัด 50%) — ทุกราคารวม VAT แล้ว จ่ายครั้งเดียว ดูแลครบทุกเดือน"],
   ], en: [
     ["Do I need a lot of followers?", "Not at all. It works for beginners and seasoned creators alike. If you have Insights to share, the analysis gets more detailed."],
     ["What if I don't know who my competitors are?", "Leave it blank. The system analyzes your market based on your business type and goals."],
@@ -237,7 +237,7 @@ const DICT = {
     ["What do I get after paying?", "A private Dashboard with your channel analysis, a 30-day content plan, scripts, captions, and a Marathon tracker."],
     ["How long does processing take?", "Usually not long, depending on how many images and details you send. You'll see a Processing screen while you wait."],
     ["Why create a new Blueprint each month?", "Each month your channel has new data. The system reads the changes and adjusts your plan for next month's growth."],
-    ["Is ฿490 the regular price?", "฿490 is the launch promo, down from the full price of ฿1,590 — for the launch period only."],
+    ["What plans are available?", "Monthly ฿1,590 · 6 months ฿6,660 (฿1,110/mo, save 30%) · 12 months ฿9,540 (฿795/mo, save 50%) — VAT included, one payment covers every month."],
   ] },
 
   // FINAL CTA
@@ -327,7 +327,7 @@ const DICT = {
   ac_new_badge: { th: "ใหม่", en: "New" },
   ac_renew: { th: "+ ต่อแผนเดือนนี้", en: "+ Renew this month" },
   ac_see_growth: { th: "📈 ดูการโต", en: "📈 See growth" },
-  ac_add_channel: { th: "+ เพิ่มช่องใหม่ (490฿)", en: "+ Add a new channel (฿490)" },
+  ac_add_channel: { th: "+ เพิ่มช่องใหม่", en: "+ Add a new channel" },
   ac_delete_confirm_a: { th: "ลบเล่มเดือน", en: "Delete the" },
   ac_delete_confirm_b: { th: "?\n\n(ลบออกจากบัญชีของคุณ — ถ้าเผลอลบ ทักทีม Babe House กู้คืนให้ได้)", en: " book?\n\n(Removes it from your account — if you delete by mistake, message the Babe House team to restore it.)" },
   ac_delete_fail: { th: "ลบไม่สำเร็จ ลองอีกครั้งนะคะ", en: "Couldn't delete, please try again" },
@@ -450,7 +450,7 @@ const DICT = {
   cmp_start_title: { th: "นี่คือจุดเริ่มต้นของคุณ", en: "This is your starting point" },
   cmp_start_sub: { th: "เดือนนี้คือ \"เส้นสตาร์ท\" ค่ะ — เดือนหน้ากลับมาดูว่าช่องคุณโตขึ้นแค่ไหน ครูพี่คิมจะเทียบให้เห็นเป็นตัวเลขเลย 🩵", en: "This month is your starting line — come back next month and Kim will show your growth in numbers 🩵" },
   cmp_baseline: { th: "📊 สถิติตั้งต้น ·", en: "📊 Baseline stats ·" },
-  cmp_unlock_next: { th: "+ ปลดล็อกเดือนถัดไป เพื่อเริ่มเทียบการเติบโต (490฿)", en: "+ Unlock next month to start comparing growth (฿490)" },
+  cmp_unlock_next: { th: "+ ปลดล็อกเดือนถัดไป เพื่อเริ่มเทียบการเติบโต", en: "+ Unlock next month to start comparing growth" },
   // 🔭 ตัวอย่าง "เดือนหน้าจะได้เห็นอะไร" — โชว์ตั้งแต่เดือนแรก (เดิมต้องซื้อเดือน 2 ก่อนถึงเห็น = ไม่มีใครรู้ว่ามี)
   cmp_peek_title: { th: "เดือนหน้าคุณจะได้เห็นแบบนี้ค่ะ", en: "Here's what you'll see next month" },
   cmp_peek_sub: { th: "ตัวอย่างจากช่องอื่นนะคะ — พอคุณมีเดือนที่ 2 ตรงนี้จะกลายเป็นตัวเลขจริงของช่องคุณเอง", en: "Sample from another channel — once you have month 2, this becomes your own real numbers" },
@@ -477,7 +477,7 @@ const DICT = {
   cmp_strengths: { th: "✅ จุดแข็งของคุณ", en: "✅ Your strengths" },
   cmp_watchouts: { th: "⚠️ จุดที่ต้องระวัง", en: "⚠️ Watch out for" },
   cmp_focus: { th: "🎯 เดือนหน้าโฟกัส", en: "🎯 Next month's focus" },
-  cmp_unlock_next2: { th: "🚀 ปลดล็อกแผนเดือนต่อไป — โตต่อกันเลย (490฿)", en: "🚀 Unlock next month's plan — keep growing (฿490)" },
+  cmp_unlock_next2: { th: "🚀 ปลดล็อกแผนเดือนต่อไป — โตต่อกันเลย", en: "🚀 Unlock next month's plan — keep growing" },
   cmp_xls_report: { th: "📈 รายงานการเติบโต —", en: "📈 Growth report —" },
   cmp_xls_period: { th: "ช่วงเวลา:", en: "Period:" },
   cmp_xls_months: { th: "เดือน", en: "months" },
@@ -518,6 +518,29 @@ const DICT = {
   pd_sent_a: { th: "✓ คัดลอกบรีฟให้แล้ว — เลือกแชต", en: "✓ Brief copied — pick the chat" },
   pd_sent_b: { th: "แล้วกดส่งใน LINE ได้เลยค่ะ (ถ้า LINE ไม่เด้ง กดปุ่มเพิ่มเพื่อนด้านล่าง แล้ววางข้อความ)", en: "and send it on LINE (if LINE doesn't open, tap add-friend below and paste the message)" },
   pd_add_friend: { th: "+ เพิ่มเพื่อนทีม Production", en: "+ Add the Production team on LINE" },
+  // 💳 เลือกแพ็ก (คิมเคาะ 3 ส.ค. 2569) — รายเดือน 1,590 / 6 เดือน ลด 30% / 12 เดือน ลด 50%
+  co_pick_plan: { th: "เลือกแพ็กที่ใช่สำหรับคุณ", en: "Choose your plan" },
+  co_pick_plan_sub: {
+    th: "ยิ่งอยู่กับเรานาน แผนยิ่งแม่นขึ้น — เพราะทุกเดือนครูพี่คิมจะเรียนรู้จากคลิปที่คุณลงจริง แล้วปรับแผนเดือนถัดไปให้ตรงคนดูของคุณมากขึ้น",
+    en: "The longer you stay, the sharper your plan gets — each month I learn from the clips you actually posted and tune the next month to your real audience.",
+  },
+  co_plan_name: {
+    th: { monthly: "รายเดือน", "6m": "6 เดือน", "12m": "12 เดือน" },
+    en: { monthly: "Monthly", "6m": "6 months", "12m": "12 months" },
+  },
+  co_save: { th: "ประหยัด", en: "Save" },
+  co_permonth_a: { th: "ตกเดือนละ", en: "That's" },
+  co_permonth_b: { th: "· จ่ายครั้งเดียว ดูแลครบทุกเดือน", en: "per month · one payment, covered every month" },
+  co_monthly_note: { th: "จ่ายทุกเดือน ยกเลิกเมื่อไหร่ก็ได้", en: "Pay monthly, cancel anytime" },
+  co_total: { th: "ยอดที่ต้องชำระ", en: "Total" },
+  co_vat_note: { th: "ราคารวม VAT 7% แล้ว", en: "VAT 7% included" },
+  co_code_longplan: { th: "💡 แพ็กนี้ลดราคาให้แล้ว จึงใช้โค้ดส่วนลดเพิ่มไม่ได้ค่ะ — ถ้าอยากใช้โค้ด เลือกแพ็กรายเดือนนะคะ", en: "💡 This plan is already discounted, so promo codes don't stack. Pick the monthly plan to use a code." },
+  // แพ็กที่ใช้อยู่ (หน้าบัญชี)
+  ac_plan_active: { th: "แพ็กของคุณ", en: "Your plan" },
+  ac_plan_left: { th: "เหลืออีก", en: "left" },
+  ac_plan_months: { th: "เดือน", en: "months" },
+  ac_plan_unlock: { th: "🔓 ปลดล็อกแผนเดือนนี้ (ไม่ต้องจ่ายเพิ่ม)", en: "🔓 Unlock this month's plan (no extra charge)" },
+  ac_plan_note: { th: "เดือนถัดไปกดปลดล็อกได้เลย ไม่ต้องจ่ายเพิ่มค่ะ", en: "Just unlock next month — no extra charge." },
   // 📮 ส่งบรีฟจบในเว็บ — คิมสั่ง 3 ส.ค. ให้เลิกเด้งออกไป LINE
   pd_need_contact: { th: "ทิ้งช่องทางติดต่อไว้ให้ทีมด้วยนะคะ", en: "Please leave a way for the team to reach you" },
   pd_send_failed: { th: "ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะคะ", en: "Couldn't send — please try again" },
@@ -570,7 +593,7 @@ const DICT = {
   fm_consent_renew: { th: "ฉันยินยอมให้ Babe House ใช้ข้อมูลเพื่อวิเคราะห์ต่อ ตาม", en: "I consent to Babe House using my data for further analysis, per the" },
   fm_privacy_policy: { th: "นโยบายความเป็นส่วนตัว", en: "privacy policy" },
   fm_going_summary: { th: "กำลังไปหน้าสรุป...", en: "Going to summary…" },
-  fm_renew_cta: { th: "ต่อแผนเดือนนี้ · 490฿ →", en: "Renew this month · ฿490 →" },
+  fm_renew_cta: { th: "ต่อแผนเดือนนี้ →", en: "Renew this month →" },
   fm_summary_note: { th: "มีหน้าสรุป/ใส่โค้ดก่อนจ่าย กดแล้วยังไม่ตัดเงิน ·", en: "There's a summary/code page before payment — you won't be charged yet ·" },
   fm_refill_all: { th: "หรือกรอกใหม่ทั้งหมด", en: "or refill everything" },
   // wizard
@@ -710,7 +733,7 @@ const DICT = {
   db_loading_book: { th: "กำลังโหลดเล่มของคุณ...", en: "Loading your book…" },
   db_to_account: { th: "ไปบัญชีของฉัน", en: "Go to my account" },
   db_demo_banner: { th: "🎬 นี่คือตัวอย่าง Blueprint — เล่มจริงวิเคราะห์จากช่องคุณโดยเฉพาะ", en: "🎬 This is a sample Blueprint — your real book is analyzed from your own channel" },
-  db_make_mine: { th: "สร้างเล่มของฉัน · 490฿", en: "Create mine · ฿490" },
+  db_make_mine: { th: "สร้างเล่มของฉัน", en: "Create mine" },
   db_back_home: { th: "กลับหน้าแรก", en: "Home" },
   db_back_account: { th: "บัญชีของฉัน", en: "My account" },
   db_tab_strategy: { th: "📊 กลยุทธ์", en: "📊 Strategy" },
@@ -718,7 +741,7 @@ const DICT = {
   db_tab_marathon: { th: "🏃‍♀️ มาราธอน", en: "🏃‍♀️ Marathon" },
   db_demo_dis_title: { th: "🔍 นี่คือ เล่มตัวอย่าง — บทวิเคราะห์ยังไม่เจาะลึกเท่าเล่มจริงของคุณนะคะ เพราะ...", en: "🔍 This is a sample book — its analysis isn't as deep as your real one, because…" },
   db_demo_dis: { th: ["เล่มจริง ครูพี่คิม (AI) อ่านรูปสถิติหลังบ้านจริงของช่องคุณ — ทุกตัวเลขคือของคุณเอง", "วิเคราะห์จาก ธุรกิจ เป้าหมาย และปัญหาจริงที่คุณกรอก ไม่ใช่เทมเพลตกลางๆ", "30 สคริปต์เขียนใหม่ทั้งหมดให้ตรงกับสินค้า/บริการของคุณ พร้อมอัดได้ทันที", "ได้ บทวิเคราะห์การเติบโตรายเดือน + แผนอัปเลเวลต่อเนื่อง"], en: ["In the real book, Kim (AI) reads your real Insights — every number is yours", "Analyzed from your real business, goals, and problems — not a generic template", "All 30 scripts rewritten to match your products/services, ready to shoot", "You get a monthly growth analysis + a continuous level-up plan"] },
-  db_make_real: { th: "สร้างเล่มจริงของฉัน · 490฿", en: "Create my real book · ฿490" },
+  db_make_real: { th: "สร้างเล่มจริงของฉัน", en: "Create my real book" },
   db_snap_title: { th: "🎴 ช่องของคุณใน 3 วินาที", en: "🎴 Your channel in 3 seconds" },
   db_snap_sub: { th: "ตรงกับช่องคุณไหมคะ? แตะ \"แก้\" ช่องที่ยังไม่ใช่ ได้เลย (ไม่ต้องเจนใหม่)", en: "Does this match your channel? Tap \"Edit\" on anything off (no re-generation needed)" },
   db_edited: { th: "✓ แก้แล้ว", en: "✓ Edited" },
@@ -817,7 +840,7 @@ const DICT = {
   db_more_clips_gold: { th: "คลิป สู่ 🥇 Gold", en: "more clips to 🥇 Gold" },
   db_renew_title: { th: "ทำครบ 30 วันแล้วใช่ไหมคะ? 🩵", en: "Done with your 30 days? 🩵" },
   db_renew_sub: { th: "ปลดล็อกแผนเดือนใหม่ เพื่อต่อยอดการเติบโต", en: "Unlock a new month to keep growing" },
-  db_renew_btn: { th: "+ เพิ่มแผนเดือนใหม่ (490฿)", en: "+ Add a new month (฿490)" },
+  db_renew_btn: { th: "+ เพิ่มแผนเดือนใหม่", en: "+ Add a new month" },
   db_peek_growth: { th: "🔭 ดูก่อนว่าเดือนหน้าจะได้เห็นอะไร →", en: "🔭 See what you'll get next month →" },
   db_xls_head: { th: ["NO", "หัวข้อ", "รายละเอียด (สคริปต์)", "REF (ใส่รูป/ลิงก์อ้างอิงเอง)", "แคปชั่น + แฮชแท็ก"], en: ["NO", "Title", "Details (script)", "REF (add your own image/link)", "Caption + hashtags"] },
   db_xls_hook: { th: "🎬 เปิด (ฮุก)", en: "🎬 Hook" },

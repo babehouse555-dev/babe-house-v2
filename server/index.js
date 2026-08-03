@@ -1992,6 +1992,34 @@ app.post("/api/admin/restore-book", async (req, res) => {
   res.json({ ok: true, restored: bpId, billing_cycle: b.billing_cycle,
     scripts: (bp.scripts || []).length, theme: bp.theme || null });
 });
+// 🔎 ส่องออเดอร์ที่ไม่ใช่ Close — คิมสงสัย 3 ส.ค.: "ลูกค้าจ่ายผ่านแอดมิน/LINE MyShop แนบสลิปก็มี
+// ในเว็บมีคนสมัครเฉยๆ ไม่ซื้อคอร์สด้วยเหรอ" → ต้องแยกให้ออกว่า Open = ตะกร้าค้าง หรือ = จ่ายแล้วแต่ไม่ได้กดปิดออเดอร์
+// ⛔ อ่านอย่างเดียว ไม่แก้ข้อมูลใดๆ
+app.get("/api/admin/academy/orders-diag", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const byStatus = await q(`SELECT status, COUNT(*) c, COALESCE(SUM(NULLIF(total,'')::numeric),0) sum_total,
+        COUNT(*) FILTER (WHERE COALESCE(NULLIF(total,''),'0')::numeric > 0) with_amount,
+        MIN(legacy_created) first_at, MAX(legacy_created) last_at
+      FROM academy_orders GROUP BY status ORDER BY COUNT(*) DESC`);
+    // ออเดอร์ Open มีรายการคอร์สแนบมาไหม (ถ้ามี = ตั้งใจซื้อจริง ไม่ใช่กดเล่น)
+    const openLines = await one(`SELECT COUNT(DISTINCT o.legacy_id) c FROM academy_orders o
+      WHERE o.status='Open' AND EXISTS (SELECT 1 FROM academy_order_lines l WHERE l.order_id=o.legacy_id)`);
+    // คนที่มีแต่ Open ไม่เคยมี Close เลย (กลุ่มเสี่ยง — อาจจ่ายผ่านช่องทางอื่นแล้วไม่ได้อัปเดตสถานะ)
+    const onlyOpen = await one(`SELECT COUNT(DISTINCT lower(u.email)) c FROM academy_users u
+      WHERE COALESCE(u.email,'')<>''
+        AND EXISTS (SELECT 1 FROM academy_orders o WHERE o.legacy_user_id=u.legacy_id AND o.status='Open')
+        AND NOT EXISTS (SELECT 1 FROM academy_orders o2 WHERE o2.legacy_user_id=u.legacy_id AND o2.status='Close')`);
+    const sample = await q(`SELECT legacy_id, status, course_id, total, sub_total, user_name, legacy_created
+      FROM academy_orders WHERE status='Open' ORDER BY legacy_created DESC NULLS LAST LIMIT 12`);
+    const openByYear = await q(`SELECT LEFT(COALESCE(legacy_created,''),4) yr, COUNT(*) c
+      FROM academy_orders WHERE status='Open' GROUP BY 1 ORDER BY 1 DESC LIMIT 8`);
+    const closeByYear = await q(`SELECT LEFT(COALESCE(legacy_created,''),4) yr, COUNT(*) c
+      FROM academy_orders WHERE status='Close' GROUP BY 1 ORDER BY 1 DESC LIMIT 8`);
+    res.json({ ok: true, by_status: byStatus, open_with_lines: Number(openLines?.c || 0),
+      emails_only_open: Number(onlyOpen?.c || 0), open_by_year: openByYear, close_by_year: closeByYear, sample_open: sample });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.get("/api/admin/academy/coverage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const hidden = [...HIDDEN_COURSES];

@@ -27,6 +27,12 @@ const GROUPS = [
   { k: "draft_sent", label: "📨 ส่งให้ลูกค้าดูแล้ว", tone: "#1a7f43" },
 ];
 
+// งานชิ้นนี้รอ "คนนี้" ตรวจอยู่ไหม — โบ/พี่ก้องดูด่านหัวหน้า · ลูกตาล/คิมดูด่านสุดท้าย
+// (AE รับแทนหัวหน้าได้ถ้าหัวหน้าไม่ว่าง แต่ต้องกดอนุมัติสองครั้ง งานถึงจะถึงลูกค้า)
+const reviewGate = (j, me) =>
+  (me.role === "senior" && j.status === "senior_review") ||
+  (["owner", "ae"].includes(me.role) && ["senior_review", "ae_review"].includes(j.status));
+
 const dueChip = (due) => {
   if (!due) return null;
   const left = Math.ceil((new Date(due) - Date.now()) / DAY);
@@ -93,7 +99,7 @@ export default function Team() {
   const active = jobs.filter(j => !["done", "canceled"].includes(j.status));
   const late = active.filter(j => j.due_at && new Date(j.due_at) < Date.now()).length;
   const mine = active.filter(j => j.assigned_to === me.member_id).length;
-  const toReview = active.filter(j => (me.role === "senior" && j.status === "senior_review") || (canReview && !["senior"].includes(me.role) && j.status === "ae_review")).length;
+  const toReview = active.filter(j => reviewGate(j, me)).length;
 
   const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["teach", "🎓 คลาสที่สอน", (d.teach || []).length]]
     .concat(isOwner ? [["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
@@ -135,6 +141,21 @@ export default function Team() {
       {tab === "jobs" && (<>
         {active.length === 0 && <div style={{ ...card, textAlign: "center", color: "#7c7268" }}>
           ยังไม่มีงานที่ต้องทำตอนนี้ค่ะ พักได้เลย 🌿</div>}
+
+        {/* 🔔 กล่องนี้ปักไว้บนสุดเสมอ — งานที่รอ "เรา" ตรวจ จะได้ไม่ต้องเลื่อนหา */}
+        {canReview && toReview > 0 && (
+          <div style={{ ...card, background: "#f0f7fb", border: "2px solid #bcdcee", padding: 14 }}>
+            <h3 style={{ fontSize: 15, color: "#0b6ea8", margin: "0 0 4px" }}>🔔 รอคุณตรวจ {toReview} งาน</h3>
+            <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
+              กดดูงาน แล้วเลือก <b>อนุมัติ</b> หรือ <b>ไม่อนุมัติ</b> (ถ้าไม่อนุมัติต้องเขียนบอกด้วยว่าแก้อะไร)
+            </p>
+            {active.filter(j => reviewGate(j, me)).map(j =>
+              <Job key={"r" + j.order_id} j={j} me={me} d={d} isOwner={isOwner} isAE={isAE} spotlight
+                open={!!open["r" + j.order_id]} toggle={() => setOpen(o => ({ ...o, ["r" + j.order_id]: !o["r" + j.order_id] }))}
+                draftUrl={draftUrl} setDraftUrl={setDraftUrl} note={note} setNote={setNote} busy={busy} post={post} />)}
+          </div>
+        )}
+
         {GROUPS.map(g => {
           const list = active.filter(j => j.status === g.k);
           if (!list.length) return null;
@@ -195,13 +216,17 @@ function Stat({ n, label, tone }) {
 }
 
 // ── การ์ดงาน 1 ชิ้น ──
-function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, note, setNote, busy, post }) {
+function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, note, setNote, busy, post, spotlight }) {
+  const [msg, setMsg] = useState("");
+  const [showThread, setShowThread] = useState(!!spotlight);   // งานที่รอเราตรวจ กางสายสนทนาให้เลย
   const chip = dueChip(j.due_at);
   const b = j.brief || {};
   const canAssign = isOwner || isAE;
   const isMine = j.assigned_to === me.member_id;
   const canSubmit = isMine || isOwner || (me.role === "senior" && j.status !== "senior_review");
-  const iReview = (me.role === "senior" && j.status === "senior_review") || ((isOwner || isAE) && j.status === "ae_review");
+  const iReview = reviewGate(j, me);
+  const thread = j.thread || [];
+  const rejectNote = (note[j.order_id] || "").trim();
 
   return (
     <div style={{ ...card, borderLeft: chip?.c === "#b42318" ? "3px solid #b42318" : "1px solid #eee4dc" }}>
@@ -237,6 +262,19 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
         </div>
       )}
 
+      {/* 🔴 โดนตีกลับ — ขึ้นให้เห็นเต็มๆ เลย คนตัดจะได้ไม่ต้องไปกดหาในสายสนทนา */}
+      {(() => {
+        const last = [...thread].reverse().find(c => c.internal && c.text.startsWith("❌"));
+        return last && ["editing", "assigned"].includes(j.status) ? (
+          <div style={{ marginTop: 10, background: "#fdf0ef", border: "1px solid #f3cdc7", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ fontSize: 12, color: "#b42318", fontWeight: 700, marginBottom: 3 }}>
+              ต้องแก้ตามนี้ — จาก {last.author_name}
+            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.6 }}>{last.text.replace(/^❌ ไม่อนุมัติ — /, "")}</div>
+          </div>
+        ) : null;
+      })()}
+
       {/* AE กระจายงาน */}
       {canAssign && (
         <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -263,27 +301,77 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
         </div>
       )}
 
-      {/* คิวตรวจงาน */}
+      {/* ══ ตรวจงาน — ปุ่มอนุมัติ / ไม่อนุมัติ + ช่องบอกว่าต้องแก้อะไร ══ */}
       {iReview && (
-        <div style={{ marginTop: 10, background: "#f0f7fb", borderRadius: 10, padding: 12 }}>
-          <div style={{ fontSize: 13, color: "#0b6ea8", marginBottom: 8, fontWeight: 600 }}>
-            {j.status === "senior_review" ? "👀 ตรวจงานนี้ก่อนส่งต่อให้ AE" : "✅ ตรวจด่านสุดท้าย — ผ่านแล้วจะส่งถึงลูกค้าเลย"}
+        <div style={{ marginTop: 10, background: "#f0f7fb", borderRadius: 10, padding: 14, border: "1px solid #d6e9f4" }}>
+          <div style={{ fontSize: 14, color: "#0b6ea8", marginBottom: 10, fontWeight: 700 }}>
+            {j.status === "senior_review"
+              ? "👀 ตรวจงานนี้ก่อนส่งต่อให้ AE"
+              : "✅ ตรวจด่านสุดท้าย — อนุมัติแล้วจะส่งถึงลูกค้าทันที"}
           </div>
-          {j.draft_url && <p style={{ margin: "0 0 8px", fontSize: 14 }}>📼 <a href={j.draft_url} target="_blank" rel="noreferrer">เปิดดูงาน</a></p>}
-          <input style={{ ...input, marginBottom: 8 }} placeholder="ถ้าตีกลับ เขียนบอกด้วยว่าต้องแก้อะไร"
+          {j.draft_url
+            ? <a href={j.draft_url} target="_blank" rel="noreferrer"
+                style={{ display: "inline-block", background: "#fff", border: "1px solid #bcdcee", borderRadius: 999, padding: "8px 16px", fontSize: 14, marginBottom: 12, textDecoration: "none", color: "#0b6ea8", fontWeight: 600 }}>
+                📼 เปิดดูงานที่ตัดมา
+              </a>
+            : <p style={{ fontSize: 13, color: "#b42318", margin: "0 0 12px" }}>⚠️ ยังไม่มีลิงก์งาน</p>}
+
+          <label style={{ fontSize: 13, color: "#5b7f96", fontWeight: 600 }}>ถ้าไม่อนุมัติ เขียนบอกว่าต้องแก้อะไร</label>
+          <textarea rows={2} style={{ ...input, marginTop: 5, marginBottom: 10, resize: "vertical" }}
+            placeholder="เช่น เพลงดังกลบเสียงพูดช่วง 0:12 · ตัวหนังสือล้นจอตอนท้าย · สีคนละโทนกับคลิปก่อน"
             value={note[j.order_id] || ""} onChange={e => setNote(s => ({ ...s, [j.order_id]: e.target.value }))} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={btn("#1a7f43")} disabled={busy === j.order_id}
-              onClick={() => post("/api/team/review", { order_id: j.order_id, pass: true, note: note[j.order_id] || "" }, j.order_id)}>
-              ✅ ผ่าน
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button style={{ ...btn("#1a7f43"), padding: "11px 24px", fontSize: 15 }} disabled={busy === j.order_id}
+              onClick={() => post("/api/team/review", { order_id: j.order_id, pass: true, note: rejectNote }, j.order_id)}>
+              ✅ อนุมัติ
             </button>
-            <button style={{ ...ghost, color: "#b42318", borderColor: "#f0c6c0" }} disabled={busy === j.order_id}
-              onClick={() => post("/api/team/review", { order_id: j.order_id, pass: false, note: note[j.order_id] || "" }, j.order_id)}>
-              ↩️ ตีกลับให้แก้
+            <button style={{ ...btn("#b42318"), padding: "11px 24px", fontSize: 15, opacity: rejectNote ? 1 : .45 }}
+              disabled={busy === j.order_id || !rejectNote}
+              onClick={() => post("/api/team/review", { order_id: j.order_id, pass: false, note: rejectNote }, j.order_id)}>
+              ❌ ไม่อนุมัติ ส่งกลับไปแก้
             </button>
+            {!rejectNote && <span style={{ fontSize: 12, color: "#8a7f9c" }}>← เขียนเหตุผลก่อนถึงกดไม่อนุมัติได้</span>}
           </div>
         </div>
       )}
+
+      {/* ══ 💬 คุยกันในทีมใต้งานชิ้นนี้ — ⛔ ลูกค้าไม่เห็น ══ */}
+      <div style={{ marginTop: 10, borderTop: "1px solid #f2ece6", paddingTop: 10 }}>
+        <button style={{ background: "none", border: 0, color: "#7c7268", fontSize: 13, cursor: "pointer", padding: 0, fontFamily: "inherit" }}
+          onClick={() => setShowThread(v => !v)}>
+          💬 คุยกันในทีม ({thread.length}) {showThread ? "▾" : "▸"}
+          {!showThread && thread.length > 0 &&
+            <span style={{ color: "#a89f96" }}> · ล่าสุด: {thread[thread.length - 1].text.slice(0, 40)}…</span>}
+        </button>
+
+        {showThread && (<>
+          <div style={{ maxHeight: 260, overflowY: "auto", margin: "10px 0" }}>
+            {thread.length === 0 && <p style={{ fontSize: 13, color: "#a89f96", margin: 0 }}>ยังไม่มีใครพิมพ์อะไรค่ะ</p>}
+            {thread.map((c, i) => (
+              <div key={i} style={{ marginBottom: 8, padding: "8px 11px", borderRadius: 10, fontSize: 14, lineHeight: 1.6,
+                background: c.internal ? "#f6f3fb" : "#fff7ec", border: `1px solid ${c.internal ? "#e5dcf2" : "#f2e2c9"}` }}>
+                <div style={{ fontSize: 11.5, color: c.internal ? "#5a3fc0" : "#B26A00", fontWeight: 700, marginBottom: 2 }}>
+                  {c.internal ? `🔒 ${c.author_name || "ทีม"}` : `💬 ลูกค้า`}
+                </div>
+                {c.text}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input style={{ ...input, flex: 1, minWidth: 200 }} placeholder="พิมพ์คุยกับทีม (ลูกค้าไม่เห็นข้อความนี้)"
+              value={msg} onChange={e => setMsg(e.target.value)}
+              onKeyDown={async e => { if (e.key === "Enter" && msg.trim()) { await post("/api/team/comment", { order_id: j.order_id, text: msg.trim() }, j.order_id); setMsg(""); } }} />
+            <button style={btn("#5a3fc0")} disabled={busy === j.order_id || !msg.trim()}
+              onClick={async () => { await post("/api/team/comment", { order_id: j.order_id, text: msg.trim() }, j.order_id); setMsg(""); }}>
+              ส่ง
+            </button>
+          </div>
+          <p style={{ fontSize: 11.5, color: "#a89f96", margin: "6px 0 0" }}>
+            🔒 ม่วง = ทีมคุยกันเอง ลูกค้าไม่เห็น · 💬 ส้ม = ลูกค้าพิมพ์มา
+          </p>
+        </>)}
+      </div>
     </div>
   );
 }

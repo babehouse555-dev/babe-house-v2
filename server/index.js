@@ -2529,7 +2529,8 @@ app.get("/api/edit/order/:id", async (req, res) => {
   if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   const isTeam = isAdmin(req);
   if (!isTeam && (!email || email.toLowerCase() !== String(o.email).toLowerCase())) return res.status(403).json({ ok: false, error: "FORBIDDEN" });
-  const comments = await q(`SELECT * FROM edit_comments WHERE order_id=$1 ORDER BY created_at`, [o.order_id]);
+  // ⛔ ลูกค้าเห็นเฉพาะที่คุยกับตัวเอง — คอมเมนต์ที่ทีมคุยกันเอง (internal=1) ต้องไม่หลุดออกไป
+  const comments = await q(`SELECT * FROM edit_comments WHERE order_id=$1 ${isTeam ? "" : "AND COALESCE(internal,0)=0"} ORDER BY created_at`, [o.order_id]);
   // ⛔ ลูกค้าเห็นแค่ "ทีมกำลังตัด" — ไม่เห็นว่าอยู่ด่านตรวจไหน ใครตัด ใครตรวจ หรือโน้ตภายใน
   const { internal_note, assigned_to, assigned_at, senior_by, senior_at, ae_by, ae_at, ...pub } = o;
   const cs = isTeam ? o.status : customerStatus(o.status);
@@ -2642,6 +2643,10 @@ async function teamWho(req) {
   if (isAdmin(req)) return { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" };
   return null;
 }
+// คอมเมนต์ที่ทีมคุยกันเอง — ติดธง internal=1 ⛔ ลูกค้าไม่มีทางเห็น
+const teamComment = (orderId, name, text) =>
+  run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,internal) VALUES ($1,$2,'team',$3,$4,1)`,
+    [uid("ec"), orderId, name || "ทีม", String(text || "").slice(0, 3000)]).catch(() => {});
 const teamLog = (orderId, actor, action, from, to, note) =>
   run(`INSERT INTO edit_events (event_id,order_id,actor,action,from_status,to_status,note) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
     [uid("ev"), orderId, actor || null, action, from || null, to || null, note || null]).catch(() => {});
@@ -2679,10 +2684,16 @@ app.get("/api/team/me", async (req, res) => {
         (SELECT name FROM team_members t WHERE t.member_id=o.assigned_to) assignee_name
       FROM edit_orders o ${where}
       ORDER BY (o.status IN ('done','canceled')), o.due_at NULLS LAST, o.created_at DESC LIMIT 300`, params);
-    const cs = await q(`SELECT order_id, COUNT(*) n FROM edit_comments GROUP BY order_id`);
-    const cmap = Object.fromEntries(cs.map(c => [c.order_id, Number(c.n)]));
+    // สายสนทนาใต้งานแต่ละชิ้น — ทีมเห็นทั้งที่คุยกันเองและที่ลูกค้าพิมพ์มา (แยกป้ายให้ชัด)
+    const ids = rows.map(r => r.order_id);
+    const cs = ids.length
+      ? await q(`SELECT order_id, author, author_name, text, internal, created_at FROM edit_comments
+                 WHERE order_id = ANY($1) ORDER BY created_at`, [ids]) : [];
+    const cmap = {};
+    for (const c of cs) (cmap[c.order_id] ||= []).push({ ...c, internal: Number(c.internal || 0) === 1 });
     const jobs = rows.map(({ email, ...r }) => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status,
-      comments: cmap[r.order_id] || 0, ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json),
+      thread: cmap[r.order_id] || [], comments: (cmap[r.order_id] || []).length,
+      ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json),
       due_th: r.due_at ? thDate(r.due_at) : null,
       customer: isOwner ? email : (String(email || "").split("@")[0].slice(0, 3) + "•••") }));
 
@@ -2722,6 +2733,7 @@ app.post("/api/team/assign", async (req, res) => {
     await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), status=CASE WHEN status='awaiting_files' THEN status ELSE 'assigned' END,
        internal_note=COALESCE($3, internal_note), updated_at=now() WHERE order_id=$2`, [to, id, req.body?.internal_note || null]);
     teamLog(id, me.name, "assign", o.status, "assigned", `มอบหมายให้ ${m?.name || to}`);
+    await teamComment(id, me.name, `📌 มอบหมายให้ ${m?.name || to}${req.body?.internal_note ? ` — ${req.body.internal_note}` : ""}`);
     if (m?.email) sendEmail(m.email, `🎬 มีงานตัดต่อใหม่รอคุณอยู่`,
       wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>มีงานใหม่ถูกมอบหมายให้คุณแล้วนะคะ<br><br>
         เข้าไปดูรายละเอียดและส่งงานได้ที่หน้าทีม → <b>${appBaseUrl()}/team</b><br><br>ขอบคุณค่ะ`)).catch(() => {});
@@ -2743,6 +2755,7 @@ app.post("/api/team/submit-work", async (req, res) => {
     const next = ["senior", "ae", "owner"].includes(me.role) ? "ae_review" : "senior_review";
     await run(`UPDATE edit_orders SET draft_url=$1, status=$2, updated_at=now() WHERE order_id=$3`, [url, next, id]);
     teamLog(id, me.name, "submit", o.status, next, req.body?.note || null);
+    await teamComment(id, me.name, `📤 ส่งงานให้ตรวจแล้ว${req.body?.note ? ` — ${req.body.note}` : ""}`);
     res.json({ ok: true, status: next, message: next === "ae_review" ? "ส่งให้ AE ตรวจแล้วค่ะ" : "ส่งให้หัวหน้าตรวจแล้วค่ะ" });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
@@ -2757,7 +2770,10 @@ app.post("/api/team/review", async (req, res) => {
     const o = await one(`SELECT status, draft_url FROM edit_orders WHERE order_id=$1`, [id]);
     if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     if (!pass) {   // ตีกลับให้แก้ — งานกลับไปหาคนตัด
-      await run(`UPDATE edit_orders SET status='editing', internal_note=$2, updated_at=now() WHERE order_id=$1`, [id, note || null]);
+      // ⚠️ ไม่อนุมัติต้องบอกเหตุผลเสมอ ไม่งั้นคนตัดไม่รู้ว่าต้องแก้อะไร
+      if (!note) return res.status(400).json({ ok: false, error: "NEED_NOTE", message: "เขียนบอกด้วยนะคะว่าต้องแก้อะไร คนตัดจะได้รู้" });
+      await run(`UPDATE edit_orders SET status='editing', updated_at=now() WHERE order_id=$1`, [id]);
+      await teamComment(id, me.name, `❌ ไม่อนุมัติ — ${note}`);
       teamLog(id, me.name, "reject", o.status, "editing", note);
       return res.json({ ok: true, status: "editing", message: "ตีกลับให้แก้แล้วค่ะ" });
     }
@@ -2767,14 +2783,30 @@ app.post("/api/team/review", async (req, res) => {
     if (o.status === "senior_review") {
       await run(`UPDATE edit_orders SET status='ae_review', senior_by=$2, senior_at=now(), updated_at=now() WHERE order_id=$1`, [id, me.name]);
       teamLog(id, me.name, "approve", o.status, "ae_review", note);
+      await teamComment(id, me.name, `✅ อนุมัติด่านหัวหน้า${note ? ` — ${note}` : ""}`);
       return res.json({ ok: true, status: "ae_review",
         message: me.role === "senior" ? "ผ่านแล้วค่ะ ส่งต่อให้ AE ตรวจ" : "รับแทนหัวหน้าแล้วค่ะ — กดตรวจอีกครั้งเพื่อส่งให้ลูกค้า" });
     }
     if (!["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "ด่านนี้ AE เป็นคนตรวจค่ะ" });
     await run(`UPDATE edit_orders SET status='draft_sent', ae_by=$2, ae_at=now(), updated_at=now() WHERE order_id=$1`, [id, me.name]);
     teamLog(id, me.name, "deliver", o.status, "draft_sent", note);
+    await teamComment(id, me.name, `🎉 อนุมัติด่านสุดท้าย ส่งให้ลูกค้าแล้ว${note ? ` — ${note}` : ""}`);
     res.json({ ok: true, status: "draft_sent", message: "ส่งงานให้ลูกค้าแล้วค่ะ 🎉" });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 💬 คุยกันในทีมใต้งานแต่ละชิ้น — ⛔ ลูกค้าไม่เห็น (internal=1)
+app.post("/api/team/comment", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || ""), text = String(req.body?.text || "").trim();
+  if (!id || !text) return res.status(400).json({ ok: false, error: "MISSING", message: "พิมพ์ข้อความก่อนนะคะ" });
+  const o = await one(`SELECT order_id, assigned_to FROM edit_orders WHERE order_id=$1`, [id]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (me.role === "editor" && o.assigned_to !== me.member_id)
+    return res.status(403).json({ ok: false, error: "NOT_YOURS", message: "งานนี้ไม่ใช่ของคุณค่ะ" });
+  await teamComment(id, me.name, text);
+  res.json({ ok: true });
 });
 
 // 👑 หน้าภาพรวมของคิม — เห็นทุกอย่างรวมเงินและกำไร (เฉพาะ owner)

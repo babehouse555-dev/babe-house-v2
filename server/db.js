@@ -634,6 +634,9 @@ export async function initDb() {
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ae_by TEXT;              -- AE ที่ตรวจด่านสุดท้าย (ลูกตาล)
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ae_at TIMESTAMPTZ;
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS internal_note TEXT;      -- โน้ตภายในทีม ⛔ ลูกค้าไม่เห็น
+    -- คอมเมนต์คุยกันในทีม (ตรวจงาน/สั่งแก้) ใช้ตารางเดียวกับที่คุยกับลูกค้า แต่ติดธง internal=1
+    -- ⛔ ทุกที่ที่ส่งคอมเมนต์ให้ลูกค้าต้องกรอง internal=0 เสมอ
+    ALTER TABLE edit_comments ADD COLUMN IF NOT EXISTS internal INTEGER DEFAULT 0;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_data TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS video_mime TEXT;
     ALTER TABLE video_audits ADD COLUMN IF NOT EXISTS context TEXT;

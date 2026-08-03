@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n.jsx";
-
-const LINE_WORK = { id: "@babehouse_work", url: "https://line.me/ti/p/0yBlh9zXFl" };
+import { api, session } from "../api.js";
 
 // พอร์ตงานจริงของทีม Babe House Production (จัดตามหมวด)
 const PORTFOLIO = [
@@ -52,6 +51,8 @@ export default function Production() {
   const [addons, setAddons] = useState([]);
   const [f, setF] = useState({ footage: "", voice: "", ref: "", note: "", contact: "", needIdea: false });
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const upd = (k) => (e) => setF(v => ({ ...v, [k]: e.target.value }));
   const toggleAddon = (a) => setAddons(s => s.includes(a) ? s.filter(x => x !== a) : [...s, a]);
 
@@ -67,11 +68,17 @@ export default function Production() {
     f.contact && `${t("pd_brief_contact")} ${f.contact}`,
   ].filter(Boolean).join("\n");
 
-  function submitBrief() {
-    const txt = briefText();
-    try { navigator.clipboard?.writeText(txt); } catch {}
-    setSent(true);
-    window.location.href = `https://line.me/R/msg/text/?${encodeURIComponent(txt)}`;
+  // ⛔ เดิมเด้งออกไป LINE — คิมสั่ง 3 ส.ค. ให้จบในเว็บ "เราย้ายมาทำงานในเว็บได้แล้ว"
+  async function submitBrief() {
+    if (!f.contact.trim()) { setErr(t("pd_need_contact")); return; }
+    setBusy(true); setErr("");
+    try {
+      const r = await api("/api/production/inquiry", { method: "POST", body: {
+        contact: f.contact, email: session.email || "", pack, addons,
+        footage: f.footage, voice: f.voice, ref: f.ref, note: f.note, need_idea: f.needIdea } });
+      setSent(r.ref || true);
+    } catch (e) { setErr(e.message || t("pd_send_failed")); }
+    finally { setBusy(false); }
   }
 
   return (
@@ -118,9 +125,15 @@ export default function Production() {
 
         <div className="msg" style={{ background: "#EAF3FD", color: "var(--blue-d)", fontSize: 12.5, lineHeight: 1.6, margin: "4px 0 14px" }}>{t("pd_terms")}</div>
 
-        <button type="button" onClick={submitBrief} className="btn full" style={{ background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)", fontSize: 15.5 }}>{t("pd_submit")}</button>
-        {sent && <div className="msg" style={{ background: "#eef7f0", color: "#1a7f43", marginTop: 10 }}>{t("pd_sent_a")} <b>{LINE_WORK.id}</b> {t("pd_sent_b")}</div>}
-        <div className="center" style={{ marginTop: 10 }}><a href={LINE_WORK.url} target="_blank" rel="noreferrer" className="link" style={{ fontSize: 13.5, fontWeight: 700 }}>{t("pd_add_friend")} ({LINE_WORK.id})</a></div>
+        {!sent && <button type="button" onClick={submitBrief} disabled={busy} className="btn full" style={{ fontSize: 15.5, opacity: busy ? .6 : 1 }}>{busy ? t("pd_sending") : t("pd_submit")}</button>}
+        {err && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginTop: 10 }}>{err}</div>}
+        {sent && <div className="msg" style={{ background: "#eef7f0", color: "#1a7f43", marginTop: 10, lineHeight: 1.75 }}>
+          {t("pd_sent_ok")}{typeof sent === "string" && <> <b>{sent}</b></>}<br />{t("pd_sent_next")}
+        </div>}
+        {/* คลิปสั้นสั่งเองจ่ายเองได้เลยไม่ต้องรอใครตอบ — งานอื่น (ยูทูป/กราฟิก/อนิเมชัน) ทีมตีราคาให้ */}
+        <div className="msg" style={{ background: "#F3F0FB", color: "var(--ink)", fontSize: 13, lineHeight: 1.7, marginTop: 12 }}>
+          {t("pd_selfserve")} <Link className="link" to="/edit" style={{ fontWeight: 700 }}>{t("pd_selfserve_link")}</Link>
+        </div>
       </div>
     </div>
   );

@@ -476,8 +476,29 @@ async function getPrevContext(email, cycle, channel) {
       const gj = safeJson(g?.analysis_json);
       if (gj) growthGist = JSON.stringify(gj).slice(0, 900);
     } catch {}
+    // 📈 ผลจริงรายคลิปของเดือนก่อนๆ — "ยิ่งใช้ยิ่งแม่น"
+    // รวมทุกเดือนย้อนหลังของช่องนี้ แล้วสรุปว่าคนดูของเขาชอบอะไรจริงๆ
+    let clipLearning = null;
+    try {
+      const bps = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.blueprint_json
+        FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+        WHERE lower(r.email)=lower($1) AND b.billing_cycle<>$2${chFilter} AND b.deleted_at IS NULL
+        ORDER BY b.created_at DESC LIMIT 6`, params);
+      const all = [];
+      let calAll = {};
+      for (const b of bps) {
+        const rs = await q(`SELECT day, views FROM clip_results WHERE user_id=$1 AND billing_cycle=$2`, [b.user_id, b.billing_cycle]);
+        if (!rs.length) continue;
+        const cal = calendarByDay(b.blueprint_json);
+        // ใส่ prefix เดือนกันวันชนกันข้ามเดือน (วันที่ 5 ของ ก.ค. ≠ วันที่ 5 ของ ส.ค.)
+        for (const r of rs) { const k = `${b.billing_cycle}-${r.day}`; calAll[k] = cal[Number(r.day)] || {}; all.push({ ...r, day: k }); }
+      }
+      const L = learnFromClips(all, calAll);
+      if (L.enough) clipLearning = L;
+    } catch (e) { console.warn("clip learning", e.message); }
+
     if (!latest.positioning && !latest.theme && !topics.length) return null;
-    return { theme: latest.theme, positioning: latest.positioning, prev_topics: topics.slice(0, 100), months: rows.length + 1, growth_gist: growthGist };
+    return { theme: latest.theme, positioning: latest.positioning, prev_topics: topics.slice(0, 100), months: rows.length + 1, growth_gist: growthGist, clip_learning: clipLearning };
   } catch (e) { console.warn("getPrevContext", e.message); return null; }
 }
 
@@ -755,6 +776,142 @@ app.post("/api/marathon/progress", async (req, res) => {
     if (p.day && p.action) await run(`INSERT INTO marathon_events (event_id,user_id,billing_cycle,day,action,uploaded_days_snapshot_json) VALUES ($1,$2,$3,$4,$5,$6)`, [uid("event"), p.user_id, p.billing_cycle, p.day, p.action, JSON.stringify(days)]);
     res.json({ ok: true, user_id: p.user_id, billing_cycle: p.billing_cycle, uploaded_days: days, uploaded_count: count, star_count: count, tier, last_action_day: p.day || null });
   } catch (err) { res.status(400).json({ ok: false, error: "SAVE_FAILED", message: err.message }); }
+});
+
+// ═══════ 📈 ผลจริงรายคลิป — "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
+// ลูกค้าติ๊กว่าลงคลิปวันไหนอยู่แล้ว (มาราธอน) — เพิ่มแค่ "วันนั้นได้กี่วิว"
+// แล้วเดือนถัดไป AI เขียนแผนโดยรู้ว่าคนดูช่องนี้ชอบอะไรจริงๆ ไม่ใช่เดาใหม่ทุกเดือน
+
+// อ่านปฏิทิน 30 วันของเล่มหนึ่ง → map วันที่เป็น {หัวข้อ, เป้าหมาย, ฟอร์แมต, ฮุก}
+const calendarByDay = (bpJson) => {
+  const cal = safeJson(bpJson)?.calendar;
+  const m = {};
+  for (const c of (Array.isArray(cal) ? cal : [])) if (c && c.d) m[Number(c.d)] = c;
+  return m;
+};
+
+// สรุปว่า "อะไรเวิร์ค" จากผลจริง — ใช้ทั้งโชว์ลูกค้าและป้อนให้ AI เดือนถัดไป
+// ⚠️ ต้องมีอย่างน้อย 4 คลิปที่มีตัวเลข ถึงจะสรุป — น้อยกว่านั้นคือเดา ไม่ใช่เรียนรู้
+const MIN_CLIPS_TO_LEARN = 4;
+function learnFromClips(results, calMap) {
+  // ⚠️ day อาจเป็นเลข (ในเดือนเดียว) หรือเป็นคีย์ข้ามเดือน "2026-07-12" — ต้องรองรับทั้งสองแบบ
+  // เคยพลาด: Number("2026-07-12") = NaN → หาปฏิทินไม่เจอ → สรุปตามฟอร์แมต/เป้าหมายไม่ได้เลย
+  const rows = results
+    .filter(r => Number(r.views) > 0)
+    .map(r => ({ ...r, cal: calMap[r.day] || calMap[Number(r.day)] || {} }))
+    .sort((a, b) => Number(b.views) - Number(a.views));
+  if (rows.length < MIN_CLIPS_TO_LEARN) return { enough: false, clips: rows.length, need: MIN_CLIPS_TO_LEARN };
+
+  const views = rows.map(r => Number(r.views));
+  const avg = Math.round(views.reduce((s, v) => s + v, 0) / views.length);
+  // จัดกลุ่มตามมิติที่มีในปฏิทินอยู่แล้ว: g = เป้าหมาย (Awareness/Conversion/Branding) · f = ฟอร์แมต
+  const group = (key) => {
+    const g = {};
+    for (const r of rows) {
+      const k = String(r.cal[key] || "").trim();
+      if (!k) continue;
+      (g[k] ||= []).push(Number(r.views));
+    }
+    return Object.entries(g)
+      .filter(([, v]) => v.length >= 2)          // กลุ่มที่มีคลิปเดียว = บังเอิญ ไม่นับ
+      .map(([k, v]) => ({ key: k, clips: v.length, avg: Math.round(v.reduce((s, x) => s + x, 0) / v.length) }))
+      .sort((a, b) => b.avg - a.avg);
+  };
+  const byGoal = group("g"), byFormat = group("f");
+  const vsAvg = (n) => Math.round((n / avg - 1) * 100);
+  return {
+    enough: true, clips: rows.length, avg_views: avg,
+    best: rows.slice(0, 3).map(r => ({ day: r.day, views: Number(r.views), title: r.cal.t || "", hook: r.cal.h || "", format: r.cal.f || "", goal: r.cal.g || "" })),
+    worst: rows.slice(-3).reverse().map(r => ({ day: r.day, views: Number(r.views), title: r.cal.t || "", format: r.cal.f || "", goal: r.cal.g || "" })),
+    by_goal: byGoal.map(x => ({ ...x, vs_avg: vsAvg(x.avg) })),
+    by_format: byFormat.map(x => ({ ...x, vs_avg: vsAvg(x.avg) })),
+  };
+}
+
+// บันทึกผลของคลิปหนึ่งวัน — ต้องเป็นเจ้าของเล่มถึงบันทึกได้ (กันคนอื่นมายุ่ง แบบเดียวกับมาราธอน)
+app.post("/api/marathon/clip-result", rateLimit(200, M10), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const userId = String(b.user_id || ""), cycle = String(b.billing_cycle || ""), bpId = String(b.blueprint_id || "");
+    const day = Number(b.day);
+    if (!userId || !cycle || !bpId || !(day >= 1 && day <= 31)) return res.status(400).json({ ok: false, error: "MISSING" });
+    const owns = await one(`SELECT 1 FROM blueprints WHERE blueprint_id=$1 AND user_id=$2 AND billing_cycle=$3`, [bpId, userId, cycle]);
+    if (!owns) return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "ไม่มีสิทธิ์แก้ไข" });
+    // ⚠️ ต้องเช็ค null/"" ก่อนแปลงเป็นเลข — Number(null) = 0 ไม่ใช่ NaN (เคยทำให้ "ลบ" กลายเป็น "บันทึก 0 วิว")
+    const num = (v) => {
+      if (v === null || v === undefined || String(v).trim() === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n), 999999999) : null;
+    };
+    const views = num(b.views);
+    if (views === null) {   // ลบตัวเลขทิ้ง = ลบแถว (ลูกค้าเปลี่ยนใจ/กรอกผิด)
+      await run(`DELETE FROM clip_results WHERE user_id=$1 AND billing_cycle=$2 AND day=$3`, [userId, cycle, day]);
+      return res.json({ ok: true, cleared: true, day });
+    }
+    await run(`INSERT INTO clip_results (result_id,user_id,instagram_account,billing_cycle,day,views,likes,comments,saves,note)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT (user_id,billing_cycle,day) DO UPDATE SET views=EXCLUDED.views, likes=EXCLUDED.likes,
+        comments=EXCLUDED.comments, saves=EXCLUDED.saves, note=EXCLUDED.note, updated_at=now()`,
+      [uid("cr"), userId, String(b.instagram_account || ""), cycle, day, views,
+       num(b.likes), num(b.comments), num(b.saves), String(b.note || "").slice(0, 300) || null]);
+    res.json({ ok: true, day, views });
+  } catch (e) { res.status(400).json({ ok: false, error: "SAVE_FAILED", message: e.message }); }
+});
+
+// ═══════ 📮 จ้างงานโปรดักชั่น — จบในเว็บ ไม่ต้องออกไป LINE (คิมสั่ง 3 ส.ค.) ═══════
+// "เอาออกเลย เพราะว่าเราย้ายมาทำงานในเว็บได้แล้ว ไม่จำเป็นจะต้องให้เค้ากลับไปทักใน LINE อีก"
+app.post("/api/production/inquiry", rateLimit(10, M10), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const contact = String(b.contact || "").trim();
+    const email = normEmail(String(b.email || "")) || (await authEmail(req)) || "";
+    if (!contact && !email) return res.status(400).json({ ok: false, error: "MISSING_CONTACT", message: "ทิ้งช่องทางติดต่อไว้ให้ทีมด้วยนะคะ" });
+    const id = uid("pinq");
+    const s = (v, n = 2000) => String(v || "").slice(0, n) || null;
+    await run(`INSERT INTO production_inquiries (inquiry_id,email,contact,pack,addons,footage_url,voice_url,ref_links,note,need_idea)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, email || null, s(contact, 200), s(b.pack, 60), s(Array.isArray(b.addons) ? b.addons.join(", ") : b.addons, 400),
+       s(b.footage), s(b.voice), s(b.ref), s(b.note, 4000), !!b.need_idea]);
+    sendEmail(OPS_EMAIL, "📮 มีคนขอจ้างงานโปรดักชั่นจากเว็บ",
+      wrap(`มีคำขอใหม่เข้ามาค่ะ<br><br>
+        <b>ติดต่อกลับ:</b> ${contact || email}<br>
+        ${b.pack ? `<b>แพ็ก:</b> ${b.pack}<br>` : ""}
+        ${b.addons?.length ? `<b>เพิ่มเติม:</b> ${Array.isArray(b.addons) ? b.addons.join(", ") : b.addons}<br>` : ""}
+        ${b.footage ? `<b>ฟุตเทจ:</b> ${b.footage}<br>` : ""}
+        ${b.ref ? `<b>ตัวอย่างที่ชอบ:</b> ${b.ref}<br>` : ""}
+        ${b.note ? `<b>โจทย์:</b> ${String(b.note).slice(0, 1000)}<br>` : ""}
+        ${b.need_idea ? `<b>⭐ อยากให้ช่วยคิดไอเดียด้วย</b><br>` : ""}
+        <br>เลขที่คำขอ: ${id.slice(-8)}`)).catch(() => {});
+    res.json({ ok: true, inquiry_id: id, ref: id.slice(-8).toUpperCase() });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: "ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" }); }
+});
+// แอดมิน/ทีม: ดูคำขอที่เข้ามา
+app.get("/api/admin/production-inquiries", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  res.json({ ok: true, inquiries: await q(`SELECT * FROM production_inquiries ORDER BY created_at DESC LIMIT 200`) });
+});
+
+// 🔍 แอดมิน: "ตอนเขียนแผนเดือนนี้ AI รู้อะไรเกี่ยวกับลูกค้าคนนี้บ้าง"
+// ไว้ตรวจย้อนหลังเวลาลูกค้าถามว่าทำไมแผนออกมาแบบนี้ — โดยเฉพาะว่าผลจริงเดือนก่อนถูกใช้จริงไหม
+app.get("/api/admin/prev-context", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = String(req.query.email || ""), cycle = String(req.query.billing_cycle || "");
+  if (!email || !cycle) return res.status(400).json({ ok: false, error: "MISSING_QUERY", message: "ต้องมี email + billing_cycle" });
+  const ctx = await getPrevContext(email, cycle, String(req.query.channel || "") || undefined);
+  res.json({ ok: true, context: ctx, learned_from_clips: !!ctx?.clip_learning });
+});
+
+// ผลของทุกคลิปในเดือนนี้ + สิ่งที่ระบบเรียนรู้จากช่องนี้
+app.get("/api/marathon/clip-results", async (req, res) => {
+  const userId = String(req.query.user_id || ""), cycle = String(req.query.billing_cycle || "");
+  if (!userId || !cycle) return res.status(400).json({ ok: false, error: "MISSING_QUERY" });
+  try {
+    const rows = await q(`SELECT day, views, likes, comments, saves, note FROM clip_results WHERE user_id=$1 AND billing_cycle=$2 ORDER BY day`, [userId, cycle]);
+    const bp = await one(`SELECT blueprint_json FROM blueprints WHERE user_id=$1 AND billing_cycle=$2 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`, [userId, cycle]);
+    const results = {};
+    for (const r of rows) results[r.day] = r;
+    res.json({ ok: true, results, learning: learnFromClips(rows, calendarByDay(bp?.blueprint_json)) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
 // ---------- auth (OTP) ----------

@@ -4,10 +4,7 @@ import { Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
-import { ACADEMY_LIVE } from "../config.js";
 
-const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%40babehouse_academy" };
-const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
 
 // ⚡ เพิ่มสคริปต์เดี่ยว (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) — ใช้ 1 เครดิต/สคริปต์
 const SL = { HOOK: "#2E86DE", BODY: "#1a7f43", CTA: "#b8860b" };
@@ -162,16 +159,12 @@ export function ServicesBlock() {
           <div><div style={{ fontWeight: 800, fontSize: 15 }}>{t("dp_academy")}</div><div className="muted" style={{ fontSize: 12.5 }}>{t("dp_academy_sub")}</div></div>
         </div>
         <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}>{t("dp_courses").map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-        {/* เปิดตัวแล้ว = กดเข้าหน้าเรียนบนเว็บเลย · ยังไม่เปิด = QR ทักไลน์แบบเดิม (สลับที่ config.js ที่เดียว) */}
-        {ACADEMY_LIVE ? <>
-          <div style={{ margin: "auto 0 12px", fontSize: 13, lineHeight: 1.75 }}>
-            เลือกคอร์ส สมัครเรียน และเริ่มเรียนได้ทันทีบนเว็บ ไม่ต้องรอแอดมินค่ะ
-          </div>
-          <Link to="/academy" className="btn full">ดูคอร์สทั้งหมด →</Link>
-        </> : <>
-          <div className="center" style={{ margin: "auto 0 12px" }}><img src={qrImg(LINE_ACADEMY.url)} alt="LINE Academy QR" width={150} height={150} style={{ borderRadius: 10, border: "1px solid var(--border)" }} /><div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{t("dp_scan")} {LINE_ACADEMY.id}</div></div>
-          <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full">{t("dp_add_friend_course")}</a>
-        </>}
+        {/* ⛔ เดิมมี QR ให้ทักไลน์ — คิมสั่ง 3 ส.ค. เอาออกก่อนเปิดวันที่ 15
+            "เราย้ายมาทำงานในเว็บได้แล้ว เรียนในเว็บก็ได้ ไม่จำเป็นจะต้องให้เค้ากลับไปทักใน LINE อีก" */}
+        <div style={{ margin: "auto 0 12px", fontSize: 13, lineHeight: 1.75 }}>
+          เลือกคอร์ส สมัครเรียน และเริ่มเรียนได้ทันทีบนเว็บ ไม่ต้องรอแอดมินค่ะ
+        </div>
+        <Link to="/academy" className="btn full">ดูคอร์สทั้งหมด →</Link>
       </div>
       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px", display: "flex", flexDirection: "column" }}>
         <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
@@ -301,5 +294,110 @@ export function ShootingGuide({ startOpen }) {
         <div style={{ fontSize: 12.5, color: f.color[1], marginTop: 8, fontWeight: 700 }}>{t("dp_sg_watch")}</div>
       </a>; })}
     </div>
+  </div>;
+}
+
+// ═══════ 📈 ผลจริงรายคลิป — "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
+// "ฉันไม่ได้อยากให้ลูกค้าเริ่มใหม่ทุกเดือน เค้าต้องได้ต่อยอดจากที่ถูกคิดมาแล้วแล้วเอาไปทำจริง
+//  จะได้รู้ว่าอันไหนเวิร์กหรือไม่เวิร์ก · ยิ่งกลับมาใช้ ตัวคอนเทนต์ยิ่งเก่งขึ้น วิเคราะห์ได้ลึกขึ้น"
+//
+// ลูกค้าติ๊กว่าลงคลิปวันไหนอยู่แล้ว → ที่นี่แค่กรอกเพิ่มว่า "วันนั้นได้กี่วิว"
+// พอครบ 4 คลิป ระบบเริ่มบอกได้ว่าคนดูของช่องนี้ชอบอะไร แล้วส่งต่อให้ AI เขียนแผนเดือนหน้า
+export function ClipResults({ userId, cycle, bpId, channel, uploadedDays, calendar, demo }) {
+  const [results, setResults] = useState({});
+  const [learning, setLearning] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const [draft, setDraft] = useState({});
+  const days = [...(uploadedDays || [])].sort((a, b) => a - b);
+  const calBy = {};
+  for (const c of (calendar || [])) if (c && c.d) calBy[Number(c.d)] = c;
+
+  const load = () => {
+    if (demo || !userId || !cycle) return;
+    api(`/api/marathon/clip-results?user_id=${encodeURIComponent(userId)}&billing_cycle=${encodeURIComponent(cycle)}`)
+      .then(d => { setResults(d.results || {}); setLearning(d.learning || null); }).catch(() => {});
+  };
+  useEffect(load, [userId, cycle, demo]);   // eslint-disable-line
+
+  const save = async (d) => {
+    const raw = String(draft[d] ?? "").replace(/[, ]/g, "");
+    if (raw === "" && !results[d]) return;
+    setSaving(d);
+    try {
+      await api("/api/marathon/clip-result", { method: "POST", body: {
+        user_id: userId, billing_cycle: cycle, blueprint_id: bpId, instagram_account: channel,
+        day: d, views: raw === "" ? null : Number(raw) } });
+      setDraft(s => { const n = { ...s }; delete n[d]; return n; });
+      load();
+    } catch {} finally { setSaving(null); }
+  };
+
+  if (demo) return null;
+  const filled = days.filter(d => results[d]?.views > 0).length;
+
+  return <div className="card" style={{ background: "linear-gradient(135deg,#F3F0FB,#F7F9FF)", border: "1px solid #e2dcf3" }}>
+    <h3 style={{ margin: 0 }}>📈 คลิปที่ลงไปแล้วได้กี่วิว</h3>
+    <p className="muted" style={{ fontSize: 13, margin: "6px 0 4px", lineHeight: 1.7 }}>
+      กรอกยอดวิวของคลิปที่ลงแล้ว — <b>เดือนหน้าครูพี่คิมจะวางแผนโดยรู้ว่าคนดูของคุณชอบอะไรจริงๆ</b> ไม่ใช่เริ่มคิดใหม่จากศูนย์
+    </p>
+
+    {days.length === 0 && <p className="muted" style={{ fontSize: 13.5, margin: "14px 0 0" }}>
+      ติ๊กวันที่ลงคลิปแล้วด้านบนก่อนนะคะ แล้วช่องกรอกวิวจะขึ้นมาให้ตรงนี้ค่ะ
+    </p>}
+
+    {days.length > 0 && <>
+      <div style={{ display: "grid", gap: 8, margin: "14px 0 0" }}>
+        {days.map(d => {
+          const c = calBy[d] || {}, r = results[d];
+          const val = draft[d] ?? (r?.views != null ? String(r.views) : "");
+          return <div key={d} style={{ display: "flex", gap: 10, alignItems: "center", background: "#fff", borderRadius: 10, padding: "9px 12px", flexWrap: "wrap" }}>
+            <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{d}</span>
+            <span style={{ flex: 1, minWidth: 130, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.t || `คลิปวันที่ ${d}`}</span>
+            <input inputMode="numeric" placeholder="วิว" value={val}
+              onChange={e => setDraft(s => ({ ...s, [d]: e.target.value.replace(/[^\d]/g, "") }))}
+              onBlur={() => draft[d] !== undefined && save(d)}
+              onKeyDown={e => e.key === "Enter" && e.currentTarget.blur()}
+              style={{ width: 96, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 14, fontFamily: "inherit", textAlign: "right" }} />
+            {saving === d && <span className="muted" style={{ fontSize: 12 }}>บันทึก…</span>}
+          </div>;
+        })}
+      </div>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+        กรอกแล้ว {filled}/{days.length} คลิป · ดูยอดวิวได้จาก Insights ในแอปของคุณ
+      </p>
+    </>}
+
+    {/* สิ่งที่ระบบเรียนรู้จากช่องนี้ — ของที่ลูกค้าจะอยากกลับมาดู */}
+    {learning && !learning.enough && filled > 0 && <div style={{ marginTop: 14, background: "#fff", borderRadius: 10, padding: "12px 14px", fontSize: 13.5, lineHeight: 1.7 }}>
+      🔒 กรอกอีก <b>{Math.max(0, learning.need - learning.clips)} คลิป</b> ครูพี่คิมจะเริ่มบอกได้ว่าคนดูของคุณชอบแนวไหน
+      <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>ต้องมีอย่างน้อย {learning.need} คลิปถึงจะสรุปได้แม่น — น้อยกว่านั้นคือเดา</div>
+    </div>}
+
+    {learning?.enough && <div style={{ marginTop: 16, background: "#fff", borderRadius: 12, padding: "14px 16px" }}>
+      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 8 }}>🧠 สิ่งที่เรารู้เกี่ยวกับคนดูของคุณแล้ว</div>
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>จาก {learning.clips} คลิปจริง · เฉลี่ย {learning.avg_views.toLocaleString()} วิว/คลิป</div>
+
+      {learning.best?.length > 0 && <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a7f43", marginBottom: 4 }}>🏆 คลิปที่ไปได้ดีที่สุด</div>
+        {learning.best.map((b, i) => <div key={i} style={{ fontSize: 13.5, lineHeight: 1.7 }}>
+          • <b>{Number(b.views).toLocaleString()} วิว</b> — {b.title}
+        </div>)}
+      </div>}
+
+      {(learning.by_format?.length > 0 || learning.by_goal?.length > 0) && <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        {[...(learning.by_format || []), ...(learning.by_goal || [])].slice(0, 4).map((x, i) =>
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "3px 0", gap: 10 }}>
+            <span>{x.key}</span>
+            <span style={{ fontWeight: 700, color: x.vs_avg >= 0 ? "#1a7f43" : "#b42318", flexShrink: 0 }}>
+              {x.vs_avg >= 0 ? "▲ +" : "▼ "}{Math.abs(x.vs_avg)}%
+            </span>
+          </div>)}
+      </div>}
+
+      <div style={{ marginTop: 12, background: "#F3F0FB", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, lineHeight: 1.7 }}>
+        💬 <b>ครูพี่คิม:</b> ข้อมูลนี้จะถูกใช้เขียนแผนเดือนหน้าให้คุณโดยอัตโนมัติค่ะ —
+        เดือนหน้าเราจะทำแนวที่เวิร์กให้มากขึ้น และเลี่ยงแนวที่ยังไม่ไป 🩵
+      </div>
+    </div>}
   </div>;
 }

@@ -42,6 +42,28 @@ const dueChip = (due) => {
   return { t: `เหลือ ${left} วัน`, bg: "#eef6ef", c: "#1a7f43" };
 };
 
+// 🎨 ระบบสี 3 สี (คิมกำหนดเอง 3 ส.ค.)
+// แดง = ด่วน ต้องส่งแล้ว · เหลือง = ยังไม่เสร็จ แต่ไม่ด่วน · เขียว = เสร็จแล้ว
+const C = { red: "#d1382c", yellow: "#d99100", green: "#1a7f43" };
+function jobColor(j) {
+  if (["done", "draft_sent"].includes(j.status)) return "green";      // ส่งลูกค้าแล้ว = จบฝั่งเรา
+  if (j.due_at) {
+    const left = Math.ceil((new Date(j.due_at) - Date.now()) / DAY);
+    if (left <= 0) return "red";                                       // เลยกำหนดหรือส่งวันนี้
+  }
+  return "yellow";
+}
+const Dot = ({ c }) => <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: c, marginRight: 5, verticalAlign: "middle" }} />;
+// แถบ กาง/ย่อ ทั้งหมด — ใช้ซ้ำหลายที่
+const ExpandBar = ({ list, setOpen }) => list.length > 1 ? (
+  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+    <button style={{ ...ghost, fontSize: 12.5, padding: "6px 12px" }}
+      onClick={() => setOpen(o => ({ ...o, ...Object.fromEntries(list.map(j => [j.order_id, true])) }))}>กางทั้งหมด</button>
+    <button style={{ ...ghost, fontSize: 12.5, padding: "6px 12px" }}
+      onClick={() => setOpen(o => ({ ...o, ...Object.fromEntries(list.map(j => [j.order_id, false])) }))}>ย่อทั้งหมด</button>
+  </div>
+) : null;
+
 const card = { background: "#fff", border: "1px solid #eee4dc", borderRadius: 14, padding: 16, marginBottom: 12 };
 const btn = (bg = "#2f2a26") => ({ background: bg, color: "#fff", border: 0, borderRadius: 999, padding: "9px 18px", fontSize: 14, cursor: "pointer", fontWeight: 600 });
 const ghost = { background: "#fff", color: "#2f2a26", border: "1px solid #ddd2c8", borderRadius: 999, padding: "8px 16px", fontSize: 14, cursor: "pointer" };
@@ -58,7 +80,8 @@ export default function Team() {
   const [note, setNote] = useState({});
   const [open, setOpen] = useState({});
   const [showDone, setShowDone] = useState(false);
-  const [sub, setSub] = useState("review");   // แท็บย่อยในงานตัดต่อ: รอตรวจ / งานฉัน / งานอื่น
+  const [sub, setSub] = useState("review");   // แท็บย่อย: รอตรวจ / งานฉัน / ดูรายคน
+  const [person, setPerson] = useState(null); // ดูงานของใครอยู่ (มุมมองรายคน)
   const [ov, setOv] = useState(null);
 
   const load = (c) => {
@@ -138,57 +161,111 @@ export default function Team() {
       </div>
       {err && <div style={{ ...card, background: "#fde8e8", color: "#b42318", fontSize: 14 }}>{err}</div>}
 
-      {/* ═══ งานตัดต่อ ═══ */}
-      {/* ═══ งานตัดต่อ — แยก "งานตรวจ" กับ "งานตัด" คนละแท็บ (คิมทัก 3 ส.ค.) ═══
-           "หน้าการทำงานตอนนี้งงมาก แยกงานตรวจ กับ งานตัด แล้วถ้ามี 10 ต้องเลื่อนจนตาลายแน่
-            มีปุ่มเปิดปิดย่อช่องได้ด้วย"
-           → การ์ดย่อทุกใบเป็นค่าเริ่มต้น เห็นได้ 10-15 งานในจอเดียว กดเปิดเฉพาะใบที่จะทำ */}
+      {/* ═══════ 🎬 งานตัดต่อ — มุมมองรายคน (คิมสั่ง 3 ส.ค.) ═══════
+           "หน้าตรวจงานของลูกตาลควรแยกเป็นคนเลย เช่นมีการ์ดของโบ การ์ดของกัน การ์ดของฟรีแลนซ์
+            พอกดเข้าไปมันก็จะมีชื่องานขึ้นมา แล้วเค้าก็เลือกได้ว่าจะตรวจไฟล์งานไหน
+            ... อาจจะใช้เรื่องของสีเข้ามาช่วย แดง=ด่วนต้องส่ง เหลือง=ยังไม่เสร็จแต่ไม่ด่วน เขียว=เสร็จแล้ว
+            ... เอาโมเดลของคนที่เค้าทำสำเร็จอยู่แล้วมาใช้ ไม่ต้องคิดใหม่"
+           → ใช้โมเดล "workload by assignee" แบบ Asana/Monday: การ์ดคน → กดเข้าไปเห็นงานของคนนั้น
+             + ระบบสี 3 สีตามที่คิมกำหนด (ใช้ทั้งจุดสีและขอบซ้ายของการ์ด) */}
       {tab === "jobs" && (() => {
         const inReview = active.filter(j => reviewGate(j, me));
-        const mine = active.filter(j => j.assigned_to === me.member_id && !reviewGate(j, me));
-        const others = active.filter(j => !inReview.includes(j) && !mine.includes(j));
-        const BUCKETS = [
-          ["review", "🔍 รอฉันตรวจ", inReview, "#0b6ea8"],
-          ["mine", "✂️ งานที่ฉันต้องตัด", mine, "#5a3fc0"],
-          ...((isOwner || isAE) ? [["others", "👀 งานอื่นในระบบ", others, "#8a7f9c"]] : []),
-        ].filter(([, , list], i) => list.length || i < 2);
-        const cur = BUCKETS.find(b => b[0] === sub) || BUCKETS[0];
-        const list = cur ? cur[2] : [];
+        const myJobs = active.filter(j => j.assigned_to === me.member_id && !reviewGate(j, me));
+
+        // ── มุมมองรายคน (เฉพาะคนที่ดูงานคนอื่นได้: AE / คิม / หัวหน้า) ──
+        const canSeeTeam = isOwner || isAE || me.role === "senior";
+        const people = (d.members || []).filter(m => ["editor", "senior", "ae"].includes(m.role));
+        const jobsOf = (mid) => active.filter(j => j.assigned_to === mid);
+        const unassigned = active.filter(j => !j.assigned_to);
+
+        const openPerson = person && (people.find(m => m.member_id === person) || (person === "_none" ? { member_id: "_none", name: "ยังไม่มีคนทำ", position: "" } : null));
+        const personJobs = openPerson ? (openPerson.member_id === "_none" ? unassigned : jobsOf(openPerson.member_id)) : [];
+
+        const Row = (j) => <Job key={j.order_id} j={j} me={me} d={d} isOwner={isOwner} isAE={isAE}
+          open={!!open[j.order_id]} toggle={() => setOpen(o => ({ ...o, [j.order_id]: !o[j.order_id] }))}
+          draftUrl={draftUrl} setDraftUrl={setDraftUrl} note={note} setNote={setNote} busy={busy} post={post} />;
 
         return <>
           {active.length === 0 && <div style={{ ...card, textAlign: "center", color: "#7c7268" }}>
             ยังไม่มีงานที่ต้องทำตอนนี้ค่ะ พักได้เลย 🌿</div>}
 
           {active.length > 0 && <>
+            {/* แท็บย่อย */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-              {BUCKETS.map(([k, label, l, tone]) => {
-                const on = cur && cur[0] === k;
-                return <button key={k} onClick={() => setSub(k)}
-                  style={{ borderRadius: 999, padding: "9px 16px", fontSize: 14, cursor: "pointer", fontWeight: 700,
-                    border: `1.5px solid ${on ? tone : "#ddd2c8"}`, background: on ? tone : "#fff", color: on ? "#fff" : "#2f2a26" }}>
-                  {label} ({l.length})
-                </button>;
-              })}
+              {[["review", "🔍 รอฉันตรวจ", inReview.length, "#0b6ea8"],
+                ["mine", "✂️ งานที่ฉันต้องตัด", myJobs.length, "#5a3fc0"],
+                ...(canSeeTeam ? [["people", "👥 ดูรายคน", active.length, "#2f2a26"]] : [])]
+                .map(([k, label, n, tone]) => {
+                  const on = sub === k;
+                  return <button key={k} onClick={() => { setSub(k); setPerson(null); }}
+                    style={{ borderRadius: 999, padding: "9px 16px", fontSize: 14, cursor: "pointer", fontWeight: 700,
+                      border: `1.5px solid ${on ? tone : "#ddd2c8"}`, background: on ? tone : "#fff", color: on ? "#fff" : "#2f2a26" }}>
+                    {label} ({n})
+                  </button>;
+                })}
             </div>
 
-            {cur && cur[0] === "review" && list.length > 0 && <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
-              กดที่งานเพื่อเปิดดู แล้วเลือก <b>อนุมัติ</b> หรือ <b>ไม่อนุมัติ</b> (ถ้าไม่อนุมัติต้องเขียนบอกด้วยว่าแก้อะไร)
-            </p>}
+            {/* คำอธิบายสี — บอกครั้งเดียวใช้ได้ทั้งหน้า */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "#7c7268", marginBottom: 12 }}>
+              <span><Dot c={C.red} /> ด่วน · เลยกำหนดหรือส่งวันนี้</span>
+              <span><Dot c={C.yellow} /> ยังไม่เสร็จ ไม่ด่วน</span>
+              <span><Dot c={C.green} /> เสร็จแล้ว</span>
+            </div>
 
-            {list.length === 0 && <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>
-              ไม่มีงานในหมวดนี้ค่ะ</div>}
+            {/* ── รอฉันตรวจ / งานฉัน ── */}
+            {sub !== "people" && (() => {
+              const list = sub === "review" ? inReview : myJobs;
+              if (!list.length) return <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ไม่มีงานในหมวดนี้ค่ะ</div>;
+              return <>
+                {sub === "review" && <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
+                  กดที่งานเพื่อเปิดดู แล้วเลือก <b>อนุมัติ</b> หรือ <b>ไม่อนุมัติ</b>
+                </p>}
+                <ExpandBar list={list} setOpen={setOpen} />
+                {list.map(Row)}
+              </>;
+            })()}
 
-            {/* กางทั้งหมด/ย่อทั้งหมด — เวลามีงานเยอะๆ */}
-            {list.length > 1 && <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <button style={{ ...ghost, fontSize: 12.5, padding: "6px 12px" }}
-                onClick={() => setOpen(o => ({ ...o, ...Object.fromEntries(list.map(j => [j.order_id, true])) }))}>กางทั้งหมด</button>
-              <button style={{ ...ghost, fontSize: 12.5, padding: "6px 12px" }}
-                onClick={() => setOpen(o => ({ ...o, ...Object.fromEntries(list.map(j => [j.order_id, false])) }))}>ย่อทั้งหมด</button>
-            </div>}
+            {/* ── ดูรายคน: การ์ดคน → กดเข้าไปเห็นงานของคนนั้น ── */}
+            {sub === "people" && !openPerson && <>
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))" }}>
+                {[...people.map(m => ({ m, list: jobsOf(m.member_id) })),
+                  ...(unassigned.length ? [{ m: { member_id: "_none", name: "⚠️ ยังไม่มีคนทำ", position: "รอมอบหมาย" }, list: unassigned }] : [])]
+                  .map(({ m, list }) => {
+                    const red = list.filter(j => jobColor(j) === "red").length;
+                    const yellow = list.filter(j => jobColor(j) === "yellow").length;
+                    const green = list.filter(j => jobColor(j) === "green").length;
+                    const waiting = list.filter(j => reviewGate(j, me)).length;
+                    return (
+                      <button key={m.member_id} onClick={() => setPerson(m.member_id)}
+                        style={{ textAlign: "left", cursor: "pointer", background: "#fff", borderRadius: 14, padding: "14px 15px",
+                          border: red ? `2px solid ${C.red}` : "1px solid #eee4dc", fontFamily: "inherit" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <b style={{ fontSize: 15.5 }}>{m.name}</b>
+                          <span style={{ color: "#a89f96", fontSize: 16 }}>›</span>
+                        </div>
+                        <div style={{ color: "#a89f96", fontSize: 12, marginTop: 2 }}>{m.position || ROLE_TH[m.role] || ""}</div>
+                        <div style={{ display: "flex", gap: 10, marginTop: 10, fontSize: 13, fontWeight: 700 }}>
+                          <span style={{ color: red ? C.red : "#d8d2cb" }}><Dot c={red ? C.red : "#d8d2cb"} />{red}</span>
+                          <span style={{ color: yellow ? C.yellow : "#d8d2cb" }}><Dot c={yellow ? C.yellow : "#d8d2cb"} />{yellow}</span>
+                          <span style={{ color: green ? C.green : "#d8d2cb" }}><Dot c={green ? C.green : "#d8d2cb"} />{green}</span>
+                        </div>
+                        {waiting > 0 && <div style={{ marginTop: 8, background: "#f0f7fb", color: "#0b6ea8", borderRadius: 8, padding: "5px 9px", fontSize: 12, fontWeight: 700 }}>
+                          🔔 รอคุณตรวจ {waiting} งาน
+                        </div>}
+                        {!list.length && <div style={{ marginTop: 8, fontSize: 12, color: "#a89f96" }}>ว่างอยู่ ไม่มีงานค้าง</div>}
+                      </button>
+                    );
+                  })}
+              </div>
+            </>}
 
-            {list.map(j => <Job key={j.order_id} j={j} me={me} d={d} isOwner={isOwner} isAE={isAE}
-              open={!!open[j.order_id]} toggle={() => setOpen(o => ({ ...o, [j.order_id]: !o[j.order_id] }))}
-              draftUrl={draftUrl} setDraftUrl={setDraftUrl} note={note} setNote={setNote} busy={busy} post={post} />)}
+            {/* ── งานของคนที่เลือก ── */}
+            {sub === "people" && openPerson && <>
+              <button style={{ ...ghost, fontSize: 13, marginBottom: 12 }} onClick={() => setPerson(null)}>← กลับไปดูทุกคน</button>
+              <h3 style={{ fontSize: 16, margin: "0 0 10px" }}>งานของ {openPerson.name} ({personJobs.length})</h3>
+              {!personJobs.length && <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ไม่มีงานค้างค่ะ</div>}
+              {personJobs.length > 0 && <><ExpandBar list={personJobs} setOpen={setOpen} />{personJobs.map(Row)}</>}
+            </>}
           </>}
 
           <button style={{ ...ghost, fontSize: 13, marginTop: 8 }} onClick={() => setShowDone(v => !v)}>
@@ -254,13 +331,13 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
 
   return (
     <div style={{ ...card, padding: open ? 16 : "11px 14px", marginBottom: open ? 12 : 7,
-      borderLeft: chip?.c === "#b42318" ? "3px solid #b42318" : "1px solid #eee4dc" }}>
+      borderLeft: `4px solid ${C[jobColor(j)]}` }}>
       {/* หัวการ์ด — กดตรงไหนก็เปิด/ย่อได้ (คิมขอ "มีปุ่มเปิดปิดย่อช่องได้ด้วย") */}
       <div onClick={toggle} style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
         <span style={{ fontSize: 13, color: "#a89f96", width: 14, flexShrink: 0 }}>{open ? "▾" : "▸"}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <b style={{ fontSize: 15 }}>{b.title || b.hook || `งานตัดต่อ #${j.order_id.slice(-6)}`}</b>
+            <b style={{ fontSize: 15 }}><Dot c={C[jobColor(j)]} />{b.title || b.hook || `งานตัดต่อ #${j.order_id.slice(-6)}`}</b>
             {chip && <span style={{ background: chip.bg, color: chip.c, borderRadius: 999, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>{chip.t}</span>}
             <span style={{ background: "#f4f0ea", color: "#7c7268", borderRadius: 999, padding: "2px 10px", fontSize: 11.5, fontWeight: 600 }}>{j.status_th}</span>
           </div>

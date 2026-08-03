@@ -156,24 +156,6 @@ export async function initDb() {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_uses_uniq ON subscription_uses(subscription_id, billing_cycle);
 
-    -- 📮 คำขอจ้างงานโปรดักชั่นที่ส่งผ่านเว็บ (คิมสั่ง 3 ส.ค.: "เอา LINE ออก เราย้ายมาทำงานในเว็บได้แล้ว")
-    -- เดิมหน้า /production คัดลอกบรีฟแล้วเด้งไป LINE — ไม่มีบันทึกอะไรในระบบเลย งานหายก็ไม่รู้
-    CREATE TABLE IF NOT EXISTS production_inquiries (
-      inquiry_id TEXT PRIMARY KEY,
-      email TEXT,
-      contact TEXT,
-      pack TEXT,
-      addons TEXT,
-      footage_url TEXT,
-      voice_url TEXT,
-      ref_links TEXT,
-      note TEXT,
-      need_idea BOOLEAN DEFAULT false,
-      status TEXT DEFAULT 'new',       -- new | contacted | quoted | won | lost
-      team_note TEXT,
-      created_at TIMESTAMPTZ DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_prod_inq_status ON production_inquiries(status, created_at DESC);
 
     -- ═══════ 📈 ผลจริงรายคลิป — หัวใจของ "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════
     -- "ฉันไม่ได้อยากให้ลูกค้าเริ่มใหม่ทุกเดือน เค้าต้องได้ต่อยอดจากที่ถูกคิดมาแล้วแล้วเอาไปทำจริง

@@ -145,38 +145,6 @@ export function ToolsAndServices({ channel, cycle, demo }) {
 }
 
 // 🎁 บริการ Babe House (คนทำให้/เรียน) — เห็นตลอด "ทำเองไม่ไหววันไหน ให้เราช่วย" · QR โชว์เลย เลื่อนมาสแกนได้ทันที
-export function ServicesBlock() {
-  const { t } = useI18n();
-  return <div className="card" style={{ borderTop: "4px solid var(--blue)", marginTop: 16 }}>
-    <div className="row" style={{ gap: 9, alignItems: "flex-start" }}>
-      <span style={{ fontSize: 20, lineHeight: 1.2 }}>🎁</span>
-      <div><div style={{ fontWeight: 800, fontSize: 15 }}>{t("dp_sv_title")}</div><div className="muted" style={{ fontSize: 12.5 }}>{t("dp_sv_sub")}</div></div>
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12, marginTop: 14 }}>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px", display: "flex", flexDirection: "column" }}>
-        <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
-          <span style={{ fontSize: 26 }}>🎓</span>
-          <div><div style={{ fontWeight: 800, fontSize: 15 }}>{t("dp_academy")}</div><div className="muted" style={{ fontSize: 12.5 }}>{t("dp_academy_sub")}</div></div>
-        </div>
-        <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}>{t("dp_courses").map((c, i) => <li key={i} style={{ marginBottom: 3 }}>{c}</li>)}</ul>
-        {/* ⛔ เดิมมี QR ให้ทักไลน์ — คิมสั่ง 3 ส.ค. เอาออกก่อนเปิดวันที่ 15
-            "เราย้ายมาทำงานในเว็บได้แล้ว เรียนในเว็บก็ได้ ไม่จำเป็นจะต้องให้เค้ากลับไปทักใน LINE อีก" */}
-        <div style={{ margin: "auto 0 12px", fontSize: 13, lineHeight: 1.75 }}>
-          เลือกคอร์ส สมัครเรียน และเริ่มเรียนได้ทันทีบนเว็บ ไม่ต้องรอแอดมินค่ะ
-        </div>
-        <Link to="/academy" className="btn full">ดูคอร์สทั้งหมด →</Link>
-      </div>
-      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: "16px 15px", display: "flex", flexDirection: "column" }}>
-        <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
-          <span style={{ fontSize: 26 }}>🎬</span>
-          <div><div style={{ fontWeight: 800, fontSize: 15 }}>{t("dp_production")}</div><div className="muted" style={{ fontSize: 12.5 }}>{t("dp_production_sub")}</div></div>
-        </div>
-        <ul style={{ paddingLeft: 20, fontSize: 13, margin: "12px 0" }}>{t("dp_prod_items").map((x, i) => <li key={i} style={{ marginBottom: 3 }}>{x}</li>)}</ul>
-        <Link to="/production" className="btn full" style={{ margin: "auto 0 0", background: "#06C755", boxShadow: "0 8px 22px rgba(6,199,85,.28)" }}>{t("dp_prod_cta")}</Link>
-      </div>
-    </div>
-  </div>;
-}
 
 // การ์ดให้ลูกค้ารีวิวเล่มของตัวเอง → เก็บไว้โชว์เป็น social proof ตอนเปิดขาย
 export function ReviewCard({ demo, bpId }) {

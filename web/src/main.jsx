@@ -136,7 +136,6 @@ import Studio from "./pages/Studio.jsx";
 import Team from "./pages/Team.jsx";
 import Privacy from "./pages/Privacy.jsx";
 import VideoAudit from "./pages/VideoAudit.jsx";
-import Production from "./pages/Production.jsx";
 import Academy from "./pages/Academy.jsx";
 import AcademyLearn from "./pages/AcademyLearn.jsx";
 import AcademyCourse from "./pages/AcademyCourse.jsx";
@@ -174,7 +173,6 @@ createRoot(document.getElementById("root")).render(
       <Route path="/team" element={<Team />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/video-audit" element={<VideoAudit />} />
-      <Route path="/production" element={<Production />} />
       <Route path="/academy" element={<Academy />} />
       <Route path="/academy/course/:id" element={<AcademyCourse />} />
       <Route path="/academy/learn" element={<AcademyLearn />} />

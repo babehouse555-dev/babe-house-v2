@@ -86,6 +86,9 @@ export default function Team() {
   const [wl, setWl] = useState(null);      // 📅 ตารางงานทุกคน (AE/คิม)
   const [myAvail, setMyAvail] = useState([]);
   const [ext, setExt] = useState([]);                 // 📦 งานนอกเว็บ
+  const [intake, setIntake] = useState({ client_name: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
+  const [intakeMsg, setIntakeMsg] = useState(null);
+  const [rev, setRev] = useState(null);               // 🧠 รายงาน AI รายสัปดาห์
   const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "" });
 
   const load = (c) => {
@@ -105,6 +108,8 @@ export default function Team() {
     api(`/api/team/external?code=${encodeURIComponent(code)}${all ? "&all=1" : ""}`).then(r => setExt(r.jobs || [])).catch(() => {});
   };
   useEffect(() => { if (tab === "cal" && d) loadCal(); }, [tab, d]);   // eslint-disable-line
+  useEffect(() => { if (tab === "review" && d?.me?.role === "owner" && !rev)
+    api(`/api/team/weekly-review?code=${encodeURIComponent(code)}`).then(setRev).catch(() => {}); }, [tab, d, rev, code]);
 
   const post = async (path, body, id) => {
     setBusy(id); setErr("");
@@ -136,8 +141,10 @@ export default function Team() {
   const mine = active.filter(j => j.assigned_to === me.member_id).length;
   const toReview = active.filter(j => reviewGate(j, me)).length;
 
-  const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null], ["teach", "🎓 คลาสที่สอน", (d.teach || []).length]]
-    .concat(isOwner ? [["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
+  const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
+    .concat((isOwner || isAE) ? [["intake", "🏢 รับบรีฟลูกค้า", null]] : [])
+    .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
+    .concat(isOwner ? [["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px" }}>
@@ -432,6 +439,82 @@ export default function Team() {
           </>}
         </>;
       })()}
+
+      {/* ═══ 🏢 ลูกตาลรับบรีฟลูกค้านอกเว็บ → ระบบจัดคนให้เอง (คิมสั่ง 4 ส.ค.) ═══ */}
+      {tab === "intake" && (
+        <div style={card}>
+          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>🏢 รับบรีฟลูกค้า</h3>
+          <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 14px", lineHeight: 1.7 }}>
+            กรอกบรีฟที่ลูกค้าให้มา แล้ว<b>ระบบจะเลือกคนตัดให้เอง</b> — ไม่ต้องเลือกคน ไม่ต้องประสาน
+          </p>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+            <Field label="ชื่อลูกค้า *"><input style={input} value={intake.client_name} onChange={e => setIntake(v => ({ ...v, client_name: e.target.value }))} placeholder="บริษัท / ชื่อร้าน" /></Field>
+            <Field label="ช่องทางติดต่อ"><input style={input} value={intake.client_contact} onChange={e => setIntake(v => ({ ...v, client_contact: e.target.value }))} placeholder="LINE / เบอร์ — ไว้ให้ระบบตามงาน" /></Field>
+            <Field label="ชื่องาน *"><input style={input} value={intake.title} onChange={e => setIntake(v => ({ ...v, title: e.target.value }))} /></Field>
+            <Field label="กี่คลิป"><input style={input} inputMode="numeric" value={intake.clips} onChange={e => setIntake(v => ({ ...v, clips: e.target.value.replace(/[^\d]/g, "").slice(0, 3) }))} /></Field>
+            <Field label="ลูกค้าขอส่งวันไหน"><input style={input} type="date" value={intake.client_due} onChange={e => setIntake(v => ({ ...v, client_due: e.target.value }))} /></Field>
+            <Field label="ลิงก์ฟุตเทจ (ถ้ามีแล้ว)"><input style={input} value={intake.footage_url} onChange={e => setIntake(v => ({ ...v, footage_url: e.target.value }))} placeholder="ไม่มีก็เว้นว่าง" /></Field>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <Field label="บรีฟที่ลูกค้าบอกมา">
+              <textarea style={{ ...input, minHeight: 88, resize: "vertical" }} value={intake.brief}
+                onChange={e => setIntake(v => ({ ...v, brief: e.target.value }))} placeholder="อยากได้แบบไหน · ห้ามมีอะไร · อ้างอิงคลิปไหน" />
+            </Field>
+          </div>
+          {intakeMsg && <div style={{ ...card, marginTop: 12, background: intakeMsg.ok ? "#eef7f0" : "#fde8e8", color: intakeMsg.ok ? "#1a7f43" : "#b42318", fontSize: 14 }}>{intakeMsg.t}</div>}
+          <button style={{ ...btn(), marginTop: 14 }} disabled={busy === "intake" || !intake.client_name.trim() || !intake.title.trim()}
+            onClick={async () => {
+              const r = await post("/api/team/intake", { ...intake, clips: Number(intake.clips) || 1 }, "intake");
+              if (r?.ok) { setIntakeMsg({ ok: true, t: r.assigned_to ? `รับงานแล้วค่ะ 🎬 ระบบมอบให้ ${r.assigned_to} — ${r.reason}` : `รับงานแล้วค่ะ · ${r.reason}` });
+                setIntake({ client_name: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" }); }
+              else setIntakeMsg({ ok: false, t: "บันทึกไม่สำเร็จ ลองใหม่นะคะ" });
+            }}>
+            {busy === "intake" ? "กำลังบันทึก…" : "รับงาน + ให้ระบบจัดคนให้"}
+          </button>
+        </div>
+      )}
+
+      {/* ═══ 🧠 รายงาน AI ประเมินทีมรายสัปดาห์ (คิมคนเดียว) ═══ */}
+      {tab === "review" && isOwner && (
+        !rev ? <div style={{ ...card, textAlign: "center", color: "#7c7268" }}>กำลังให้ AI อ่านตัวเลข…</div> : <>
+          <div style={{ ...card, background: "#fbf7f3" }}>
+            <div className="between" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#a89f96" }}>สัปดาห์ {rev.week}</div>
+                <h3 style={{ fontSize: 16.5, margin: "3px 0 0" }}>{rev.review?.headline}</h3>
+              </div>
+              <button style={{ ...ghost, fontSize: 13 }} onClick={() => { setRev(null);
+                api(`/api/team/weekly-review?code=${encodeURIComponent(code)}&refresh=1`).then(setRev).catch(() => {}); }}>
+                อัปเดตใหม่
+              </button>
+            </div>
+          </div>
+          {(rev.review?.people || []).map((p, i) => {
+            const tone = p.status === "ต้องช่วย" ? C.red : p.status === "ดีมาก" ? C.green : C.yellow;
+            return (
+              <div key={i} style={{ ...card, borderLeft: `4px solid ${tone}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <b style={{ fontSize: 15.5 }}>{p.name}</b>
+                  <span style={{ background: tone, color: "#fff", borderRadius: 999, padding: "3px 12px", fontSize: 12, fontWeight: 800 }}>{p.status}</span>
+                </div>
+                <div style={{ fontSize: 14, lineHeight: 1.8, marginTop: 8 }}>
+                  <div>✅ {p.good}</div>
+                  <div style={{ marginTop: 4 }}>👀 {p.watch}</div>
+                  <div style={{ marginTop: 4, color: "#0b6ea8" }}>💡 {p.suggest}</div>
+                </div>
+              </div>
+            );
+          })}
+          {(rev.review?.team_risks || []).length > 0 && <div style={card}>
+            <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>⚠️ ความเสี่ยงของทีมสัปดาห์นี้</h3>
+            {rev.review.team_risks.map((x, i) => <div key={i} style={{ fontSize: 14, lineHeight: 1.8 }}>• {x}</div>)}
+          </div>}
+          {(rev.review?.kim_should_do || []).length > 0 && <div style={{ ...card, background: "#f0f7fb", border: "1px solid #d6e9f4" }}>
+            <h3 style={{ fontSize: 15, margin: "0 0 8px", color: "#0b6ea8" }}>🎯 สิ่งที่คิมควรทำสัปดาห์นี้</h3>
+            {rev.review.kim_should_do.map((x, i) => <div key={i} style={{ fontSize: 14, lineHeight: 1.8 }}>{i + 1}. {x}</div>)}
+          </div>}
+        </>
+      )}
 
       {/* ═══ คลาสที่สอน + ค่าคอม 10% ═══ */}
       {tab === "teach" && (<>

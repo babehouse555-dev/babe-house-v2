@@ -221,6 +221,15 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_followup_order ON client_followups(order_id, kind, round);
 
+    -- 🧠 รายงาน AI ประเมินทีมรายสัปดาห์ — คิมอ่านคนเดียว
+    CREATE TABLE IF NOT EXISTS team_reviews (
+      review_id TEXT PRIMARY KEY,
+      week TEXT NOT NULL,              -- 2026-W32
+      review_json TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_team_reviews_week ON team_reviews(week);
+
     -- ═══════ 🧾 ใบกำกับภาษี (คิมสั่ง 3 ส.ค. 2569) ═══════
     -- "ทุกการจ่ายเงินเราต้องออกใบกำกับภาษีอยู่แล้ว เอาไปส่งบัญชีรายเดือน"
     -- ลูกค้าทั่วไป: ออกอัตโนมัติด้วยชื่อที่มีอยู่ ไม่ต้องกรอกอะไรเพิ่ม

@@ -15,7 +15,7 @@ import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
 import { seedAssignments } from "./seed-assignments.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint, reviewMonth, extractImages } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint, reviewMonth, extractImages, reviewTeamWeek } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -2903,6 +2903,9 @@ const editMargin = (n) => {
   return { price_per_clip: per, cost: EDIT_COST_PER_CLIP, fee: Math.round(fee), net: Math.round(net), pct: Math.round(net / per * 100) };
 };
 const EDIT_FREE_REVISIONS = 2;
+// 🔁 เกินโควตาแก้ คิดเพิ่ม 50% ของราคาต่อคลิป (คิมเคาะ 4 ส.ค. 2569)
+// ⛔ นับเฉพาะ "ลูกค้าเปลี่ยนใจ" — ถ้าเป็นความผิดเรา แก้ฟรีไม่จำกัด ไม่แตะโควตา
+const REVISION_OVER_PCT = Number(process.env.REVISION_OVER_PCT || 50);
 const EDIT_STATUS = {
   awaiting_files: "รอไฟล์จากคุณ", editing: "ทีมกำลังตัด", draft_sent: "ส่งงานให้ดูแล้ว",
   revising: "กำลังแก้ตามคอมเมนต์", done: "เสร็จเรียบร้อย", canceled: "ยกเลิกแล้ว",
@@ -3081,9 +3084,15 @@ app.post("/api/edit/comment", async (req, res) => {
   // ลูกค้าคอมเมนต์ตอนงานส่งมาแล้ว = ขอแก้ → นับรอบแก้ + เด้งทีม
   if (!team && o.status === "draft_sent") {
     const redue = addWorkDays(new Date(), Math.max(1, EDIT_DAYS_PER_CLIP - 1));   // รอบแก้เร็วกว่ารอบแรก
-    await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1, due_at=$2, updated_at=now() WHERE order_id=$1`, [orderId, redue.toISOString()]);
-    sendEmail(OPS_EMAIL, `💬 ลูกค้าขอแก้งาน — ${o.email}`, wrap(
-      `งาน <b>${orderId}</b> · แก้ครั้งที่ ${Number(o.revisions_used) + 1} (ฟรี ${EDIT_FREE_REVISIONS} ครั้ง)<br><br>“${text.slice(0, 300)}”<br><br>${btn(`${appBaseUrl()}/admin`, "เปิดหลังบ้าน")}`)).catch(() => {});
+    // 🔁 นับเป็น "ลูกค้าขอแก้" ไว้ก่อน — ทีมกดเปลี่ยนเป็น "เราพลาด" ได้ทีหลัง (แก้ฟรี ไม่นับโควตา)
+    await run(`UPDATE edit_orders SET status='revising', revisions_used=revisions_used+1,
+       client_revisions=COALESCE(client_revisions,0)+1, due_at=$2, updated_at=now() WHERE order_id=$1`, [orderId, redue.toISOString()]);
+    const usedNow = Number(o.client_revisions || 0) + 1;
+    const over = usedNow > EDIT_FREE_REVISIONS;
+    sendEmail(OPS_EMAIL, `💬 ลูกค้าขอแก้งาน — ${o.client_name || o.email}${over ? " ⚠️ เกินโควตา" : ""}`, wrap(
+      `งาน <b>${orderId}</b> · ลูกค้าขอแก้ครั้งที่ ${usedNow} (ฟรี ${EDIT_FREE_REVISIONS} ครั้ง)` +
+      (over ? `<br><b style="color:#b42318">เกินโควตาแล้ว — คิดเพิ่ม ${REVISION_OVER_PCT}% ของราคาต่อคลิป</b>` : "") +
+      `<br><br>“${text.slice(0, 300)}”<br><br>${btn(`${appBaseUrl()}/team`, "เปิดหน้าทีม")}`)).catch(() => {});
   }
   res.json({ ok: true });
 });
@@ -3167,7 +3176,7 @@ app.get("/api/team/me", async (req, res) => {
     else if (isSenior) { params.push(me.member_id); where = `WHERE (o.assigned_to=$1 OR o.status='senior_review')`; }
     else { params.push(me.member_id); where = `WHERE o.assigned_to=$1`; }  // คนตัด/ฟรีแลนซ์ เห็นเฉพาะของตัวเอง
     const rows = await q(`SELECT o.order_id,o.blueprint_id,o.billing_cycle,o.script_day,o.brief_json,o.clips,
-        o.footage_url,o.voice_url,o.note,o.internal_note,o.status,o.draft_url,o.revisions_used,o.due_at,
+        o.footage_url,o.voice_url,o.note,o.internal_note,o.status,o.draft_url,o.revisions_used,o.due_at,o.client_revisions,o.our_fix_count,o.client_name,o.source,o.client_due_at,o.deadline_risk,
         o.ref_links,o.ref_picks,o.assigned_to,o.senior_by,o.ae_by,o.created_at,
         ${isOwner ? "o.amount_satang, o.price_per_clip, o.email," : ""}
         (SELECT name FROM team_members t WHERE t.member_id=o.assigned_to) assignee_name
@@ -3385,6 +3394,70 @@ app.post("/api/team/files-ready", async (req, res) => {
   await teamComment(id, me.name, `📥 ได้ไฟล์ครบแล้ว — กำหนดส่งใหม่ ${thDate(due)}${late ? " ⚠️ เลยวันที่ลูกค้าขอ" : ""}`);
   res.json({ ok: true, due_at: due.toISOString(), due_th: thDate(due), slipped: !!late,
     message: late ? "เลยวันที่ลูกค้าขอ — ระบบเตรียมข้อความแจ้งลูกค้าให้แล้ว" : "กำหนดส่งใหม่เรียบร้อย" });
+});
+
+// 🧠 AI ประเมินทีมรายสัปดาห์ → เข้าหน้าคิม (คิมเคาะ 4 ส.ค.: เอารายสัปดาห์)
+const isoWeek = (d = new Date()) => {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-W${String(Math.ceil(((t - y0) / 86400000 + 1) / 7)).padStart(2, "0")}`;
+};
+async function buildTeamReview(force = false) {
+  const week = isoWeek();
+  if (!force) { const had = await one(`SELECT review_json FROM team_reviews WHERE week=$1`, [week]); if (had) return safeJson(had.review_json); }
+  const [wl, score] = await Promise.all([teamWorkload(), teamScorecard()]);
+  const sm = Object.fromEntries(score.map(x => [x.member_id, x]));
+  const people = wl.map(m => ({ ...m, score: sm[m.member_id] || null }));
+  const c = await one(`SELECT
+      COUNT(*) FILTER (WHERE assigned_to IS NULL AND status NOT IN ('done','canceled')) unassigned,
+      COUNT(*) FILTER (WHERE due_at < now() AND status NOT IN ('done','canceled')) late,
+      COUNT(*) FILTER (WHERE status='awaiting_files') awaiting_files,
+      COUNT(*) FILTER (WHERE status='draft_sent') draft_sent FROM edit_orders`);
+  const { review, model, usage } = await reviewTeamWeek({ people, week,
+    jobs: { unassigned: Number(c?.unassigned || 0), late: Number(c?.late || 0),
+            awaiting_files: Number(c?.awaiting_files || 0), draft_sent: Number(c?.draft_sent || 0) } });
+  if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'team_review',$2,$3,$4,$5)`,
+    [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
+  await run(`INSERT INTO team_reviews (review_id,week,review_json) VALUES ($1,$2,$3)
+    ON CONFLICT (week) DO UPDATE SET review_json=EXCLUDED.review_json, created_at=now()`, [uid("tr"), week, JSON.stringify(review)]);
+  return review;
+}
+app.get("/api/team/weekly-review", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  try { res.json({ ok: true, week: isoWeek(), review: await buildTeamReview(req.query.refresh === "1") }); }
+  catch (e) { console.error("weekly-review", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 🔁 ทีมระบุว่ารอบแก้นี้ "เราพลาด" หรือ "ลูกค้าเปลี่ยนใจ" (คิมเคาะ 4 ส.ค.)
+// "ถ้าเป็นที่ความผิดพลาดของเราเองจะต้องแก้ไขได้กี่ครั้ง หรือถ้าลูกค้าแก้ไขเกินกว่าเรากำหนด
+//  ระบบมีวิธีจัดการยังไงบ้าง" → เราผิด = ฟรีไม่จำกัด · ลูกค้าเปลี่ยนใจ = ฟรี 2 ครั้ง เกินคิด 50%
+app.post("/api/team/revision-fault", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae", "senior"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const id = String(req.body?.order_id || ""), ours = !!req.body?.our_fault;
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [id]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (ours) {
+    // ย้ายรอบล่าสุดจากฝั่งลูกค้ามาเป็นฝั่งเรา — คืนโควตาให้ลูกค้า
+    if (Number(o.client_revisions || 0) < 1) return res.status(409).json({ ok: false, error: "NOTHING", message: "ยังไม่มีรอบแก้ให้ย้ายค่ะ" });
+    await run(`UPDATE edit_orders SET client_revisions=client_revisions-1, our_fix_count=COALESCE(our_fix_count,0)+1 WHERE order_id=$1`, [id]);
+    await teamComment(id, me.name, `🔁 รอบนี้เป็นความผิดของเรา — แก้ฟรี ไม่นับโควตาลูกค้า`);
+  } else {
+    await run(`UPDATE edit_orders SET client_revisions=COALESCE(client_revisions,0)+1 WHERE order_id=$1`, [id]);
+    await teamComment(id, me.name, `🔁 รอบนี้ลูกค้าเปลี่ยนใจ — นับโควตา`);
+  }
+  const r = await one(`SELECT client_revisions, our_fix_count, price_per_clip, clips FROM edit_orders WHERE order_id=$1`, [id]);
+  const used = Number(r.client_revisions || 0);
+  const over = Math.max(0, used - EDIT_FREE_REVISIONS);
+  // ⚠️ งานที่ใช้เครดิต/งานนอกเว็บไม่มีราคาต่อคลิปเก็บไว้ → ใช้ "ราคาตัดต่อ" ตามจำนวนคลิป
+  //    (เคยพลาด: ไปหยิบราคา Blueprint 1,590 มาคิดค่าแก้งานตัดต่อ ซึ่งคนละสินค้ากัน)
+  const per = Number(r.price_per_clip || 0) || editPrice(Number(r.clips) || 1);
+  res.json({ ok: true, client_revisions: used, our_fix_count: Number(r.our_fix_count || 0),
+    free_left: Math.max(0, EDIT_FREE_REVISIONS - used), over_rounds: over,
+    charge_baht: Math.round(over * per * (REVISION_OVER_PCT / 100) * (Number(r.clips) || 1)),
+    over_pct: REVISION_OVER_PCT });
 });
 
 // 🏢 ลูกตาลรับบรีฟลูกค้านอกเว็บ → ระบบมอบหมายให้เอง (คิมสั่ง 4 ส.ค. 2569)
@@ -4225,7 +4298,7 @@ async function runActivationReminders() {
     if (sent) console.log(`[activation] ${sent}`); return sent;
   } catch (e) { console.error("activation", e.message); return 0; }
 }
-app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const followups = await runClientFollowups(true); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, followups, abandoned, activation, cycle: currentBillingCycle() }); });
+app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const followups = await runClientFollowups(true); await buildTeamReview(true).catch(() => {}); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, followups, abandoned, activation, cycle: currentBillingCycle() }); });
 // 📣 ลูกค้ามาจากไหน + ใครจ่ายเงินจริง (ตอบคำถาม "มีคนซื้อจากแอดยัง")
 app.get("/api/admin/attribution", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

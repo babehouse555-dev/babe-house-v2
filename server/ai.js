@@ -1189,3 +1189,58 @@ export async function reviewMonth({ images, calendar, lang = "th" }) {
   return { review: JSON.parse(resp.text), model: MODEL,
            usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
 }
+
+// ═══════ 🧠 AI ประเมินการทำงานรายคน (คิมสั่ง 4 ส.ค. 2569 — รายสัปดาห์) ═══════
+// "ใช้ AI ประเมินการทำงานรายคน ส่งรายงานมาที่หน้าการทำงานของฉัน"
+// ⛔ กฎเหล็ก: ประเมินจากตัวเลขจริงเท่านั้น ห้ามเดาเรื่องนิสัย/ทัศนคติของคน
+//    รายงานนี้คิมอ่านคนเดียว แต่ต้องเขียนแบบที่กล้าให้เจ้าตัวอ่านได้
+const TEAM_REVIEW_SCHEMA = { type: Type.OBJECT, properties: {
+  headline: { type: Type.STRING },
+  people: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
+    name: { type: Type.STRING },
+    status: { type: Type.STRING },        // ดีมาก | ปกติ | ต้องช่วย
+    good: { type: Type.STRING },
+    watch: { type: Type.STRING },
+    suggest: { type: Type.STRING },
+  }, required: ["name", "status", "good", "watch", "suggest"] } },
+  team_risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+  kim_should_do: { type: Type.ARRAY, items: { type: Type.STRING } },
+}, required: ["headline", "people", "team_risks", "kim_should_do"] };
+
+const TEAM_REVIEW_PROMPT = `คุณคือที่ปรึกษาของคิม เจ้าของ Babe House กำลังอ่านตัวเลขการทำงานของทีมโปรดักชั่นสัปดาห์นี้
+
+หน้าที่: อ่านตัวเลข แล้วบอกคิมว่า "ใครโอเค ใครต้องช่วย และคิมควรทำอะไร"
+
+⛔ กฎเหล็ก:
+- วิเคราะห์จาก **ตัวเลขที่ให้มาเท่านั้น** ห้ามเดานิสัย ทัศนคติ หรือเรื่องส่วนตัวของใคร
+- คนที่งานน้อยไม่ได้แปลว่าขี้เกียจ — อาจเพราะระบบไม่ได้มอบงานให้ หรือเขาไม่ได้ลงวันว่าง ให้พูดถึงสาเหตุที่เป็นไปได้อย่างเป็นธรรม
+- ถ้าข้อมูลน้อยเกินจะสรุป ให้บอกตรงๆ ว่า "ยังน้อยเกินจะสรุป" ห้ามแต่งให้ดูมีอะไร
+- น้ำเสียง: ตรงไปตรงมาแต่เมตตา เขียนแบบที่ถ้าเจ้าตัวมาอ่านก็ไม่เสียใจ
+- status: ใช้ "ดีมาก" / "ปกติ" / "ต้องช่วย" เท่านั้น
+- kim_should_do: สิ่งที่คิมลงมือได้จริงในสัปดาห์นี้ 2-4 ข้อ ไม่ใช่คำแนะนำลอยๆ`;
+
+export async function reviewTeamWeek({ people, jobs, week }) {
+  if (!ai) return { review: { headline: "(โหมดทดสอบ — ใส่ GEMINI_API_KEY เพื่อให้ AI ประเมินจริง)",
+    people: [], team_risks: [], kim_should_do: [] }, model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
+  const text = `สัปดาห์: ${week}
+
+ตัวเลขรายคน:
+${people.map(p => `- ${p.name} (${p.position || p.role}): งานที่ถืออยู่ ${p.open_jobs} ชิ้น/${p.busy_clips} คลิป · ลงวันว่างไว้ ${p.capacity} คลิป · เหลือรับได้ ${p.free_slots}` +
+  (p.score ? ` · ส่งแล้ว ${p.score.delivered}/${p.score.total} · ตรงเวลา ${p.score.on_time_pct ?? "ไม่มีข้อมูล"}% · โดนตีกลับเฉลี่ย ${p.score.rejects_per_job} ครั้ง/งาน` : " · ยังไม่มีสถิติสัปดาห์นี้")).join("\n")}
+
+ภาพรวมงาน:
+- งานที่ยังไม่มีคนทำ: ${jobs.unassigned} ชิ้น
+- งานเลยกำหนดส่ง: ${jobs.late} ชิ้น
+- งานที่รอลูกค้าส่งไฟล์: ${jobs.awaiting_files} ชิ้น
+- งานที่ส่งให้ลูกค้าแล้วรอตอบ: ${jobs.draft_sent} ชิ้น
+
+ตอบตามสเปก JSON`;
+  const resp = await ai.models.generateContent({
+    model: MODEL, contents: [{ role: "user", parts: [{ text }] }],
+    config: { systemInstruction: TEAM_REVIEW_PROMPT, responseMimeType: "application/json",
+              responseSchema: TEAM_REVIEW_SCHEMA, maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: 2048 } },
+  });
+  const u = resp.usageMetadata || {};
+  return { review: JSON.parse(resp.text), model: MODEL,
+           usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
+}

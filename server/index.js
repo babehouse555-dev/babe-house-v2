@@ -232,6 +232,7 @@ async function issueInvoiceForOrder(orderId) {
     (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
   await issueTaxInvoice({
     orderId, kind, email: o.email, amountSatang: amount, description: desc,
+    docDate: o.paid_at || o.created_at,                     // วันที่บนใบ = วันรับเงินจริง
     tax: { ...(payload.tax || {}), fallback_name: payload.form_responses?.display_name || o.instagram_account || "" },
   });
 }
@@ -431,8 +432,10 @@ app.get("/api/admin/tax-invoices", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try {
     const month = String(req.query.month || "") || new Date().toISOString().slice(0, 7);
+    // จัดกลุ่มตาม "วันที่บนใบ" (= วันรับเงินจริง) ให้ตรงกับที่นักบัญชียื่นภาษี
     const rows = await q(`SELECT * FROM tax_invoices
-      WHERE to_char(created_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM') = $1 ORDER BY created_at DESC`, [month]);
+      WHERE to_char(COALESCE(doc_date, created_at::date), 'YYYY-MM') = $1
+      ORDER BY COALESCE(doc_date, created_at::date) DESC, created_at DESC`, [month]);
     const sum = (k) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
     const byStatus = {};
     for (const r of rows) byStatus[r.status] = (byStatus[r.status] || 0) + 1;
@@ -465,11 +468,15 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
   const from = String(b.from || "2000-01-01"), to = String(b.to || "2999-12-31");
   const dryRun = b.dry_run !== false;                       // ค่าเริ่มต้น = ดูก่อน ไม่เขียนอะไร
   const alreadyIssued = !!b.already_issued_manually;        // ติ๊กถ้าใบพวกนี้ออกมือไว้แล้ว
+  // คิมยืนยัน 3 ส.ค.: "ยังไม่มีใครทำใบใน Stripe เลย" → ค่าเริ่มต้นทำเฉพาะยอดที่จ่ายผ่าน Stripe
+  // (ยอดที่จ่ายทางอื่น/ทำมือ คิมออกใบเองอยู่แล้ว ห้ามแตะ)
+  const onlyStripe = b.only_stripe !== false;
   try {
     const rows = await q(`SELECT o.* FROM blueprint_orders o
       LEFT JOIN tax_invoices t ON t.order_id = o.order_id
       WHERE o.payment_status IN ('paid','mock_paid') AND COALESCE(o.final_amount_satang,0) > 0
         AND t.invoice_id IS NULL
+        ${onlyStripe ? "AND o.provider = 'stripe'" : ""}
         AND COALESCE(o.paid_at, o.created_at) >= $1::date
         AND COALESCE(o.paid_at, o.created_at) < ($2::date + interval '1 day')
       ORDER BY COALESCE(o.paid_at, o.created_at)`, [from, to]);
@@ -510,6 +517,7 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
       const desc = KIND_LABEL[kind] || (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
       const r = await issueTaxInvoice({ orderId: o.order_id, kind, email: o.email,
         amountSatang: Number(o.final_amount_satang || 0), description: desc,
+        docDate: o.paid_at || o.created_at,                 // ⚠️ ใบย้อนหลังต้องลงวันที่เดิม ไม่ใช่วันที่กดปุ่ม
         tax: { ...(payload.tax || {}), fallback_name: payload.form_responses?.display_name || o.instagram_account || "" } });
       if (r?.invoice_id) {
         // ⛔ ใบย้อนหลังไม่ส่งขึ้น FlowAccount อัตโนมัติ — ต้องเช็คก่อนว่าไม่ซ้ำกับที่ออกมือไว้

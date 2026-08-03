@@ -190,6 +190,9 @@ export async function initDb() {
     -- ออกใบกำกับซ้ำ = เลขที่เอกสารซ้ำ = ยื่นภาษีผิด เรื่องใหญ่กว่าการไม่มีใบ
     ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS issued_manually BOOLEAN DEFAULT false;
     ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS backfilled BOOLEAN DEFAULT false;
+    -- ⚠️ วันที่บนใบกำกับต้องเป็น "วันที่รับเงินจริง" ไม่ใช่วันที่กดออกใบ
+    -- ไม่งั้น VAT ของเดือน มิ.ย./ก.ค. จะไปตกเดือนที่กดปุ่ม → ยอดยื่นภาษีผิดเดือน
+    ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS doc_date DATE;
     CREATE INDEX IF NOT EXISTS idx_tax_inv_status ON tax_invoices(status, created_at DESC);
 
     -- ═══════ 📈 ผลจริงรายคลิป — หัวใจของ "ยิ่งใช้ยิ่งแม่น" (คิมสั่ง 3 ส.ค. 2569) ═══════

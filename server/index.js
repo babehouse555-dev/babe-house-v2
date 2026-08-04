@@ -37,7 +37,11 @@ const PRICE_SATANG = Number(process.env.PRICE_SATANG || 159000);   // ราย�
 // ⚠️ ใช้เวลาไทย (+07:00) — ไม่งั้นจะสลับตอนบ่ายโมงของวันที่ 31 ส.ค.
 const PROMO_SATANG = Number(process.env.PROMO_SATANG || 49000);        // โปรเปิดตัว 490
 const PLANS_LIVE_AT = Date.parse(process.env.PLANS_LIVE_AT || "2026-09-01T00:00:00+07:00");
-const plansLive = () => Date.now() >= PLANS_LIVE_AT;
+// 🎮 สนามเด็กเล่นเห็น 3 แพ็กได้ตลอด — คิมจะได้ตรวจของที่ "สร้างเสร็จแต่ยังไม่ถึงเวลาเปิด"
+//    (หลักการเดียวกับ ACADEMY_LIVE ในหน้าเว็บ) · เว็บจริงยังรอวันที่ 1 ก.ย. ตามเดิม
+//    อยากดูหน้าโปร 490 ในสนามเด็กเล่น ตั้ง PLANS_PREVIEW=promo
+const IS_PLAYGROUND = process.env.LOCAL_DB === "1";
+const plansLive = () => (IS_PLAYGROUND ? process.env.PLANS_PREVIEW !== "promo" : Date.now() >= PLANS_LIVE_AT);
 // ราคาของ "1 เดือน" ตอนนี้ — ช่วงโปรคือ 490 หลังจากนั้นคือ 1,590
 const monthlySatang = () => (plansLive() ? PRICE_SATANG : PROMO_SATANG);
 // ปัด "ราคาต่อเดือน" ลงให้ลงท้าย 5 บาท แล้วค่อยคูณ — เลขที่ลูกค้าเห็นจะสวย (1,110 / 795)

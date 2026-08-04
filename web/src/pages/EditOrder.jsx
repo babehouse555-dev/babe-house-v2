@@ -73,10 +73,12 @@ export default function EditOrder() {
           1 เครดิต = ตัดให้ 1 คลิป · ยังไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน · ซื้อเยอะราคาต่อคลิปถูกลง
           <br />ทุกราคารวมภาษีมูลค่าเพิ่มแล้ว · จ่ายด้วยบัตรเครดิตหรือสแกนพร้อมเพย์ก็ได้ค่ะ
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {/* ปุ่มเลือกจำนวน — ตาราง 3 ช่อง = 2 บรรทัดพอดี ทุกปุ่มกว้างเท่ากัน ระยะห่างเท่ากัน
+            (เดิมใช้ flex แล้วมันเรียง 5 + 1 ทำให้ปุ่มสุดท้ายยาวเต็มบรรทัด ดูไม่เรียบร้อย) */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }}>
           {PACKS.map(n => (
             <button key={n} onClick={() => setClips(n)}
-              style={{ flex: "1 1 88px", padding: "12px 8px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+              style={{ padding: "13px 8px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
                 border: clips === n ? "2px solid var(--blue)" : "1px solid var(--border)",
                 background: clips === n ? "#EDF4FB" : "#fff", fontWeight: 800, fontSize: 14 }}>
               {n} คลิป

@@ -71,6 +71,7 @@ export default function EditOrder() {
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>ซื้อเครดิตตัดต่อกี่คลิปดีคะ?</div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
           1 เครดิต = ตัดให้ 1 คลิป · ยังไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน · ซื้อเยอะราคาต่อคลิปถูกลง
+          <br />ทุกราคารวมภาษีมูลค่าเพิ่มแล้ว · จ่ายด้วยบัตรเครดิตหรือสแกนพร้อมเพย์ก็ได้ค่ะ
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           {PACKS.map(n => (

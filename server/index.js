@@ -3017,16 +3017,38 @@ const thDate = (d) => new Date(d).toLocaleDateString("th-TH", { timeZone: "Asia/
 // ราคาเดิมแพ็ก 30 = 1,250 → หักค่าธรรมเนียม Stripe (3.65% + 11฿) แล้วเหลือกำไร 4 บาท/คลิป = ทำฟรี
 // ยังไม่นับเวลาตรวจ 2 ชั้น (senior editor + AE) ที่เป็นต้นทุนคนของเราเอง
 // ราคาใหม่ตั้งให้กำไรขั้นต้น 36-55% ทุกแพ็ก · ยิ่งซื้อเยอะยังถูกลงเหมือนเดิม
-const EDIT_COST_PER_CLIP = Number(process.env.EDIT_COST_PER_CLIP) || 1200;  // ต้นทุนจริง ใช้คำนวณกำไรในหลังบ้าน
+// ต้นทุนต่อคลิป ใช้คำนวณกำไรโชว์ในหลังบ้านของคิมเท่านั้น
+// ตั้งที่ 1,400 = ตัดต่อ 900 + กราฟิก 500 (กรณีจ้างฟรีแลนซ์ทั้งหมด — เลวร้ายที่สุด)
+// ถ้ากราฟิกทำในบ้าน ต้นทุนจริงจะเหลือ ~900 → กำไรจริงสูงกว่าที่โชว์
+const EDIT_COST_PER_CLIP = Number(process.env.EDIT_COST_PER_CLIP) || 1400;
+// 💰 บันไดราคา 6 ระดับ (คิมเคาะ 5 ส.ค. 2569 หลังคำนวณต้นทุนจริง)
+//
+// หลักที่ใช้ตั้ง: ทุกระดับต้อง "อยู่ได้แม้จ้างฟรีแลนซ์ทำทั้งหมด" (ตัดต่อ 900 + กราฟิก 500 = 1,400/คลิป)
+//   → คิมเลือกเองได้ว่าจะทำในบ้านหรือจ้าง ไม่ถูกบังคับด้วยราคา
+//
+// ⚠️ ราคาเดิม 30 คลิป = 2,000/คลิป ทำแบบนั้นไม่ได้
+//    กำไรเหลือคลิปละ 206 บาท → ต้องขาย 238 คลิป/เดือนถึงเท่าทุน (เป็นไปไม่ได้)
+//
+// ราคานี้ตรงกับที่คิมขายเองนอกเว็บทุกระดับ — กันไม่ให้เว็บทุบราคาตัวเอง
 const EDIT_TIERS = [
-  { min: 30, price: 2000 }, { min: 20, price: 2200 }, { min: 10, price: 2400 },
-  { min: 4, price: 2600 }, { min: 1, price: 2900 },
+  { min: 30, price: 2200 }, { min: 20, price: 2350 }, { min: 15, price: 2500 },
+  { min: 10, price: 2700 }, { min: 5, price: 3400 }, { min: 1, price: 5000 },
 ];
 const editPrice = (n) => (EDIT_TIERS.find(t => Number(n) >= t.min) || EDIT_TIERS[EDIT_TIERS.length - 1]).price;
+// 💡 ราคารวม — ต้องไม่มีทางที่ "ซื้อน้อยกว่าแล้วแพงกว่า"
+// เคสจริงที่เจอ: 9 คลิป × 3,400 = 30,600 แต่ 10 คลิป × 2,700 = 27,000 (ซื้อ 9 แพงกว่าซื้อ 10!)
+// ถ้าเจอแบบนั้นให้คิดราคาแพ็กถัดไปแทน ลูกค้าได้คลิปเพิ่มฟรีไปเลย ดีกว่าให้เขารู้สึกโดนหลอก
+const editTotal = (n) => {
+  const clips = Math.max(1, Number(n) || 1);
+  let best = editPrice(clips) * clips;
+  for (const t of EDIT_TIERS) if (t.min > clips) best = Math.min(best, t.price * t.min);
+  return best;
+};
 // กำไรสุทธิต่อคลิปหลังหักต้นทุน + ค่าธรรมเนียมรับเงิน (ไว้โชว์ในหลังบ้านของคิมเท่านั้น ⛔ ไม่ส่งให้ลูกค้า/ทีม)
 const editMargin = (n) => {
-  const per = editPrice(n), clips = Math.max(1, Number(n) || 1);
-  const fee = (per * clips * 0.0365 + 11) / clips;          // Stripe 3.65% + 11฿ ต่อรายการ
+  const clips = Math.max(1, Number(n) || 1);
+  const total = editTotal(clips), per = total / clips;
+  const fee = (total * 0.0365 + 11) / clips;          // Stripe 3.65% + 11฿ ต่อรายการ
   const net = per - EDIT_COST_PER_CLIP - fee;
   return { price_per_clip: per, cost: EDIT_COST_PER_CLIP, fee: Math.round(fee), net: Math.round(net), pct: Math.round(net / per * 100) };
 };
@@ -3046,7 +3068,7 @@ const customerStatus = (s) => (INTERNAL_STATUSES.has(s) ? "editing" : s);
 
 app.get("/api/edit/price", (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
-  res.json({ ok: true, clips: n, price_per_clip: editPrice(n), total: editPrice(n) * n, tiers: EDIT_TIERS,
+  res.json({ ok: true, clips: n, price_per_clip: Math.round(editTotal(n) / n), total: editTotal(n), tiers: EDIT_TIERS,
     free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, parallel: EDIT_PARALLEL, lead_days: leadDaysFor(n),
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
     eta_if_send_now: thDate(addWorkDays(new Date(), leadDaysFor(n))) });
@@ -3075,7 +3097,7 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
   const email = await authEmail(req);
   if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
   const n = Math.max(1, Math.min(200, Number(req.body?.credits) || 1));
-  const per = editPrice(n), total = per * n;
+  const total = editTotal(n), per = Math.round(total / n);
   // 🧾 ข้อมูลใบกำกับต้องเก็บ "ก่อน" จ่ายเงิน เพราะใบออกอัตโนมัติทันทีที่เงินเข้า แก้ทีหลังไม่ได้
   const ct = cleanTax(req.body?.tax);
   if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
@@ -3145,7 +3167,7 @@ app.post("/api/edit/order", rateLimit(30, M10), async (req, res) => {
   const email = await authEmail(req);
   if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนสั่งงานนะคะ" });
   const clips = Math.max(1, Math.min(200, Number(req.body?.clips) || 1));
-  const per = editPrice(clips), total = per * clips;
+  const total = editTotal(clips), per = Math.round(total / clips);
   const id = uid("eo");
   await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,note,ref_links,ref_picks)
     VALUES ($1,lower($2),$3,$4,$5,$6,$7,$8,$9,'pending','mock',$10,$11,$12)`,

@@ -940,9 +940,15 @@ export function checkBlueprintQuality(bp, hasImage) {
   if (/babe\s*house|เบ๊บเฮาส์|สถาบันสอนตัดต่อวิดีโอ/i.test(`${theme} ${bp.positioning || ""} ${bp.audience_summary || ""}`)) {
     flags.push(`⚠️ เล่มนี้วิเคราะห์เป็น Babe House แทนช่องลูกค้า (ลูกค้าน่าจะส่งข้อความตัวอย่างมา) — ต้องทำใหม่`);
   }
-  // สคริปต์สั้นเกินไป (รวมทุก beat ควร ≥ 520 ตัวอักษร ≈ 180 คำ — เล่มดีอยู่ที่ ~600-800)
-  const shortN = scripts.filter(s => (s.beats || []).reduce((a, b) => a + String(b.say || "").length, 0) < 520).length;
-  if (shortN > 0) flags.push(`${shortN} สคริปต์สั้นเกินไป`);
+  // สคริปต์สั้นเกินไป — เล่มดีอยู่ที่ ~600-800 ตัวอักษร
+  // ⚠️ ปรับ 4 ส.ค.: เดิมเตือนทุกวันที่ต่ำกว่า 520 ทำให้ @Oumtrd โดนเตือนเพราะมี 3 วันได้ 483-509
+  //    (ต่ำกว่าเส้นแค่ 2-7% แต่เนื้อหาครบ ฮุก/เนื้อ/ปิดท้าย ไม่ได้ขาดอะไร)
+  //    ตอนนี้เตือนเฉพาะที่ "สั้นจริงจัง" (<420 = เนื้อหาไม่พอแน่) หรือสั้นกันหลายวัน (≥5 วัน = ทั้งเล่มบาง)
+  const lens = scripts.map(s => (s.beats || []).reduce((a, b) => a + String(b.say || "").length, 0));
+  const tooShort = lens.filter(l => l < 420).length;
+  const belowBar = lens.filter(l => l < 520).length;
+  if (tooShort > 0) flags.push(`${tooShort} สคริปต์สั้นเกินไป (ต่ำกว่า 420 ตัวอักษร)`);
+  else if (belowBar >= 5) flags.push(`${belowBar} สคริปต์บางกว่ามาตรฐาน (ต่ำกว่า 520 ตัวอักษร)`);
   // placeholder วงเล็บเหลี่ยมค้าง เช่น [ชื่อสินค้า] (ดูไม่เสร็จ)
   const phN = scripts.reduce((n, s) => n + (s.beats || []).filter(b => /\[[^\]]{2,}\]/.test(String(b.say || ""))).length, 0);
   if (phN > 0) flags.push(`${phN} จุดมี placeholder วงเล็บ [..]`);
@@ -1047,12 +1053,14 @@ export function checkMetricsSanity(m) {
   // (ข) engagement rate สูงเกินจริง (รับได้ทั้งรูปแบบ 0-1 และ 0-100)
   const erPct = er == null ? null : (er <= 1 ? er * 100 : er);
   if (erPct != null && erPct > 30) flags.push(`🔢 อัตราการมีส่วนร่วม ${erPct.toFixed(1)}% สูงผิดปกติ — น่าจะอ่านตัวเลขผิด`);
-  // (ค) reach ทะลุผู้ติดตามหลายเท่า = คลิปไวรัล ไม่ใช่ความผิดพลาด — อย่าเตือนลอยๆ
-  // เจอจริง 2 ส.ค.: @jabo0oo (130 ฟอล / 9,200 reach) และ @todaysmoment.khao (106 / 27,700) ถูกเตือนทั้งที่ตัวเลขสมเหตุสมผล
-  // เตือนเฉพาะตอน "ขัดแย้งกันเอง" เท่านั้น: reach สูงลิ่วแต่คนเข้าโปรไฟล์กลับน้อยกว่าผู้ติดตาม = อ่านสลับช่องแน่
+  // (ค) ⛔ เลิกเตือน "reach สูงแต่คนเข้าโปรไฟล์น้อย" แล้ว — ไม่ใช่สัญญาณที่เชื่อถือได้
+  // เจอผิดซ้ำ 3 ราย: @jabo0oo · @todaysmoment.khao · @Oumtrd (1,301 ฟอล / reach 240,900 / เข้าโปรไฟล์ 944)
+  // ความจริง: คลิปไวรัลทำ reach ทะลุผู้ติดตามได้ร้อยเท่า และคนดูส่วนใหญ่ไม่กดเข้าโปรไฟล์
+  //           944 จาก 240,900 = 0.39% เป็นอัตราปกติของรีล ไม่ได้ขัดกันเอง
+  // เตือนเฉพาะกรณีที่ "เป็นไปไม่ได้จริง" เท่านั้น: คนเข้าโปรไฟล์มากกว่าการเข้าถึงทั้งหมด
   const pv = n(m.profile_visits);
-  if (reach && followers && reach > followers * 50 && pv && pv < followers) {
-    flags.push(`🔢 การเข้าถึง ${reach.toLocaleString()} สูงกว่าผู้ติดตาม ${followers.toLocaleString()} มาก แต่คนเข้าโปรไฟล์แค่ ${pv.toLocaleString()} — ตัวเลขขัดกันเอง น่าจะอ่านสลับช่อง`);
+  if (reach && pv && pv > reach * 1.5) {
+    flags.push(`🔢 คนเข้าโปรไฟล์ ${pv.toLocaleString()} มากกว่าการเข้าถึง ${reach.toLocaleString()} — น่าจะอ่านสลับช่อง`);
   }
   // (ง) reach น้อยกว่าผู้ติดตาม 100 เท่า = อ่านผิดแน่ (เจอจริง: @jeowfee 1,300 ฟอล แต่ reach 2)
   if (reach && followers && followers > 200 && reach < followers / 100) {

@@ -189,25 +189,6 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_ext_member ON external_jobs(member_id, status);
     CREATE INDEX IF NOT EXISTS idx_avail_day ON team_availability(day);
-    -- ระบบมอบหมายให้ใคร เพราะอะไร — ไว้ตรวจย้อนหลังเวลาลูกตาลสงสัยว่าทำไมงานไปที่คนนี้
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assigned_by TEXT;        -- 'system' | ชื่อคนที่มอบหมาย
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assign_reason TEXT;
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ; -- ส่งถึงลูกค้าเมื่อไหร่ (ไว้วัดตรงเวลา)
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS reject_count INTEGER DEFAULT 0; -- โดนตีกลับกี่รอบ
-
-    -- ═══════ 🏢 งานลูกค้านอกเว็บ + ระบบตามงาน (คิมสั่ง 4 ส.ค. 2569) ═══════
-    -- "ลูกตาลเป็นด่านแรกในการรับหน้า รับบรีฟ เอาบรีฟมาลงในบอร์ดตัวเอง จากนั้นระบบเป็นคน assign งาน
-    --  หน้าที่ของลูกตาลก็จะเหลือแค่รับหน้าลูกค้าและตรวจงานแค่นั้น ไม่ต้องประสาน"
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'web';  -- web | ae (ลูกตาลกรอกเอง)
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_name TEXT;           -- ชื่อลูกค้านอกเว็บ
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_contact TEXT;        -- ไลน์/เบอร์ ไว้ให้ระบบตามงาน
-    -- ⏱️ นาฬิกาเริ่มนับเมื่อ "ได้ฟุตเทจครบ" ไม่ใช่วันรับงาน — กันโดนบีบเวลาเพราะลูกค้าส่งของช้า
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS files_ready_at TIMESTAMPTZ;
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_due_at TIMESTAMPTZ;  -- เดดไลน์ที่ลูกค้าขอมา
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS deadline_risk TEXT;         -- ok | at_risk | slipped
-    -- 🔁 รอบแก้: แยกว่าใครผิด — ของเราแก้ฟรีเสมอ ของลูกค้าเปลี่ยนใจนับโควตา
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_revisions INTEGER DEFAULT 0;
-    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS our_fix_count INTEGER DEFAULT 0;
 
     -- 📮 ระบบตามงานลูกค้าอัตโนมัติ — กันงานตกหล่นเพราะคนลืมตาม
     CREATE TABLE IF NOT EXISTS client_followups (
@@ -770,6 +751,10 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_team_code ON team_members(code);
+    -- 📅 กำลังรับงานต่อวันของแต่ละคน (คิมเคาะ 4 ส.ค.)
+    -- "โบกับพี่ก้องฟิกไปเลยว่าวันละ 4 คลิป · ฟรีแลนซ์เราไม่รู้ว่าเค้าว่างวันไหน ให้เค้าติ๊กเอง"
+    -- พนักงานประจำ = ใส่ค่าไว้ แล้วกดเติมทั้งสัปดาห์ทีเดียว · ฟรีแลนซ์ = 0 ต้องติ๊กเอง
+    ALTER TABLE team_members ADD COLUMN IF NOT EXISTS default_slots INTEGER DEFAULT 0;
     -- บันทึกทุกครั้งที่งานเปลี่ยนมือ/เปลี่ยนสถานะ — ไว้ย้อนดูว่าใครทำอะไรเมื่อไหร่ (กันงานหาย/เถียงกัน)
     CREATE TABLE IF NOT EXISTS edit_events (
       event_id TEXT PRIMARY KEY,
@@ -814,6 +799,25 @@ export async function initDb() {
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ae_by TEXT;              -- AE ที่ตรวจด่านสุดท้าย (ลูกตาล)
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ae_at TIMESTAMPTZ;
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS internal_note TEXT;      -- โน้ตภายในทีม ⛔ ลูกค้าไม่เห็น
+    -- ระบบมอบหมายให้ใคร เพราะอะไร — ไว้ตรวจย้อนหลังเวลาลูกตาลสงสัยว่าทำไมงานไปที่คนนี้
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assigned_by TEXT;        -- 'system' | ชื่อคนที่มอบหมาย
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assign_reason TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ; -- ส่งถึงลูกค้าเมื่อไหร่ (ไว้วัดตรงเวลา)
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS reject_count INTEGER DEFAULT 0; -- โดนตีกลับกี่รอบ
+
+    -- ═══════ 🏢 งานลูกค้านอกเว็บ + ระบบตามงาน (คิมสั่ง 4 ส.ค. 2569) ═══════
+    -- "ลูกตาลเป็นด่านแรกในการรับหน้า รับบรีฟ เอาบรีฟมาลงในบอร์ดตัวเอง จากนั้นระบบเป็นคน assign งาน
+    --  หน้าที่ของลูกตาลก็จะเหลือแค่รับหน้าลูกค้าและตรวจงานแค่นั้น ไม่ต้องประสาน"
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'web';  -- web | ae (ลูกตาลกรอกเอง)
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_name TEXT;           -- ชื่อลูกค้านอกเว็บ
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_contact TEXT;        -- ไลน์/เบอร์ ไว้ให้ระบบตามงาน
+    -- ⏱️ นาฬิกาเริ่มนับเมื่อ "ได้ฟุตเทจครบ" ไม่ใช่วันรับงาน — กันโดนบีบเวลาเพราะลูกค้าส่งของช้า
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS files_ready_at TIMESTAMPTZ;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_due_at TIMESTAMPTZ;  -- เดดไลน์ที่ลูกค้าขอมา
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS deadline_risk TEXT;         -- ok | at_risk | slipped
+    -- 🔁 รอบแก้: แยกว่าใครผิด — ของเราแก้ฟรีเสมอ ของลูกค้าเปลี่ยนใจนับโควตา
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_revisions INTEGER DEFAULT 0;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS our_fix_count INTEGER DEFAULT 0;
     -- คอมเมนต์คุยกันในทีม (ตรวจงาน/สั่งแก้) ใช้ตารางเดียวกับที่คุยกับลูกค้า แต่ติดธง internal=1
     -- ⛔ ทุกที่ที่ส่งคอมเมนต์ให้ลูกค้าต้องกรอง internal=0 เสมอ
     ALTER TABLE edit_comments ADD COLUMN IF NOT EXISTS internal INTEGER DEFAULT 0;

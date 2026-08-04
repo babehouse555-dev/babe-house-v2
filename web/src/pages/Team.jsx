@@ -85,6 +85,7 @@ export default function Team() {
   const [ov, setOv] = useState(null);
   const [wl, setWl] = useState(null);      // 📅 ตารางงานทุกคน (AE/คิม)
   const [myAvail, setMyAvail] = useState([]);
+  const [defSlots, setDefSlots] = useState(0);   // กำลังรับงานต่อวันของฉัน (คิมตั้งให้)
   const [ext, setExt] = useState([]);                 // 📦 งานนอกเว็บ
   const [intake, setIntake] = useState({ client_name: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
   const [intakeMsg, setIntakeMsg] = useState(null);
@@ -102,7 +103,8 @@ export default function Team() {
   useEffect(() => { if (tab === "money" && d?.me?.role === "owner" && !ov)
     api(`/api/team/overview?code=${encodeURIComponent(code)}`).then(setOv).catch(() => {}); }, [tab, d, ov, code]);
   const loadCal = () => {
-    api(`/api/team/availability?code=${encodeURIComponent(code)}`).then(r => setMyAvail(r.availability || [])).catch(() => {});
+    api(`/api/team/availability?code=${encodeURIComponent(code)}`)
+      .then(r => { setMyAvail(r.availability || []); setDefSlots(Number(r.default_slots || 0)); }).catch(() => {});
     const all = ["owner", "ae", "senior"].includes(d?.me?.role);
     if (all) api(`/api/team/workload?code=${encodeURIComponent(code)}`).then(setWl).catch(() => {});
     api(`/api/team/external?code=${encodeURIComponent(code)}${all ? "&all=1" : ""}`).then(r => setExt(r.jobs || [])).catch(() => {});
@@ -313,14 +315,30 @@ export default function Team() {
           <div style={card}>
             <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📗 ลงวันว่างของฉัน</h3>
             <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
-              แตะวันที่ว่างแล้วเลือกว่ารับได้กี่คลิป — <b>ระบบจะส่งงานมาให้เฉพาะวันที่คุณลงว่างไว้</b>
+              แตะวันที่ว่างเพื่อ<b>เพิ่มจำนวนคลิปที่รับไหววันนั้น</b> — ระบบจะส่งงานมาให้ไม่เกินที่คุณลงไว้
               ไม่ลงไว้ = ระบบจะไม่ยัดงานให้ค่ะ
             </p>
+            {/* ⚡ พนักงานประจำกดปุ่มเดียวจบ ไม่ต้องแตะทีละวัน (คิมเคาะ: โบ/พี่ก้องฟิกวันละ 4) */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, color: "#7c7268" }}>เติม จ-ศ ให้อัตโนมัติ:</span>
+              {[2, 3, 4, 5].map(n => (
+                <button key={n} disabled={busy === "cal"}
+                  onClick={async () => { await post("/api/team/availability/fill", { slots: n }, "cal"); loadCal(); }}
+                  style={{ ...ghost, fontSize: 13, padding: "6px 13px", ...(defSlots === n ? { borderColor: C.green, color: C.green, fontWeight: 700 } : {}) }}>
+                  {n} คลิป/วัน
+                </button>
+              ))}
+              <button disabled={busy === "cal"} style={{ ...ghost, fontSize: 13, padding: "6px 13px", color: "#b42318", borderColor: "#f0c6c0" }}
+                onClick={async () => { await post("/api/team/availability/fill", { slots: 0 }, "cal"); loadCal(); }}>ล้างทั้งหมด</button>
+            </div>
+            {defSlots > 0 && <p style={{ fontSize: 12.5, color: "#a89f96", margin: "0 0 10px" }}>
+              💡 คิมตั้งกำลังรับงานของคุณไว้ที่ <b>{defSlots} คลิป/วัน</b> — วันไหนรับได้มากกว่า/น้อยกว่า แตะแก้รายวันได้เลย
+            </p>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
               {days.map(dd => {
                 const n = mine[dd.key] || 0;
                 return (
-                  <button key={dd.key} onClick={() => setDay(dd.key, n >= 4 ? 0 : n + 1)}
+                  <button key={dd.key} onClick={() => setDay(dd.key, n >= 8 ? 0 : n + 1)}
                     style={{ borderRadius: 10, padding: "9px 4px", cursor: "pointer", fontFamily: "inherit",
                       border: `1.5px solid ${n ? C.green : "#e5ded6"}`, background: n ? "#eaf6ee" : dd.weekend ? "#faf8f6" : "#fff" }}>
                     <div style={{ fontSize: 10.5, color: "#a89f96" }}>{dd.dow}</div>
@@ -330,7 +348,7 @@ export default function Team() {
                 );
               })}
             </div>
-            <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8 }}>แตะซ้ำเพื่อเพิ่มจำนวน · แตะจนครบ 4 แล้วแตะอีกครั้งเพื่อล้าง</p>
+            <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8 }}>แตะซ้ำเพื่อเพิ่มจำนวน (สูงสุด 8 คลิป) · แตะต่อจนครบแล้วจะกลับเป็นว่าง</p>
           </div>
 
           {/* 📦 งานนอกเว็บ — คิมถาม "ทีม production ก็มีงานที่อยู่ใน production ด้วย
@@ -809,6 +827,11 @@ function People({ d, post, busy }) {
             </select>
           </Field>
           <Field label="ตำแหน่ง"><input style={input} placeholder="เช่น ตัดต่อ / กราฟฟิก" value={edit.position || ""} onChange={e => setEdit(s => ({ ...s, position: e.target.value }))} /></Field>
+          <Field label="รับงานได้กี่คลิป/วัน">
+            <input style={input} inputMode="numeric" placeholder="พนักงานประจำใส่ 4 · ฟรีแลนซ์ใส่ 0"
+              value={edit.default_slots ?? 0}
+              onChange={e => setEdit(s => ({ ...s, default_slots: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
+          </Field>
           <Field label="อีเมล (ไว้แจ้งงานใหม่)"><input style={input} value={edit.email || ""} onChange={e => setEdit(s => ({ ...s, email: e.target.value }))} /></Field>
           <Field label="ฝั่งงาน">
             <select style={input} value={edit.side || "production"} onChange={e => setEdit(s => ({ ...s, side: e.target.value }))}>

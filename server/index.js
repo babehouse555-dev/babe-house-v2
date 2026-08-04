@@ -3120,18 +3120,19 @@ app.post("/api/edit/approve", async (req, res) => {
 async function seedTeamIfEmpty() {
   const n = Number((await one(`SELECT COUNT(*) c FROM team_members`))?.c || 0);
   if (n > 0) return;
+  // default_slots = รับได้กี่คลิป/วัน (คิมเคาะ 4 ส.ค.: พนักงานประจำฟิก 4 · ฟรีแลนซ์ 0 ต้องติ๊กเอง)
   const T = [
-    ["คิม", "kim", "owner", "เจ้าของ", "both"],
-    ["ลูกตาล", "lookthan", "ae", "AE / Motion (AE)", "production"],
-    ["โบ", "bow", "senior", "ตัดต่อ", "both"],
-    ["พี่ก้อง", "gong", "senior", "ตัดต่อ", "production"],
-    ["กัน", "gun", "editor", "Content + ตัดต่อ", "both"],
-    ["เบนเซ่", "benz", "teacher", "คอนเทนต์ Academy", "academy"],
-    ["แฟรี่", "fairy", "teacher", "กราฟฟิก", "academy"],
+    ["คิม", "kim", "owner", "เจ้าของ", "both", 0],
+    ["ลูกตาล", "lookthan", "ae", "AE / Motion (AE)", "production", 2],
+    ["โบ", "bow", "senior", "ตัดต่อ", "both", 4],
+    ["พี่ก้อง", "gong", "senior", "ตัดต่อ", "production", 4],
+    ["กัน", "gun", "editor", "Content + ตัดต่อ", "both", 4],
+    ["เบนเซ่", "benz", "teacher", "คอนเทนต์ Academy", "academy", 0],
+    ["แฟรี่", "fairy", "teacher", "กราฟฟิก", "academy", 0],
   ];
-  for (const [name, code, role, position, side] of T) {
-    await run(`INSERT INTO team_members (member_id,name,code,role,position,side) VALUES ($1,$2,$3,$4,$5,$6)
-      ON CONFLICT (code) DO NOTHING`, [uid("tm"), name, code, role, position, side]).catch(() => {});
+  for (const [name, code, role, position, side, slots] of T) {
+    await run(`INSERT INTO team_members (member_id,name,code,role,position,side,default_slots) VALUES ($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT (code) DO NOTHING`, [uid("tm"), name, code, role, position, side, slots]).catch(() => {});
   }
   console.log("[team] ตั้งทีมเริ่มต้น 7 คนแล้ว");
 }
@@ -3159,7 +3160,7 @@ app.post("/api/team/login", rateLimit(20, M10), async (req, res) => {
   if (!code) return res.status(400).json({ ok: false, error: "NO_CODE" });
   try {
     await seedTeamIfEmpty();
-    const m = await one(`SELECT member_id,name,role,position,side FROM team_members WHERE code=$1 AND active`, [code]);
+    const m = await one(`SELECT member_id,name,role,position,side,default_slots FROM team_members WHERE code=$1 AND active`, [code]);
     if (!m) {
       if (isAdmin({ headers: {}, query: { admin_key: code } })) return res.json({ ok: true, me: { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" } });
       return res.status(401).json({ ok: false, error: "BAD_CODE", message: "รหัสไม่ถูกต้องค่ะ" });
@@ -3231,6 +3232,9 @@ app.get("/api/team/me", async (req, res) => {
 // ⛔ ระบบไม่แตะงานที่มีคนทำอยู่แล้ว และลูกตาลเปลี่ยนตัวคนทำทีหลังได้เสมอ
 
 const AVAIL_DAYS = 14;   // มองไปข้างหน้า 14 วัน
+// ⚠️ คอลัมน์ DATE จาก pg กลับมาเป็น Date object — String(d).slice(0,10) ได้ "Tue Aug 04" ไม่ใช่ "2026-08-04"
+//    เคยพลาดมาแล้วกับ paid_at · ถ้าใช้ผิด ปฏิทินจะติ๊กแล้วไม่ขึ้นเพราะคีย์ไม่ตรงกัน
+const ymd = (d) => { try { return new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }); } catch { return String(d).slice(0, 10); } };
 
 // โหลดปัจจุบันของแต่ละคน + ที่ว่างที่ลงไว้
 async function teamWorkload(days = AVAIL_DAYS) {
@@ -3247,7 +3251,7 @@ async function teamWorkload(days = AVAIL_DAYS) {
   const em = Object.fromEntries(ext.map(r => [r.member_id, r]));
   const lm = Object.fromEntries(load.map(r => [r.assigned_to, r]));
   const am = {};
-  for (const a of avail) (am[a.member_id] ||= []).push({ day: String(a.day).slice(0, 10), slots: Number(a.slots || 0) });
+  for (const a of avail) (am[a.member_id] ||= []).push({ day: ymd(a.day), slots: Number(a.slots || 0) });
   return members.map(m => {
     const a = am[m.member_id] || [];
     const capacity = a.reduce((t, x) => t + x.slots, 0);          // รับได้รวมกี่คลิปใน 14 วัน
@@ -3305,7 +3309,9 @@ app.get("/api/team/availability", async (req, res) => {
   const rows = await q(`SELECT member_id, day, slots FROM team_availability
     WHERE day >= CURRENT_DATE AND day < CURRENT_DATE + $1::int ${all ? "" : "AND member_id = $2"} ORDER BY day`,
     all ? [AVAIL_DAYS] : [AVAIL_DAYS, me.member_id]);
-  res.json({ ok: true, days: AVAIL_DAYS, availability: rows.map(r => ({ ...r, day: String(r.day).slice(0, 10) })) });
+  const mine = await one(`SELECT default_slots FROM team_members WHERE member_id=$1`, [me.member_id]);
+  res.json({ ok: true, days: AVAIL_DAYS, default_slots: Number(mine?.default_slots || 0),
+    availability: rows.map(r => ({ ...r, day: ymd(r.day) })) });
 });
 app.post("/api/team/availability", async (req, res) => {
   const me = await teamWho(req);
@@ -3545,6 +3551,27 @@ app.post("/api/team/external", async (req, res) => {
   res.json({ ok: true });
 });
 
+// 📅 เติมวันทำงาน จ-ศ ให้อัตโนมัติ — พนักงานประจำกดครั้งเดียวจบ ไม่ต้องแตะทีละวัน
+// คิมเคาะ 4 ส.ค.: "โบกับพี่ก้องฟิกไปเลยว่าวันละ 4 คลิป ฟรีแลนซ์ให้เค้าติ๊กเอง"
+app.post("/api/team/availability/fill", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const slots = Math.max(0, Math.min(20, Number(req.body?.slots) || 0));
+  const weekdaysOnly = req.body?.weekdays !== false;
+  const target = (["owner", "ae"].includes(me.role) && req.body?.member_id) ? String(req.body.member_id) : me.member_id;
+  let n = 0;
+  for (let i = 0; i < AVAIL_DAYS; i++) {
+    const dt = new Date(); dt.setDate(dt.getDate() + i);
+    if (weekdaysOnly && [0, 6].includes(dt.getDay())) continue;   // ข้ามเสาร์-อาทิตย์
+    const day = dt.toISOString().slice(0, 10);
+    if (slots === 0) await run(`DELETE FROM team_availability WHERE member_id=$1 AND day=$2`, [target, day]);
+    else await run(`INSERT INTO team_availability (avail_id,member_id,day,slots) VALUES ($1,$2,$3,$4)
+      ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, updated_at=now()`, [uid("av"), target, day, slots]);
+    n++;
+  }
+  res.json({ ok: true, filled: n, slots });
+});
+
 // 👀 ภาพรวมตารางงานทุกคน (AE/คิม) — ใครว่าง ใครเต็ม โปรเซสไปถึงไหน
 app.get("/api/team/workload", async (req, res) => {
   const me = await teamWho(req);
@@ -3725,11 +3752,13 @@ app.post("/api/team/members/save", async (req, res) => {
   if (!name || !code) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีชื่อและรหัส" });
   try {
     if (b.member_id) {
-      await run(`UPDATE team_members SET name=$1, code=$2, role=$3, email=$4, position=$5, side=$6, active=$7 WHERE member_id=$8`,
-        [name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production"), b.active !== false, String(b.member_id)]);
+      await run(`UPDATE team_members SET name=$1, code=$2, role=$3, email=$4, position=$5, side=$6, active=$7, default_slots=$9 WHERE member_id=$8`,
+        [name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production"), b.active !== false, String(b.member_id),
+         Math.max(0, Math.min(20, Number(b.default_slots) || 0))]);
     } else {
-      await run(`INSERT INTO team_members (member_id,name,code,role,email,position,side) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [uid("tm"), name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production")]);
+      await run(`INSERT INTO team_members (member_id,name,code,role,email,position,side,default_slots) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [uid("tm"), name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production"),
+         Math.max(0, Math.min(20, Number(b.default_slots) || 0))]);
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: /unique/i.test(e.message) ? "รหัสนี้มีคนใช้แล้วค่ะ" : e.message }); }

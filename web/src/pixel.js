@@ -24,6 +24,22 @@ export function track(event, params) {
   try { if (typeof window !== "undefined" && window.fbq) window.fbq("track", event, params || undefined); } catch {}
 }
 
+// 🔗 บอก Meta ว่าคนที่กำลังซื้ออยู่ "คือใคร" — ต้องเรียกก่อนยิง Purchase เสมอ
+// emHash = อีเมลที่เซิร์ฟเวอร์แปลงเป็นรหัสทางเดียวมาแล้ว (SHA-256) ถอดกลับไม่ได้ Meta ใช้เทียบได้อย่างเดียว
+// ทำไมต้องมี: ลูกค้าเราส่วนใหญ่กดแอดจากในแอป IG/FB แล้วคุกกี้ขาดตอนตอนเด้งไปจ่ายเงินที่ Stripe
+// Meta เลยจับคู่ไม่ได้ว่าใครมาจากแอด → ช่องยอดขายในรายงานแอดว่างเปล่าทั้งที่ขายได้จริง
+// พอจับคู่ติด Meta จะเริ่มหา "คนที่ซื้อจริง" ให้ ไม่ใช่แค่หาคนคลิก → ต้นทุนต่อลูกค้าถูกลง
+export function identify(emHash, externalId) {
+  try {
+    if (typeof window === "undefined" || !window.fbq) return;
+    const user = {};
+    if (/^[a-f0-9]{64}$/i.test(String(emHash || ""))) user.em = String(emHash).toLowerCase();
+    if (externalId) user.external_id = String(externalId);
+    if (!Object.keys(user).length) return;
+    window.fbq("init", PIXEL_ID, user);   // init ซ้ำได้ ไม่ยิง PageView เพิ่ม แค่เติมข้อมูลคนซื้อ
+  } catch {}
+}
+
 // 💰 ซื้อสำเร็จ — ตัวสำคัญที่สุด ต้องยิง "ครั้งเดียวต่อออเดอร์" เท่านั้น
 // ลูกค้ารีเฟรชหน้า /processing บ่อยมากระหว่างรอเล่มเจน ถ้าไม่กันซ้ำ Meta จะนับยอดขายเกินจริง
 // แล้วเราจะตัดสินใจเรื่องงบแอดจากตัวเลขที่ผิด

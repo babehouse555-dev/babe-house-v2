@@ -141,6 +141,10 @@ catch (e) { console.warn("[img] โหลดรายการรูปคอร
 const localImg = (u) => ACADEMY_IMG[String(u || "")] || u || "";
 const normEmail = (e) => String(e || "").trim().toLowerCase();
 const maskEmail = (e) => { const [u, d] = String(e || "").split("@"); return d ? `${u.slice(0, 2)}***@${d}` : "***"; };
+// 🔐 อีเมลแปลงเป็นรหัสทางเดียว (SHA-256) — ใช้ให้ Meta จับคู่ว่า "คนที่ซื้อ" คือ "คนที่เห็นแอด" คนไหน
+// ส่งออกเฉพาะรหัสที่ถอดกลับเป็นอีเมลไม่ได้ อีเมลจริงไม่เคยออกจากเซิร์ฟเวอร์
+// ถ้าไม่ส่งอันนี้ Meta ต้องเดาจากคุกกี้อย่างเดียว ซึ่งขาดตอนตอนลูกค้าเปิดผ่านแอป IG/FB → จับคู่ไม่ติดเลย
+const emailHash = (e) => { const v = normEmail(e); return v ? crypto.createHash("sha256").update(v).digest("hex") : null; };
 const appBaseUrl = () => (process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
 const cycleMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const currentBillingCycle = () => { const d = new Date(); return `${cycleMonths[d.getMonth()]}_${d.getFullYear()}`; };
@@ -631,7 +635,7 @@ app.get("/api/orders/:orderId", async (req, res) => {
   const o = await getOrder(req.params.orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   const pl = safeJson(o.order_payload_json) || {};
-  res.json({ ok: true, order: { plan: pl.plan || "monthly", plan_chosen: !!pl.plan_chosen, order_id: o.order_id, user_id: o.user_id, instagram_account: o.instagram_account, tier: o.tier, billing_cycle: o.billing_cycle, payment_status: o.payment_status, provider: o.provider, blueprint_id: o.blueprint_id, generation_status: o.generation_status || "pending", generation_error: o.generation_error, discount_code: o.discount_code, discount_percent: o.discount_percent, final_amount_satang: o.final_amount_satang, created_at: o.created_at, paid_at: o.paid_at } });
+  res.json({ ok: true, order: { plan: pl.plan || "monthly", plan_chosen: !!pl.plan_chosen, order_id: o.order_id, user_id: o.user_id, instagram_account: o.instagram_account, tier: o.tier, billing_cycle: o.billing_cycle, payment_status: o.payment_status, provider: o.provider, blueprint_id: o.blueprint_id, generation_status: o.generation_status || "pending", generation_error: o.generation_error, discount_code: o.discount_code, discount_percent: o.discount_percent, final_amount_satang: o.final_amount_satang, created_at: o.created_at, paid_at: o.paid_at, em_hash: emailHash(o.email) } });
 });
 
 app.post("/api/mock-payment-complete", async (req, res) => {

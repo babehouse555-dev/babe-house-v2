@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { api, track, session } from "../api.js";
-import { trackPurchaseOnce } from "../pixel.js";
+import { trackPurchaseOnce, identify } from "../pixel.js";
 import { useI18n } from "../i18n.jsx";
 
 export default function Processing() {
@@ -51,6 +51,7 @@ export default function Processing() {
         // (หน้านี้ลูกค้ารีเฟรชบ่อยระหว่างรอเล่มเจน ถ้านับซ้ำ ยอดขายในรายงานแอดจะเกินจริง)
         // ไม่นับออเดอร์ที่ใช้โค้ดฟรี/ทดสอบ เพราะไม่ใช่เงินเข้าจริง
         if (order.payment_status === "paid" && Number(order.final_amount_satang ?? 49000) > 0) {
+          identify(order.em_hash, order.user_id);   // ต้องบอกก่อนว่าเป็นใคร Meta ถึงจับคู่กับแอดได้
           trackPurchaseOnce(orderId, Number(order.final_amount_satang ?? 49000) / 100);
         }
         const s = await api("/api/start-generation", { method: "POST", body: { order_id: orderId } });

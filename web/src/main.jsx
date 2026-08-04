@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import "./styles.css";
 import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
-import { ACADEMY_LIVE } from "./config.js";
+import { ACADEMY_LIVE, PREVIEW } from "./config.js";
 import { initPixel, track as fbTrack } from "./pixel.js";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
@@ -56,6 +56,18 @@ async function demoLogin() {
     location.href = "/account";
   } catch { alert("เข้าไม่ได้ — สนามเด็กเล่นอาจปิดอยู่"); }
 }
+// 👀 แถบเตือนตอนเปิดโหมดพรีวิว — ต้องเห็นชัดว่านี่ไม่ใช่สิ่งที่ลูกค้าเห็น
+function PreviewBar() {
+  if (IS_PLAYGROUND || !PREVIEW) return null;
+  return (
+    <div style={{ position: "sticky", top: 0, zIndex: 999, background: "#B45309", color: "#fff",
+      textAlign: "center", fontSize: 13, fontWeight: 800, padding: "7px 12px" }}>
+      👀 โหมดพรีวิว — คุณเห็นของที่ยังปิดอยู่ · ลูกค้ายังไม่เห็นสิ่งเหล่านี้
+      {" · "}
+      <a href="/?preview=off" style={{ color: "#fff", textDecoration: "underline" }}>ปิดโหมดพรีวิว</a>
+    </div>
+  );
+}
 function PlaygroundBar() {
   if (!IS_PLAYGROUND) return null;
   return (
@@ -77,7 +89,7 @@ function Shell({ children }) {
   // แสดงแถบบนทุกหน้า ยกเว้นหน้า Landing (ซึ่งมี nav ของตัวเอง)
   // และยกเว้นหน้าทำงานภายในทีม — คิมสั่ง "ทีมจะได้ไม่ต้องมายุ่งกับสินค้าอื่น"
   const internal = ["/team", "/studio"].includes(loc.pathname);
-  return <><PlaygroundBar />{loc.pathname !== "/" && !internal && <TopBar />}{children}</>;
+  return <><PlaygroundBar /><PreviewBar />{loc.pathname !== "/" && !internal && <TopBar />}{children}</>;
 }
 
 // 🔄 กู้อัตโนมัติเมื่อเว็บถูกอัปเดตระหว่างลูกค้าเปิดหน้าค้างอยู่

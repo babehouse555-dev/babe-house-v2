@@ -9,7 +9,27 @@
 // 🎮 ในสนามเด็กเล่น (localhost) เปิดทุกอย่างให้เห็นเสมอ — คิมจะได้กดดูของที่ "สร้างเสร็จแต่ปิดอยู่" ได้จริง
 // เว็บจริงยังปิดตามเดิม จนกว่าจะแก้ค่า false ข้างล่างเป็น true
 const IS_PLAYGROUND = typeof location !== "undefined" && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-export const ACADEMY_LIVE = IS_PLAYGROUND || false;
+
+// 👀 โหมดพรีวิว — เปิดของที่ยัง "ปิดอยู่" ให้เห็นเฉพาะเครื่องนี้เครื่องเดียว
+// ไว้ให้คิมทดสอบของใหม่บนเว็บจริงได้ โดยที่ลูกค้าคนอื่นยังไม่เห็นอะไรเลย
+//
+//   เปิด →  babehouse.net/?preview=on
+//   ปิด →  babehouse.net/?preview=off
+//
+// จำไว้ในเครื่อง (localStorage) เปิดครั้งเดียวใช้ได้ทุกหน้า จนกว่าจะสั่งปิด
+// ⚠️ ตอนเปิดอยู่จะมีแถบสีส้มบอกบนหัวเว็บเสมอ กันสับสนว่านี่คือสิ่งที่ลูกค้าเห็น
+function readPreview() {
+  if (typeof window === "undefined") return false;
+  try {
+    const q = new URLSearchParams(location.search).get("preview");
+    if (q === "on") localStorage.setItem("babe_preview", "1");
+    if (q === "off") localStorage.removeItem("babe_preview");
+    return localStorage.getItem("babe_preview") === "1";
+  } catch { return false; }
+}
+export const PREVIEW = readPreview();
+const OPEN = IS_PLAYGROUND || PREVIEW;
+export const ACADEMY_LIVE = OPEN || false;
 
 // 🚦 สวิตช์เปิดตัว "ให้ทีมช่วยตัดต่อ" (เครดิตตัดต่อ)
 //
@@ -19,7 +39,7 @@ export const ACADEMY_LIVE = IS_PLAYGROUND || false;
 // ⚠️ ห้ามเปิดเป็น true จนกว่าจะ "ทดลองซื้อด้วยเงินจริง 1 ครั้งแล้วได้เครดิตจริง"
 //    เพราะทางจ่ายเงินเส้นนี้ยังไม่เคยผ่าน Stripe จริงมาก่อน
 //    ถ้าพัง = ลูกค้าจ่ายเงินแล้วไม่ได้ของ ซึ่งแก้ยากกว่าการเปิดช้าไป 1 วัน
-export const EDIT_LIVE = IS_PLAYGROUND || false;
+export const EDIT_LIVE = OPEN || false;
 
 // 🚦 สวิตช์เปิดช่อง "ขอใบกำกับภาษีในนามบริษัท" ที่หน้าจ่ายเงิน
 //
@@ -28,4 +48,4 @@ export const EDIT_LIVE = IS_PLAYGROUND || false;
 //
 // ⚠️ ระบบยัง "บันทึกใบไว้ให้ครบทุกออเดอร์" อยู่เบื้องหลังตลอดนะคะ ไม่ได้หยุดทำงาน
 //    พอต่อ FlowAccount ได้ กดปุ่มเดียวดันเข้าไปได้หมด แล้วค่อยเปิดสวิตช์นี้
-export const TAX_INVOICE_LIVE = IS_PLAYGROUND || false;
+export const TAX_INVOICE_LIVE = OPEN || false;

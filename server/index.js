@@ -4229,6 +4229,34 @@ app.get("/api/admin/customer-overview", async (req, res) => {
 });
 
 // เล่มที่ตัวตรวจคุณภาพพบ red flag (เอาไว้กดรีเจนแก้ก่อนลูกค้าเห็น)
+// 🔄 คำนวณธงคุณภาพใหม่ทั้งหมดด้วยกฎล่าสุด — ไม่แตะเนื้อหาเล่มเลย แค่คำนวณธงใหม่
+//
+// ทำไมต้องมี: หน้า "เล่มที่ควรเช็ค" อ่านธงที่บันทึกไว้ตอนสร้างเล่ม
+// พอเราแก้กฎยามคุณภาพ (เช่น เลิกเตือน reach สูง) ธงเก่าจะค้างอยู่ ทำให้คิมเห็นเตือนผิดค้างเต็มหน้า
+// เจอจริง 4 ส.ค.: 5 เล่มที่ถูกชี้ 4 เล่มเป็นธงเก่าจากกฎที่เลิกใช้แล้ว
+//
+// ⛔ ปลอดภัย: อ่านเล่ม → คำนวณธง → เขียนทับเฉพาะช่องธง ไม่แตะสคริปต์/ปฏิทินของลูกค้า
+app.post("/api/admin/quality/recheck", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const rows = await q(`SELECT blueprint_id, blueprint_json, quality_flags_json FROM blueprints
+      WHERE quality_flags_json IS NOT NULL AND quality_flags_json NOT IN ('','[]') ORDER BY created_at DESC LIMIT 200`);
+    let cleared = 0, changed = 0, still = 0;
+    const detail = [];
+    for (const r of rows) {
+      const bp = safeJson(r.blueprint_json); if (!bp) continue;
+      const before = safeJson(r.quality_flags_json) || [];
+      let after = [];
+      try { after = checkBlueprintQuality(bp, true) || []; } catch (e) { continue; }
+      if (JSON.stringify(before) === JSON.stringify(after)) { still++; continue; }
+      await run(`UPDATE blueprints SET quality_flags_json=$1 WHERE blueprint_id=$2`, [JSON.stringify(after), r.blueprint_id]);
+      changed++; if (!after.length) cleared++;
+      detail.push({ blueprint_id: r.blueprint_id, before, after });
+    }
+    res.json({ ok: true, checked: rows.length, changed, cleared, unchanged: still, detail: detail.slice(0, 30) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 app.get("/api/admin/quality", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const rows = await q(`SELECT b.blueprint_id, b.user_id, b.billing_cycle, b.created_at, b.quality_flags_json, r.email, r.business_type FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE b.quality_flags_json IS NOT NULL AND b.quality_flags_json NOT IN ('','[]') ORDER BY b.created_at DESC LIMIT 50`);

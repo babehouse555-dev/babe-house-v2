@@ -3097,15 +3097,24 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
     const id = uid("eo");
     // รับรายละเอียดที่ลูกค้ากรอกมาด้วย (ฟุตเทจ/เสียง/ตัวอย่างที่ชอบ/โน้ต)
     // คิมทัก 3 ส.ค.: "ให้เขาใส่รายละเอียดก่อน แล้วหักเครดิตตอนกดปุ่มด้านใน"
-    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,ref_picks)
-      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10,$11)`,
+    //
+    // ⚠️ คิมเจอเอง 4 ส.ค.: แนบลิงก์ฟุตเทจมาตั้งแต่หน้าสั่งงานแล้ว แต่หน้างานยังขึ้น "รอไฟล์จากคุณ"
+    // เพราะสถานะเริ่มต้นในตารางเป็น awaiting_files เสมอ ไม่ได้ดูว่ามีไฟล์มาแล้วหรือยัง
+    // → ถ้าแนบมาแล้ว ต้องเริ่มที่ "ทีมกำลังตัด" + เริ่มจับเวลาส่งงานทันที
+    const hasFootage = /^https?:\/\//.test(String(req.body?.footage_url || "").trim());
+    const dueNow = hasFootage ? addWorkDays(new Date(), leadDaysFor(1)).toISOString() : null;
+    await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,ref_picks,status,files_ready_at,due_at)
+      VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10,$11,$12,$13,$14)`,
       [id, email, bp, req.body?.billing_cycle || null, day,
        req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
        String(req.body?.note || "").slice(0, 2000),
        String(req.body?.footage_url || "").slice(0, 1000) || null,
        String(req.body?.voice_url || "").slice(0, 1000) || null,
        String(req.body?.ref_links || "").slice(0, 2000) || null,
-       Array.isArray(req.body?.ref_picks) && req.body.ref_picks.length ? JSON.stringify(req.body.ref_picks.slice(0, 12)) : null]);
+       Array.isArray(req.body?.ref_picks) && req.body.ref_picks.length ? JSON.stringify(req.body.ref_picks.slice(0, 12)) : null,
+       hasFootage ? "editing" : "awaiting_files",
+       hasFootage ? new Date().toISOString() : null,
+       dueNow]);
     const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
     res.json({ ok: true, order_id: id, script_day: day, credits_left: Number(c?.x || 0) });
   } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }
@@ -3163,7 +3172,9 @@ app.post("/api/edit/files", async (req, res) => {
   const f = String(req.body?.footage_url || "").trim(), v = String(req.body?.voice_url || "").trim();
   if (!/^https?:\/\//.test(f)) return res.status(400).json({ ok: false, error: "BAD_LINK", message: "ใส่ลิงก์ฟุตเทจให้ถูกต้องนะคะ (ขึ้นต้นด้วย http)" });
   const due = addWorkDays(new Date(), leadDaysFor(o.clips));
+  // files_ready_at = เวลาที่ได้ไฟล์ครบ — นาฬิกานับเวลาส่งงานของทีมใช้ค่านี้ ห้ามลืมบันทึก
   await run(`UPDATE edit_orders SET footage_url=$1, voice_url=$2, due_at=COALESCE(due_at,$3),
+    files_ready_at=COALESCE(files_ready_at, now()),
     status=CASE WHEN status='awaiting_files' THEN 'editing' ELSE status END, updated_at=now() WHERE order_id=$4`,
     [f, v || null, due.toISOString(), o.order_id]);
   await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,

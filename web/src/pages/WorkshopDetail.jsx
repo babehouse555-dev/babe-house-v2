@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, session } from "../api.js";
+import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 
 // รายละเอียดคลาสสด + เลือกรอบ + จองและจ่ายเอง (ที่นั่งเช็กสดตอนกดจอง กันจองเกิน)
 const BLUE = "var(--blue)";
@@ -16,6 +17,7 @@ export default function WorkshopDetail() {
   const [promo, setPromo] = useState(null);
   const [codeMsg, setCodeMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tax, setTax] = useState(null);   // 🧾 ใบกำกับในนามบริษัท (null = ไม่ได้ขอ)
 
   useEffect(() => { api(`/api/workshops/${id}`).then(d2 => { setD(d2); setPick(d2.sessions?.[0]?.session_id || null); }).catch(() => setErr(true)); }, [id]);
 
@@ -35,9 +37,11 @@ export default function WorkshopDetail() {
     if (!session.token) { window.location.href = "/account"; return; }
     if (!pick) return alert("เลือกรอบที่จะเรียนก่อนนะคะ");
     if (!form.name.trim() || !form.phone.trim()) return alert("กรอกชื่อและเบอร์โทรด้วยนะคะ");
+    const bad = validateTax(tax);          // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
+    if (bad) return alert(bad);
     setBusy(true);
     try {
-      const r = await api("/api/workshops/book", { method: "POST", token: session.token, body: { session_id: pick, qty: Number(form.qty) || 1, name: form.name.trim(), phone: form.phone.trim(), code: form.code.trim() || undefined, food_note: form.food_note.trim(), needs_parking: form.needs_parking, customer_note: form.customer_note.trim() } });
+      const r = await api("/api/workshops/book", { method: "POST", token: session.token, body: { session_id: pick, qty: Number(form.qty) || 1, name: form.name.trim(), phone: form.phone.trim(), code: form.code.trim() || undefined, food_note: form.food_note.trim(), needs_parking: form.needs_parking, customer_note: form.customer_note.trim(), tax } });
       window.location.href = r.free ? r.redirect_url : r.checkout_url;
     } catch (e) {
       alert(e.message || "จองไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");
@@ -189,6 +193,7 @@ export default function WorkshopDetail() {
                 <span>ยอดรวม</span>
                 <span>{promo ? (promo.final <= 0 ? "ฟรี!" : money(promo.final / 100)) : money(totalSatang / 100)}</span>
               </div>
+              {!soldOut && session.token && <TaxInvoiceBox onChange={setTax} />}
               <button className="btn full" disabled={busy || soldOut} onClick={book}>
                 {busy ? "กำลังไปหน้าชำระเงิน..." : soldOut ? "รอบนี้เต็มแล้ว" : session.token ? "จองและชำระเงิน" : "เข้าสู่ระบบเพื่อจอง"}
               </button>

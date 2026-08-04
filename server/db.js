@@ -865,6 +865,11 @@ export async function initDb() {
       order_id TEXT,
       sent_at TIMESTAMPTZ DEFAULT now()
     );
+    -- 🧾 ข้อมูลใบกำกับภาษีที่ลูกค้ากรอกตอนซื้อ (ชื่อบริษัท/เลขผู้เสียภาษี/ที่อยู่)
+    -- เก็บไว้กับออเดอร์ของแต่ละสินค้า เพราะใบกำกับต้องออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
+    -- ⚠️ ALTER ต้องอยู่หลัง CREATE ของตารางนั้นเสมอ (ฐานข้อมูลใหม่จะบูตไม่ขึ้นถ้าสลับ)
+    ALTER TABLE academy_purchases ADD COLUMN IF NOT EXISTS tax_json TEXT;
+    ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS tax_json TEXT;
   `);
   console.log("[db] schema ready");
 }

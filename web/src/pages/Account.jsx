@@ -9,6 +9,7 @@ const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_op
 const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("babe_opened") || "[]"); if (!a.includes(id)) { a.push(id); localStorage.setItem("babe_opened", JSON.stringify(a)); } } catch {} };
 
 export default function Account() {
+  const [taxInv, setTaxInv] = useState([]);   // 🧾 ใบกำกับภาษีของลูกค้าคนนี้
   const { t, lang } = useI18n();
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -48,6 +49,7 @@ export default function Account() {
       loadDeleted();
       setData(d); setStep("list");
       api("/api/me/referral", { token: session.token }).then(setRef).catch(() => {});
+      api("/api/me/tax-invoices", { token: session.token }).then(d => setTaxInv(d.invoices || [])).catch(() => {});
     } catch { session.clear(); setStep("email"); }
   }
   async function sendCode() {
@@ -235,6 +237,37 @@ export default function Account() {
             ))}
           </div>
         )}
+
+        {/* 🧾 ใบกำกับภาษี — คิมสั่ง 4 ส.ค.
+            "เวลาฉันไปขอใบกำกับที่เป็นเมล เขาส่งมาแล้วฉันชอบลืม"
+            ตอนที่ต้องใช้จริงคือปิดบัญชีสิ้นปี ห่างจากวันซื้อเป็นเดือน กล่องเมลหาไม่เจอแล้ว
+            เมลยังส่งเหมือนเดิม แต่ที่นี่คือที่ที่หาเจอตลอด */}
+        {taxInv.length > 0 && <div className="card">
+          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>🧾 ใบกำกับภาษี</div>
+          <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>
+            ทุกครั้งที่ชำระเงิน ระบบออกใบกำกับให้อัตโนมัติและเก็บไว้ที่นี่ — เปิดโหลดได้ตลอด ไม่หายค่ะ
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {taxInv.map(v => {
+              const issued = v.status === "issued";
+              return <div key={v.invoice_id} className="between"
+                style={{ gap: 12, flexWrap: "wrap", padding: "12px 14px", background: "var(--soft)", borderRadius: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>{v.description || "สินค้า/บริการ"}</div>
+                  <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
+                    {new Date(v.issued_at || v.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" })}
+                    {" · ฿"}{(Number(v.amount_satang || 0) / 100).toLocaleString()}
+                    {v.doc_number ? ` · เลขที่ ${v.doc_number}` : ""}
+                    {v.is_company ? " · ในนามบริษัท" : ""}
+                  </div>
+                </div>
+                {issued
+                  ? <Link className="btn ghost" to={`/invoice/${v.invoice_id}`} style={{ padding: "9px 15px", fontSize: 13.5 }}>ดู / โหลดใบ</Link>
+                  : <span className="muted" style={{ fontSize: 12.5 }}>กำลังออกใบให้ค่ะ</span>}
+              </div>;
+            })}
+          </div>
+        </div>}
 
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>

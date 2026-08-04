@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, session } from "../api.js";
+import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 
 // หน้ารายละเอียดคอร์ส — อ่านก่อน ตัดสินใจก่อน แล้วค่อยซื้อ (ตาม feedback คิม: ไม่เอาปุ่มซื้อโดดใส่หน้าแรก)
 const BLUE = "var(--blue)";
@@ -26,6 +27,7 @@ export default function AcademyCourse() {
   const [code, setCode] = useState("");
   const [promo, setPromo] = useState(null);   // {percent, final} หลังกดใช้โค้ด
   const [codeMsg, setCodeMsg] = useState("");
+  const [tax, setTax] = useState(null);   // 🧾 ใบกำกับในนามบริษัท (null = ไม่ได้ขอ)
 
   useEffect(() => {
     api(`/api/academy/course/${id}`).then(setD).catch(() => setErr(true));
@@ -44,9 +46,11 @@ export default function AcademyCourse() {
 
   async function buy() {
     if (!session.token) { window.location.href = "/account"; return; }
+    const bad = validateTax(tax);          // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
+    if (bad) { alert(bad); return; }
     setBuying(true);
     try {
-      const r = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id, code: code.trim() || undefined } });
+      const r = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id, code: code.trim() || undefined, tax } });
       window.location.href = r.free ? r.redirect_url : r.checkout_url;
     }
     catch (e) { alert(e.message || "ลองใหม่อีกครั้งนะคะ"); setBuying(false); }
@@ -183,6 +187,7 @@ export default function AcademyCourse() {
             {!owned && promo && <div style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 10, padding: "9px 12px", marginBottom: 10, fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>
               ราคาหลังใช้โค้ด: {promo.final <= 0 ? "ฟรี!" : `฿${(promo.final / 100).toLocaleString()}`}
             </div>}
+            {!owned && session.token && <TaxInvoiceBox onChange={setTax} />}
             {owned
               ? <Link className="btn full" to={`/academy/learn?course=${c.id}`} style={{ textAlign: "center" }}>เข้าเรียน →</Link>
               : <button className="btn full" disabled={buying} onClick={buy}>{buying ? "กำลังไปหน้าชำระเงิน..." : session.token ? (promo?.final <= 0 ? "เริ่มเรียนเลย (ฟรี)" : "สมัครเรียนคอร์สนี้") : "เข้าสู่ระบบเพื่อสมัครเรียน"}</button>}

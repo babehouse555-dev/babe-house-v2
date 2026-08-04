@@ -240,16 +240,18 @@ async function notifyAdminPurchase(orderId, provider, liveMode) {
 }
 // 🧾 ออกใบกำกับภาษีจากออเดอร์ที่จ่ายแล้ว — คิมสั่ง "ทุกการจ่ายเงินต้องออกใบกำกับ"
 // ⛔ ห้ามพังการจ่ายเงินไม่ว่าจะเกิดอะไรขึ้น (เรียกแบบ fire-and-forget + จับ error ครบ)
-const KIND_LABEL = { credits: "แพ็กเครดิตสคริปต์", video: "บริการตรวจคลิป (Video Audit)" };
+const KIND_LABEL = { credits: "แพ็กเครดิตสคริปต์", video: "บริการตรวจคลิป (Video Audit)",
+                     edit: "เครดิตตัดต่อคลิป", academy: "คอร์สออนไลน์ Babe House Academy", workshop: "Workshop" };
 async function issueInvoiceForOrder(orderId) {
   const o = await getOrder(orderId); if (!o) return;
   const amount = Number(o.final_amount_satang || 0);
   if (amount <= 0) return;                                  // ฟรี/โค้ด 100% ไม่มียอด ไม่ต้องออกใบ
   const payload = safeJson(o.order_payload_json) || {};
   const tier = String(o.tier || "");
-  const kind = tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+  const kind = tier.startsWith("EditCredits") ? "edit" : tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
   const plan = planOf(payload.plan);
-  const desc = KIND_LABEL[kind] ||
+  const desc = kind === "edit" ? `เครดิตตัดต่อคลิป ${Number(payload.edit_credit_pack) || 0} คลิป`
+    : KIND_LABEL[kind] ||
     (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
   await issueTaxInvoice({
     orderId, kind, email: o.email, amountSatang: amount, description: desc,
@@ -290,13 +292,20 @@ async function activatePlanIfLongOrder(orderId) {
 // ออเดอร์ซื้อเครดิต (tier Credits_N) จ่ายแล้ว → เติมเครดิต (idempotent กัน webhook ยิงซ้ำ)
 async function grantCreditsIfCreditOrder(orderId) {
   const o = await getOrder(orderId);
-  if (!o || !String(o.tier || "").startsWith("Credits")) return;
+  const tier = String(o?.tier || "");
+  // เครดิต 2 ถัง คนละเรื่องกัน: Credits_* = เครดิตสคริปต์ · EditCredits_* = เครดิตให้ทีมตัดต่อ
+  const isEdit = tier.startsWith("EditCredits");
+  if (!o || !(isEdit || tier.startsWith("Credits"))) return;
   const claim = await run(`UPDATE blueprint_orders SET credits_granted=true WHERE order_id=$1 AND COALESCE(credits_granted,false)=false`, [orderId]);
   if (claim.rowCount !== 1) return; // เติมไปแล้ว
   const pl = safeJson(o.order_payload_json) || {};
-  const n = Number(pl.credit_pack) || 0;
   const email = normEmail(pl.email || o.email);
-  if (n > 0 && email) { await upsertCustomer(email, ""); await run(`UPDATE customers SET credits=COALESCE(credits,0)+$1 WHERE lower(email)=lower($2)`, [n, email]); console.log(`[credits] +${n} → ${email}`); }
+  const n = Number(isEdit ? pl.edit_credit_pack : pl.credit_pack) || 0;
+  if (!(n > 0 && email)) return;
+  await upsertCustomer(email, "");
+  const col = isEdit ? "edit_credits" : "credits";
+  await run(`UPDATE customers SET ${col}=COALESCE(${col},0)+$1 WHERE lower(email)=lower($2)`, [n, email]);
+  console.log(`[${isEdit ? "edit-credits" : "credits"}] +${n} → ${email}`);
 }
 async function getOrCreateReferralCode(email) {
   const e = normEmail(email); if (!e) return null;
@@ -507,7 +516,7 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
     const preview = rows.map(o => {
       const payload = safeJson(o.order_payload_json) || {};
       const tier = String(o.tier || "");
-      const kind = tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+      const kind = tier.startsWith("EditCredits") ? "edit" : tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
       const amount = Number(o.final_amount_satang || 0);
       const v = splitVat(amount);
       const t = payload.tax || {};
@@ -535,7 +544,7 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
     for (const o of rows) {
       const payload = safeJson(o.order_payload_json) || {};
       const tier = String(o.tier || "");
-      const kind = tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+      const kind = tier.startsWith("EditCredits") ? "edit" : tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
       const plan = planOf(payload.plan);
       const desc = KIND_LABEL[kind] || (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
       const r = await issueTaxInvoice({ orderId: o.order_id, kind, email: o.email,
@@ -581,25 +590,29 @@ app.post("/api/admin/tax-invoices/retry", async (req, res) => {
 });
 
 // 🧾 ลูกค้าบริษัทกรอกข้อมูลใบกำกับที่หน้าจ่ายเงิน — ลูกค้าทั่วไปไม่ต้องกรอกอะไรเลย
+// 🧾 ตรวจ+ล้างข้อมูลใบกำกับที่ลูกค้ากรอก — ใช้ร่วมกันทุกช่องทางขาย (เล่ม/เครดิตตัดต่อ/คอร์ส/workshop)
+// คืน { tax } ถ้าผ่าน · คืน { error, message } ถ้ากรอกไม่ครบ ให้ endpoint ตอบ 400 เอง
+function cleanTax(b) {
+  const isCompany = !!b?.is_company;
+  const name = String(b?.name || "").trim();
+  if (!isCompany) return { tax: { is_company: false, name: name || undefined } };
+  const taxId = String(b?.tax_id || "").replace(/\D/g, "");
+  if (!name) return { error: "NEED_NAME", message: "ใส่ชื่อบริษัทด้วยนะคะ" };
+  if (taxId.length !== 13) return { error: "BAD_TAX_ID", message: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ" };
+  if (!String(b?.address || "").trim()) return { error: "NEED_ADDRESS", message: "ใส่ที่อยู่บริษัทด้วยนะคะ" };
+  return { tax: { is_company: true, name, tax_id: taxId,
+                  branch: String(b.branch || "สำนักงานใหญ่").slice(0, 100),
+                  address: String(b.address || "").slice(0, 500) } };
+}
+
 app.post("/api/order/tax-info", rateLimit(60, M10), async (req, res) => {
   const orderId = String(req.body?.order_id || "");
   const o = await getOrder(orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   if (["paid", "mock_paid"].includes(o.payment_status)) return res.status(409).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้จ่ายแล้วค่ะ ทักทีมงานเพื่อแก้ใบกำกับนะคะ" });
-  const b = req.body || {};
-  const isCompany = !!b.is_company;
-  const name = String(b.name || "").trim();
-  const taxId = String(b.tax_id || "").replace(/\D/g, "");
-  if (isCompany) {
-    if (!name) return res.status(400).json({ ok: false, error: "NEED_NAME", message: "ใส่ชื่อบริษัทด้วยนะคะ" });
-    if (taxId.length !== 13) return res.status(400).json({ ok: false, error: "BAD_TAX_ID", message: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ" });
-    if (!String(b.address || "").trim()) return res.status(400).json({ ok: false, error: "NEED_ADDRESS", message: "ใส่ที่อยู่บริษัทด้วยนะคะ" });
-  }
-  const payload = { ...(safeJson(o.order_payload_json) || {}),
-    tax: isCompany ? { is_company: true, name, tax_id: taxId,
-                       branch: String(b.branch || "สำนักงานใหญ่").slice(0, 100),
-                       address: String(b.address || "").slice(0, 500) }
-                   : { is_company: false, name: name || undefined } };
+  const ct = cleanTax(req.body);
+  if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
+  const payload = { ...(safeJson(o.order_payload_json) || {}), tax: ct.tax };
   await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`, [JSON.stringify(payload), orderId]);
   res.json({ ok: true, tax: payload.tax });
 });
@@ -1338,6 +1351,29 @@ app.get("/api/me/blueprints", async (req, res) => {
   res.json({ ok: true, email, count: months.length, months, channels, pending });
 });
 // ===== เครดิต: สร้างสคริปต์เดี่ยว on-demand (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) =====
+// ข้อมูลผู้ขายที่ต้องขึ้นบนใบกำกับภาษี — ตั้งใน Railway (ห้าม hardcode เดาเอง ผิดกฎหมายได้)
+// ยังไม่ตั้ง = หน้าบัญชียังโชว์รายการใบได้ แต่ยังพิมพ์สำเนาไม่ได้ (บอกลูกค้าตรงๆ ว่ารอ)
+const SELLER = {
+  name: process.env.SELLER_NAME || "",
+  tax_id: process.env.SELLER_TAX_ID || "",
+  branch: process.env.SELLER_BRANCH || "สำนักงานใหญ่",
+  address: process.env.SELLER_ADDRESS || "",
+  ready: !!(process.env.SELLER_NAME && process.env.SELLER_TAX_ID && process.env.SELLER_ADDRESS),
+};
+
+// 🧾 ใบกำกับภาษีของฉัน — คิมสั่ง 4 ส.ค.
+// เหตุผล: ใบกำกับที่ส่งทางเมลหาย/ลืมกันประจำ แต่ตอนที่ต้องใช้จริงคือปิดบัญชีสิ้นปี
+// ซึ่งห่างจากวันซื้อเป็นเดือน — ต้องมีที่ที่หาเจอตลอด ไม่ใช่แค่ในกล่องเมล
+app.get("/api/me/tax-invoices", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const rows = await q(`SELECT invoice_id, order_id, order_kind, customer_name, is_company, tax_id, branch, address,
+        description, amount_satang, net_satang, vat_satang, status, doc_number, receipt_number, issued_at, created_at
+      FROM tax_invoices WHERE lower(email)=lower($1) ORDER BY COALESCE(issued_at, created_at) DESC`, [email]);
+    res.json({ ok: true, invoices: rows, seller: SELLER });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 app.get("/api/me/credits", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const c = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);
@@ -2026,6 +2062,11 @@ async function finalizeAcademyPurchase(p) {
     VALUES ($1,$2,$3,$4,$5,$6,'1','Close',now()::text) ON CONFLICT (legacy_id) DO NOTHING`,
     ["sp_" + p.purchase_id.slice(-12), u.legacy_id, p.email, p.course_id, p.course_name, String((p.amount_satang || 0) / 100), ]);
   console.log(`[academy] purchase paid: ${p.email} → course ${p.course_id}`);
+  // 🧾 ออกใบกำกับภาษี — ทุกการจ่ายเงินต้องมีใบ (คิมสั่ง) · ห้ามพังการซื้อไม่ว่าเกิดอะไร
+  issueTaxInvoice({ orderId: p.purchase_id, kind: "academy", email: p.email,
+    amountSatang: Number(p.amount_satang || 0), description: `คอร์สออนไลน์ — ${p.course_name || ""}`.trim(),
+    docDate: p.paid_at || new Date(), tax: { ...(safeJson(p.tax_json) || {}), fallback_name: p.email },
+  }).catch(e => console.error("tax-invoice academy", e.message));
 }
 app.post("/api/academy/buy", async (req, res) => {
   try {
@@ -2041,6 +2082,8 @@ app.post("/api/academy/buy", async (req, res) => {
     if (!(baht > 0)) return res.status(400).json({ ok: false, error: "BAD_PRICE" });
     if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
     const purchaseId = uid("apay");
+    const ct = cleanTax(req.body?.tax);   // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า
+    if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
     const promo = await redeemPromo(String(req.body?.code || ""), email, Math.round(baht * 100));
     if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
     const amountSatang = promo.final;
@@ -2062,8 +2105,8 @@ app.post("/api/academy/buy", async (req, res) => {
       cancel_url: `${origin}/academy?payment=cancelled`,
       metadata: { academy_purchase_id: purchaseId, course_id: courseId },
     });
-    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id) VALUES ($1, lower($2), $3, $4, $5, $6)`,
-      [purchaseId, email, courseId, c.name, amountSatang, s.id]);
+    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id, tax_json) VALUES ($1, lower($2), $3, $4, $5, $6, $7)`,
+      [purchaseId, email, courseId, c.name, amountSatang, s.id, JSON.stringify(ct.tax)]);
     res.json({ ok: true, checkout_url: s.url, purchase_id: purchaseId });
   } catch (e) { console.error("academy buy", e.message); res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
 });
@@ -2328,6 +2371,10 @@ app.post("/api/workshops/book", async (req, res) => {
     const parking = req.body?.needs_parking === true;
     const note = String(req.body?.customer_note || "").trim().slice(0, 500);
     if (!sessionId || !name || !phone) return res.status(400).json({ ok: false, error: "MISSING", message: "กรอกชื่อและเบอร์โทรด้วยนะคะ" });
+    // 🧾 ข้อมูลใบกำกับต้องเก็บก่อนจ่ายเงิน เพราะใบออกอัตโนมัติทันทีที่เงินเข้า แก้ทีหลังไม่ได้
+    const ct = cleanTax(req.body?.tax);
+    if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
+    const wsTax = ct.tax;
     const s = await one(`SELECT s.*, w.name AS ws_name, w.price AS ws_price FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [sessionId]);
     if (!s || s.status !== "open") return res.status(404).json({ ok: false, error: "SESSION_NOT_OPEN", message: "รอบนี้ปิดรับแล้วค่ะ" });
     if (new Date(s.starts_at) <= new Date()) return res.status(400).json({ ok: false, error: "PAST", message: "รอบนี้ผ่านไปแล้วค่ะ" });
@@ -2363,9 +2410,9 @@ app.post("/api/workshops/book", async (req, res) => {
       cancel_url: `${origin}/workshop/${encodeURIComponent(s.workshop_id)}?payment=cancelled`,
       metadata: { workshop_booking_id: bookingId, session_id: sessionId },
     });
-    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code, food_note, needs_parking, customer_note)
-      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null, food, parking, note]);
+    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code, food_note, needs_parking, customer_note, tax_json)
+      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null, food, parking, note, JSON.stringify(wsTax)]);
     res.json({ ok: true, checkout_url: ck.url, booking_id: bookingId });
   } catch (e) { console.error("workshop book", e.message); res.status(500).json({ ok: false, error: "BOOK_FAILED", message: e.message }); }
 });
@@ -2374,6 +2421,11 @@ async function finalizeWorkshopBooking(b) {
   await run(`UPDATE workshop_bookings SET status='paid', paid_at=now() WHERE booking_id=$1 AND status<>'paid'`, [b.booking_id]);
   const s = await one(`SELECT s.*, w.name AS ws_name FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [b.session_id]);
   console.log(`[workshop] booked: ${b.email} → ${s?.ws_name} (${b.qty} ที่)`);
+  // 🧾 ออกใบกำกับภาษี — ทุกการจ่ายเงินต้องมีใบ (คิมสั่ง) · ห้ามพังการจองไม่ว่าเกิดอะไร
+  issueTaxInvoice({ orderId: b.booking_id, kind: "workshop", email: b.email,
+    amountSatang: Number(b.amount_satang || 0), description: `${s?.ws_name || "Workshop"} — ${b.qty} ที่`,
+    docDate: b.paid_at || new Date(), tax: { ...(safeJson(b.tax_json) || {}), fallback_name: b.name || b.email },
+  }).catch(e => console.error("tax-invoice workshop", e.message));
   const left = await seatsLeft(b.session_id);
   const when = s ? new Date(s.starts_at).toLocaleString("th-TH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
   sendEmail(b.email, `✅ ยืนยันการจอง ${s?.ws_name || "workshop"} แล้วค่ะ`, wrap(
@@ -2956,13 +3008,28 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
   if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
   const n = Math.max(1, Math.min(200, Number(req.body?.credits) || 1));
   const per = editPrice(n), total = per * n;
+  // 🧾 ข้อมูลใบกำกับต้องเก็บ "ก่อน" จ่ายเงิน เพราะใบออกอัตโนมัติทันทีที่เงินเข้า แก้ทีหลังไม่ได้
+  const ct = cleanTax(req.body?.tax);
+  if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
   try {
-    const id = uid("ecp");
-    await run(`INSERT INTO edit_credit_purchases (purchase_id,email,credits,price_per_clip,amount_satang,payment_status,provider)
-      VALUES ($1,lower($2),$3,$4,$5,'paid','mock')`, [id, email, n, per, total * 100]);
-    await run(`UPDATE customers SET edit_credits=COALESCE(edit_credits,0)+$1 WHERE lower(email)=lower($2)`, [n, email]);
-    const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
-    res.json({ ok: true, purchase_id: id, credits_added: n, price_per_clip: per, total, credits: Number(c?.x || 0) });
+    const satang = total * 100;
+    const orderId = uid("ord");
+    await upsertCustomer(email, "");
+    // ใช้ท่อเดียวกับสินค้าอื่นทั้งหมด: blueprint_orders → จ่ายเงิน → markOrderPaid()
+    // ได้ครบในทีเดียว ทั้งเติมเครดิต · ออกใบกำกับ · แจ้งเตือนคิม โดยไม่ต้องต่อท่อใหม่
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10)`,
+      [orderId, "editcredits_" + Date.now(), "", normEmail(email), "EditCredits_" + n, currentBillingCycle(),
+       JSON.stringify({ edit_credit_pack: n, email: normEmail(email), tax: ct.tax }), PROVIDER, satang, "/edit"]);
+    if (PROVIDER === "stripe") {
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
+      const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
+      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang,
+        productName: `Babe House เครดิตตัดต่อ ${n} คลิป`, successPath: `/edit?topup=ok` });
+      await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [ck.provider_session_id, orderId]);
+      return res.json({ ok: true, redirect_url: ck.checkout_url, external: true });
+    }
+    await markOrderPaid(orderId, "mock", "mock_paid");   // สนามเด็กเล่นเท่านั้น — เว็บจริงใช้ Stripe เสมอ
+    res.json({ ok: true, redirect_url: "/edit?topup=ok", credits_added: n, price_per_clip: per, total });
   } catch (e) { res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
 });
 

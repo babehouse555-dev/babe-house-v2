@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, session } from "../api.js";
+import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 
 // 🎬 ให้ทีมช่วยลงมือทำ — ลูกค้ามีสคริปต์อยู่แล้วจากเล่ม แค่ไม่มีเวลาตัด
 // ขอบเขต (คิมเคาะ 2 ส.ค.): ตัดต่ออย่างเดียว · ลูกค้าส่งฟุตเทจ+เสียงเอง · ไม่รับถ่ายในเว็บ
@@ -18,6 +19,7 @@ export default function EditOrder() {
   const brief = (() => { try { return JSON.parse(decodeURIComponent(sp.get("brief") || "")); } catch { return null; } })();
 
   const [credits, setCredits] = useState(0);
+  const [tax, setTax] = useState(null);   // 🧾 ใบกำกับในนามบริษัท (null = ไม่ได้ขอ)
   const load = () => {
     if (!session.token) return;
     api("/api/edit/my", { token: session.token }).then(d => setOrders(d.orders || [])).catch(() => {});
@@ -30,10 +32,13 @@ export default function EditOrder() {
   // (คิมเคาะ 2 ส.ค.: เดิมบังคับเลือกจำนวนคลิปพร้อมบรีฟวันเดียว ลูกค้างงว่าอีก 29 คลิปคืออะไร)
   async function order() {
     if (!session.token) { setMsg("เข้าสู่ระบบก่อนนะคะ"); return; }
+    const bad = validateTax(tax);
+    if (bad) { setMsg(bad); return; }
     setBusy(true); setMsg("");
     try {
-      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips } });
-      setCredits(Number(r.credits || 0));
+      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips, tax } });
+      // จ่ายผ่าน Stripe → เด้งออกไปหน้าจ่ายเงิน · สนามเด็กเล่น → กลับมาโหลดยอดใหม่
+      if (r.external && r.redirect_url) { location.href = r.redirect_url; return; }
       setMsg(`ได้เครดิตตัดต่อ ${clips} คลิปแล้วค่ะ 🎉 เปิดเล่มของคุณ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง`);
       load();
     } catch (e) { setMsg(e.message || "ไม่สำเร็จ ลองใหม่นะคะ"); }
@@ -98,6 +103,7 @@ export default function EditOrder() {
         {/* ⛔ ตัดตัวเลือกสไตล์กับช่องโน้ตออกจากหน้านี้ (คิมทัก 3 ส.ค.)
             "เส้นทางการทำงานของลูกค้ามันซับซ้อนเกินไป" — หน้านี้ทำอย่างเดียวคือ "ซื้อเครดิตกี่คลิป"
             เรื่องสไตล์/ฟุตเทจ/โน้ต เป็นของ "คลิปนั้นๆ" ไปถามตอนสั่งงานจริงที่หน้าบรีฟ */}
+        <TaxInvoiceBox onChange={setTax} />
         <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…" : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 

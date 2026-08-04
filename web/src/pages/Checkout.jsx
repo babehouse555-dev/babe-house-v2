@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, baht, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import { PlanCards } from "../PlanCards.jsx";
+import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 
 export default function Checkout() {
   const { t } = useI18n();
@@ -15,8 +16,7 @@ export default function Checkout() {
   const [busy, setBusy] = useState(false);
   // 🧾 ใบกำกับภาษี — คิมสั่ง 3 ส.ค.: ออกให้ทุกคนอยู่แล้วด้วยชื่อที่มี
   // ติ๊กช่องนี้เฉพาะคนที่ต้องการ "ในนามบริษัท" จะได้ไม่ต้องให้ลูกค้าทั่วไปกรอกเยอะ
-  const [wantCompany, setWantCompany] = useState(false);
-  const [taxF, setTaxF] = useState({ name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
+  const [taxF, setTaxF] = useState(null);   // null = ไม่ได้ขอในนามบริษัท
   const [taxMsg, setTaxMsg] = useState(null);
   const [price, setPrice] = useState(159000);
   // 💳 3 แพ็ก (คิมเคาะ 3 ส.ค.) — ข้อมูลจริงตอนตัดสินใจ: ลูกค้า 232 คน 231 คนซื้อเดือนเดียวแล้วหาย
@@ -52,8 +52,10 @@ export default function Checkout() {
     setBusy(true); setTaxMsg(null);
     try {
       // บันทึกข้อมูลใบกำกับก่อนจ่าย — จ่ายแล้วแก้ไม่ได้ (ใบออกอัตโนมัติทันทีที่เงินเข้า)
-      if (wantCompany) {
-        await api("/api/order/tax-info", { method: "POST", body: { order_id: orderId, is_company: true, ...taxF } });
+      const bad = validateTax(taxF);
+      if (bad) { setTaxMsg({ k: "err", t: bad }); setBusy(false); return; }
+      if (taxF) {
+        await api("/api/order/tax-info", { method: "POST", body: { order_id: orderId, ...taxF } });
       }
       const d = await api("/api/create-payment-session", { method: "POST", body: { order_id: orderId } });
       location.href = d.redirect_url;
@@ -93,31 +95,7 @@ export default function Checkout() {
             พอกดสลับแพ็ก ยอดเปลี่ยนแต่ป้ายไม่เปลี่ยน → ขึ้นเลขเก่าค้างไว้ เช่นจ่าย 9,540 แต่ป้ายบอก 10%
             ส่วนลดจริงโชว์อยู่บนการ์ดแพ็กแล้ว (−30% / −50%) และโค้ดส่วนลดมีข้อความบอกแยกอยู่แล้ว */
         }
-        {/* 🧾 ใบกำกับภาษี — ออกให้ทุกคนอยู่แล้ว ติ๊กเฉพาะคนที่ต้องการในนามบริษัท */}
-        <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
-          <label className="row" style={{ gap: 9, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
-            <input type="checkbox" style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }}
-              checked={wantCompany} onChange={e => { setWantCompany(e.target.checked); setTaxMsg(null); }} />
-            <span>ต้องการ<b>ใบกำกับภาษีในนามบริษัท</b>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
-                ไม่ติ๊กก็ได้ใบกำกับนะคะ — ระบบออกให้อัตโนมัติในนามของคุณทุกครั้งที่ชำระเงิน
-              </div>
-            </span>
-          </label>
-          {wantCompany && <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <input placeholder="ชื่อบริษัท (เช่น บริษัท เอบีซี จำกัด)" value={taxF.name}
-              onChange={e => setTaxF(v => ({ ...v, name: e.target.value }))} />
-            <input inputMode="numeric" placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" value={taxF.tax_id}
-              onChange={e => setTaxF(v => ({ ...v, tax_id: e.target.value.replace(/\D/g, "").slice(0, 13) }))} />
-            <input placeholder="สำนักงานใหญ่ / สาขาที่ ..." value={taxF.branch}
-              onChange={e => setTaxF(v => ({ ...v, branch: e.target.value }))} />
-            <textarea placeholder="ที่อยู่บริษัทตามที่จดทะเบียน" value={taxF.address} style={{ minHeight: 62 }}
-              onChange={e => setTaxF(v => ({ ...v, address: e.target.value }))} />
-            <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.6 }}>
-              ⚠️ ตรวจให้ถูกก่อนชำระเงินนะคะ — ใบกำกับจะออกทันทีที่ชำระสำเร็จ แก้เองทีหลังไม่ได้ค่ะ
-            </p>
-          </div>}
-        </div>
+        <TaxInvoiceBox onChange={setTaxF} />
         {taxMsg && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{taxMsg.t}</div>}
 
         {isMock ? <>

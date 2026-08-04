@@ -128,6 +128,7 @@ import Checkout from "./pages/Checkout.jsx";
 import Processing from "./pages/Processing.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Account from "./pages/Account.jsx";
+import Invoice from "./pages/Invoice.jsx";
 import Compare from "./pages/Compare.jsx";
 import Admin from "./pages/Admin.jsx";
 import Projects from "./pages/Projects.jsx";
@@ -165,6 +166,7 @@ createRoot(document.getElementById("root")).render(
       <Route path="/processing" element={<Processing />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/account" element={<Account />} />
+      <Route path="/invoice/:id" element={<Invoice />} />
       <Route path="/compare" element={<Compare />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/projects" element={<Projects />} />

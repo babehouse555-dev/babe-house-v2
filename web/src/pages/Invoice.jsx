@@ -74,7 +74,8 @@ export default function Invoice() {
               <b>{seller.name || "— ยังไม่ได้ตั้งค่า —"}</b><br />
               {seller.tax_id && <>เลขประจำตัวผู้เสียภาษี {seller.tax_id}<br /></>}
               {seller.branch && <>{seller.branch}<br /></>}
-              {seller.address}
+              {/* ที่อยู่ตั้งใน Railway เป็นบรรทัดเดียว คั่นแต่ละบรรทัดด้วย | เพื่อให้หน้าตาตรงกับใบตัวจริง */}
+              {String(seller.address || "").split("|").map((ln, i) => <span key={i}>{ln.trim()}<br /></span>)}
             </div>
           </div>
           <div>

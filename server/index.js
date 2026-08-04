@@ -647,12 +647,8 @@ app.post("/api/subscription/claim-month", rateLimit(20, M10), async (req, res) =
 app.get("/api/orders/:orderId", async (req, res) => {
   const o = await getOrder(req.params.orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
-<<<<<<< HEAD
   const pl = safeJson(o.order_payload_json) || {};
   res.json({ ok: true, order: { plan: pl.plan || "monthly", plan_chosen: !!pl.plan_chosen, order_id: o.order_id, user_id: o.user_id, instagram_account: o.instagram_account, tier: o.tier, billing_cycle: o.billing_cycle, payment_status: o.payment_status, provider: o.provider, blueprint_id: o.blueprint_id, generation_status: o.generation_status || "pending", generation_error: o.generation_error, discount_code: o.discount_code, discount_percent: o.discount_percent, final_amount_satang: o.final_amount_satang, created_at: o.created_at, paid_at: o.paid_at, em_hash: emailHash(o.email) } });
-=======
-  res.json({ ok: true, order: { order_id: o.order_id, user_id: o.user_id, instagram_account: o.instagram_account, tier: o.tier, billing_cycle: o.billing_cycle, payment_status: o.payment_status, provider: o.provider, blueprint_id: o.blueprint_id, generation_status: o.generation_status || "pending", generation_error: o.generation_error, discount_code: o.discount_code, discount_percent: o.discount_percent, final_amount_satang: o.final_amount_satang, created_at: o.created_at, paid_at: o.paid_at, em_hash: emailHash(o.email) } });
->>>>>>> origin/main
 });
 
 app.post("/api/mock-payment-complete", async (req, res) => {
@@ -2617,8 +2613,6 @@ app.post("/api/admin/restore-book", async (req, res) => {
   res.json({ ok: true, restored: bpId, billing_cycle: b.billing_cycle,
     scripts: (bp.scripts || []).length, theme: bp.theme || null });
 });
-<<<<<<< HEAD
-=======
 // 🔎 ส่องออเดอร์ที่ไม่ใช่ Close — คิมสงสัย 3 ส.ค.: "ลูกค้าจ่ายผ่านแอดมิน/LINE MyShop แนบสลิปก็มี
 // ในเว็บมีคนสมัครเฉยๆ ไม่ซื้อคอร์สด้วยเหรอ" → ต้องแยกให้ออกว่า Open = ตะกร้าค้าง หรือ = จ่ายแล้วแต่ไม่ได้กดปิดออเดอร์
 // ⛔ อ่านอย่างเดียว ไม่แก้ข้อมูลใดๆ
@@ -2647,7 +2641,6 @@ app.get("/api/admin/academy/orders-diag", async (req, res) => {
       emails_only_open: Number(onlyOpen?.c || 0), open_by_year: openByYear, close_by_year: closeByYear, sample_open: sample });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
->>>>>>> origin/main
 app.get("/api/admin/academy/coverage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const hidden = [...HIDDEN_COURSES];
@@ -2702,8 +2695,6 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
       WHERE cid IS NOT NULL AND cid <> '' AND NOT EXISTS (SELECT 1 FROM academy_courses c WHERE c.legacy_id = x.cid)
       GROUP BY cid ORDER BY students DESC LIMIT 25`),
     users_no_email: Number((await one(`SELECT COUNT(*) c FROM academy_users WHERE COALESCE(email,'')=''`))?.c || 0),
-<<<<<<< HEAD
-=======
     // 🎯 ตัวเลขที่ตรงกับ "ล็อกอินแล้วเห็นคอร์สจริงไหม" — นับทุกคอร์สที่เคยซื้อสำเร็จ ไม่สนว่าคอร์สนั้นยังเปิดขายอยู่ไหม
     // (เกณฑ์ด้านบนตัดคอร์สที่ปิด/ซ่อนออก ทำให้ตัวเลข "คนเห็นคอร์ส" ต่ำกว่าความจริง —
     //  เพราะหน้าเรียนจริง /api/academy/my-courses ไม่ได้กรองคอร์สที่ปิด ลูกค้าเก่ายังเห็นของตัวเองครบ)
@@ -2718,7 +2709,6 @@ app.get("/api/admin/academy/coverage", async (req, res) => {
       SELECT COUNT(DISTINCT lower(u.email)) c FROM academy_users u
       WHERE COALESCE(u.email,'') <> '' AND NOT EXISTS (
         SELECT 1 FROM academy_orders o WHERE o.legacy_user_id=u.legacy_id AND o.status='Close')`))?.c || 0),
->>>>>>> origin/main
   };
   const lessons = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') <> ''`);
   const noVideo = await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE COALESCE(url,'') = ''`);

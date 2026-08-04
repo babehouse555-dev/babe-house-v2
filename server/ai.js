@@ -1087,14 +1087,6 @@ export function checkMetricsSanity(m) {
   // (ข) engagement rate สูงเกินจริง (รับได้ทั้งรูปแบบ 0-1 และ 0-100)
   const erPct = er == null ? null : (er <= 1 ? er * 100 : er);
   if (erPct != null && erPct > 30) flags.push(`🔢 อัตราการมีส่วนร่วม ${erPct.toFixed(1)}% สูงผิดปกติ — น่าจะอ่านตัวเลขผิด`);
-<<<<<<< HEAD
-  // (ค) reach ทะลุผู้ติดตามหลายเท่า = คลิปไวรัล ไม่ใช่ความผิดพลาด — อย่าเตือนลอยๆ
-  // เจอจริง 2 ส.ค.: @jabo0oo (130 ฟอล / 9,200 reach) และ @todaysmoment.khao (106 / 27,700) ถูกเตือนทั้งที่ตัวเลขสมเหตุสมผล
-  // เตือนเฉพาะตอน "ขัดแย้งกันเอง" เท่านั้น: reach สูงลิ่วแต่คนเข้าโปรไฟล์กลับน้อยกว่าผู้ติดตาม = อ่านสลับช่องแน่
-  const pv = n(m.profile_visits);
-  if (reach && followers && reach > followers * 50 && pv && pv < followers) {
-    flags.push(`🔢 การเข้าถึง ${reach.toLocaleString()} สูงกว่าผู้ติดตาม ${followers.toLocaleString()} มาก แต่คนเข้าโปรไฟล์แค่ ${pv.toLocaleString()} — ตัวเลขขัดกันเอง น่าจะอ่านสลับช่อง`);
-=======
   // (ค) ⛔ เลิกเตือน "reach สูงแต่คนเข้าโปรไฟล์น้อย" แล้ว — ไม่ใช่สัญญาณที่เชื่อถือได้
   // เจอผิดซ้ำ 3 ราย: @jabo0oo · @todaysmoment.khao · @Oumtrd (1,301 ฟอล / reach 240,900 / เข้าโปรไฟล์ 944)
   // ความจริง: คลิปไวรัลทำ reach ทะลุผู้ติดตามได้ร้อยเท่า และคนดูส่วนใหญ่ไม่กดเข้าโปรไฟล์
@@ -1103,7 +1095,6 @@ export function checkMetricsSanity(m) {
   const pv = n(m.profile_visits);
   if (reach && pv && pv > reach * 1.5) {
     flags.push(`🔢 คนเข้าโปรไฟล์ ${pv.toLocaleString()} มากกว่าการเข้าถึง ${reach.toLocaleString()} — น่าจะอ่านสลับช่อง`);
->>>>>>> origin/main
   }
   // (ง) reach น้อยกว่าผู้ติดตาม 100 เท่า = อ่านผิดแน่ (เจอจริง: @jeowfee 1,300 ฟอล แต่ reach 2)
   if (reach && followers && followers > 200 && reach < followers / 100) {

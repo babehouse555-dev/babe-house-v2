@@ -4,6 +4,7 @@ import { api, baht, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import { PlanCards } from "../PlanCards.jsx";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
+import { TAX_INVOICE_LIVE } from "../config.js";
 
 export default function Checkout() {
   const { t } = useI18n();
@@ -95,7 +96,7 @@ export default function Checkout() {
             พอกดสลับแพ็ก ยอดเปลี่ยนแต่ป้ายไม่เปลี่ยน → ขึ้นเลขเก่าค้างไว้ เช่นจ่าย 9,540 แต่ป้ายบอก 10%
             ส่วนลดจริงโชว์อยู่บนการ์ดแพ็กแล้ว (−30% / −50%) และโค้ดส่วนลดมีข้อความบอกแยกอยู่แล้ว */
         }
-        <TaxInvoiceBox onChange={setTaxF} />
+        {TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTaxF} />}
         {taxMsg && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{taxMsg.t}</div>}
 
         {isMock ? <>

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, session } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
+import { TAX_INVOICE_LIVE } from "../config.js";
 
 // รายละเอียดคลาสสด + เลือกรอบ + จองและจ่ายเอง (ที่นั่งเช็กสดตอนกดจอง กันจองเกิน)
 const BLUE = "var(--blue)";
@@ -193,7 +194,7 @@ export default function WorkshopDetail() {
                 <span>ยอดรวม</span>
                 <span>{promo ? (promo.final <= 0 ? "ฟรี!" : money(promo.final / 100)) : money(totalSatang / 100)}</span>
               </div>
-              {!soldOut && session.token && <TaxInvoiceBox onChange={setTax} />}
+              {!soldOut && session.token && TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
               <button className="btn full" disabled={busy || soldOut} onClick={book}>
                 {busy ? "กำลังไปหน้าชำระเงิน..." : soldOut ? "รอบนี้เต็มแล้ว" : session.token ? "จองและชำระเงิน" : "เข้าสู่ระบบเพื่อจอง"}
               </button>

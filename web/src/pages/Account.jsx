@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import MyLearning, { SectionHead } from "./MyLearning.jsx";
+import { TAX_INVOICE_LIVE } from "../config.js";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
@@ -242,7 +243,7 @@ export default function Account() {
             "เวลาฉันไปขอใบกำกับที่เป็นเมล เขาส่งมาแล้วฉันชอบลืม"
             ตอนที่ต้องใช้จริงคือปิดบัญชีสิ้นปี ห่างจากวันซื้อเป็นเดือน กล่องเมลหาไม่เจอแล้ว
             เมลยังส่งเหมือนเดิม แต่ที่นี่คือที่ที่หาเจอตลอด */}
-        {taxInv.length > 0 && <div className="card">
+        {TAX_INVOICE_LIVE && taxInv.length > 0 && <div className="card">
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>🧾 ใบกำกับภาษี</div>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>
             ทุกครั้งที่ชำระเงิน ระบบออกใบกำกับให้อัตโนมัติและเก็บไว้ที่นี่ — เปิดโหลดได้ตลอด ไม่หายค่ะ

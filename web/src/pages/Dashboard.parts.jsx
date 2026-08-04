@@ -2,6 +2,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session, filesToBase64 } from "../api.js";
+import { ACADEMY_LIVE } from "../config.js";
+
+// 📮 ทางติดต่อทางไลน์ — ยังต้องมีจนกว่าคอร์ส/คลาสสดจะเปิดขายบนเว็บครบ (คิมสั่ง 4 ส.ค.)
+// ถ้าเอาออกตอนนี้ ลูกค้าที่อยากซื้อคอร์สหรือจองคลาสจะไม่เหลือทางติดต่อเลย
+const LINE_ACADEMY = { id: "@babehouse_academy", url: "https://line.me/R/ti/p/%40babehouse_academy" };
+const qrImg = (data) => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=10&data=${encodeURIComponent(data)}`;
 import { useI18n } from "../i18n.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
 
@@ -141,6 +147,26 @@ export function ToolsAndServices({ channel, cycle, demo }) {
     {/* ⛔ เอา ServicesBlock ออก 2 ส.ค. (คิมสั่ง: "ซ้ำซ้อนมาก")
         เดิมกล่องนี้โฆษณา Academy + Production ในหน้าเล่ม แต่ตอนนี้ทั้งสองอย่างมีเมนูบนหัวเว็บแล้ว
         และในสคริปต์รายวันก็มีปุ่ม "ให้ทีมตัดให้" อยู่แล้ว → หน้าเดียวชวนขาย 3-4 จุด = รกและดูยัดขาย */}
+
+    {/* 📮 อยากเรียน/อยากจองคลาส → ทักไลน์ไปก่อน
+        โผล่เฉพาะตอนคอร์สกับคลาสสดยังไม่เปิดบนเว็บ (ACADEMY_LIVE = false)
+        พอเปิดขายบนเว็บครบเมื่อไหร่ การ์ดนี้จะหายไปเอง ไม่ต้องมาแก้โค้ดซ้ำ */}
+    {!ACADEMY_LIVE && !demo && (
+      <div className="card" style={{ marginTop: 14, background: "linear-gradient(135deg,#F0FAF3,#F7FBF8)", border: "1px solid #cfe3d6" }}>
+        <div style={{ fontWeight: 800, fontSize: 15.5 }}>อยากเรียนตัดต่อ หรือจองคลาสสด?</div>
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.7 }}>
+          ทักไลน์มาคุยกับทีมได้เลยค่ะ เดี๋ยวแนะนำคอร์สที่เหมาะกับช่องของคุณให้
+        </div>
+        <div className="center" style={{ margin: "14px 0 10px" }}>
+          <img src={qrImg(LINE_ACADEMY.url)} alt="LINE Babe House Academy" width={140} height={140}
+            style={{ borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }} />
+          <div className="muted" style={{ fontSize: 13, marginTop: 6, fontWeight: 700 }}>{LINE_ACADEMY.id}</div>
+        </div>
+        <a href={LINE_ACADEMY.url} target="_blank" rel="noreferrer" className="btn full" style={{ background: "#06C755" }}>
+          เพิ่มเพื่อนทางไลน์
+        </a>
+      </div>
+    )}
   </div>;
 }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
+import { EDIT_LIVE } from "../config.js";
 import { ACADEMY_LIVE } from "../config.js";
 import { workshopForCourse, shouldSuggestWorkshop } from "../workshopMap.js";
 
@@ -136,7 +137,7 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
       </>}
 
       {/* 🎬 งานที่สั่งให้ทีมตัด — คิมขอ 2 ส.ค. ให้อยู่ในบัญชีเดียวกัน ไม่แยกหน้า */}
-      {show("edit") && edits.length > 0 && <>
+      {EDIT_LIVE && show("edit") && edits.length > 0 && <>
         <SectionHead icon="🎬" title="งานที่ทีมกำลังทำให้" count={edits.length}
           right={<Link className="link" to="/edit" style={{ fontSize: 13 }}>สั่งงานเพิ่ม →</Link>} />
         <div className="card" style={{ marginTop: 0 }}>

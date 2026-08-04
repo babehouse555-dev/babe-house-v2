@@ -5,6 +5,7 @@ import { sampleBlueprint } from "../sample.js";
 import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript, MonthReview } from "./Dashboard.parts.jsx";
 import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
+import { EDIT_LIVE } from "../config.js";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
@@ -386,7 +387,7 @@ export default function Dashboard() {
           </div>}
           {/* 🎟️ เครดิตตัดต่อ — เห็นตลอดว่าเหลือกี่คลิป และวันไหนสั่งทีมตัดไปแล้ว
               คิมเคาะ 2 ส.ค.: ซื้อเครดิตไว้ก่อน แล้วเดินดูตารางเลือกเองว่าจะให้ทีมตัดวันไหน */}
-          {!demo && (editCredits > 0 || editDays.size > 0) && (
+          {EDIT_LIVE && !demo && (editCredits > 0 || editDays.size > 0) && (
             <div className="card" style={{ marginTop: 0, marginBottom: 12, background: "#F5F1FD", border: "1px solid #DDD2F0", padding: "12px 15px" }}>
               <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
                 <span style={{ fontWeight: 800, fontSize: 14 }}>
@@ -433,7 +434,7 @@ export default function Dashboard() {
 
               {/* 🎬 ไม่มีเวลาตัด — ให้ทีมทำให้ · สคริปต์นี้คือบรีฟ ลูกค้าไม่ต้องเขียนอะไรเพิ่มเลย
                   คิมเคาะ 2 ส.ค.: ราคาเห็นเฉพาะคนที่มีเล่ม ไม่โชว์สาธารณะ */}
-              {!demo && (() => {
+              {EDIT_LIVE && !demo && (() => {
                 const cal = (bp.calendar || []).find(c => Number(c.d) === Number(script.d)) || {};
                 const ordered = editDays.has(Number(script.d));
                 const box = { display: "flex", gap: 12, alignItems: "center", textDecoration: "none", color: "inherit",

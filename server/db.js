@@ -406,6 +406,35 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now(),
       updated_at TIMESTAMPTZ DEFAULT now()
     );
+    -- ⚠️ กันคอลัมน์หายในฐานข้อมูลที่สร้างไว้ก่อน (เจอจริงบน staging 5 ส.ค. 2569)
+    -- CREATE TABLE IF NOT EXISTS ไม่ทำอะไรเลยถ้าตารางมีอยู่แล้ว → คอลัมน์ที่เพิ่มเข้า CREATE ทีหลัง
+    -- จะไม่มีในฐานข้อมูลเก่า แล้วพังตอน INSERT ("column ref_links does not exist")
+    -- ⛔ ต้องอยู่หลัง CREATE เสมอ · ADD COLUMN IF NOT EXISTS ปลอดภัย รันซ้ำได้ ไม่แตะข้อมูลเดิม
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS order_id TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS email TEXT NOT NULL;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS blueprint_id TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS billing_cycle TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS script_day INTEGER;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS brief_json TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS clips INTEGER DEFAULT 1;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS price_per_clip INTEGER;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS amount_satang INTEGER;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'pending';
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS provider TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS provider_session_id TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS footage_url TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS voice_url TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS note TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'awaiting_files';
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS draft_url TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS final_url TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS revisions_used INTEGER DEFAULT 0;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ref_links TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ref_picks TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS assignee TEXT;
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
     CREATE INDEX IF NOT EXISTS idx_edit_orders_email ON edit_orders(email, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_edit_orders_status ON edit_orders(status, created_at);
     -- 🎟️ ประวัติการซื้อเครดิตตัดต่อ (1 เครดิต = ตัด 1 คลิป · ซื้อเยอะราคาต่อคลิปถูกลง)

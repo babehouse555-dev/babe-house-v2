@@ -46,7 +46,8 @@ function buildDocument(inv) {
   // ⚠️ ใช้ "วันที่รับเงินจริง" เสมอ — ใบย้อนหลังต้องลงวันที่เดิม ไม่ใช่วันที่กดปุ่ม
   const docDate = inv.doc_date ? new Date(inv.doc_date) : new Date(inv.created_at || Date.now());
   return {
-    documentDate: docDate.toISOString().slice(0, 10),
+    publishedOn: docDate.toISOString().slice(0, 10),   // ✅ ชื่อฟิลด์ตามเอกสารจริง (เดิมเขียนผิดเป็น documentDate)
+    isVat: true,                                       // ✅ เปิดคิด VAT ให้เอกสารนี้
     contactName: inv.customer_name,
     contactTaxId: inv.tax_id || undefined,
     contactBranch: inv.branch || (inv.is_company ? "สำนักงานใหญ่" : undefined),
@@ -61,8 +62,18 @@ function buildDocument(inv) {
   };
 }
 
-// ยิงเอกสารขึ้น FlowAccount — ⚠️ ยังไม่เคยทดสอบกับ API จริง (ยังไม่มีรหัส)
-// ต้องลองกับ sandbox ก่อนเปิดใช้จริง แล้วปรับ buildDocument ให้ตรงสเปกที่ได้จริง
+// ยิงเอกสารขึ้น FlowAccount — ⚠️ ยังไม่เคยทดสอบกับ API จริง (รอรหัส sandbox ~7 ส.ค. 69)
+//
+// เทียบกับเอกสารจริง developers.flowaccount.com แล้ว (4 ส.ค. 69)
+// ตรงแน่นอน: contactName · contactTaxId · contactBranch · contactAddress
+//            items[].name/quantity/pricePerUnit · isVatInclusive
+// แก้แล้ว:   documentDate → publishedOn · เพิ่ม isVat
+//
+// ⛔ 3 จุดนี้ยังยืนยันไม่ได้ ต้องลองกับ sandbox ก่อนเปิดใช้จริง:
+//   1. เส้นทาง /tax-invoices — เอกสารเขียนว่า /:document และ /:document/inline ยังไม่รู้ชื่อจริง
+//   2. vatType: 7 — ไม่เจอฟิลด์นี้ในเอกสาร อาจต้องใช้ vatRate ในแต่ละรายการแทน
+//   3. reference — เอกสารบอกว่าคือ "เลขที่เอกสาร" แต่เราใส่ order_id ไว้
+//      ถ้าอยากให้ FlowAccount ออกเลขเองตามวันที่ อาจต้องไม่ส่งฟิลด์นี้เลย
 async function pushToFlowAccount(inv) {
   const token = await getToken();
   const r = await fetch(`${BASE}/tax-invoices`, { method: "POST",

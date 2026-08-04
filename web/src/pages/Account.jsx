@@ -20,11 +20,11 @@ export default function Account() {
   const [ref, setRef] = useState(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState({}); // ช่องไหนกางอยู่ (accordion) — หลายช่องจะพับไว้ กันหน้ายาว
-  const [chQ, setChQ] = useState("");
-  const [deleted, setDeleted] = useState([]);   // เล่มที่ลบไปแล้วแต่ยังกู้ได้ 30 วัน
-  const [folder, setFolder] = useState("plan");            // 🗂️ โฟลเดอร์ที่เปิดอยู่
-  const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0, edits: 0 }); // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
-  const [subs, setSubs] = useState({});          // 💳 แพ็ก 6/12 เดือนที่ใช้อยู่ ของแต่ละช่อง
+  const [chQ, setChQ] = useState("");             // ค้นหาช่อง (โผล่เมื่อมีหลายช่อง)
+  const [deleted, setDeleted] = useState([]);     // เล่มที่ลบไปแล้วแต่ยังกู้ได้ 30 วัน
+  const [folder, setFolder] = useState("plan");   // 🗂️ โฟลเดอร์ที่เปิดอยู่
+  const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0, edits: 0 });
+  const [subs, setSubs] = useState({});           // 💳 แพ็ก 6/12 เดือนที่ใช้อยู่ ของแต่ละช่อง
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // 💳 แพ็กที่ใช้อยู่ของแต่ละช่อง — โชว์ว่าเหลืออีกกี่เดือน ลูกค้าจะได้รู้ว่ายังไม่ต้องจ่ายเพิ่ม

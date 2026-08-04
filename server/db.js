@@ -865,6 +865,23 @@ export async function initDb() {
       order_id TEXT,
       sent_at TIMESTAMPTZ DEFAULT now()
     );
+    -- 🔁 รอบแก้งานตัดต่อ — ลูกค้ารวบจุดที่อยากแก้ทั้งหมดไว้ในรอบเดียว แล้วค่อยกดส่งทีเดียว
+    -- คิมสั่ง 5 ส.ค.: "ลูกค้าพิมพ์มาเป็นนาที มันจะขึ้นเยอะมาก ต้องแยกช่องเป็นรอบๆ"
+    -- เดิมลูกค้าพิมพ์ทีละบรรทัด ทีมได้งานแบบหยดทีละหยด วางแผนตัดไม่ได้
+    CREATE TABLE IF NOT EXISTS edit_rounds (
+      round_id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      round_no INTEGER NOT NULL,        -- รอบที่ 1, 2, 3, ...
+      notes_json TEXT,                  -- [{ at: "0:12", text: "ตรงนี้ตัดเร็วไป" }]
+      status TEXT DEFAULT 'draft',      -- draft = กำลังเขียน · submitted = ส่งให้ทีมแล้ว
+      charge_satang INTEGER DEFAULT 0,  -- รอบเกินโควตาคิดเงิน (รอบ 3 ขึ้นไป)
+      paid BOOLEAN DEFAULT false,       -- จ่ายแล้วหรือยัง (รอบฟรีเป็น true ตั้งแต่แรก)
+      pay_order_id TEXT,                -- ออเดอร์ที่ใช้จ่ายรอบนี้ (โยงกับ blueprint_orders)
+      submitted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_edit_rounds_order ON edit_rounds(order_id, round_no);
+
     -- 🧾 ข้อมูลใบกำกับภาษีที่ลูกค้ากรอกตอนซื้อ (ชื่อบริษัท/เลขผู้เสียภาษี/ที่อยู่)
     -- เก็บไว้กับออเดอร์ของแต่ละสินค้า เพราะใบกำกับต้องออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
     -- ⚠️ ALTER ต้องอยู่หลัง CREATE ของตารางนั้นเสมอ (ฐานข้อมูลใหม่จะบูตไม่ขึ้นถ้าสลับ)

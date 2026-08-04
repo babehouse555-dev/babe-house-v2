@@ -221,6 +221,7 @@ async function markOrderPaid(orderId, provider = "mock", sid = "") {
   // flip เฉพาะตอนยังไม่ paid → rowCount บอกว่า "เพิ่งจ่ายครั้งแรก" (กัน webhook ยิงซ้ำแล้วแจ้งเตือนซ้ำ)
   const upd = await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4 AND payment_status<>'paid'`, [provider, sid || null, liveMode, orderId]);
   grantCreditsIfCreditOrder(orderId).catch(e => console.error("grant-credits", e.message));
+  unlockRevisionRound(orderId).catch(e => console.error("unlock-revision", e.message));   // 🔁 จ่ายค่ารอบแก้แล้ว → ปลดล็อกให้ส่งได้
   activatePlanIfLongOrder(orderId).catch(e => console.error("activate-plan", e.message));
   issueInvoiceForOrder(orderId).catch(e => console.error("tax-invoice", e.message));   // 🧾 ออกใบกำกับภาษีทุกการจ่ายเงิน
   processReferralReward(orderId).catch(e => console.error("referral", e.message));
@@ -306,6 +307,14 @@ async function grantCreditsIfCreditOrder(orderId) {
   const col = isEdit ? "edit_credits" : "credits";
   await run(`UPDATE customers SET ${col}=COALESCE(${col},0)+$1 WHERE lower(email)=lower($2)`, [n, email]);
   console.log(`[${isEdit ? "edit-credits" : "credits"}] +${n} → ${email}`);
+}
+// 🔁 จ่ายค่ารอบแก้เกินโควตาสำเร็จ → ปลดล็อกให้ลูกค้ากดส่งรอบนั้นได้
+async function unlockRevisionRound(orderId) {
+  const o = await getOrder(orderId); if (!o) return;
+  const pl = safeJson(o.order_payload_json) || {};
+  if (!pl.revision_round_id) return;
+  const upd = await run(`UPDATE edit_rounds SET paid=true WHERE round_id=$1 AND paid=false`, [pl.revision_round_id]);
+  if (upd.rowCount) console.log(`[revision] จ่ายค่ารอบแก้แล้ว → ปลดล็อก ${pl.revision_round_id}`);
 }
 async function getOrCreateReferralCode(email) {
   const e = normEmail(email); if (!e) return null;
@@ -3163,6 +3172,149 @@ app.get("/api/edit/order/:id", async (req, res) => {
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
 });
 
+// ═══════ 🔁 รอบแก้งาน — รวบทุกจุดไว้ในรอบเดียว แล้วค่อยส่งทีเดียว (คิมสั่ง 5 ส.ค. 2569) ═══════
+//
+// ปัญหาเดิม: ลูกค้าพิมพ์ทีละบรรทัด "0:12 ตรงนี้ตัดเร็วไป" แล้วส่ง แล้วพิมพ์ใหม่อีก
+//   → ทีมได้งานแบบหยดทีละหยด ต้องเปิดคลิปดูซ้ำหลายรอบ วางแผนตัดไม่ได้
+//   → หน้าจอลูกค้าก็ยาวเป็นหางว่าว อ่านย้อนไม่รู้ว่าอันไหนรอบไหน
+//
+// ของใหม่: ลูกค้าเพิ่มจุดที่อยากแก้ได้เรื่อยๆ ในรอบเดียว ลบได้ แก้ได้ → กด "ส่งให้ทีม" ทีเดียว
+//   ส่งแล้วล็อก เพิ่มไม่ได้จนกว่าจะได้คลิปใหม่ (กันคอมเมนต์คลิปเวอร์ชันเก่า)
+//
+// ค่าใช้จ่าย: ฟรี 2 รอบ · รอบ 3 ขึ้นไปคิด 500 บาท จ่ายผ่านเว็บก่อนถึงจะส่งได้
+//   ⚠️ ถ้าทีมทำพลาดเอง ทีมกดปุ่ม "เราพลาดเอง" แล้วรอบนั้นไม่นับโควตา (ลูกค้าไม่ต้องจ่าย)
+const REVISION_EXTRA_SATANG = Number(process.env.REVISION_EXTRA_SATANG || 50000);   // รอบเกินโควตา 500 บาท
+
+// รอบที่กำลังเขียนอยู่ (ยังไม่ส่ง) — ถ้ายังไม่มีให้สร้างให้
+async function currentRound(orderId, o) {
+  const done = await one(`SELECT COUNT(*) c FROM edit_rounds WHERE order_id=$1 AND status='submitted'`, [orderId]);
+  const no = Number(done?.c || 0) + 1;
+  // รอบที่เกินโควตาฟรีต้องจ่ายก่อน — แต่ไม่นับรอบที่ทีมยอมรับว่าตัวเองพลาด
+  const ourFix = Number(o?.our_fix_count || 0);
+  const charged = no - ourFix > EDIT_FREE_REVISIONS;
+  let r = await one(`SELECT * FROM edit_rounds WHERE order_id=$1 AND status='draft' ORDER BY round_no DESC LIMIT 1`, [orderId]);
+  if (r) {
+    // ⚠️ ต้องคิดค่าใช้จ่ายใหม่ทุกครั้ง — เพราะทีมอาจกด "เราพลาดเอง" ทีหลัง แล้วรอบนี้ต้องกลับมาฟรี
+    // (ถ้าจ่ายไปแล้วไม่ยุ่ง — เดี๋ยวจะกลายเป็นเก็บเงินแล้วยังบอกว่าต้องจ่ายอีก)
+    const want = charged ? REVISION_EXTRA_SATANG : 0;
+    if (!r.paid && Number(r.charge_satang || 0) !== want) {
+      await run(`UPDATE edit_rounds SET charge_satang=$1, paid=$2 WHERE round_id=$3`, [want, !want, r.round_id]);
+      r = await one(`SELECT * FROM edit_rounds WHERE round_id=$1`, [r.round_id]);
+    }
+    return r;
+  }
+  const id = uid("er");
+  await run(`INSERT INTO edit_rounds (round_id,order_id,round_no,notes_json,status,charge_satang,paid)
+    VALUES ($1,$2,$3,'[]','draft',$4,$5)`, [id, orderId, no, charged ? REVISION_EXTRA_SATANG : 0, !charged]);
+  return one(`SELECT * FROM edit_rounds WHERE round_id=$1`, [id]);
+}
+
+// เจ้าของงานเท่านั้น
+async function myEditOrder(req) {
+  const email = await authEmail(req);
+  if (!email) return { err: [401, "LOGIN_REQUIRED", "เข้าสู่ระบบก่อนนะคะ"] };
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1 AND lower(email)=lower($2)`,
+    [String(req.body?.order_id || req.query.order_id || ""), email]);
+  if (!o) return { err: [404, "NOT_FOUND", "ไม่พบงานนี้ค่ะ"] };
+  return { o, email };
+}
+
+// ดูรอบปัจจุบัน + ประวัติรอบที่ส่งไปแล้ว
+app.get("/api/edit/rounds", async (req, res) => {
+  const { o, err } = await myEditOrder(req);
+  if (err) return res.status(err[0]).json({ ok: false, error: err[1], message: err[2] });
+  const all = await q(`SELECT * FROM edit_rounds WHERE order_id=$1 ORDER BY round_no`, [o.order_id]);
+  const cur = o.status === "draft_sent" ? await currentRound(o.order_id, o) : null;
+  res.json({ ok: true,
+    can_open: o.status === "draft_sent",              // เปิดรอบใหม่ได้เฉพาะตอนมีคลิปให้ดู
+    locked_reason: o.status === "revising" ? "ทีมกำลังแก้ตามที่ส่งไปค่ะ รอดูคลิปใหม่ก่อนนะคะ"
+                 : o.status === "done" ? "งานนี้ปิดแล้วค่ะ"
+                 : o.status !== "draft_sent" ? "รอทีมส่งงานให้ดูก่อนนะคะ" : null,
+    free_revisions: EDIT_FREE_REVISIONS,
+    extra_baht: REVISION_EXTRA_SATANG / 100,
+    current: cur ? { ...cur, notes: safeJson(cur.notes_json) || [] } : null,
+    history: all.filter(r => r.status === "submitted").map(r => ({
+      round_no: r.round_no, notes: safeJson(r.notes_json) || [], submitted_at: r.submitted_at,
+      charge_baht: (r.charge_satang || 0) / 100 })),
+  });
+});
+
+// เพิ่ม/ลบจุดที่อยากแก้ในรอบที่กำลังเขียน — ยังไม่ส่งให้ทีม
+app.post("/api/edit/rounds/note", rateLimit(120, M10), async (req, res) => {
+  const { o, err } = await myEditOrder(req);
+  if (err) return res.status(err[0]).json({ ok: false, error: err[1], message: err[2] });
+  if (o.status !== "draft_sent") return res.status(409).json({ ok: false, error: "LOCKED", message: "ยังเพิ่มจุดแก้ไม่ได้ตอนนี้ค่ะ" });
+  const r = await currentRound(o.order_id, o);
+  const notes = safeJson(r.notes_json) || [];
+  const del = Number(req.body?.remove);
+  if (Number.isFinite(del)) { notes.splice(del, 1); }
+  else {
+    const text = String(req.body?.text || "").trim().slice(0, 500);
+    if (!text) return res.status(400).json({ ok: false, error: "EMPTY", message: "พิมพ์สิ่งที่อยากให้แก้ด้วยนะคะ" });
+    if (notes.length >= 30) return res.status(400).json({ ok: false, error: "TOO_MANY", message: "รอบนี้เพิ่มได้สูงสุด 30 จุดค่ะ" });
+    notes.push({ at: String(req.body?.at || "").trim().slice(0, 12), text });
+  }
+  await run(`UPDATE edit_rounds SET notes_json=$1 WHERE round_id=$2`, [JSON.stringify(notes), r.round_id]);
+  res.json({ ok: true, notes });
+});
+
+// ส่งรอบนี้ให้ทีม — รอบเกินโควตาต้องจ่ายก่อน
+app.post("/api/edit/rounds/submit", rateLimit(30, M10), async (req, res) => {
+  const { o, err } = await myEditOrder(req);
+  if (err) return res.status(err[0]).json({ ok: false, error: err[1], message: err[2] });
+  if (o.status !== "draft_sent") return res.status(409).json({ ok: false, error: "LOCKED", message: "ยังส่งรอบแก้ไม่ได้ตอนนี้ค่ะ" });
+  const r = await currentRound(o.order_id, o);
+  const notes = safeJson(r.notes_json) || [];
+  if (!notes.length) return res.status(400).json({ ok: false, error: "EMPTY", message: "ยังไม่มีจุดที่อยากให้แก้เลยค่ะ" });
+  if (r.charge_satang > 0 && !r.paid) {
+    return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED",
+      message: `รอบแก้ที่ ${r.round_no} มีค่าใช้จ่าย ${r.charge_satang / 100} บาทค่ะ`, charge_baht: r.charge_satang / 100 });
+  }
+  const redue = addWorkDays(new Date(), Math.max(1, EDIT_DAYS_PER_CLIP - 1));
+  await run(`UPDATE edit_rounds SET status='submitted', submitted_at=now() WHERE round_id=$1`, [r.round_id]);
+  await run(`UPDATE edit_orders SET status='revising', revisions_used=COALESCE(revisions_used,0)+1,
+     client_revisions=COALESCE(client_revisions,0)+1, due_at=$2, updated_at=now() WHERE order_id=$1`,
+    [o.order_id, redue.toISOString()]);
+  // เขียนลงห้องแชทให้เห็นเป็นก้อนเดียว อ่านย้อนง่าย
+  const body = notes.map((x, i) => `${i + 1}. ${x.at ? `[${x.at}] ` : ""}${x.text}`).join("\n");
+  await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'client',$3,$4,0)`,
+    [uid("ec"), o.order_id, o.client_name || "ลูกค้า", `📝 รอบแก้ที่ ${r.round_no} (${notes.length} จุด)\n${body}`]);
+  await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
+    [uid("ec"), o.order_id, `รับรอบแก้ที่ ${r.round_no} แล้วค่ะ 🩵 ทีมจะแก้ให้ครบทุกจุดในรอบเดียว — คาดว่าส่งให้ดูใหม่ได้ประมาณ ${thDate(redue)} ค่ะ`]);
+  sendEmail(OPS_EMAIL, `🔁 ลูกค้าส่งรอบแก้ที่ ${r.round_no} — ${o.client_name || o.email}`, wrap(
+    `งาน <b>${o.order_id}</b> · ${notes.length} จุด${r.charge_satang ? ` · <b>เก็บเงินแล้ว ${r.charge_satang / 100} บาท</b>` : ""}<br><br>` +
+    notes.map((x, i) => `${i + 1}. ${x.at ? `<b>[${x.at}]</b> ` : ""}${x.text}`).join("<br>") +
+    `<br><br>${btn(`${appBaseUrl()}/team`, "เปิดหน้าทีม")}`)).catch(() => {});
+  res.json({ ok: true, round_no: r.round_no, notes: notes.length, due_th: thDate(redue) });
+});
+
+// จ่ายค่ารอบแก้เกินโควตา — ใช้ท่อจ่ายเงินเดียวกับสินค้าอื่น จะได้มีใบกำกับ+บันทึกครบ
+app.post("/api/edit/rounds/checkout", rateLimit(20, M10), async (req, res) => {
+  const { o, email, err } = await myEditOrder(req);
+  if (err) return res.status(err[0]).json({ ok: false, error: err[1], message: err[2] });
+  const r = await currentRound(o.order_id, o);
+  if (!r.charge_satang || r.paid) return res.json({ ok: true, already: true });
+  try {
+    const orderId = uid("ord");
+    await upsertCustomer(email, "");
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10)`,
+      [orderId, "revision_" + Date.now(), "", normEmail(email), "Revision_" + r.round_no, currentBillingCycle(),
+       JSON.stringify({ revision_round_id: r.round_id, edit_order_id: o.order_id, email: normEmail(email) }),
+       PROVIDER, r.charge_satang, `/edit/${o.order_id}`]);
+    await run(`UPDATE edit_rounds SET pay_order_id=$1 WHERE round_id=$2`, [orderId, r.round_id]);
+    if (PROVIDER === "stripe") {
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
+      const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
+      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: r.charge_satang, email,
+        productName: `Babe House รอบแก้เพิ่มเติม (รอบที่ ${r.round_no})`, successPath: `/edit/${o.order_id}?paid=ok` });
+      await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [ck.provider_session_id, orderId]);
+      return res.json({ ok: true, redirect_url: ck.checkout_url, external: true });
+    }
+    await markOrderPaid(orderId, "mock", "mock_paid");   // สนามเด็กเล่นเท่านั้น
+    res.json({ ok: true, redirect_url: `/edit/${o.order_id}?paid=ok` });
+  } catch (e) { res.status(500).json({ ok: false, error: "CHECKOUT_FAILED", message: e.message }); }
+});
+
 // ลูกค้าส่งลิงก์ฟุตเทจ/เสียง → เด้งให้ทีมรู้
 app.post("/api/edit/files", async (req, res) => {
   const email = await authEmail(req);
@@ -3588,16 +3740,14 @@ app.post("/api/team/revision-fault", async (req, res) => {
     await run(`UPDATE edit_orders SET client_revisions=COALESCE(client_revisions,0)+1 WHERE order_id=$1`, [id]);
     await teamComment(id, me.name, `🔁 รอบนี้ลูกค้าเปลี่ยนใจ — นับโควตา`);
   }
-  const r = await one(`SELECT client_revisions, our_fix_count, price_per_clip, clips FROM edit_orders WHERE order_id=$1`, [id]);
+  const r = await one(`SELECT client_revisions, our_fix_count FROM edit_orders WHERE order_id=$1`, [id]);
   const used = Number(r.client_revisions || 0);
   const over = Math.max(0, used - EDIT_FREE_REVISIONS);
-  // ⚠️ งานที่ใช้เครดิต/งานนอกเว็บไม่มีราคาต่อคลิปเก็บไว้ → ใช้ "ราคาตัดต่อ" ตามจำนวนคลิป
-  //    (เคยพลาด: ไปหยิบราคา Blueprint 1,590 มาคิดค่าแก้งานตัดต่อ ซึ่งคนละสินค้ากัน)
-  const per = Number(r.price_per_clip || 0) || editPrice(Number(r.clips) || 1);
+  // ⚠️ ต้องใช้สูตรเดียวกับที่ลูกค้าเห็นในหน้างานเท่านั้น (คิมเคาะ 5 ส.ค.: รอบละ 500 บาท)
+  //    เดิมหน้าทีมคิดเป็น 50% ของราคาต่อคลิป = 1,450 → ทีมจะแจ้งราคาผิดกับลูกค้า
   res.json({ ok: true, client_revisions: used, our_fix_count: Number(r.our_fix_count || 0),
     free_left: Math.max(0, EDIT_FREE_REVISIONS - used), over_rounds: over,
-    charge_baht: Math.round(over * per * (REVISION_OVER_PCT / 100) * (Number(r.clips) || 1)),
-    over_pct: REVISION_OVER_PCT });
+    charge_baht: over * (REVISION_EXTRA_SATANG / 100), per_round_baht: REVISION_EXTRA_SATANG / 100 });
 });
 
 // 🏢 ลูกตาลรับบรีฟลูกค้านอกเว็บ → ระบบมอบหมายให้เอง (คิมสั่ง 4 ส.ค. 2569)

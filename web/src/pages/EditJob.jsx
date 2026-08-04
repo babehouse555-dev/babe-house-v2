@@ -21,9 +21,46 @@ export default function EditJob() {
   const [at, setAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [rounds, setRounds] = useState(null);   // 🔁 รอบแก้ — รวบทุกจุดแล้วส่งทีเดียว
 
-  const load = () => api(`/api/edit/order/${id}`, { token: session.token }).then(setD).catch(() => setD({ err: true }));
+  const load = () => {
+    api(`/api/edit/order/${id}`, { token: session.token }).then(setD).catch(() => setD({ err: true }));
+    api(`/api/edit/rounds?order_id=${encodeURIComponent(id)}`, { token: session.token }).then(setRounds).catch(() => {});
+  };
   useEffect(load, [id]);   // eslint-disable-line
+
+  // เพิ่ม/ลบจุดที่อยากแก้ในรอบที่กำลังเขียน (ยังไม่ส่งให้ทีม)
+  async function noteAdd() {
+    if (!cmt.trim()) return;
+    setBusy(true);
+    try { await api("/api/edit/rounds/note", { method: "POST", token: session.token, body: { order_id: id, text: cmt.trim(), at: at.trim() } });
+      setCmt(""); setAt(""); setMsg(""); load(); }
+    catch (e) { setMsg(e.message || "เพิ่มไม่สำเร็จ"); } finally { setBusy(false); }
+  }
+  async function noteRemove(i) {
+    setBusy(true);
+    try { await api("/api/edit/rounds/note", { method: "POST", token: session.token, body: { order_id: id, remove: i } }); load(); }
+    catch (e) { setMsg(e.message || "ลบไม่สำเร็จ"); } finally { setBusy(false); }
+  }
+  // ส่งทั้งรอบให้ทีมทีเดียว — ถ้าเป็นรอบที่ต้องจ่าย จะเด้งไปหน้าจ่ายเงินก่อน
+  async function roundSubmit() {
+    setBusy(true); setMsg("");
+    try {
+      await api("/api/edit/rounds/submit", { method: "POST", token: session.token, body: { order_id: id } });
+      setMsg("ส่งให้ทีมแล้วค่ะ 🩵 ทีมจะแก้ให้ครบทุกจุดในรอบเดียว"); load();
+    } catch (e) {
+      if (/PAYMENT_REQUIRED/i.test(e.code || "") || /ค่าใช้จ่าย/.test(e.message || "")) { await payRound(); return; }
+      setMsg(e.message || "ส่งไม่สำเร็จ");
+    } finally { setBusy(false); }
+  }
+  async function payRound() {
+    setBusy(true);
+    try {
+      const r = await api("/api/edit/rounds/checkout", { method: "POST", token: session.token, body: { order_id: id } });
+      if (r.redirect_url) { location.href = r.redirect_url; return; }
+      load();
+    } catch (e) { setMsg(e.message || "เปิดหน้าจ่ายเงินไม่สำเร็จ"); } finally { setBusy(false); }
+  }
 
   if (!d) return <div className="wrap narrow page-pad center"><p className="muted">กำลังโหลด…</p></div>;
   if (d.err) return <div className="wrap narrow page-pad center"><p className="muted">ไม่พบงานนี้ค่ะ</p></div>;
@@ -121,17 +158,60 @@ export default function EditJob() {
             </div>
           </div>
         ))}
-        <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
-          <input value={at} onChange={e => setAt(e.target.value)} placeholder="0:12"
-            style={{ width: 78, padding: "10px 11px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 14 }} />
-          <input value={cmt} onChange={e => setCmt(e.target.value)} placeholder="อยากให้แก้ตรงไหนคะ"
-            onKeyDown={e => { if (e.key === "Enter" && cmt.trim()) send(() => api("/api/edit/comment", { method: "POST", token: session.token, body: { order_id: o.order_id, text: cmt.trim(), at_time: at.trim() } }).then(() => { setCmt(""); setAt(""); }), "ส่งให้ทีมแล้วค่ะ"); }}
-            style={{ flex: "1 1 160px", padding: "10px 13px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 14 }} />
-          <button className="btn" disabled={busy || !cmt.trim()} style={{ padding: "10px 18px" }}
-            onClick={() => send(() => api("/api/edit/comment", { method: "POST", token: session.token, body: { order_id: o.order_id, text: cmt.trim(), at_time: at.trim() } }).then(() => { setCmt(""); setAt(""); }), "ส่งให้ทีมแล้วค่ะ")}>
-            ส่ง
-          </button>
-        </div>
+        {/* 🔁 รอบแก้ — รวบทุกจุดไว้ก่อน แล้วกดส่งทีเดียว (คิมสั่ง 5 ส.ค.)
+            เดิมพิมพ์ทีละบรรทัดแล้วส่งเลย ทีมได้งานทีละหยด วางแผนตัดไม่ได้ */}
+        {rounds && rounds.can_open && rounds.current && (() => {
+          const cur = rounds.current, notes = cur.notes || [], mustPay = cur.charge_satang > 0 && !cur.paid;
+          return <div style={{ marginTop: 14, border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", background: "var(--soft)" }}>
+            <div className="between" style={{ flexWrap: "wrap", gap: 6, marginBottom: 3 }}>
+              <b style={{ fontSize: 14.5 }}>📝 รอบแก้ที่ {cur.round_no}</b>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: mustPay ? "#C77700" : "#1a7f43" }}>
+                {mustPay ? `รอบนี้มีค่าใช้จ่าย ${cur.charge_satang / 100} บาท` : "ฟรี"}
+              </span>
+            </div>
+            <div className="muted" style={{ fontSize: 12.5, marginBottom: 11, lineHeight: 1.65 }}>
+              ใส่ให้ครบทุกจุดที่อยากแก้ก่อนนะคะ แล้วค่อยกดส่งทีเดียว — ทีมจะได้แก้ให้ครบในรอบเดียว
+            </div>
+
+            {notes.length > 0 && <div style={{ display: "grid", gap: 7, marginBottom: 11 }}>
+              {notes.map((x, i) => (
+                <div key={i} className="between" style={{ gap: 9, background: "#fff", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
+                  <span style={{ fontSize: 13.5, lineHeight: 1.6, minWidth: 0 }}>
+                    {x.at && <b style={{ color: "var(--blue)" }}>{x.at} </b>}{x.text}
+                  </span>
+                  <button onClick={() => noteRemove(i)} disabled={busy} title="ลบจุดนี้"
+                    style={{ background: "none", border: 0, cursor: "pointer", fontSize: 15, color: "var(--muted)", padding: "0 2px" }}>🗑</button>
+                </div>
+              ))}
+            </div>}
+
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              <input value={at} onChange={e => setAt(e.target.value)} placeholder="0:12"
+                style={{ width: 78, padding: "10px 11px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 14 }} />
+              <input value={cmt} onChange={e => setCmt(e.target.value)} placeholder="อยากให้แก้ตรงไหนคะ"
+                onKeyDown={e => { if (e.key === "Enter") noteAdd(); }}
+                style={{ flex: "1 1 160px", padding: "10px 13px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 14 }} />
+              <button className="btn ghost" disabled={busy || !cmt.trim()} onClick={noteAdd} style={{ padding: "10px 16px" }}>+ เพิ่ม</button>
+            </div>
+
+            {notes.length > 0 && <>
+              <button className="btn full" disabled={busy} onClick={mustPay ? payRound : roundSubmit} style={{ marginTop: 12 }}>
+                {mustPay ? `จ่าย ${cur.charge_satang / 100} บาท แล้วส่งให้ทีม` : `ส่งให้ทีม (${notes.length} จุด)`}
+              </button>
+              <div className="muted" style={{ fontSize: 12, marginTop: 7, lineHeight: 1.6 }}>
+                ส่งแล้วเพิ่มจุดไม่ได้จนกว่าจะได้คลิปใหม่นะคะ · แก้ฟรี {rounds.free_revisions} รอบ
+                {" "}· รอบถัดไปคิด {rounds.extra_baht} บาทต่อรอบ
+              </div>
+            </>}
+          </div>;
+        })()}
+
+        {/* ล็อกอยู่ — บอกเหตุผลให้ชัด ลูกค้าจะได้ไม่งงว่าทำไมพิมพ์ไม่ได้ */}
+        {rounds && !rounds.can_open && rounds.locked_reason && (
+          <div className="msg" style={{ marginTop: 12, background: "#EAF3FD", color: "#3F6BAE" }}>
+            {rounds.locked_reason}
+          </div>
+        )}
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
       </div>
     </div>

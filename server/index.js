@@ -714,11 +714,17 @@ async function applyCode(req, res) {
 app.post("/api/apply-code", applyCode);
 app.post("/api/redeem-code", applyCode);
 
-async function createStripeCheckout({ orderId, payload, origin, amountSatang, productName, successPath }) {
+async function createStripeCheckout({ orderId, payload, origin, amountSatang, productName, successPath, email }) {
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  // 📧 บอกอีเมลของบัญชีให้ Stripe ด้วย — ไม่งั้น Stripe จะให้ลูกค้าพิมพ์อีเมลใหม่ที่หน้าจ่ายเงิน
+  // แล้วเบราว์เซอร์มักเติมอีเมลอื่นให้อัตโนมัติ → ใบเสร็จไปคนละกล่องกับบัญชีที่ซื้อ
+  // (คิมเจอเอง 4 ส.ค.: ซื้อด้วยบัญชี babehouse555 แต่ใบเสร็จไปเข้า babehouse.work)
+  // ส่งไปแล้ว Stripe จะเติมให้เลย ลูกค้าไม่ต้องพิมพ์ซ้ำ และใบเสร็จไปถูกกล่องเสมอ
+  const custEmail = normEmail(email || payload?.email || "");
   const s = await stripe.checkout.sessions.create({
     mode: "payment",
+    ...(custEmail ? { customer_email: custEmail } : {}),
     payment_method_types: (process.env.STRIPE_PAYMENT_METHODS || "card,promptpay").split(",").map(x => x.trim()).filter(Boolean),
     line_items: [{ price_data: { currency: "thb", product_data: { name: productName || "Babe House AI Creator Blueprint Premium" }, unit_amount: amountSatang || PRICE_SATANG }, quantity: 1 }],
     success_url: `${origin}${successPath || `/processing?order_id=${encodeURIComponent(orderId)}`}`,
@@ -739,7 +745,7 @@ app.post("/api/create-payment-session", async (req, res) => {
       // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงานค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-      const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount, productName: isVideo ? "Babe House Video Audit (ตรวจคลิป)" : undefined, successPath: isVideo ? donePath : undefined });
+      const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount, email: o.email, productName: isVideo ? "Babe House Video Audit (ตรวจคลิป)" : undefined, successPath: isVideo ? donePath : undefined });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [s.provider_session_id, o.order_id]);
       return res.json({ ok: true, redirect_url: s.checkout_url, external: true });
     }
@@ -1540,7 +1546,7 @@ app.post("/api/credits/checkout", async (req, res) => {
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
       const sep = returnPath.includes("?") ? "&" : "?";
-      const s = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang, productName: `Babe House เครดิต ${n} สคริปต์`, successPath: `${returnPath}${sep}topup=ok` });
+      const s = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang, email, productName: `Babe House เครดิต ${n} สคริปต์`, successPath: `${returnPath}${sep}topup=ok` });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [s.provider_session_id, orderId]);
       return res.json({ ok: true, redirect_url: s.checkout_url, external: true });
     }
@@ -3065,7 +3071,7 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
     if (PROVIDER === "stripe") {
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang,
+      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang, email,
         productName: `Babe House เครดิตตัดต่อ ${n} คลิป`, successPath: `/edit?topup=ok` });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [ck.provider_session_id, orderId]);
       return res.json({ ok: true, redirect_url: ck.checkout_url, external: true });

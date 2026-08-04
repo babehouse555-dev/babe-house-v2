@@ -11,6 +11,7 @@ const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("ba
 
 export default function Account() {
   const [taxInv, setTaxInv] = useState([]);   // 🧾 ใบกำกับภาษีของลูกค้าคนนี้
+  const [taxQ, setTaxQ] = useState("");       // ค้นหาใบกำกับ — คิมทัก 5 ส.ค. "คนซื้อเยอะ หาไม่เจออีก"
   const { t, lang } = useI18n();
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -97,6 +98,9 @@ export default function Account() {
   function copyRef() { if (refLink) { navigator.clipboard.writeText(refLink); setCopied("link"); setTimeout(() => setCopied(""), 1800); } }
   function copyMsg() { if (shareMsg) { navigator.clipboard.writeText(shareMsg); setCopied("msg"); setTimeout(() => setCopied(""), 1800); } }
   function shareNative() { if (navigator.share) navigator.share({ text: shareMsg }).catch(() => {}); else copyMsg(); }
+  // มีของมากกว่า 1 ประเภท → โชว์แท็บโฟลเดอร์ · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ
+  const showFolders = [(data?.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits,
+                       TAX_INVOICE_LIVE ? taxInv.length : 0].filter(n => n > 0).length > 1;
   const lineShare = ref ? `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(refLink)}` : "";
 
   return (
@@ -124,7 +128,7 @@ export default function Account() {
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">{t("ac_books_of_pre")} <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>{t("ac_logout")}</button></div>
         {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
             โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
-        {[(data.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits].filter(n => n > 0).length > 1 && (
+        {showFolders && (
           <div className="fld-row">
             {[
               { key: "plan", icon: "📘", label: "แผนคอนเทนต์", pastel: "#C7DEF0", deep: "#A9CCE6", n: (data.channels || []).length },
@@ -132,6 +136,8 @@ export default function Account() {
               { key: "cert", icon: "🏆", label: "ประกาศนียบัตร", pastel: "#C6DBCB", deep: "#AECBB6", n: counts.certs },
               { key: "ws", icon: "🎟️", label: "คลาสสด", pastel: "#F3D6B6", deep: "#E9C398", n: counts.ws },
               { key: "edit", icon: "🎬", label: "งานตัดต่อ", pastel: "#E4D6F0", deep: "#D0BCE6", n: counts.edits },
+              // 🧾 คิมสั่ง 5 ส.ค.: "แยกออกมาอีกโฟลเดอร์นึงเลย เพราะลูกค้าไม่ได้เอาใบกำกับแค่งานตัด"
+              { key: "tax", icon: "🧾", label: "ใบกำกับภาษี", pastel: "#DCE4EF", deep: "#C2CFE0", n: TAX_INVOICE_LIVE ? taxInv.length : 0 },
             ].filter(f => f.n > 0).map(f => {
               const on = f.key === folder;
               return (
@@ -220,7 +226,7 @@ export default function Account() {
         <MyLearning
           channelCount={(data.channels || []).length}
           bookCount={(data.channels || []).reduce((a, ch) => a + (ch.months || []).length, 0)}
-          only={[(data.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits].filter(n => n > 0).length > 1 ? folder : null}
+          only={showFolders ? folder : null}
           onCounts={setCounts}
         />
         {deleted.length > 0 && (
@@ -243,32 +249,66 @@ export default function Account() {
             "เวลาฉันไปขอใบกำกับที่เป็นเมล เขาส่งมาแล้วฉันชอบลืม"
             ตอนที่ต้องใช้จริงคือปิดบัญชีสิ้นปี ห่างจากวันซื้อเป็นเดือน กล่องเมลหาไม่เจอแล้ว
             เมลยังส่งเหมือนเดิม แต่ที่นี่คือที่ที่หาเจอตลอด */}
-        {TAX_INVOICE_LIVE && taxInv.length > 0 && <div className="card">
-          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>🧾 ใบกำกับภาษี</div>
-          <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>
-            ทุกครั้งที่ชำระเงิน ระบบออกใบกำกับให้อัตโนมัติและเก็บไว้ที่นี่ — เปิดโหลดได้ตลอด ไม่หายค่ะ
-          </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {taxInv.map(v => {
-              const issued = v.status === "issued";
-              return <div key={v.invoice_id} className="between"
-                style={{ gap: 12, flexWrap: "wrap", padding: "12px 14px", background: "var(--soft)", borderRadius: 12 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>{v.description || "สินค้า/บริการ"}</div>
-                  <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-                    {new Date(v.issued_at || v.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" })}
-                    {" · ฿"}{(Number(v.amount_satang || 0) / 100).toLocaleString()}
-                    {v.doc_number ? ` · เลขที่ ${v.doc_number}` : ""}
-                    {v.is_company ? " · ในนามบริษัท" : ""}
-                  </div>
-                </div>
-                {issued
-                  ? <Link className="btn ghost" to={`/invoice/${v.invoice_id}`} style={{ padding: "9px 15px", fontSize: 13.5 }}>ดู / โหลดใบ</Link>
-                  : <span className="muted" style={{ fontSize: 12.5 }}>กำลังออกใบให้ค่ะ</span>}
-              </div>;
-            })}
-          </div>
-        </div>}
+        {/* 🧾 ใบกำกับภาษี — โฟลเดอร์ของตัวเอง (คิมสั่ง 5 ส.ค.)
+            "ลูกค้าไม่ได้เอาใบกำกับแค่งานตัด ของคอร์สกับ Blueprint อีก"
+            → รวมทุกสินค้าไว้ที่เดียว + มีช่องค้นหา เพราะคนซื้อเยอะแล้วหาไม่เจอ */}
+        {TAX_INVOICE_LIVE && taxInv.length > 0 && (!showFolders || folder === "tax") && (() => {
+          const kw = taxQ.trim().toLowerCase();
+          const list = !kw ? taxInv : taxInv.filter(v => {
+            const d = new Date(v.issued_at || v.created_at);
+            const hay = [
+              v.description, v.doc_number, v.customer_name, v.order_kind,
+              String(Math.round((v.amount_satang || 0) / 100)),
+              d.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" }),
+              d.toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }),
+            ].filter(Boolean).join(" ").toLowerCase();
+            return hay.includes(kw);
+          });
+          const sum = list.reduce((a, v) => a + Number(v.amount_satang || 0), 0);
+          return <div className="card">
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>🧾 ใบกำกับภาษี</div>
+            <div className="muted" style={{ fontSize: 13.5, marginBottom: 12, lineHeight: 1.6 }}>
+              ทุกครั้งที่ชำระเงิน ระบบออกใบกำกับให้อัตโนมัติและเก็บไว้ที่นี่ — ทั้งเล่ม Blueprint คอร์สเรียน คลาสสด และงานตัดต่อ
+            </div>
+
+            {/* ช่องค้นหา — โผล่เมื่อมีหลายใบ ค้นได้ทั้งชื่อรายการ เลขที่ วันที่ และยอดเงิน */}
+            {taxInv.length > 3 && (
+              <input value={taxQ} onChange={e => setTaxQ(e.target.value)}
+                placeholder="🔍 ค้นหา — ชื่อรายการ / เลขที่ / เดือน / ยอดเงิน"
+                style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 14, marginBottom: 12 }} />
+            )}
+
+            <div className="between muted" style={{ fontSize: 12.5, marginBottom: 9 }}>
+              <span>{kw ? `พบ ${list.length} จาก ${taxInv.length} ใบ` : `ทั้งหมด ${taxInv.length} ใบ`}</span>
+              <span>รวม ฿{(sum / 100).toLocaleString()}</span>
+            </div>
+
+            {list.length === 0 ? (
+              <div className="muted center" style={{ fontSize: 13.5, padding: "18px 0" }}>ไม่พบใบที่ค้นหาค่ะ ลองพิมพ์สั้นลงดูนะคะ</div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {list.map(v => {
+                  const issued = v.status === "issued";
+                  return <div key={v.invoice_id} className="between"
+                    style={{ gap: 12, flexWrap: "wrap", padding: "12px 14px", background: "var(--soft)", borderRadius: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14.5 }}>{v.description || "สินค้า/บริการ"}</div>
+                      <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
+                        {new Date(v.issued_at || v.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" })}
+                        {" · ฿"}{(Number(v.amount_satang || 0) / 100).toLocaleString()}
+                        {v.doc_number ? ` · เลขที่ ${v.doc_number}` : ""}
+                        {v.is_company ? " · ในนามบริษัท" : ""}
+                      </div>
+                    </div>
+                    {issued
+                      ? <Link className="btn ghost" to={`/invoice/${v.invoice_id}`} style={{ padding: "9px 15px", fontSize: 13.5 }}>ดู / โหลดใบ</Link>
+                      : <span className="muted" style={{ fontSize: 12.5 }}>กำลังออกใบให้ค่ะ</span>}
+                  </div>;
+                })}
+              </div>
+            )}
+          </div>;
+        })()}
 
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>

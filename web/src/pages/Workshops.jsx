@@ -23,7 +23,7 @@ export default function Workshops() {
       <div style={{ background: "#fff7cf", color: "#7a5b00", textAlign: "center", fontSize: 13, padding: "8px 12px", fontWeight: 700 }}>
         🚧 พรีวิวภายใน — หน้านี้ยังไม่เปิดให้ลูกค้าเห็น
       </div>
-      <div className="wrap" style={{ padding: "30px 0 60px" }}>
+      <div className="wrap" style={{ paddingTop: 30, paddingBottom: 60 }}>
         <h1 className="serif" style={{ fontSize: "clamp(24px,4vw,32px)", fontWeight: 800, textAlign: "center", margin: "6px 0 6px" }}>คลาสสด (Workshop)</h1>
         <p className="muted" style={{ textAlign: "center", fontSize: 15, marginBottom: 26 }}>
           เรียนสดกับครูพี่คิม ลงมือทำจริงในห้องเรียน · {openCount > 0 ? `ตอนนี้เปิดรับ ${openCount} รอบ` : "รอประกาศรอบถัดไปเร็วๆ นี้"}

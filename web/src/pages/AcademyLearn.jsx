@@ -84,7 +84,7 @@ export default function AcademyLearn() {
     <div style={{ minHeight: "100vh" }}>
       {adminKey && !session.token && <div style={{ background: "#fff7cf", color: "#7a5b00", textAlign: "center", fontSize: 13, padding: "7px 12px", fontWeight: 700 }}>🚧 โหมดพรีวิวแอดมิน — ดูได้ทุกคอร์ส · ไม่บันทึกความคืบหน้า</div>}
 
-      <div className="wrap" style={{ padding: "22px 0 50px" }}>
+      <div className="wrap" style={{ paddingTop: 22, paddingBottom: 50 }}>
         <Link to="/academy" className="muted" style={{ fontSize: 13.5 }}>← คอร์สทั้งหมด</Link>
         <h1 className="serif" style={{ fontSize: "clamp(20px,3vw,26px)", fontWeight: 800, margin: "8px 0 10px" }}>{data.course.name}</h1>
 

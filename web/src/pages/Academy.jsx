@@ -119,7 +119,7 @@ export default function Academy() {
         🚧 พรีวิวภายใน (เฟส 2) — หน้านี้ยังไม่เปิดให้ลูกค้าเห็น · ข้อมูลจริงจากเว็บเก่า {data.count} คอร์ส
       </div>
 
-      <div className="wrap" style={{ padding: "30px 0 60px" }}>
+      <div className="wrap" style={{ paddingTop: 30, paddingBottom: 60 }}>
         <h1 className="serif" style={{ fontSize: "clamp(24px,4vw,32px)", fontWeight: 800, textAlign: "center", margin: "6px 0 4px" }}>คอร์สเรียน Babe House Academy</h1>
         <p className="muted" style={{ textAlign: "center", fontSize: 15, marginBottom: 18 }}>เรียนได้ทันทีหลังชำระเงิน · ติดตามความคืบหน้า · ประกาศนียบัตรอัตโนมัติ</p>
 

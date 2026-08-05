@@ -28,7 +28,7 @@ function TopBar() {
     <div style={{ position: "sticky", top: 0, zIndex: 60, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)" }}>
       {/* 🐛 แก้ 3 ส.ค.: เดิมล็อกความสูง 56px ตายตัว — บนมือถือเมนูตกบรรทัดแล้วล้นออกไปทับหัวข้อของทุกหน้า
           เปลี่ยนเป็นความสูง "อย่างน้อย" 56 แล้วให้ยืดตามเนื้อหา + ให้เมนูตกบรรทัดได้อย่างเป็นระเบียบ */}
-      <div className="wrap between" style={{ minHeight: 56, padding: "8px 0", flexWrap: "wrap", gap: 8 }}>
+      <div className="wrap between" style={{ minHeight: 56, paddingTop: 8, paddingBottom: 8, flexWrap: "wrap", gap: 8 }}>
         <Link to="/" style={{ fontWeight: 800, fontSize: 17 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></Link>
         <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap", rowGap: 6 }}>
           <Link to="/" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>{tb("nav_home")}</Link>

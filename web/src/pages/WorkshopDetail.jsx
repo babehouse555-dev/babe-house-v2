@@ -59,7 +59,7 @@ export default function WorkshopDetail() {
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <div className="wrap" style={{ padding: "22px 0 60px" }}>
+      <div className="wrap" style={{ paddingTop: 22, paddingBottom: 60 }}>
         <Link to="/workshop" className="muted" style={{ fontSize: 13.5 }}>← คลาสทั้งหมด</Link>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 360px", gap: 24, alignItems: "start", marginTop: 12 }} className="ws-grid">

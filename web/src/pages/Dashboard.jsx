@@ -44,6 +44,9 @@ export default function Dashboard() {
   const [improveErr, setImproveErr] = useState("");
   const [ix, setIx] = useState({ products: "", pain_points: "", content_likes: "", content_dislikes: "", brand_info: "", more: "" });
   const [ixFiles, setIxFiles] = useState([]);
+  // เปิดกล่อง "เล่าเพิ่ม" ตอนที่มีแผน 30 วันแล้ว = เขียนใหม่ทั้งเล่ม (ไม่ใช่แค่ปรับบทวิเคราะห์)
+  // คิมสั่ง 5 ส.ค. — เดิมปุ่มนี้หายไปเลยหลังสร้างแผนเสร็จ ลูกค้าเลยแก้อะไรไม่ได้
+  const [redoMode, setRedoMode] = useState(false);
   // โหมดแยก 2 สเต็ป: contentReady = สร้างแผน 30 วันแล้วหรือยัง · genState = สถานะปุ่มสร้างแผน
   const [contentReady, setContentReady] = useState(demo);
   const [genState, setGenState] = useState("idle"); // idle | generating | error
@@ -103,10 +106,19 @@ export default function Dashboard() {
     setTimeout(async () => {
       try {
         const d = await api(latestUrl, { token: session.token, adminKey: localStorage.getItem("babe_admin_key") || undefined });
-        if (d.analysis_status === "ready") { setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setImproving(false); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+        // หลังเขียนใหม่ทั้งเล่ม backend คง analysis_status='generating' ไว้จนสคริปต์ 30 วันเสร็จ → poll ตัวเดียวจบ
+        if (d.analysis_status === "ready") {
+          setBp(d.blueprint); setImproveCount(d.improve_count || 1); setImproveOpen(false); setImproving(false);
+          const ready = d.content_status === "ready";
+          setContentReady(ready);
+          if (ready && redoMode) { setTab("calendar"); setRedoMode(false); }   // เขียนแผนใหม่ → พาไปดูปฏิทินชุดใหม่เลย
+          window.scrollTo({ top: 0, behavior: "smooth" }); return;
+        }
         if (d.analysis_status === "error") { setImproveErr(t("db_err_gen")); setImproving(false); return; }
       } catch {}
-      if (attempt < 60) pollAnalysis(attempt + 1); else { setImproveErr(t("db_err_slow")); setImproving(false); }
+      // เขียนใหม่ทั้งเล่ม = วิเคราะห์ + 30 สคริปต์ ใช้เวลานานกว่าปรับบทวิเคราะห์อย่างเดียว → รอได้ 6 นาที
+      const maxTry = redoMode ? 90 : 60;
+      if (attempt < maxTry) pollAnalysis(attempt + 1); else { setImproveErr(t("db_err_slow")); setImproving(false); }
     }, 4000);
   }
 
@@ -202,6 +214,38 @@ export default function Dashboard() {
     <p style={{ opacity: .95, fontSize: 14.5, marginBottom: 14 }}>{t("db_gen_err_sub")}</p>
     <button className="btn-pulse" onClick={startContentGen} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "14px 26px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_gen_retry")}</button>
   </>;
+
+  // 📝 กล่อง "เล่าเพิ่มให้ครูพี่คิมฟัง" — ใช้ได้ 2 จังหวะ: ก่อนสร้างแผน (ปรับบทวิเคราะห์)
+  //    และหลังมีแผนแล้ว (redoMode = เขียนบทวิเคราะห์ + แผน 30 วันใหม่ทั้งชุด)
+  const improveBox = (
+    <div style={{ background: "#fff", color: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 6, textAlign: "left" }}>
+      {improving ? <div className="center" style={{ padding: "22px 10px" }}>
+        <div className="spinner" style={{ margin: "0 auto 16px" }} />
+        <div style={{ fontWeight: 800, fontSize: 16.5, color: "var(--blue-d)" }}>{t(redoMode ? "db_redoing_title" : "db_refining_title")}</div>
+        <p className="muted" style={{ fontSize: 14, margin: "8px auto 0", maxWidth: 360, lineHeight: 1.6 }}>{t(redoMode ? "db_redoing_sub" : "db_refining_sub")}</p>
+      </div> : <>
+        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>{t("db_tell_more_title")}</div>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>{t("db_tell_more_sub")}</p>
+        {/* เตือนให้ชัดก่อนกด — แผนเดิมกับสคริปต์ที่เคยแก้เองจะถูกเขียนทับทั้งหมด */}
+        {redoMode && <div style={{ background: "#FDF3E4", border: "1px solid #e0b85b", borderRadius: 12, padding: "12px 14px", marginBottom: 14, fontSize: 13, lineHeight: 1.65, color: "#8a6d1f" }}>
+          <b>{t("db_redo_warn_title")}</b><br />{t("db_redo_warn_body")}
+        </div>}
+        <div style={{ background: "#fff7e6", border: "1px dashed #e0b85b", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#8a6d1f" }}>{t("db_forgot_img_title")}</div>
+          <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 8px" }}>{t("db_forgot_img_sub")}</p>
+          <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e => setIxFiles(e.target.files)} />
+          {ixFiles.length > 0 && <div className="hint" style={{ color: "#1a7f43" }}>{t("db_attached")} {Math.min(ixFiles.length, 8)} {t("fm_images_word")}</div>}
+        </div>
+        {t("db_improve_fields").map(([k, label, ph]) =>
+          <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 60 }} placeholder={ph} /></div>)}
+        {improveErr && <div className="msg err">{improveErr}</div>}
+        <div className="row" style={{ gap: 10, justifyContent: "center" }}>
+          <button className="btn" onClick={submitImprove}>{t(redoMode ? "db_redo_submit" : "db_improve_submit")}</button>
+          <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => { setImproveOpen(false); setRedoMode(false); }}>{t("db_cancel")}</button>
+        </div>
+      </>}
+    </div>
+  );
 
   return (
     <div>
@@ -323,7 +367,16 @@ export default function Dashboard() {
             <div style={{ fontSize: 32 }}>📅</div>
             <h3 style={{ margin: "6px 0 6px", color: "#fff", fontSize: 21 }}>{t("db_strat_cta_title")}</h3>
             <p style={{ fontSize: 15, marginBottom: 18, maxWidth: 540, marginInline: "auto", opacity: .95, lineHeight: 1.65 }}>{t("db_strat_cta_sub")}</p>
-            <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_start_content")}</button>
+            {!improveOpen && <>
+              <button className="btn-pulse" onClick={() => { setTab("calendar"); window.scrollTo({ top: 0, behavior: "smooth" }); }} style={{ background: "#fff", color: "#3F6BAE", border: 0, borderRadius: 12, padding: "15px 28px", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t("db_start_content")}</button>
+              {/* 🔁 แผนไม่ตรงใจ → แก้คำตอบแล้วเขียนใหม่ทั้งเล่ม ฟรี 1 ครั้ง (คิมสั่ง 5 ส.ค.) */}
+              {improveCount < 1 && !demo && <div style={{ marginTop: 16 }}>
+                <button onClick={() => { setRedoMode(true); setImproveOpen(true); }} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "13px 20px", fontWeight: 700, fontSize: 14.5, cursor: "pointer" }}>{t("db_redo_cta")}</button>
+                <div style={{ fontSize: 12.5, opacity: .85, marginTop: 8 }}>{t("db_redo_cta_sub")}</div>
+              </div>}
+              {improveCount >= 1 && <div style={{ marginTop: 14, fontSize: 12.5, opacity: .85 }}>{t("db_redo_used")}</div>}
+            </>}
+            {improveOpen && improveBox}
           </div> : <div className="center" style={{ background: "linear-gradient(135deg,#6E63A6,#3F6BAE)", color: "#fff", borderRadius: 18, padding: "28px 22px", marginTop: 12, marginBottom: 28, boxShadow: "0 14px 34px rgba(110,99,166,.34)" }}>
             {genState === "generating" ? genLoaderInner : genState === "error" ? genErrorInner : <>
               <div style={{ fontSize: 32 }}>📋</div>
@@ -334,29 +387,7 @@ export default function Dashboard() {
                 {improveCount < 1 && <button onClick={() => setImproveOpen(true)} style={{ background: "transparent", color: "#fff", border: "1.5px solid rgba(255,255,255,.7)", borderRadius: 12, padding: "15px 20px", fontWeight: 700, fontSize: 14.5, cursor: "pointer" }}>{t("db_confirm_refine")}</button>}
               </div>}
               {improveCount >= 1 && !improveOpen && <div style={{ marginTop: 12, fontSize: 13.5, opacity: .9 }}>{t("db_refined_note")}</div>}
-              {improveOpen && <div style={{ background: "#fff", color: "var(--ink)", borderRadius: 14, padding: "16px", marginTop: 6, textAlign: "left" }}>
-                {improving ? <div className="center" style={{ padding: "22px 10px" }}>
-                  <div className="spinner" style={{ margin: "0 auto 16px" }} />
-                  <div style={{ fontWeight: 800, fontSize: 16.5, color: "var(--blue-d)" }}>{t("db_refining_title")}</div>
-                  <p className="muted" style={{ fontSize: 14, margin: "8px auto 0", maxWidth: 360, lineHeight: 1.6 }}>{t("db_refining_sub")}</p>
-                </div> : <>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: "var(--blue-d)", marginBottom: 4 }}>{t("db_tell_more_title")}</div>
-                  <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>{t("db_tell_more_sub")}</p>
-                  <div style={{ background: "#fff7e6", border: "1px dashed #e0b85b", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#8a6d1f" }}>{t("db_forgot_img_title")}</div>
-                    <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 8px" }}>{t("db_forgot_img_sub")}</p>
-                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={e => setIxFiles(e.target.files)} />
-                    {ixFiles.length > 0 && <div className="hint" style={{ color: "#1a7f43" }}>{t("db_attached")} {Math.min(ixFiles.length, 8)} {t("fm_images_word")}</div>}
-                  </div>
-                  {t("db_improve_fields").map(([k, label, ph]) =>
-                    <div key={k} className="field"><label style={{ fontSize: 13.5 }}>{label}</label><textarea value={ix[k]} onChange={e => setIx(v => ({ ...v, [k]: e.target.value }))} style={{ minHeight: 60 }} placeholder={ph} /></div>)}
-                  {improveErr && <div className="msg err">{improveErr}</div>}
-                  <div className="row" style={{ gap: 10, justifyContent: "center" }}>
-                    <button className="btn" onClick={submitImprove}>{t("db_improve_submit")}</button>
-                    <button className="link" style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => setImproveOpen(false)}>{t("db_cancel")}</button>
-                  </div>
-                </>}
-              </div>}
+              {improveOpen && improveBox}
             </>}
           </div>}
           </>}

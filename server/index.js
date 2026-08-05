@@ -1013,9 +1013,14 @@ app.post("/api/improve-blueprint", async (req, res) => {
       extra.brand_info && `ข้อมูลแบรนด์เพิ่มเติม: ${extra.brand_info}`,
       extra.products && `สินค้า/บริการที่อยากขาย: ${extra.products}`,
       extra.pain_points && `ปัญหา/อุปสรรคตอนนี้: ${extra.pain_points}`,
-      extra.content_likes && `คอนเทนต์ที่ชอบ/อยากได้แนวนี้: ${extra.content_likes}`,
-      extra.content_dislikes && `แนวที่ไม่ชอบ: ${extra.content_dislikes}`,
       extra.more && `เล่าเพิ่มเติม: ${extra.more}`].filter(Boolean).join("\n");
+    // 🎯 "แนวที่อยาก/ไม่อยากได้" ต้องลงช่อง content_want/content_avoid ตรงๆ ไม่ใช่ยัดรวมใน starting_point
+    // (แก้ 5 ส.ค. หลังเจอเคส @charidayy: ช่องสองช่องนี้มีบล็อกคำสั่งแรงใน ai.js ที่สั่ง AI ว่า
+    //  "สำคัญกว่าการตีความจาก business_type ทุกกรณี" — พอยัดรวมใน starting_point จะไม่ได้บล็อกนั้น
+    //  กลายเป็นข้อความธรรมดาปนกับเรื่องเล่าแบรนด์ AI เลยชั่งน้ำหนักให้น้อยกว่าที่ควร)
+    const joinWant = (old, add) => [String(old || "").trim(), String(add || "").trim()].filter(Boolean).join(" · ");
+    if (extra.content_likes) fr.content_want = joinWant(fr.content_want, extra.content_likes);
+    if (extra.content_dislikes) fr.content_avoid = joinWant(fr.content_avoid, extra.content_dislikes);
     if (extra.competitor_1) fr.competitor_1 = extra.competitor_1;
     if (extra.competitor_2) fr.competitor_2 = extra.competitor_2;
     // รูป Insight ที่แนบใหม่ตอนรีเจน (เผื่อรอบแรกลืมใส่) → ใช้เจนใหม่ให้แม่นขึ้น
@@ -1025,11 +1030,16 @@ app.post("/api/improve-blueprint", async (req, res) => {
     const curBp = safeJson(bp.blueprint_json) || {};
     const curHasNums = curBp.metrics && Object.values(curBp.metrics).some(v => typeof v === "number" && v > 0);
     if (!newImgs.length && curHasNums) parsed.prior_metrics = curBp.metrics;
-    // รีไฟน์ "บทวิเคราะห์" เท่านั้น (เร็ว) แบบ async — ตอบทันที แล้วเจนเบื้องหลัง หน้า Dashboard poll analysis_status
+    // 🔁 เคยสร้างแผน 30 วันไปแล้ว → ต้องเขียนคอนเทนต์ใหม่ด้วย ไม่ใช่แก้แค่บทวิเคราะห์
+    // (คิมสั่ง 5 ส.ค. — เดิมแก้แล้วปฏิทิน 30 วันยังเป็นของเดิมเป๊ะ ลูกค้าเลยบอกว่า "แก้ไม่ได้")
+    const redoContent = (Array.isArray(curBp.calendar) && curBp.calendar.length > 0) || (Array.isArray(curBp.scripts) && curBp.scripts.length > 0);
+    // async — ตอบทันที แล้วเจนเบื้องหลัง หน้า Dashboard poll analysis_status
+    // ⚠️ โหมดเขียนใหม่ทั้งเล่ม: คง analysis_status='generating' ไว้จนคอนเทนต์เสร็จด้วย
+    //    เพื่อให้ฝั่งหน้าเว็บ poll ตัวเดียวจบ ไม่ต้องเพิ่ม logic ใหม่ (และไม่โชว์เล่มครึ่งๆ กลางคัน)
     if (inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" });
     inFlightBp.add(bpId);
     await run(`UPDATE blueprints SET analysis_status='generating', content_started_at=now() WHERE blueprint_id=$1`, [bpId]);
-    res.json({ ok: true, status: "generating", improve_count: (bp.improve_count || 0) + 1 });
+    res.json({ ok: true, status: "generating", improve_count: (bp.improve_count || 0) + 1, redo_content: redoContent });
     (async () => {
       try {
         await acquireGen();
@@ -1048,18 +1058,40 @@ app.post("/api/improve-blueprint", async (req, res) => {
             if ((!Array.isArray(nextJson.what_we_see) || !nextJson.what_we_see.length) && Array.isArray(curBp.what_we_see)) nextJson.what_we_see = curBp.what_we_see;
             if (!nextJson.follower_insight && curBp.follower_insight) nextJson.follower_insight = curBp.follower_insight;
           }
-          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status='ready' WHERE blueprint_id=$3`, [JSON.stringify(nextJson), model, bpId]);
+          // เขียนบทวิเคราะห์ลงก่อน (ยังคงคอนเทนต์เดิมไว้) — ถ้าขั้นเขียนคอนเทนต์ล้มทีหลัง ลูกค้ายังมีของเดิมอยู่ ไม่เหลือเล่มเปล่า
+          await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, improve_count=COALESCE(improve_count,0)+1, analysis_status=$3 WHERE blueprint_id=$4`,
+            [JSON.stringify(nextJson), model, redoContent ? "generating" : "ready", bpId]);
+          if (redoContent) {
+            const c = await generateContent(parsed, nextJson, lang);
+            const merged = { ...nextJson, calendar: c.content.calendar, scripts: c.content.scripts };
+            const flags = checkBlueprintQuality(merged, true);
+            if (flags.length) console.warn(`[improve/redo] ${bpId}: ${flags.join(" · ")}`);
+            await run(`UPDATE blueprints SET blueprint_json=$1, model=$2, content_status='ready', analysis_status='ready', quality_flags_json=$3 WHERE blueprint_id=$4`,
+              [JSON.stringify(merged), c.model, JSON.stringify(flags), bpId]);
+            await clearPlanOverrides(bpId);   // ลบสคริปต์รายวันที่เคยแก้ไว้ — ไม่งั้นของเก่าจะทับเล่มใหม่ที่เพิ่งเขียน
+            if (c.usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve_content',$2,$3,$4,$5)`, [uid("use"), c.model, c.usage.input || 0, c.usage.output || 0, c.usage.total || 0]).catch(() => {});
+            console.log(`[improve/redo] ${bpId} เขียนแผน 30 วันใหม่แล้ว`);
+          }
           const lean = { ...parsed, lang, insight_images: [], insight_screenshot_base64: null }; // ลบ base64 ออกก่อนเก็บ (กัน DB บวม) คง lang
           await run(`UPDATE blueprint_requests SET raw_payload_json=$1, starting_point=$2 WHERE request_id=$3`, [JSON.stringify(lean), fr.starting_point, bp.request_id]).catch(() => {});
           if (usage) await run(`INSERT INTO ai_usage (id,kind,model,input_tokens,output_tokens,total_tokens) VALUES ($1,'improve',$2,$3,$4,$5)`, [uid("use"), model, usage.input || 0, usage.output || 0, usage.total || 0]).catch(() => {});
           // ส่งเมลแจ้งเมื่อแก้บทวิเคราะห์เสร็จ — ลูกค้าจะปิดหน้าไปก็ได้ ไม่ต้องนั่งรอ
           if (parsed.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(parsed.user_id)}&billing_cycle=${encodeURIComponent(parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(bpId)}`; const l = langOfPayload(parsed); await sendEmail(parsed.email,
-            tr(l, `บทวิเคราะห์ของคุณอัปเดตแล้ว 🩵`, `Your analysis has been updated 🩵`),
-            wrap(tr(l,
+            redoContent
+              ? tr(l, `เขียนแผน 30 วันใหม่ให้แล้ว 🩵`, `Your 30-day plan has been rewritten 🩵`)
+              : tr(l, `บทวิเคราะห์ของคุณอัปเดตแล้ว 🩵`, `Your analysis has been updated 🩵`),
+            wrap(redoContent ? tr(l,
+              `ครูพี่คิมอ่านสิ่งที่คุณบอกมาแล้ว เขียนทั้งบทวิเคราะห์และแผน 30 วันใหม่ให้เรียบร้อยค่ะ!<br><br>เปิดดูปฏิทิน + สคริปต์ชุดใหม่ได้เลยนะคะ<br><br>${btn(url, "เปิดดูแผนใหม่ของฉัน")}`,
+              `Kim has read what you told her and rewritten both your analysis and your full 30-day plan!<br><br>Open your new calendar and scripts.<br><br>${btn(url, "Open my new plan")}`) : tr(l,
               `ครูพี่คิมอ่านข้อมูลใหม่ของคุณแล้ว ปรับบทวิเคราะห์ให้แม่นขึ้นเรียบร้อยค่ะ!<br><br>เปิดดูได้เลย ถ้าตรงใจแล้วกด <b>"สร้างแผน 30 วัน"</b> ในเล่มได้เลยนะคะ<br><br>${btn(url, "เปิดดูบทวิเคราะห์ที่อัปเดตแล้ว")}`,
               `Kim has read your new info and fine-tuned your analysis!<br><br>Take a look — if it feels right, hit <b>"Create my 30-day plan"</b> inside.<br><br>${btn(url, "Open my updated analysis")}`))).catch(() => {}); }
         } finally { releaseGen(); }
-      } catch (e) { console.error("improve bg", e.message); await run(`UPDATE blueprints SET analysis_status='error' WHERE blueprint_id=$1`, [bpId]).catch(() => {}); }
+      } catch (e) {
+        console.error("improve bg", e.message);
+        // คืนสิทธิ์ฟรีให้ลูกค้าเมื่อล้มกลางทาง — GREATEST กันติดลบกรณีล้มตั้งแต่ขั้นวิเคราะห์ (ยังไม่ทันบวก)
+        // content_status กลับเป็น ready เพราะคอนเทนต์ชุดเดิมยังอยู่ครบ (เราเขียนทับเฉพาะตอนชุดใหม่สำเร็จ)
+        await run(`UPDATE blueprints SET analysis_status='error', content_status=CASE WHEN $2::boolean THEN 'ready' ELSE content_status END, improve_count=GREATEST(COALESCE(improve_count,0)-1,0) WHERE blueprint_id=$1`, [bpId, redoContent]).catch(() => {});
+      }
       finally { inFlightBp.delete(bpId); }
     })();
   } catch (err) { console.error("improve", err); res.status(500).json({ ok: false, error: "IMPROVE_FAILED", message: err.message }); }
@@ -1473,6 +1505,12 @@ async function mergePlanOverrides(refId, scripts) {
     m._edited = !!ov.edited_json; m._regen_used = (ov.regen_count || 0) >= 1;
     return m;
   });
+}
+// ล้าง overrides ของแผน 30 วัน — ใช้ตอน "เขียนแผนใหม่ทั้งเล่ม" เท่านั้น
+// ⚠️ ต้องล้าง ไม่งั้นสคริปต์ที่ลูกค้าเคยแก้ไว้ของวันเดิมจะถูก merge ทับเล่มใหม่ (คนละเรื่องกันแล้ว)
+// ผลพลอยได้: สิทธิ์ "เจนใหม่รายวันฟรี 1 ครั้ง" คืนให้ด้วย — แผนใหม่ก็ควรได้สิทธิ์ใหม่
+async function clearPlanOverrides(refId) {
+  await run(`DELETE FROM script_overrides WHERE scope='plan' AND ref_id=$1`, [refId]).catch(() => {});
 }
 // merge overrides ให้ประวัติสคริปต์สปอนเซอร์ (แต่ละอันมี id ของตัวเอง)
 async function applyCreditOverrides(items) {

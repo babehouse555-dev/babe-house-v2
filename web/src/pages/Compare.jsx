@@ -47,18 +47,38 @@ export default function Compare() {
       const rows = [];
       rows.push(FULL(`${t("cmp_xls_report")} ${ch}`, { fontWeight: "bold", fontSize: 16 }));
       if (co?.headline) rows.push(FULL(co.headline, { fontWeight: "bold", color: "#3F6BAE" }));
-      rows.push(FULL(`${t("cmp_xls_period")} ${cyc(first.billing_cycle)} → ${cyc(last.billing_cycle)} · ${months.length} ${t("cmp_xls_months")}`, { color: "#777777" }));
+      // 📅 เดือนเดียว = ยังไม่มีอะไรให้เทียบ · หลายเดือน = เทียบเดือนแรกกับเดือนล่าสุด
+      // ⚠️ คิมเจอ 5 ส.ค.: ลูกค้าที่มีเดือนเดียวเห็น "August 2026 → August 2026 · ▲ +0%"
+      //    เอาเดือนเดียวกันมาเทียบกันเอง ไม่มีความหมาย แถมทำให้ดูเหมือนไม่โตเลย
+      const single = months.length < 2;
+      rows.push(FULL(single
+        ? `${t("cmp_xls_period")} ${cyc(last.billing_cycle)} · ${t("cmp_xls_first_month")}`
+        : `${t("cmp_xls_period")} ${cyc(first.billing_cycle)} → ${cyc(last.billing_cycle)} · ${months.length} ${t("cmp_xls_months")}`,
+        { color: "#777777" }));
       rows.push(FULL(""));
-      rows.push([{ value: t("cmp_xls_metric"), ...HEAD }, { value: cyc(first.billing_cycle), ...HEAD }, { value: cyc(last.billing_cycle), ...HEAD }, { value: t("cmp_xls_change"), ...HEAD }]);
-      for (const [k, label, ic, suf] of METRICS) {
-        const a = first.metrics?.[k], b = last.metrics?.[k]; if (a == null && b == null) continue;
-        const p = pct(a, b);
-        rows.push([
-          { value: `${ic} ${label}`, type: String, wrap: true },
-          { value: (a == null ? "-" : a.toLocaleString()) + (suf || ""), type: String },
-          { value: (b == null ? "-" : b.toLocaleString()) + (suf || ""), type: String, fontWeight: "bold" },
-          { value: p == null ? "-" : (p >= 0 ? `▲ +${p}` : `▼ ${p}`) + (suf === "%" ? t("cmp_xls_points") : "%"), type: String, fontWeight: "bold", color: p != null && p >= 0 ? "#1a7f43" : "#b3261e" },
-        ]);
+      if (single) {
+        rows.push([{ value: t("cmp_xls_metric"), ...HEAD }, { value: cyc(last.billing_cycle), ...HEAD }, { value: "", ...HEAD }, { value: "", ...HEAD }]);
+        for (const [k, label, ic, suf] of METRICS) {
+          const b = last.metrics?.[k]; if (b == null) continue;
+          rows.push([
+            { value: `${ic} ${label}`, type: String, wrap: true },
+            { value: b.toLocaleString() + (suf || ""), type: String, fontWeight: "bold" },
+            null, null,
+          ]);
+        }
+        rows.push(FULL(t("cmp_xls_need_second"), { color: "#8a6d1f" }));
+      } else {
+        rows.push([{ value: t("cmp_xls_metric"), ...HEAD }, { value: cyc(first.billing_cycle), ...HEAD }, { value: cyc(last.billing_cycle), ...HEAD }, { value: t("cmp_xls_change"), ...HEAD }]);
+        for (const [k, label, ic, suf] of METRICS) {
+          const a = first.metrics?.[k], b = last.metrics?.[k]; if (a == null && b == null) continue;
+          const p = pct(a, b);
+          rows.push([
+            { value: `${ic} ${label}`, type: String, wrap: true },
+            { value: (a == null ? "-" : a.toLocaleString()) + (suf || ""), type: String },
+            { value: (b == null ? "-" : b.toLocaleString()) + (suf || ""), type: String, fontWeight: "bold" },
+            { value: p == null ? "-" : (p >= 0 ? `▲ +${p}` : `▼ ${p}`) + (suf === "%" ? t("cmp_xls_points") : "%"), type: String, fontWeight: "bold", color: p != null && p >= 0 ? "#1a7f43" : "#b3261e" },
+          ]);
+        }
       }
       rows.push(FULL(""));
       if (sponsors.length) {

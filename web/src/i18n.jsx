@@ -482,6 +482,8 @@ const DICT = {
   cmp_xls_report: { th: "📈 รายงานการเติบโต —", en: "📈 Growth report —" },
   cmp_xls_period: { th: "ช่วงเวลา:", en: "Period:" },
   cmp_xls_months: { th: "เดือน", en: "months" },
+  cmp_xls_first_month: { th: "เดือนแรก (ยังไม่มีเดือนก่อนหน้าให้เทียบ)", en: "first month (no previous month to compare yet)" },
+  cmp_xls_need_second: { th: "⏳ ตัวเลขข้างบนคือฐานตั้งต้นของคุณ — อัปสถิติเดือนหน้า แล้วครูพี่คิมจะเทียบการเติบโตให้เห็นเป็นตัวเลขจริงค่ะ", en: "⏳ These are your baseline numbers — upload next month's Insights and Kim will show your real growth." },
   cmp_xls_metric: { th: "ตัวชี้วัด", en: "Metric" },
   cmp_xls_change: { th: "เปลี่ยนแปลง", en: "Change" },
   cmp_xls_points: { th: " จุด", en: " pts" },

@@ -11,6 +11,12 @@ const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b886
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
 const modH = { display: "flex", alignItems: "center", margin: 0 };
 
+// 🧹 กันรหัสภายในหลุดไปให้ลูกค้าเห็น (testers ทัก 1 ส.ค.: ช่อง "ตลาด" ขึ้นว่า Premium_490)
+// AI บางครั้งหยิบรหัสสินค้าจากข้อมูลออเดอร์มาใส่ในช่องระดับตลาด — ลูกค้าเห็นแล้วงง ดูไม่โปร
+// เจอเมื่อไหร่ให้ซ่อนไปเลย ดีกว่าโชว์รหัสที่ลูกค้าอ่านไม่รู้เรื่อง
+const CODE_RE = /^(premium|credits|editcredits|video|revision)[_-]/i;
+const cleanTier = (v) => { const x = String(v || "").trim(); return !x || CODE_RE.test(x) ? "" : x; };
+
 export default function Dashboard() {
   const { t, lang } = useI18n();
   const nav = useNavigate();
@@ -209,7 +215,7 @@ export default function Dashboard() {
         <Link className="link" to={demo ? "/" : "/account"}>← {demo ? t("db_back_home") : t("db_back_account")}</Link>
         <div className="brand" style={{ marginTop: 12 }}>BABE HOUSE · CREATOR PLATFORM</div>
         <h1 className="page">AI Creator Blueprint</h1>
-        <p className="muted" style={{ marginBottom: 16 }}>✓ {bp.instagram_account} · {bp.market_tier || "Premium"} · {bp.theme}</p>
+        <p className="muted" style={{ marginBottom: 16 }}>✓ {bp.instagram_account}{cleanTier(bp.market_tier) ? ` · ${cleanTier(bp.market_tier)}` : ""} · {bp.theme}</p>
 
         <div className="row" style={{ marginBottom: 18, background: "var(--soft)", borderRadius: 14, padding: 6 }}>
           {[["strategy", t("db_tab_strategy")], ["calendar", t("db_tab_30")], ["marathon", t("db_tab_marathon")]].map(([k, l]) =>
@@ -260,7 +266,7 @@ export default function Dashboard() {
               <div key={l} className="card" style={{ margin: 0, padding: "16px 14px" }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ fontSize: 24, fontWeight: 800, color: "var(--blue)", marginTop: 4 }}>{Number(v).toLocaleString("en-US")}{suf || ""}</div></div>)}
           </div>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, marginBottom: 16 }}>
-            {[[t("db_t_goal"), bp.theme], [t("db_t_market"), bp.market_tier], [t("db_t_audience"), bp.audience_summary], [t("db_t_insight"), bp.follower_insight]].map(([l, v]) => v && <div key={l} className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ marginTop: 6, fontSize: 14.5 }}>{v}</div></div>)}
+            {[[t("db_t_goal"), bp.theme], [t("db_t_market"), cleanTier(bp.market_tier)], [t("db_t_audience"), bp.audience_summary], [t("db_t_insight"), bp.follower_insight]].map(([l, v]) => v && <div key={l} className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12, fontWeight: 700 }}>{l}</div><div style={{ marginTop: 6, fontSize: 14.5 }}>{v}</div></div>)}
           </div>
           <div className="card"><h3 style={{ marginBottom: 12 }}>{t("db_what_kim_sees")}</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>

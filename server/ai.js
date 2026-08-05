@@ -89,7 +89,7 @@ const KIM_PROMPT = `คุณคือ "ครูพี่คิม" ซีอ�
  "instagram_account": string, "theme": string, "greeting": string,
  "pillars": [string x4],
  "snapshot": [ {"emoji":string,"label":string,"value":string} x6 ],
- "what_we_see": [string x>=5], "audience_summary": string, "follower_insight": string, "market_tier": string, "positioning": string, "kim_insight": string,
+ "what_we_see": [string x>=5], "audience_summary": string, "follower_insight": string, "market_tier": string /* ระดับตลาดของช่องลูกค้า เช่น "พรีเมียม" "กลางบน" "แมส" — ⛔ ห้ามใส่รหัสสินค้าของเรา (Premium_490, Credits_10) เด็ดขาด นั่นคือรหัสภายในไม่ใช่ระดับตลาดของลูกค้า */, "positioning": string, "kim_insight": string,
  "story": [ {"emoji":string,"title":string,"body":string} x5-6 ],
  "swot": {"strengths":[string],"weaknesses":[string],"opportunities":[string],"threats":[string]},
  "modules": {
@@ -375,7 +375,7 @@ const ANALYSIS_PROMPT = `คุณคือ "ครูพี่คิม" ซี
  "instagram_account": string, "theme": string, "greeting": string,
  "pillars": [string x4],
  "snapshot": [ {"emoji":string,"label":string,"value":string} x6 ],
- "what_we_see": [string x>=5], "audience_summary": string, "follower_insight": string, "market_tier": string, "positioning": string, "kim_insight": string,
+ "what_we_see": [string x>=5], "audience_summary": string, "follower_insight": string, "market_tier": string /* ระดับตลาดของช่องลูกค้า เช่น "พรีเมียม" "กลางบน" "แมส" — ⛔ ห้ามใส่รหัสสินค้าของเรา (Premium_490, Credits_10) เด็ดขาด นั่นคือรหัสภายในไม่ใช่ระดับตลาดของลูกค้า */, "positioning": string, "kim_insight": string,
  "story": [ {"emoji":string,"title":string,"body":string} x5-6 ],
  "swot": {"strengths":[string],"weaknesses":[string],"opportunities":[string],"threats":[string]},
  "modules": {

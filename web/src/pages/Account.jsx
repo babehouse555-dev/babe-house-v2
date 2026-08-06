@@ -146,7 +146,42 @@ export default function Account() {
         {/* 🎁 บัตรสมาชิก — คิมเลือกดีไซน์ 6 ส.ค. (แบบ A · สีน้ำเงินแบรนด์ · ขนาดตัวหนังสือเท่าเว็บ 16px)
             โผล่เฉพาะคนที่ซื้อแพ็กยาว · ลูกค้ารายเดือนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน
             ⚠️ ขนาดตัวหนังสือตั้งใจให้เท่าเนื้อหาส่วนอื่นของเว็บ (16px) — เลื่อนผ่านแล้วสายตาไม่ต้องปรับ */}
-        {perks && perks.plan !== "monthly" && (() => {
+        {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
+            โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
+        {showFolders && (
+          <div className="fld-row">
+            {[
+              { key: "plan", icon: "📘", label: "แผนคอนเทนต์", pastel: "#C7DEF0", deep: "#A9CCE6", n: (data.channels || []).length },
+              { key: "course", icon: "🎓", label: "คอร์สเรียน", pastel: "#DDCCEE", deep: "#C9B4E3", n: counts.courses },
+              { key: "cert", icon: "🏆", label: "ประกาศนียบัตร", pastel: "#C6DBCB", deep: "#AECBB6", n: counts.certs },
+              { key: "ws", icon: "🎟️", label: "คลาสสด", pastel: "#F3D6B6", deep: "#E9C398", n: counts.ws },
+              { key: "edit", icon: "🎬", label: "งานตัดต่อ", pastel: "#E4D6F0", deep: "#D0BCE6", n: counts.edits },
+              // 🧾 คิมสั่ง 5 ส.ค.: "แยกออกมาอีกโฟลเดอร์นึงเลย เพราะลูกค้าไม่ได้เอาใบกำกับแค่งานตัด"
+              { key: "tax", icon: "🧾", label: "ใบกำกับภาษี", pastel: "#DCE4EF", deep: "#C2CFE0", n: TAX_INVOICE_LIVE ? taxInv.length : 0 },
+              // 💳 คิมสั่ง 6 ส.ค.: "มันควรจะอยู่ในโฟลเดอร์ จะได้ไม่รบกวนหน้าอื่น อันนี้มาใหญ่มาก"
+              //    บัตรสมาชิกย้ายมาอยู่ในนี้ · จุดแดงเตือนเมื่อยังไม่ได้เลือกคอร์สฟรี (กันลืมของมูลค่า 5,990)
+              { key: "member", icon: "💳", label: "แพ็กเกจของฉัน", pastel: "#C7DEF0", deep: "#8FB9DF",
+                n: perks && perks.plan !== "monthly" ? (perks.months_left || 1) : 0,
+                dot: !!(perks?.free_course && !perks.free_course.claimed) },
+            ].filter(f => f.n > 0).map(f => {
+              const on = f.key === folder;
+              return (
+                <button key={f.key} className={`fld${on ? " on" : ""}`} onClick={() => setFolder(f.key)} aria-pressed={on}
+                  style={{ position: "relative" }}>
+                  <span className="fld-body" style={{ "--c": f.pastel, "--d": f.deep }}>
+                    <span className="fld-icon">{f.icon}</span>
+                    <span className="fld-n">{f.n}</span>
+                  </span>
+                  <span className="fld-label">{f.label}</span>
+                  {/* จุดแดง = มีของรอให้กด (ตอนนี้ใช้กับคอร์สฟรีที่ยังไม่ได้เลือก) */}
+                  {f.dot && <span style={{ position: "absolute", top: 2, right: 6, width: 11, height: 11, borderRadius: "50%",
+                    background: "#e5484d", border: "2px solid #fff" }} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {perks && perks.plan !== "monthly" && (!showFolders || folder === "member") && (() => {
           const DIM = "#D3E7FA";
           const rule = "1px solid rgba(255,255,255,.24)";
           const Row = ({ k, v, unit }) => (
@@ -220,32 +255,6 @@ export default function Account() {
             </div>
           );
         })()}
-        {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
-            โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
-        {showFolders && (
-          <div className="fld-row">
-            {[
-              { key: "plan", icon: "📘", label: "แผนคอนเทนต์", pastel: "#C7DEF0", deep: "#A9CCE6", n: (data.channels || []).length },
-              { key: "course", icon: "🎓", label: "คอร์สเรียน", pastel: "#DDCCEE", deep: "#C9B4E3", n: counts.courses },
-              { key: "cert", icon: "🏆", label: "ประกาศนียบัตร", pastel: "#C6DBCB", deep: "#AECBB6", n: counts.certs },
-              { key: "ws", icon: "🎟️", label: "คลาสสด", pastel: "#F3D6B6", deep: "#E9C398", n: counts.ws },
-              { key: "edit", icon: "🎬", label: "งานตัดต่อ", pastel: "#E4D6F0", deep: "#D0BCE6", n: counts.edits },
-              // 🧾 คิมสั่ง 5 ส.ค.: "แยกออกมาอีกโฟลเดอร์นึงเลย เพราะลูกค้าไม่ได้เอาใบกำกับแค่งานตัด"
-              { key: "tax", icon: "🧾", label: "ใบกำกับภาษี", pastel: "#DCE4EF", deep: "#C2CFE0", n: TAX_INVOICE_LIVE ? taxInv.length : 0 },
-            ].filter(f => f.n > 0).map(f => {
-              const on = f.key === folder;
-              return (
-                <button key={f.key} className={`fld${on ? " on" : ""}`} onClick={() => setFolder(f.key)} aria-pressed={on}>
-                  <span className="fld-body" style={{ "--c": f.pastel, "--d": f.deep }}>
-                    <span className="fld-icon">{f.icon}</span>
-                    <span className="fld-n">{f.n}</span>
-                  </span>
-                  <span className="fld-label">{f.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         {(data.pending || []).map(p => p.status === "error"
           ? <div key={p.order_id} className="card" style={{ background: "#fff7e6", border: "1px solid #e8d49a" }}>

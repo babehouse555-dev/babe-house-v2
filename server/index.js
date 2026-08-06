@@ -76,7 +76,9 @@ const perksOf = (plan) => PLAN_PERKS[String(plan || "monthly")] || PLAN_PERKS.mo
 async function memberPerks(email) {
   const sub = await activeSubscription(email).catch(() => null);
   const plan = sub?.plan || "monthly";
-  return { plan, ...perksOf(plan), subscription_id: sub?.subscription_id || null };
+  return { plan, ...perksOf(plan), subscription_id: sub?.subscription_id || null,
+    months_total: sub ? Number(sub.months_total) : null,
+    months_left: sub ? Math.max(0, Number(sub.months_total) - Number(sub.months_used)) : null };
 }
 const planOf = (k) => {
   // ⛔ ช่วงโปรเปิดตัว ยังไม่เปิดขายแพ็กยาว — ใครยิงมาก็ได้รายเดือนราคาโปรเท่านั้น

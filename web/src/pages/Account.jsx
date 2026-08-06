@@ -29,6 +29,7 @@ export default function Account() {
   const [subs, setSubs] = useState({});           // 💳 แพ็ก 6/12 เดือนที่ใช้อยู่ ของแต่ละช่อง
   const [perks, setPerks] = useState(null);       // 🎁 สิทธิ์สมาชิก + คอร์สฟรี (แพ็ก 12 เดือน)
   const [pickBusy, setPickBusy] = useState("");
+  const [showCourses, setShowCourses] = useState(false);  // กางรายชื่อคอร์สฟรีหลังกดปุ่ม
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // 🎁 สิทธิ์ของฉัน — โหลดครั้งเดียวตอนเข้าหน้า
@@ -142,62 +143,83 @@ export default function Account() {
       {step === "list" && data && <>
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">{t("ac_books_of_pre")} <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>{t("ac_logout")}</button></div>
 
-        {/* 🎁 สิทธิ์สมาชิก — โผล่เฉพาะคนที่ซื้อแพ็กยาว (รายเดือนไม่ต้องเห็น จะได้ไม่รกหน้า) */}
-        {perks && perks.plan !== "monthly" && (
-          <div className="card" style={{ marginTop: 0, background: "linear-gradient(135deg,#F7F3FF,#F2F8FF)", border: "1px solid #DDD2F0" }}>
-            <div className="between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-              <span style={{ fontWeight: 800, fontSize: 15.5 }}>
-                🎁 สิทธิ์สมาชิกของคุณ <span style={{ color: "var(--blue)" }}>{perks.plan === "12m" ? "แพ็ก 12 เดือน" : "แพ็ก 6 เดือน"}</span>
+        {/* 🎁 บัตรสมาชิก — คิมเลือกดีไซน์ 6 ส.ค. (แบบ A · สีน้ำเงินแบรนด์ · ขนาดตัวหนังสือเท่าเว็บ 16px)
+            โผล่เฉพาะคนที่ซื้อแพ็กยาว · ลูกค้ารายเดือนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน
+            ⚠️ ขนาดตัวหนังสือตั้งใจให้เท่าเนื้อหาส่วนอื่นของเว็บ (16px) — เลื่อนผ่านแล้วสายตาไม่ต้องปรับ */}
+        {perks && perks.plan !== "monthly" && (() => {
+          const DIM = "#D3E7FA";
+          const rule = "1px solid rgba(255,255,255,.24)";
+          const Row = ({ k, v, unit }) => (
+            <div className="between" style={{ gap: 12, padding: "13px 0", borderBottom: rule, fontSize: 16 }}>
+              <span style={{ color: DIM }}>{k}</span>
+              <span style={{ fontWeight: 800, fontSize: unit ? 19 : 16, fontVariantNumeric: "tabular-nums" }}>
+                {v}{unit && <small style={{ fontWeight: 600, fontSize: 13, color: DIM, marginLeft: 4 }}>{unit}</small>}
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, fontSize: 13.5 }}>
-              <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
-                ✍️ สคริปต์เพิ่มคงเหลือ<br /><b style={{ fontSize: 18, color: "var(--blue)" }}>{perks.credits}</b> คลิป
+          );
+          return (
+            <div style={{ borderRadius: 20, padding: "22px 20px", color: "#fff", marginBottom: 16,
+              background: "linear-gradient(158deg,#3E93E4 0%,#2E86DE 55%,#1B6FC4 100%)",
+              boxShadow: "0 10px 26px rgba(27,111,196,.32)" }}>
+
+              <div className="between" style={{ alignItems: "flex-start", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, letterSpacing: ".14em", textTransform: "uppercase", color: DIM, fontWeight: 700 }}>Babe House Member</div>
+                  <div className="serif" style={{ fontSize: 27, fontWeight: 700, marginTop: 2 }}>
+                    แพ็ก {perks.plan === "12m" ? "12" : "6"} เดือน
+                  </div>
+                </div>
+                {perks.months_left > 0 && (
+                  <div style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 20,
+                    padding: "5px 12px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    เหลือ {perks.months_left} เดือน
+                  </div>
+                )}
               </div>
-              <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
-                🔁 แก้เล่มใหม่<br /><b style={{ fontSize: 18, color: "var(--blue)" }}>{perks.improve}</b> ครั้ง/เดือน
+
+              <div style={{ marginTop: 16, borderTop: rule }}>
+                <Row k="✍️ สคริปต์เพิ่มคงเหลือ" v={perks.credits} unit="คลิป" />
+                <Row k="🔁 แก้เล่มใหม่" v={perks.improve} unit="ครั้ง/เดือน" />
+                {perks.edit_off > 0 && <Row k="🎬 ส่วนลดค่าตัดต่อ" v={`${perks.edit_off}%`} />}
+                {perks.priority && <Row k="⚡ คิวงานตัดต่อ" v="ได้ก่อน" />}
               </div>
-              {perks.edit_off > 0 && (
-                <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
-                  🎬 ลดค่าตัดต่อ<br /><b style={{ fontSize: 18, color: "#1a7f43" }}>{perks.edit_off}%</b> ทุกออเดอร์
+
+              {/* 🎓 คอร์สฟรี — กล่องขาวตัดกับพื้นน้ำเงิน ให้เด่นที่สุดในการ์ด (เป็นของมูลค่าถึง 5,990) */}
+              {perks.free_course && !perks.free_course.claimed && (
+                <div style={{ marginTop: 15, background: "#fff", borderRadius: 14, padding: "14px 15px", color: "var(--ink)" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>🎓 คอร์สออนไลน์ฟรี 1 คอร์ส</div>
+                  <p className="muted" style={{ fontSize: 13, margin: "3px 0 11px" }}>เลือกได้ครั้งเดียว มูลค่าถึง 5,990฿</p>
+                  {!showCourses
+                    ? <button onClick={() => setShowCourses(true)}
+                        style={{ display: "block", width: "100%", background: "var(--blue-d)", color: "#fff", border: 0, borderRadius: 11,
+                          padding: 13, fontFamily: "inherit", fontSize: 15.5, fontWeight: 800, cursor: "pointer" }}>
+                        เลือกคอร์สของฉัน →
+                      </button>
+                    : <div style={{ display: "grid", gap: 8 }}>
+                        {(perks.free_course.choices || []).map(c => (
+                          <button key={c.id} onClick={() => pickFreeCourse(c.id, c.name)} disabled={!!pickBusy}
+                            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, textAlign: "left",
+                              background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 13px",
+                              cursor: pickBusy ? "default" : "pointer", fontFamily: "inherit", fontSize: 15,
+                              opacity: pickBusy && pickBusy !== c.id ? .5 : 1 }}>
+                            <span style={{ fontWeight: 700 }}>{c.name}</span>
+                            <span className="muted" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+                              {pickBusy === c.id ? "กำลังเปิด…" : `฿${Number(c.price || 0).toLocaleString()}`}
+                            </span>
+                          </button>
+                        ))}
+                      </div>}
                 </div>
               )}
-              {perks.priority && (
-                <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
-                  ⚡ คิวงานตัดต่อ<br /><b style={{ fontSize: 15, color: "#1a7f43" }}>ได้ก่อน</b>
+              {perks.free_course?.claimed && (
+                <div style={{ marginTop: 15, background: "rgba(255,255,255,.14)", border: rule, borderRadius: 12,
+                  padding: "11px 14px", fontSize: 14.5, fontWeight: 700 }}>
+                  ✓ เลือกคอร์สฟรีแล้ว — เข้าเรียนได้ที่โฟลเดอร์ 🎓 คอร์สเรียน
                 </div>
               )}
             </div>
-
-            {/* 🎓 คอร์สฟรี 1 คอร์ส — สิทธิ์ของแพ็ก 12 เดือน เลือกได้ครั้งเดียว */}
-            {perks.free_course && !perks.free_course.claimed && (
-              <div style={{ marginTop: 14, background: "#fff", borderRadius: 12, padding: "14px 16px", border: "1px dashed var(--blue)" }}>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>🎓 คุณมีสิทธิ์เรียนคอร์สออนไลน์ฟรี 1 คอร์ส</div>
-                <p className="muted" style={{ fontSize: 12.5, margin: "5px 0 12px", lineHeight: 1.6 }}>
-                  เลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ — เลือกตัวที่อยากเรียนที่สุดเลยค่ะ
-                </p>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {(perks.free_course.choices || []).map(c => (
-                    <button key={c.id} onClick={() => pickFreeCourse(c.id, c.name)} disabled={!!pickBusy}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, textAlign: "left",
-                        background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 13px",
-                        cursor: pickBusy ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, opacity: pickBusy && pickBusy !== c.id ? .5 : 1 }}>
-                      <span style={{ fontWeight: 700 }}>{c.name}</span>
-                      <span className="muted" style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
-                        {pickBusy === c.id ? "กำลังเปิด…" : `มูลค่า ฿${Number(c.price || 0).toLocaleString()}`}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {perks.free_course?.claimed && (
-              <div style={{ marginTop: 12, fontSize: 13, color: "#1a7f43", fontWeight: 700 }}>
-                ✓ เลือกคอร์สฟรีแล้ว — เข้าเรียนได้ที่โฟลเดอร์ 🎓 คอร์สเรียน
-              </div>
-            )}
-          </div>
-        )}
+          );
+        })()}
         {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
             โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
         {showFolders && (

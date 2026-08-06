@@ -26,7 +26,8 @@ export default function EditOrder() {
     api("/api/edit/my", { token: session.token }).then(d => setOrders(d.orders || [])).catch(() => {});
     api("/api/edit/credits", { token: session.token }).then(d => setCredits(Number(d.credits || 0))).catch(() => {});
   };
-  useEffect(() => { api(`/api/edit/price?clips=${clips}`).then(setPrice).catch(() => {}); }, [clips]);
+  // ⚠️ ต้องส่ง token ไปด้วย — ไม่งั้นเซิร์ฟเวอร์ไม่รู้ว่าเป็นสมาชิกแพ็กไหน ส่วนลดจะไม่ขึ้น
+  useEffect(() => { api(`/api/edit/price?clips=${clips}`, { token: session.token }).then(setPrice).catch(() => {}); }, [clips, session.token]);
   useEffect(load, []);   // eslint-disable-line
 
   // 🎟️ ซื้อเครดิตตัดต่อ — ไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน ไปเลือกในตาราง 30 วันทีหลัง
@@ -89,10 +90,27 @@ export default function EditOrder() {
         {price && (
           <div style={{ background: "var(--soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
             <div className="between"><span className="muted" style={{ fontSize: 13.5 }}>ราคาต่อคลิป</span><b>{money(price.price_per_clip)}</b></div>
+            {/* 🎬 ส่วนลดสมาชิกแพ็ก 12 เดือน — เซิร์ฟเวอร์คิดให้แล้ว หน้าเว็บแค่โชว์ว่าประหยัดไปเท่าไหร่ */}
+            {price.member_off_pct > 0 && (
+              <div className="between" style={{ marginTop: 6, fontSize: 13.5 }}>
+                <span style={{ color: "#1a7f43", fontWeight: 700 }}>ส่วนลดสมาชิก {price.member_off_pct}%</span>
+                <span style={{ color: "#1a7f43", fontWeight: 700 }}>−{money(price.member_saved)}</span>
+              </div>
+            )}
             <div className="between" style={{ marginTop: 6, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
               <span style={{ fontWeight: 700 }}>รวม {clips} คลิป</span>
-              <b style={{ fontSize: 22, color: "var(--blue)" }}>{money(price.total)}</b>
+              <span>
+                {price.member_off_pct > 0 && (
+                  <span className="muted" style={{ textDecoration: "line-through", fontSize: 15, marginRight: 8 }}>{money(price.full_total)}</span>
+                )}
+                <b style={{ fontSize: 22, color: "var(--blue)" }}>{money(price.total)}</b>
+              </span>
             </div>
+            {price.member_off_pct > 0 && (
+              <div style={{ marginTop: 8, background: "#E8F5EE", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: "#1a7f43", fontWeight: 700 }}>
+                🎉 ราคานี้เป็นราคาสมาชิกแพ็ก 12 เดือนของคุณแล้วค่ะ
+              </div>
+            )}
             {/* ราคาตั้งต้น (สั่งทีละคลิป) ดึงจากเซิร์ฟเวอร์ ไม่ฝังตัวเลขไว้ในหน้าเว็บ — ขึ้นราคาทีเดียวจบ */}
             {clips > 1 && (() => {
               const base = Math.max(...(price.tiers || []).map(t => t.price), price.price_per_clip);

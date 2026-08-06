@@ -27,8 +27,23 @@ export default function Account() {
   const [folder, setFolder] = useState("plan");   // 🗂️ โฟลเดอร์ที่เปิดอยู่
   const [counts, setCounts] = useState({ courses: 0, certs: 0, ws: 0, edits: 0 });
   const [subs, setSubs] = useState({});           // 💳 แพ็ก 6/12 เดือนที่ใช้อยู่ ของแต่ละช่อง
+  const [perks, setPerks] = useState(null);       // 🎁 สิทธิ์สมาชิก + คอร์สฟรี (แพ็ก 12 เดือน)
+  const [pickBusy, setPickBusy] = useState("");
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
+  // 🎁 สิทธิ์ของฉัน — โหลดครั้งเดียวตอนเข้าหน้า
+  useEffect(() => { if (session.token) api("/api/me/perks", { token: session.token }).then(setPerks).catch(() => {}); }, [step]);
+  async function pickFreeCourse(id, name) {
+    if (!window.confirm(`เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?\n\nเลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ`)) return;
+    setPickBusy(id);
+    try {
+      await api("/api/me/free-course", { method: "POST", token: session.token, body: { course_id: id } });
+      const p = await api("/api/me/perks", { token: session.token }); setPerks(p);
+      alert(`เปิดคอร์ส "${name}" ให้แล้วค่ะ 🎉 เข้าเรียนได้เลยที่โฟลเดอร์คอร์สเรียน`);
+      loadMonths();
+    } catch (e) { alert(e.message || "เลือกไม่สำเร็จ ลองใหม่นะคะ"); }
+    finally { setPickBusy(""); }
+  }
   // 💳 แพ็กที่ใช้อยู่ของแต่ละช่อง — โชว์ว่าเหลืออีกกี่เดือน ลูกค้าจะได้รู้ว่ายังไม่ต้องจ่ายเพิ่ม
   useEffect(() => {
     const chans = [...new Set((data?.months || []).map(m => m.instagram_account).filter(Boolean))];
@@ -126,6 +141,63 @@ export default function Account() {
 
       {step === "list" && data && <>
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">{t("ac_books_of_pre")} <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>{t("ac_logout")}</button></div>
+
+        {/* 🎁 สิทธิ์สมาชิก — โผล่เฉพาะคนที่ซื้อแพ็กยาว (รายเดือนไม่ต้องเห็น จะได้ไม่รกหน้า) */}
+        {perks && perks.plan !== "monthly" && (
+          <div className="card" style={{ marginTop: 0, background: "linear-gradient(135deg,#F7F3FF,#F2F8FF)", border: "1px solid #DDD2F0" }}>
+            <div className="between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontWeight: 800, fontSize: 15.5 }}>
+                🎁 สิทธิ์สมาชิกของคุณ <span style={{ color: "var(--blue)" }}>{perks.plan === "12m" ? "แพ็ก 12 เดือน" : "แพ็ก 6 เดือน"}</span>
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, fontSize: 13.5 }}>
+              <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
+                ✍️ สคริปต์เพิ่มคงเหลือ<br /><b style={{ fontSize: 18, color: "var(--blue)" }}>{perks.credits}</b> คลิป
+              </div>
+              <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
+                🔁 แก้เล่มใหม่<br /><b style={{ fontSize: 18, color: "var(--blue)" }}>{perks.improve}</b> ครั้ง/เดือน
+              </div>
+              {perks.edit_off > 0 && (
+                <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
+                  🎬 ลดค่าตัดต่อ<br /><b style={{ fontSize: 18, color: "#1a7f43" }}>{perks.edit_off}%</b> ทุกออเดอร์
+                </div>
+              )}
+              {perks.priority && (
+                <div style={{ background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
+                  ⚡ คิวงานตัดต่อ<br /><b style={{ fontSize: 15, color: "#1a7f43" }}>ได้ก่อน</b>
+                </div>
+              )}
+            </div>
+
+            {/* 🎓 คอร์สฟรี 1 คอร์ส — สิทธิ์ของแพ็ก 12 เดือน เลือกได้ครั้งเดียว */}
+            {perks.free_course && !perks.free_course.claimed && (
+              <div style={{ marginTop: 14, background: "#fff", borderRadius: 12, padding: "14px 16px", border: "1px dashed var(--blue)" }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>🎓 คุณมีสิทธิ์เรียนคอร์สออนไลน์ฟรี 1 คอร์ส</div>
+                <p className="muted" style={{ fontSize: 12.5, margin: "5px 0 12px", lineHeight: 1.6 }}>
+                  เลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ — เลือกตัวที่อยากเรียนที่สุดเลยค่ะ
+                </p>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {(perks.free_course.choices || []).map(c => (
+                    <button key={c.id} onClick={() => pickFreeCourse(c.id, c.name)} disabled={!!pickBusy}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, textAlign: "left",
+                        background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 13px",
+                        cursor: pickBusy ? "default" : "pointer", fontFamily: "inherit", fontSize: 14, opacity: pickBusy && pickBusy !== c.id ? .5 : 1 }}>
+                      <span style={{ fontWeight: 700 }}>{c.name}</span>
+                      <span className="muted" style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                        {pickBusy === c.id ? "กำลังเปิด…" : `มูลค่า ฿${Number(c.price || 0).toLocaleString()}`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {perks.free_course?.claimed && (
+              <div style={{ marginTop: 12, fontSize: 13, color: "#1a7f43", fontWeight: 700 }}>
+                ✓ เลือกคอร์สฟรีแล้ว — เข้าเรียนได้ที่โฟลเดอร์ 🎓 คอร์สเรียน
+              </div>
+            )}
+          </div>
+        )}
         {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
             โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
         {showFolders && (

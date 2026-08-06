@@ -57,6 +57,27 @@ const PLANS = {
   "6m": mkPlan("6m", 6, 30),    // ลด 30%
   "12m": mkPlan("12m", 12, 50), // ลด 50%
 };
+// ═══════ 🎁 สิทธิ์สมาชิกแต่ละแพ็ก (คิมเคาะ 6 ส.ค.) ═══════
+// ที่มา: ลูกค้า 2 คนขอ "จ่ายทีเดียวได้ทุกอย่าง" แบบ ChatGPT — เดิมต้องซื้อของเสริมทีละชิ้น
+//        ข้อมูลจริง: 100 ออเดอร์ล่าสุด มีของเสริมแค่ 3 ชิ้น = โมเดลขายแยกไม่เวิร์ก
+//
+// ⚠️ ทำไมใส่ "เพดาน" ไม่ใช่ "ไม่จำกัด":
+//    ต้นทุน AI ต่อครั้งถูกมาก (เจนเล่มใหม่ ฿3 · สคริปต์ ฿0.23) เงินไม่ใช่ปัญหา
+//    แต่โควตาโทเคนต่อวันใช้ร่วมกันทุกคน (2 ล้านโทเคน) — คนเดียวกดเจนเล่มใหม่ 45 ครั้ง
+//    = โควตาทั้งวันหมด ลูกค้าคนอื่นเปิดเล่มไม่ได้ทั้งวัน · เพดานนี้กันเรื่องนั้น
+//    ตัวเลขเลือกให้ "มากกว่าที่คนปกติใช้ 3 เท่า" — ใจกว้างแต่ถล่มไม่ได้
+const PLAN_PERKS = {
+  monthly: { scripts: 10, improve: 1, regen: 1, homework: 10, edit_off: 0,  free_course: false, priority: false, price_lock: false },
+  "6m":    { scripts: 30, improve: 3, regen: 3, homework: 30, edit_off: 0,  free_course: false, priority: false, price_lock: true },
+  "12m":   { scripts: 30, improve: 3, regen: 3, homework: 30, edit_off: 20, free_course: true,  priority: true,  price_lock: true },
+};
+const perksOf = (plan) => PLAN_PERKS[String(plan || "monthly")] || PLAN_PERKS.monthly;
+// สิทธิ์ของ "อีเมลนี้ตอนนี้" — ไม่มีแพ็กยาว = ได้สิทธิ์รายเดือน
+async function memberPerks(email) {
+  const sub = await activeSubscription(email).catch(() => null);
+  const plan = sub?.plan || "monthly";
+  return { plan, ...perksOf(plan), subscription_id: sub?.subscription_id || null };
+}
 const planOf = (k) => {
   // ⛔ ช่วงโปรเปิดตัว ยังไม่เปิดขายแพ็กยาว — ใครยิงมาก็ได้รายเดือนราคาโปรเท่านั้น
   if (!plansLive()) return { ...PLANS.monthly, satang: PROMO_SATANG, per_month: PROMO_SATANG / 100, off: 0, full_satang: PRICE_SATANG };
@@ -423,12 +444,37 @@ async function useSubscriptionMonth(sub, cycle, orderId) {
     await run(`INSERT INTO subscription_uses (use_id,subscription_id,billing_cycle,order_id) VALUES ($1,$2,$3,$4)`,
       [uid("su"), sub.subscription_id, cycle, orderId || null]);
   } catch { return false; }   // เดือนนี้ปลดไปแล้ว
+  // 🎁 เติมเครดิตสคริปต์ประจำเดือนให้สมาชิก — ปลดเล่มเดือนไหน ได้เครดิตเดือนนั้น
+  // (INSERT ด้านบนกันซ้ำอยู่แล้ว ถ้าเดือนนี้ปลดไปแล้วจะ return ก่อนถึงตรงนี้ = ไม่มีทางเติมซ้ำ)
+  await grantMonthlyScripts(sub.email, sub.plan, cycle).catch(() => {});
   await run(`UPDATE subscriptions SET months_used = months_used + 1,
       status = CASE WHEN months_used + 1 >= months_total THEN 'finished' ELSE status END, updated_at=now()
     WHERE subscription_id=$1`, [sub.subscription_id]);
   return true;
 }
 
+// 🎁 เครดิตสคริปต์ประจำเดือนของสมาชิก (10/30 ใบ ตามแพ็ก)
+async function grantMonthlyScripts(email, plan, cycle) {
+  const e = normEmail(email); if (!e) return 0;
+  const n = perksOf(plan).scripts; if (!n) return 0;
+  await upsertCustomer(e, "");
+  await run(`UPDATE customers SET credits=COALESCE(credits,0)+$1 WHERE lower(email)=lower($2)`, [n, e]);
+  console.log(`[perk] เติมเครดิตสคริปต์ ${n} ใบ ให้ ${e} (แพ็ก ${plan} · รอบ ${cycle})`);
+  return n;
+}
+// 🎓 คอร์สที่แถมได้ — เฉพาะคอร์สของครูพี่คิมเอง (ต้นทุนส่วนเพิ่ม ฿0 เพราะอัดไว้แล้ว)
+// ⛔ ห้ามใส่คอร์สของ ASaiDemy — เป็นของพาร์ทเนอร์ ต้องแบ่งรายได้ แจกฟรีคือเราจ่ายจริง
+// ⛔ ตัด Snap & Pop (599) ออก — ราคาต่างจากตัวอื่น 6-10 เท่า ลูกค้าเผลอเลือกแล้วเสียเปรียบ
+const FREE_COURSE_EXCLUDE_INSTRUCTORS = ["asaidemy"];
+const FREE_COURSE_EXCLUDE_NAMES = ["snap & pop"];
+async function freeCourseChoices() {
+  const rows = await q(`SELECT legacy_id, name, price, price_sale, instructor, featured_image_url FROM academy_courses WHERE is_active='0' OR is_active='1'`).catch(() => []);
+  return rows.filter(c => {
+    const ins = String(c.instructor || "").toLowerCase().trim();
+    const nm = String(c.name || "").toLowerCase().trim();
+    return !FREE_COURSE_EXCLUDE_INSTRUCTORS.includes(ins) && !FREE_COURSE_EXCLUDE_NAMES.some(x => nm.includes(x));
+  });
+}
 // ราคาทั้ง 3 แพ็ก (หน้าเว็บดึงไปโชว์ ไม่ฝังเลขไว้ในหน้าเว็บ)
 app.get("/api/plans", async (req, res) => {
   const email = normEmail(String(req.query.email || ""));
@@ -437,9 +483,42 @@ app.get("/api/plans", async (req, res) => {
     live: plansLive(),                                    // false = ยังอยู่ช่วงโปร 490 ยังไม่โชว์หน้าแพ็ก
     live_at: new Date(PLANS_LIVE_AT).toISOString(),
     promo_baht: PROMO_SATANG / 100, full_baht: PRICE_SATANG / 100,
-    plans: plansLive() ? Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true })) : [],
+    // แนบสิทธิ์ที่ได้ของแต่ละแพ็กไปด้วย — หน้าเว็บจะได้โชว์ "จ่ายแล้วได้อะไร" โดยไม่ต้องฝังรายการไว้เอง
+    plans: plansLive() ? Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true, perks: perksOf(p.plan) })) : [],
     active: sub ? { plan: sub.plan, months_total: sub.months_total, months_used: sub.months_used,
-                    months_left: sub.months_total - sub.months_used, channel: sub.instagram_account } : null });
+                    months_left: sub.months_total - sub.months_used, channel: sub.instagram_account,
+                    perks: perksOf(sub.plan) } : null });
+});
+
+// 🎁 สิทธิ์ของฉันตอนนี้ + คอร์สฟรีที่ยังไม่ได้เลือก (หน้าบัญชีเรียกไปโชว์)
+app.get("/api/me/perks", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const perks = await memberPerks(email);
+  const c = await one(`SELECT COALESCE(credits,0) credits, COALESCE(edit_credits,0) edit_credits FROM customers WHERE lower(email)=lower($1)`, [email]);
+  let free_course = null;
+  if (perks.free_course) {
+    const picked = await one(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]);
+    free_course = picked
+      ? { claimed: true, course_id: picked.course_id }
+      : { claimed: false, choices: (await freeCourseChoices()).map(c2 => ({ id: c2.legacy_id, name: String(c2.name || "").trim(), price: Number(c2.price_sale || c2.price) || 0, image: c2.featured_image_url })) };
+  }
+  res.json({ ok: true, ...perks, credits: Number(c?.credits || 0), edit_credits: Number(c?.edit_credits || 0), free_course });
+});
+
+// 🎓 เลือกคอร์สฟรี 1 คอร์ส (สิทธิ์ของแพ็ก 12 เดือน) — เลือกได้ครั้งเดียว เปลี่ยนไม่ได้
+app.post("/api/me/free-course", rateLimit(10, M10), async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const perks = await memberPerks(email);
+  if (!perks.free_course) return res.status(403).json({ ok: false, error: "NOT_ELIGIBLE", message: "สิทธิ์คอร์สฟรีมีเฉพาะแพ็ก 12 เดือนค่ะ" });
+  const already = await one(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]);
+  if (already) return res.status(409).json({ ok: false, error: "ALREADY_CLAIMED", message: "คุณเลือกคอร์สฟรีไปแล้วค่ะ", course_id: already.course_id });
+  const wanted = String(req.body?.course_id || "").trim();
+  // ⚠️ ต้องเช็กกับรายการที่อนุญาตจริง — ไม่งั้นยิง course_id ของ ASaiDemy มาก็ได้ฟรี
+  const ok = (await freeCourseChoices()).find(c => String(c.legacy_id) === wanted);
+  if (!ok) return res.status(400).json({ ok: false, error: "BAD_COURSE", message: "เลือกคอร์สจากรายการที่มีให้นะคะ" });
+  await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,'plan_12m','สิทธิ์คอร์สฟรีของแพ็ก 12 เดือน')
+    ON CONFLICT (lower(email), course_id) DO NOTHING`, [uid("gr"), email, wanted]);
+  res.json({ ok: true, course_id: wanted, name: String(ok.name || "").trim() });
 });
 
 // 👑 แอดมิน: ลูกค้าแพ็กยาวยังใช้อยู่ไหม — ตัวเลขที่ต้องดูทุกเดือน
@@ -3093,6 +3172,15 @@ const editTotal = (n) => {
   for (const t of EDIT_TIERS) if (t.min > clips) best = Math.min(best, t.price * t.min);
   return best;
 };
+// 🎬 ส่วนลดสมาชิก — เฉพาะแพ็ก 12 เดือน ลด 20% (คิมเคาะ 6 ส.ค.)
+// ✅ ตรวจแล้วไม่ขาดทุนทุกแพ็ก: จุดบางสุดคือ 30 คลิป เหลือกำไร ฿420/คลิป (22%)
+// ⚠️ จุดคุ้มทุน = ต้นทุนต่อคลิปห้ามเกิน ~฿1,820 (ตอนนี้ ฿1,400 มีช่องว่าง 30%)
+//    ถ้าวันไหนค่าฟรีแลนซ์ขึ้น ต้องกลับมาทบทวนตัวเลขนี้ก่อน
+const editTotalFor = (n, offPct = 0) => {
+  const full = editTotal(n);
+  const pct = Math.max(0, Math.min(50, Number(offPct) || 0));   // กันตั้งเกิน 50% เผลอทำขาดทุน
+  return { full, off_pct: pct, total: Math.round(full * (100 - pct) / 100), saved: full - Math.round(full * (100 - pct) / 100) };
+};
 // กำไรสุทธิต่อคลิปหลังหักต้นทุน + ค่าธรรมเนียมรับเงิน (ไว้โชว์ในหลังบ้านของคิมเท่านั้น ⛔ ไม่ส่งให้ลูกค้า/ทีม)
 const editMargin = (n) => {
   const clips = Math.max(1, Number(n) || 1);
@@ -3115,9 +3203,14 @@ const EDIT_STATUS = {
 const INTERNAL_STATUSES = new Set(["assigned", "senior_review", "ae_review"]);
 const customerStatus = (s) => (INTERNAL_STATUSES.has(s) ? "editing" : s);
 
-app.get("/api/edit/price", (req, res) => {
+app.get("/api/edit/price", async (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
-  res.json({ ok: true, clips: n, price_per_clip: Math.round(editTotal(n) / n), total: editTotal(n), tiers: EDIT_TIERS,
+  // ล็อกอินอยู่ + เป็นสมาชิกแพ็ก 12 เดือน → เห็นราคาสมาชิกเลย ไม่ต้องกรอกโค้ด
+  const email = await authEmail(req).catch(() => null);
+  const perks = email ? await memberPerks(email).catch(() => null) : null;
+  const p = editTotalFor(n, perks?.edit_off || 0);
+  res.json({ ok: true, clips: n, price_per_clip: Math.round(p.total / n), total: p.total,
+    full_total: p.full, member_off_pct: p.off_pct, member_saved: p.saved, member_plan: perks?.plan || null, tiers: EDIT_TIERS,
     free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, parallel: EDIT_PARALLEL, lead_days: leadDaysFor(n),
     hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
     eta_if_send_now: thDate(addWorkDays(new Date(), leadDaysFor(n))) });
@@ -3146,7 +3239,10 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
   const email = await authEmail(req);
   if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
   const n = Math.max(1, Math.min(200, Number(req.body?.credits) || 1));
-  const total = editTotal(n), per = Math.round(total / n);
+  // ⚠️ คิดส่วนลดสมาชิกจากฝั่งเซิร์ฟเวอร์เสมอ — ห้ามเชื่อราคาที่หน้าเว็บส่งมา
+  const perks = await memberPerks(email).catch(() => null);
+  const pr = editTotalFor(n, perks?.edit_off || 0);
+  const total = pr.total, per = Math.round(total / n);
   // 🧾 ข้อมูลใบกำกับต้องเก็บ "ก่อน" จ่ายเงิน เพราะใบออกอัตโนมัติทันทีที่เงินเข้า แก้ทีหลังไม่ได้
   const ct = cleanTax(req.body?.tax);
   if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });

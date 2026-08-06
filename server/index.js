@@ -148,6 +148,8 @@ const emailHash = (e) => { const v = normEmail(e); return v ? crypto.createHash(
 const appBaseUrl = () => (process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
 const cycleMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const currentBillingCycle = () => { const d = new Date(); return `${cycleMonths[d.getMonth()]}_${d.getFullYear()}`; };
+// รอบเดือนถัดไป — ใช้กับอีเมลชวนต่อแผน (ต้องชวนซื้อ "เดือนหน้า" ไม่ใช่เดือนที่กำลังจะหมด)
+const nextBillingCycle = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); return `${cycleMonths[d.getMonth()]}_${d.getFullYear()}`; };
 
 function cleanCompetitors(fr) {
   return { ...fr,
@@ -4604,18 +4606,25 @@ async function runMonthlyReminders(force = false) {
     // ส่งอัตโนมัติเฉพาะปลายเดือน (กระตุ้นต่อแผนเดือนหน้า) — ปุ่ม admin ใช้ force=true ส่งได้ทุกเมื่อ
     const day = new Date().getDate(), startDay = Number(process.env.REMINDER_START_DAY) || 25;
     if (!force && day < startDay) return 0;
-    const cycle = currentBillingCycle();
-    // ดึงเล่มล่าสุดของแต่ละคนมาด้วย → ทำลิงก์พาไปหน้าส่งสถิติได้ตรงๆ ไม่ต้องให้เขาหาเอง
-    const rows = await q(`SELECT DISTINCT ON (lower(r.email)) r.email, b.blueprint_id, b.user_id, b.billing_cycle,
-        COALESCE(mp.uploaded_count,0) AS uploaded,
-        (SELECT 1 FROM month_reviews mr WHERE mr.user_id=b.user_id AND mr.billing_cycle=b.billing_cycle) AS reviewed
-      FROM blueprint_requests r
-      JOIN blueprints b ON b.request_id=r.request_id AND b.deleted_at IS NULL
-      LEFT JOIN marathon_progress mp ON mp.user_id=b.user_id AND mp.billing_cycle=b.billing_cycle
-      WHERE r.email IS NOT NULL
-        AND lower(r.email) NOT IN (SELECT lower(email) FROM blueprint_requests WHERE billing_cycle=$1 AND email IS NOT NULL)
-        AND lower(r.email) NOT IN (SELECT lower(email) FROM month_reminders WHERE cycle=$1)
-      ORDER BY lower(r.email), b.created_at DESC LIMIT 200`, [cycle]);
+    const cycle = currentBillingCycle(), next = nextBillingCycle();
+    // 🚨 แก้ 6 ส.ค. — ของเดิมยิงผิดกลุ่มจนไม่มีใครได้รับเลย
+    // เดิม: หา "คนที่ยังไม่มีแผนเดือนนี้" → ลูกค้าเดือนนี้มีแผนอยู่แล้ว เลยถูกข้ามทุกคน
+    //       (ที่ได้รับคือคนที่หายไปตั้งแต่เดือนก่อน = ช้าไป 1 เดือน · ข้อมูลจริง: ก.ค. 70 คน กลับมา 0 คน)
+    // ใหม่: หา "คนที่แผนล่าสุดคือเดือนนี้ และยังไม่ได้ซื้อเดือนหน้า" → ชวนต่อตอนที่เขายังอยู่กับเรา
+    const rows = await q(`SELECT * FROM (
+        SELECT DISTINCT ON (lower(r.email)) r.email, b.blueprint_id, b.user_id, b.billing_cycle,
+          COALESCE(mp.uploaded_count,0) AS uploaded,
+          (SELECT 1 FROM month_reviews mr WHERE mr.user_id=b.user_id AND mr.billing_cycle=b.billing_cycle) AS reviewed
+        FROM blueprint_requests r
+        JOIN blueprints b ON b.request_id=r.request_id AND b.deleted_at IS NULL
+        LEFT JOIN marathon_progress mp ON mp.user_id=b.user_id AND mp.billing_cycle=b.billing_cycle
+        WHERE r.email IS NOT NULL
+        ORDER BY lower(r.email), b.created_at DESC
+      ) latest
+      WHERE latest.billing_cycle = $1
+        AND lower(latest.email) NOT IN (SELECT lower(email) FROM blueprint_requests WHERE billing_cycle=$2 AND email IS NOT NULL)
+        AND lower(latest.email) NOT IN (SELECT lower(email) FROM month_reminders WHERE cycle=$2)
+      LIMIT 200`, [cycle, next]);
     let sent = 0;
     for (const r of rows) { try {
       const l = await langOfEmail(r.email);
@@ -4626,26 +4635,28 @@ async function runMonthlyReminders(force = false) {
       const renew = `${appBaseUrl()}/?renew=1&email=${encodeURIComponent(r.email)}`;
       const askStats = !r.reviewed;
       await sendEmail(r.email,
-        tr(l, askStats ? "เดือนนี้เป็นยังไงบ้างคะ? ส่งสถิติมาให้ครูพี่คิมดูหน่อย 🩵" : "เดือนใหม่แล้ว มาต่อแผนคอนเทนต์กันค่ะ 🩵",
-              askStats ? "How did this month go? Send me your stats 🩵" : "A new month begins — let's plan your content 🩵"),
+        tr(l, askStats ? "เดือนนี้เป็นยังไงบ้างคะ? ส่งสถิติมาให้ครูพี่คิมดูหน่อย 🩵" : "เดือนนี้ใกล้จบแล้ว มาต่อแผนเดือนหน้ากันค่ะ 🩵",
+              askStats ? "How did this month go? Send me your stats 🩵" : "This month is wrapping up — let's plan the next one 🩵"),
         wrap(tr(l,
           askStats
             ? `จบเดือนแล้ว เดือนนี้ลงคอนเทนต์ไปได้กี่คลิปคะ?${Number(r.uploaded) > 0 ? ` (ที่ติ๊กไว้ในระบบคือ <b>${r.uploaded} วัน</b>)` : ""}<br><br>
                <b>ก่อนเริ่มเดือนใหม่ ขอสถิติหน่อยนะคะ</b> — แคปหน้า Insights มา<b>รูปเดียวก็พอ</b>
                ครูพี่คิมจะอ่านให้เองว่าคลิปไหนไปได้ดี แล้ว<b>เขียนแผนเดือนหน้าจากของจริง</b> ไม่ใช่เริ่มคิดใหม่จากศูนย์ค่ะ<br><br>
                ${btn(deep, "📸 ส่งสถิติเดือนนี้ (ใช้เวลาไม่ถึงนาที)")}<br><br>
-               ส่งแล้วค่อยมาต่อแผนเดือนใหม่กันนะคะ 🩵<br><br>${btn(renew, "ดูแพ็กและปลดล็อกแผนเดือนใหม่")}`
-            : `เข้าสู่เดือนใหม่แล้ว! มาต่อแผน 30 วันของเดือนนี้กันค่ะ<br><br>${btn(renew, "ดูแพ็กและปลดล็อกแผนเดือนใหม่")}`,
+               ส่งแล้วค่อยมาต่อแผนเดือนหน้ากันนะคะ 🩵<br><br>${btn(renew, "ดูแพ็กและต่อแผนเดือนหน้า")}`
+            : `เดือนนี้ใกล้จบแล้ว — จองแผน 30 วันของเดือนหน้าไว้เลยไหมคะ<br><br>
+               เดือนหน้าครูพี่คิมจะเขียนต่อยอดจากผลจริงของเดือนนี้ ไม่ได้เริ่มใหม่จากศูนย์ค่ะ<br><br>${btn(renew, "ดูแพ็กและต่อแผนเดือนหน้า")}`,
           askStats
             ? `The month is wrapping up — how many clips did you post?${Number(r.uploaded) > 0 ? ` (You ticked <b>${r.uploaded} days</b> in the app.)` : ""}<br><br>
-               <b>Before we start the new month, send me your stats</b> — one screenshot of your Insights is enough.
+               <b>Before next month starts, send me your stats</b> — one screenshot of your Insights is enough.
                I'll read it myself and build next month's plan from what actually worked.<br><br>
                ${btn(deep, "📸 Send this month's stats (under a minute)")}<br><br>
-               ${btn(renew, "Unlock this month's plan (฿490)")}`
-            : `It's a new month! Time to continue with this month's 30-day plan.<br><br>${btn(renew, "Unlock this month's plan (฿490)")}`)));
+               ${btn(renew, "See plans and continue next month")}`
+            : `This month is wrapping up — ready to line up next month's 30-day plan?<br><br>
+               Next month builds on what actually worked this month — not a fresh start from zero.<br><br>${btn(renew, "See plans and continue next month")}`)));
       } catch { continue; }
-      await run(`INSERT INTO month_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, cycle]); sent++; }
-    if (sent) console.log(`[reminders] ${cycle}: ${sent}`); return sent;
+      await run(`INSERT INTO month_reminders (email,cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [r.email, next]); sent++; }
+    if (sent) console.log(`[reminders] ชวนต่อ ${next} (จากลูกค้าเดือน ${cycle}): ${sent} คน`); return sent;
   } catch (e) { console.error("monthly", e.message); return 0; }
 }
 async function runHomeworkReminders() {

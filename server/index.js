@@ -4601,11 +4601,13 @@ app.get("/api/admin/industries", async (req, res) => {
 });
 
 // ---------- reminders ----------
-async function runMonthlyReminders(force = false) {
+// dry=true → ไม่ส่งเมลจริง คืนรายชื่อคนที่ "จะ" ได้รับ
+// (มีไว้ตรวจกับข้อมูลจริงก่อนถึงวันที่ 25 โดยไม่ต้องเสี่ยงยิงเมลหาลูกค้าหลายร้อยคน)
+async function runMonthlyReminders(force = false, dry = false) {
   try {
     // ส่งอัตโนมัติเฉพาะปลายเดือน (กระตุ้นต่อแผนเดือนหน้า) — ปุ่ม admin ใช้ force=true ส่งได้ทุกเมื่อ
     const day = new Date().getDate(), startDay = Number(process.env.REMINDER_START_DAY) || 25;
-    if (!force && day < startDay) return 0;
+    if (!force && !dry && day < startDay) return 0;
     const cycle = currentBillingCycle(), next = nextBillingCycle();
     // 🚨 แก้ 6 ส.ค. — ของเดิมยิงผิดกลุ่มจนไม่มีใครได้รับเลย
     // เดิม: หา "คนที่ยังไม่มีแผนเดือนนี้" → ลูกค้าเดือนนี้มีแผนอยู่แล้ว เลยถูกข้ามทุกคน
@@ -4625,6 +4627,8 @@ async function runMonthlyReminders(force = false) {
         AND lower(latest.email) NOT IN (SELECT lower(email) FROM blueprint_requests WHERE billing_cycle=$2 AND email IS NOT NULL)
         AND lower(latest.email) NOT IN (SELECT lower(email) FROM month_reminders WHERE cycle=$2)
       LIMIT 200`, [cycle, next]);
+    if (dry) return { dry: true, cycle, next, would_send: rows.length,
+      emails: rows.map(r => ({ email: r.email, sent_stats: !!r.reviewed, clips_done: Number(r.uploaded) || 0 })) };
     let sent = 0;
     for (const r of rows) { try {
       const l = await langOfEmail(r.email);
@@ -4730,6 +4734,11 @@ async function runActivationReminders() {
     if (sent) console.log(`[activation] ${sent}`); return sent;
   } catch (e) { console.error("activation", e.message); return 0; }
 }
+// 👀 ดูก่อนส่ง — GET ไม่ส่งเมลจริง แค่บอกว่าใครจะได้รับบ้าง (ตรวจก่อนถึงวันที่ 25)
+app.get("/api/admin/run-reminders", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  res.json({ ok: true, preview: await runMonthlyReminders(false, true) });
+});
 app.post("/api/admin/run-reminders", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); const sent = await runMonthlyReminders(true); const homework = await runHomeworkReminders(); const followups = await runClientFollowups(true); await buildTeamReview(true).catch(() => {}); const abandoned = await runAbandonedFollowups(); const activation = await runActivationReminders(); res.json({ ok: true, sent, homework, followups, abandoned, activation, cycle: currentBillingCycle() }); });
 // 📣 ลูกค้ามาจากไหน + ใครจ่ายเงินจริง (ตอบคำถาม "มีคนซื้อจากแอดยัง")
 app.get("/api/admin/attribution", async (req, res) => {

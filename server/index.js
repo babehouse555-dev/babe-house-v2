@@ -3306,6 +3306,31 @@ const EDIT_STATUS = {
 const INTERNAL_STATUSES = new Set(["assigned", "senior_review", "ae_review"]);
 const customerStatus = (s) => (INTERNAL_STATUSES.has(s) ? "editing" : s);
 
+
+// 📋 ดึงบรีฟของ "วันที่ N" จากเล่มโดยตรง (เพิ่ม 7 ส.ค.)
+// เดิมพึ่งหน้าเว็บส่ง brief มาให้อย่างเดียว ถ้าหน้าเว็บโหลดคอนเทนต์ไม่ทัน/ส่งค่าว่าง
+// คนตัดจะได้งานที่ "ไม่มีบรีฟเลย" ไม่รู้ว่าต้องตัดอะไร (เจอจริงในงาน eo_d2a66bfa)
+// → เซิร์ฟเวอร์ดึงเองจากเล่ม ใช้เป็นตัวสำรองเสมอ
+async function briefFromBlueprint(blueprintId, day) {
+  try {
+    const row = await one(`SELECT blueprint_json FROM blueprints WHERE blueprint_id=$1`, [blueprintId]);
+    const bp = safeJson(row?.blueprint_json) || {};
+    const c = (bp.content || bp) || {};
+    const cal = (c.calendar || []).find(x => Number(x.d) === Number(day)) || {};
+    const sc = (c.scripts || []).find(x => Number(x.d) === Number(day)) || {};
+    const say = (sc.beats || []).map(b => String(b.say || "").trim()).filter(Boolean).join("\n");
+    const out = { d: Number(day) || null, t: cal.t || "", h: cal.h || "", script: say || null, cap: sc.cap || "", tip: sc.tip || "" };
+    return (out.t || out.h || out.script) ? out : null;
+  } catch { return null; }
+}
+
+// เลือกบรีฟที่ "มีเนื้อจริง" — ของที่หน้าเว็บส่งมาก่อน ถ้าว่างค่อยดึงจากเล่ม
+const hasBriefContent = (b) => !!(b && (String(b.t || "").trim() || String(b.h || "").trim() || String(b.script || "").trim() || String(b.title || "").trim() || String(b.brief || "").trim()));
+async function pickBrief(fromClient, blueprintId, day) {
+  if (hasBriefContent(fromClient)) return fromClient;
+  const built = await briefFromBlueprint(blueprintId, day);
+  return built || fromClient || null;
+}
 app.get("/api/edit/price", async (req, res) => {
   const n = Math.max(1, Math.min(200, Number(req.query.clips) || 1));
   // ล็อกอินอยู่ + เป็นสมาชิกแพ็ก 12 เดือน → เห็นราคาสมาชิกเลย ไม่ต้องกรอกโค้ด
@@ -3404,7 +3429,7 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
     await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,ref_picks,status,files_ready_at,due_at)
       VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10,$11,$12,$13,$14)`,
       [id, email, bp, req.body?.billing_cycle || null, day,
-       req.body?.brief ? JSON.stringify(req.body.brief).slice(0, 20000) : null,
+       JSON.stringify(await pickBrief(req.body?.brief, bp, day)).slice(0, 20000),
        String(req.body?.note || "").slice(0, 2000),
        String(req.body?.footage_url || "").slice(0, 1000) || null,
        String(req.body?.voice_url || "").slice(0, 1000) || null,
@@ -5803,6 +5828,22 @@ app.get("/api/admin/state", async (req, res) => {
       งานตัดต่อเลยกำหนดส่ง: await num(`SELECT COUNT(*) c FROM edit_orders WHERE due_at < now() AND status NOT IN ('done','canceled')`),
     },
   });
+});
+// 🔧 เติมบรีฟย้อนหลังให้งานตัดต่อที่บรีฟว่าง (เพิ่ม 7 ส.ค.)
+// งานที่สั่งไว้ก่อนมีตัวสำรอง อาจมีบรีฟว่างค้างอยู่ — คนตัดเปิดมาไม่รู้ว่าต้องตัดอะไร
+app.post("/api/admin/backfill-briefs", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const rows = await q(`SELECT order_id, blueprint_id, script_day, brief_json FROM edit_orders
+    WHERE blueprint_id IS NOT NULL AND script_day IS NOT NULL AND status NOT IN ('done','canceled')`);
+  const fixed = [], skipped = [];
+  for (const r of rows) {
+    if (hasBriefContent(safeJson(r.brief_json))) continue;
+    const built = await briefFromBlueprint(r.blueprint_id, r.script_day);
+    if (!built) { skipped.push({ order_id: r.order_id, why: "ในเล่มไม่มีข้อมูลวันนี้" }); continue; }
+    await run(`UPDATE edit_orders SET brief_json=$1, updated_at=now() WHERE order_id=$2`, [JSON.stringify(built), r.order_id]);
+    fixed.push({ order_id: r.order_id, day: r.script_day, title: built.t });
+  }
+  res.json({ ok: true, checked: rows.length, fixed, skipped });
 });
 app.get("/api/admin/abandoned-dry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

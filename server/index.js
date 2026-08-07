@@ -4672,7 +4672,8 @@ app.get("/api/admin/find-customer", async (req, res) => {
 
   const [orders, requests, academy, workshops, edits, users] = await Promise.all([
     safe(`SELECT order_id, created_at, paid_at, payment_status, tier, billing_cycle, blueprint_id,
-                 generation_status, generation_error, provider, discount_code, final_amount_satang, instagram_account, user_id
+                 generation_status, generation_error, provider, discount_code, final_amount_satang, instagram_account, user_id,
+                 provider_session_id, checkout_url
           FROM blueprint_orders WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
     safe(`SELECT request_id, created_at, billing_cycle, user_id, instagram_account, industry, phone
           FROM blueprint_requests WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),

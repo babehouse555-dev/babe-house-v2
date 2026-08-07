@@ -4225,6 +4225,12 @@ app.post("/api/team/intake", async (req, res) => {
   const client = String(b.client_name || "").trim();
   const title = String(b.title || "").trim();
   if (!client || !title) return res.status(400).json({ ok: false, error: "MISSING", message: "ใส่ชื่อลูกค้าและชื่องานด้วยนะคะ" });
+  // 📧 ต้องมีอีเมลลูกค้าจริง — คิมเจอเอง 7 ส.ค. ว่างานที่ไม่มีอีเมลลูกค้าเปิดดูงานไม่ได้เลย
+  //    (ระบบเคยสร้างอีเมลปลอมให้ client+xxxx@babehouse.local = ส่งงานไปแล้วแต่ไม่มีใครได้รับ)
+  const clientEmail = normEmail(b.client_email || "");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clientEmail))
+    return res.status(400).json({ ok: false, error: "NEED_EMAIL",
+      message: "ต้องใส่อีเมลลูกค้าด้วยนะคะ ไม่งั้นพองานเสร็จลูกค้าจะเปิดดูไม่ได้ค่ะ" });
   const clips = Math.max(1, Math.min(200, Number(b.clips) || 1));
   const hasFiles = !!String(b.footage_url || "").trim();
   const id = uid("eo");
@@ -4233,7 +4239,7 @@ app.post("/api/team/intake", async (req, res) => {
         payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,status,
         source,client_name,client_contact,client_due_at,files_ready_at,due_at)
       VALUES ($1,$2,$3,$4,$5,0,0,'paid','external','external',$6,$7,$8,$9,$10,'ae',$11,$12,$13,$14,$15)`,
-      [id, String(b.client_email || `client+${id.slice(-8)}@babehouse.local`).toLowerCase(),
+      [id, clientEmail,
        currentBillingCycle(), JSON.stringify({ title, brief: String(b.brief || "") }).slice(0, 20000), clips,
        String(b.note || "").slice(0, 2000) || null,
        String(b.footage_url || "").slice(0, 1000) || null,
@@ -5844,6 +5850,30 @@ app.post("/api/admin/backfill-briefs", async (req, res) => {
     fixed.push({ order_id: r.order_id, day: r.script_day, title: built.t });
   }
   res.json({ ok: true, checked: rows.length, fixed, skipped });
+});
+// 🔧 แก้อีเมลลูกค้าของงานตัดต่อ (เพิ่ม 7 ส.ค.)
+// ใช้กับงานเก่าที่รับบรีฟมาโดยไม่มีอีเมลลูกค้า — ระบบเคยใส่อีเมลปลอมให้
+// ทำให้ลูกค้าไม่ได้เมลแจ้ง และเปิดหน้างานดูไม่ได้เลยแม้ทีมจะส่งงานไปแล้ว
+app.post("/api/admin/edit-order/set-email", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || "").trim();
+  const email = normEmail(req.body?.email || "");
+  if (!id || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+    return res.status(400).json({ ok: false, error: "BAD_INPUT", message: "ต้องมี order_id และอีเมลที่ถูกต้อง" });
+  const o = await one(`SELECT order_id, email, status, draft_url FROM edit_orders WHERE order_id=$1`, [id]);
+  if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  await run(`UPDATE edit_orders SET email=$1, updated_at=now() WHERE order_id=$2`, [email, id]);
+  // ถ้างานส่งให้ลูกค้าไปแล้ว ต้องส่งเมลแจ้งซ้ำ เพราะรอบแรกส่งไปที่อีเมลปลอม ไม่มีใครได้รับ
+  let mailed = false;
+  if (o.status === "draft_sent" && o.draft_url) {
+    await sendEmail(email, "🎬 งานตัดต่อของคุณพร้อมแล้วค่ะ",
+      wrap(`สวัสดีค่ะ 🩵<br><br>ทีมตัดต่อทำงานของคุณเสร็จเรียบร้อยแล้วค่ะ<br><br>` +
+           `${btn(appBaseUrl() + "/edit/" + id, "เปิดดูงาน")}<br><br>` +
+           `ถ้าอยากให้แก้ตรงไหน พิมพ์บอกทีมได้ในหน้างานเลยนะคะ`)).catch(() => {});
+    mailed = true;
+  }
+  res.json({ ok: true, order_id: id, from: o.email, to: email, emailed_customer: mailed,
+    link: `${appBaseUrl()}/edit/${id}` });
 });
 app.get("/api/admin/abandoned-dry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

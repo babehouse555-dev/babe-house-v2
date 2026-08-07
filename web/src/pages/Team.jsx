@@ -127,7 +127,7 @@ export default function Team() {
   const [myAvail, setMyAvail] = useState([]);
   const [defSlots, setDefSlots] = useState(0);   // กำลังรับงานต่อวันของฉัน (คิมตั้งให้)
   const [ext, setExt] = useState([]);                 // 📦 งานนอกเว็บ
-  const [intake, setIntake] = useState({ client_name: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
+  const [intake, setIntake] = useState({ client_name: "", client_email: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
   const [intakeMsg, setIntakeMsg] = useState(null);
   const [rev, setRev] = useState(null);               // 🧠 รายงาน AI รายสัปดาห์
   const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "", amount_baht: "" });
@@ -834,6 +834,12 @@ export default function Team() {
           </p>
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
             <Field label="ชื่อลูกค้า *"><input style={input} value={intake.client_name} onChange={e => setIntake(v => ({ ...v, client_name: e.target.value }))} placeholder="บริษัท / ชื่อร้าน" /></Field>
+            {/* 📧 อีเมลลูกค้า — คิมเจอเอง 7 ส.ค.: ลูกตาลอนุมัติส่งงานแล้ว แต่ลูกค้าเปิดดูไม่ได้
+                เพราะงานที่รับบรีฟมาไม่มีอีเมลลูกค้า ระบบเลยสร้างอีเมลปลอมให้ (client+xxxx@babehouse.local)
+                = ไม่มีใครได้เมลแจ้ง และเปิดหน้างานไม่ได้เลย · ต้องกรอกอีเมลจริงถึงจะส่งงานถึงมือลูกค้า */}
+            <Field label="อีเมลลูกค้า *"><input style={input} type="email" value={intake.client_email}
+              onChange={e => setIntake(v => ({ ...v, client_email: e.target.value }))}
+              placeholder="ต้องมี — ไม่งั้นลูกค้าเปิดดูงานไม่ได้" /></Field>
             <Field label="ช่องทางติดต่อ"><input style={input} value={intake.client_contact} onChange={e => setIntake(v => ({ ...v, client_contact: e.target.value }))} placeholder="LINE / เบอร์ — ไว้ให้ระบบตามงาน" /></Field>
             <Field label="ชื่องาน *"><input style={input} value={intake.title} onChange={e => setIntake(v => ({ ...v, title: e.target.value }))} /></Field>
             <Field label="กี่คลิป"><input style={input} inputMode="numeric" value={intake.clips} onChange={e => setIntake(v => ({ ...v, clips: e.target.value.replace(/[^\d]/g, "").slice(0, 3) }))} /></Field>
@@ -847,11 +853,11 @@ export default function Team() {
             </Field>
           </div>
           {intakeMsg && <div style={{ ...card, marginTop: 12, background: intakeMsg.ok ? "#eef7f0" : "#fde8e8", color: intakeMsg.ok ? "#1a7f43" : "#b42318", fontSize: 14 }}>{intakeMsg.t}</div>}
-          <button style={{ ...btn(), marginTop: 14 }} disabled={busy === "intake" || !intake.client_name.trim() || !intake.title.trim()}
+          <button style={{ ...btn(), marginTop: 14 }} disabled={busy === "intake" || !intake.client_name.trim() || !intake.title.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(intake.client_email.trim())}
             onClick={async () => {
               const r = await post("/api/team/intake", { ...intake, clips: Number(intake.clips) || 1 }, "intake");
               if (r?.ok) { setIntakeMsg({ ok: true, t: r.assigned_to ? `รับงานแล้วค่ะ 🎬 ระบบมอบให้ ${r.assigned_to} — ${r.reason}` : `รับงานแล้วค่ะ · ${r.reason}` });
-                setIntake({ client_name: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" }); }
+                setIntake({ client_name: "", client_email: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" }); }
               else setIntakeMsg({ ok: false, t: "บันทึกไม่สำเร็จ ลองใหม่นะคะ" });
             }}>
             {busy === "intake" ? "กำลังบันทึก…" : "รับงาน + ให้ระบบจัดคนให้"}

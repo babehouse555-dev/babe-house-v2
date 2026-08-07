@@ -3847,7 +3847,7 @@ app.get("/api/team/availability", async (req, res) => {
   const me = await teamWho(req);
   if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const all = ["owner", "ae"].includes(me.role) && req.query.all === "1";
-  const rows = await q(`SELECT member_id, day, slots FROM team_availability
+  const rows = await q(`SELECT member_id, day, slots, COALESCE(is_leave,false) is_leave FROM team_availability
     WHERE day >= CURRENT_DATE AND day < CURRENT_DATE + $1::int ${all ? "" : "AND member_id = $2"} ORDER BY day`,
     all ? [AVAIL_DAYS] : [AVAIL_DAYS, me.member_id]);
   const mine = await one(`SELECT default_slots FROM team_members WHERE member_id=$1`, [me.member_id]);
@@ -4151,14 +4151,22 @@ app.post("/api/team/availability/fill", async (req, res) => {
   const slots = Math.max(0, Math.min(20, Number(req.body?.slots) || 0));
   const weekdaysOnly = req.body?.weekdays !== false;
   const target = (["owner", "ae"].includes(me.role) && req.body?.member_id) ? String(req.body.member_id) : me.member_id;
+  // 🧹 "ล้างทั้งหมด" ต้องล้างจริง — คิมแจ้ง 7 ส.ค. "กดล้างก็ไม่ล้าง"
+  //    เหตุ 1: เดิมข้ามเสาร์-อาทิตย์ตาม weekdaysOnly ของที่ลงไว้วันหยุดจึงค้างอยู่ตลอด
+  //    เหตุ 2: ล้าง = ลบแถว แต่พนักงานประจำ "ไม่มีแถว = ว่างอัตโนมัติ" ล้างแล้วเลยดูเหมือนไม่มีอะไรเปลี่ยน
+  //    → ล้างทีเดียวจบทุกวันรวมวันหยุด แล้วบอกกลับไปว่ากลับไปใช้ค่าอัตโนมัติกี่คลิป
+  if (slots === 0) {
+    const r = await run(`DELETE FROM team_availability WHERE member_id=$1 AND day >= CURRENT_DATE AND day < CURRENT_DATE + $2::int`, [target, AVAIL_DAYS]);
+    const m = await one(`SELECT COALESCE(default_slots,0) d FROM team_members WHERE member_id=$1`, [target]);
+    return res.json({ ok: true, cleared: r.rowCount ?? 0, slots: 0, back_to_default: Number(m?.d || 0) });
+  }
   let n = 0;
   for (let i = 0; i < AVAIL_DAYS; i++) {
     const dt = new Date(); dt.setDate(dt.getDate() + i);
-    if (weekdaysOnly && [0, 6].includes(dt.getDay())) continue;   // ข้ามเสาร์-อาทิตย์
-    const day = dt.toISOString().slice(0, 10);
-    if (slots === 0) await run(`DELETE FROM team_availability WHERE member_id=$1 AND day=$2`, [target, day]);
-    else await run(`INSERT INTO team_availability (avail_id,member_id,day,slots) VALUES ($1,$2,$3,$4)
-      ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, updated_at=now()`, [uid("av"), target, day, slots]);
+    if (weekdaysOnly && [0, 6].includes(dt.getDay())) continue;   // ข้ามเสาร์-อาทิตย์ (เฉพาะตอน "เติม")
+    const day = ymd(dt);
+    await run(`INSERT INTO team_availability (avail_id,member_id,day,slots,is_leave) VALUES ($1,$2,$3,$4,false)
+      ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, is_leave=false, updated_at=now()`, [uid("av"), target, day, slots]);
     n++;
   }
   res.json({ ok: true, filled: n, slots });

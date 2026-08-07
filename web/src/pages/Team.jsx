@@ -308,15 +308,34 @@ export default function Team() {
           return { key: dt.toISOString().slice(0, 10), lbl: dt.toLocaleDateString("th-TH", { day: "numeric", month: "short" }),
                    dow: dt.toLocaleDateString("th-TH", { weekday: "narrow" }), weekend: [0, 6].includes(dt.getDay()) };
         });
-        const mine = Object.fromEntries(myAvail.filter(a => a.member_id === me.member_id).map(a => [a.day, a.slots]));
+        // แถวที่ "ลงเอง" เท่านั้น — วันที่ไม่มีแถว = ใช้ค่าอัตโนมัติที่คิมตั้งไว้ (defSlots)
+        const filed = Object.fromEntries(myAvail.filter(a => a.member_id === me.member_id).map(a => [a.day, a]));
+        // สถานะจริงของแต่ละวัน: ลา / ลงเอง n คลิป / อัตโนมัติ n คลิป / ไม่ว่าง
+        const dayState = (key, weekend) => {
+          const f = filed[key];
+          if (f) return f.slots === 0 ? { kind: "leave", n: 0 } : { kind: "set", n: f.slots };
+          if (defSlots > 0 && !weekend) return { kind: "auto", n: defSlots };
+          return { kind: "none", n: 0 };
+        };
         const setDay = async (day, slots) => { await post("/api/team/availability", { day, slots }, "cal"); loadCal(); };
+        const resetDay = async (day) => { await post("/api/team/availability", { day, clear: true }, "cal"); loadCal(); };
+        // แตะวนเป็นวง: อัตโนมัติ → 1 → 2 … → 8 → 🌴 ลา → กลับเป็นอัตโนมัติ
+        // ทำให้ "ลดจำนวน" และ "กดลา" ทำได้จากปุ่มเดียว โดยไม่ต้องมีปุ่มเล็กๆ ในช่องแคบ
+        const tapDay = (key, st) => {
+          if (st.kind === "leave") return resetDay(key);
+          if (st.kind === "auto" || st.kind === "none") return setDay(key, 1);
+          if (st.n >= 8) return setDay(key, 0);        // 0 = ลา
+          return setDay(key, st.n + 1);
+        };
         return <>
           {/* ลงวันว่างของตัวเอง — ทุกคนทำได้ รวมฟรีแลนซ์ */}
           <div style={card}>
             <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📗 ลงวันว่างของฉัน</h3>
             <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
-              แตะวันที่ว่างเพื่อ<b>เพิ่มจำนวนคลิปที่รับไหววันนั้น</b> — ระบบจะส่งงานมาให้ไม่เกินที่คุณลงไว้
-              ไม่ลงไว้ = ระบบจะไม่ยัดงานให้ค่ะ
+              {defSlots > 0
+                ? <>คิมตั้งให้คุณรับงาน <b>{defSlots} คลิป/วัน (จ-ศ)</b> อยู่แล้ว — <b>ไม่ต้องกดอะไรเลยก็ได้ค่ะ</b><br />
+                    วันไหนรับได้มากกว่า/น้อยกว่า หรือวันไหน<b>ลา</b> ค่อยแตะแก้เฉพาะวันนั้นนะคะ</>
+                : <>แตะวันที่ว่างเพื่อ<b>เพิ่มจำนวนคลิปที่รับไหววันนั้น</b> — ระบบจะส่งงานมาให้ไม่เกินที่คุณลงไว้ ไม่ลงไว้ = ระบบจะไม่ยัดงานให้ค่ะ</>}
             </p>
             {/* ⚡ พนักงานประจำกดปุ่มเดียวจบ ไม่ต้องแตะทีละวัน (คิมเคาะ: โบ/พี่ก้องฟิกวันละ 4) */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
@@ -329,26 +348,39 @@ export default function Team() {
                 </button>
               ))}
               <button disabled={busy === "cal"} style={{ ...ghost, fontSize: 13, padding: "6px 13px", color: "#b42318", borderColor: "#f0c6c0" }}
-                onClick={async () => { await post("/api/team/availability/fill", { slots: 0 }, "cal"); loadCal(); }}>ล้างทั้งหมด</button>
+                onClick={async () => { await post("/api/team/availability/fill", { slots: 0 }, "cal"); loadCal(); }}>
+                ล้างที่ตั้งเอง{defSlots > 0 ? " (กลับเป็นอัตโนมัติ)" : ""}</button>
             </div>
             {defSlots > 0 && <p style={{ fontSize: 12.5, color: "#a89f96", margin: "0 0 10px" }}>
               💡 คิมตั้งกำลังรับงานของคุณไว้ที่ <b>{defSlots} คลิป/วัน</b> — วันไหนรับได้มากกว่า/น้อยกว่า แตะแก้รายวันได้เลย
             </p>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
               {days.map(dd => {
-                const n = mine[dd.key] || 0;
+                const st = dayState(dd.key, dd.weekend);
+                const tone = { leave: { bd: "#f0c6c0", bg: "#fdf2f0", fg: "#b42318" },
+                               set:   { bd: C.green,   bg: "#eaf6ee", fg: C.green },
+                               auto:  { bd: "#cfe3f5", bg: "#f2f8fd", fg: "#2E86DE" },
+                               none:  { bd: "#e5ded6", bg: dd.weekend ? "#faf8f6" : "#fff", fg: "#d8d2cb" } }[st.kind];
                 return (
-                  <button key={dd.key} onClick={() => setDay(dd.key, n >= 8 ? 0 : n + 1)}
+                  <button key={dd.key} onClick={() => tapDay(dd.key, st)} disabled={busy === "cal"}
+                    title={st.kind === "auto" ? "ระบบถือว่าคุณว่างวันนี้อัตโนมัติ" : st.kind === "leave" ? "วันลา — ระบบจะไม่ส่งงานให้" : ""}
                     style={{ borderRadius: 10, padding: "9px 4px", cursor: "pointer", fontFamily: "inherit",
-                      border: `1.5px solid ${n ? C.green : "#e5ded6"}`, background: n ? "#eaf6ee" : dd.weekend ? "#faf8f6" : "#fff" }}>
+                      border: `1.5px solid ${tone.bd}`, background: tone.bg }}>
                     <div style={{ fontSize: 10.5, color: "#a89f96" }}>{dd.dow}</div>
                     <div style={{ fontSize: 12.5, fontWeight: 700 }}>{dd.lbl}</div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: n ? C.green : "#d8d2cb", marginTop: 2 }}>{n ? `${n} คลิป` : "—"}</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: tone.fg, marginTop: 2 }}>
+                      {st.kind === "leave" ? "🌴 ลา" : st.n ? `${st.n} คลิป` : "—"}
+                    </div>
+                    {st.kind === "auto" && <div style={{ fontSize: 9.5, color: "#8fb8e0", marginTop: 1 }}>อัตโนมัติ</div>}
                   </button>
                 );
               })}
             </div>
-            <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8 }}>แตะซ้ำเพื่อเพิ่มจำนวน (สูงสุด 8 คลิป) · แตะต่อจนครบแล้วจะกลับเป็นว่าง</p>
+            <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8, lineHeight: 1.8 }}>
+              แตะวนไปเรื่อยๆ: <b style={{ color: "#2E86DE" }}>อัตโนมัติ</b> → 1 → 2 → … → 8 คลิป → <b style={{ color: "#b42318" }}>🌴 ลา</b> → กลับเป็นอัตโนมัติ<br />
+              <b style={{ color: "#2E86DE" }}>ฟ้า = อัตโนมัติ</b> ระบบถือว่าคุณว่างวันละ {defSlots || 0} คลิปโดยไม่ต้องกดอะไร ·
+              <b style={{ color: C.green }}> เขียว = คุณตั้งเอง</b> · <b style={{ color: "#b42318" }}>แดง = วันลา</b> ระบบจะย้ายงานวันนั้นให้คนอื่นทันที
+            </p>
           </div>
 
           {/* 📦 งานนอกเว็บ — คิมถาม "ทีม production ก็มีงานที่อยู่ใน production ด้วย

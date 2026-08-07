@@ -78,18 +78,29 @@ function CleanPlayer({ videoId, lessonKey }) {
     const r = e.currentTarget.getBoundingClientRect();
     p.seekTo(((e.clientX - r.left) / r.width) * dur, true);
   };
-  const full = () => { const el = boxRef.current?.parentElement; if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); };
+  // 🖥️ เต็มจอ — คิมแจ้ง 7 ส.ค. "ขยายจอใหญ่ไม่ได้"
+  //    ของเดิมอ้าง boxRef.current?.parentElement แต่ YT.Player "แทนที่" div ตัวนั้นด้วย iframe ของมันเอง
+  //    boxRef.current เลยกลายเป็นโหนดที่หลุดจากหน้าเว็บ parentElement = null → กดแล้วเงียบ
+  //    → จับกรอบไว้ตั้งแต่ตอน mount จาก overlay ที่ไม่โดนแทนที่
+  const wrapRef = useRef(null);
+  const full = () => {
+    const el = wrapRef.current?.parentElement;
+    if (!el) return;
+    if (document.fullscreenElement) { document.exitFullscreen?.().catch(() => {}); return; }
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el)?.catch?.(() => {});
+  };
 
   // โหลด API ไม่ได้ (เน็ตบล็อก/adblock) → ถอยไปใช้ iframe ปกติ ดีกว่าจอดำ
   if (failed) return <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`}
-    title="บทเรียน" style={{ width: "100%", height: "100%", border: 0 }} allowFullScreen />;
+    title="บทเรียน" style={{ width: "100%", height: "100%", border: 0 }}
+    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen />;
 
   const pct = dur ? (cur / dur) * 100 : 0;
   return (
     <>
       <div ref={boxRef} style={{ width: "100%", height: "100%", pointerEvents: "none" }} />
       {/* ชั้นทับทั้งจอ — คลิกที่ไหนก็เล่น/หยุด และคลิกไม่ทะลุไปโดน UI ของ YouTube */}
-      <div onClick={toggle} onContextMenu={e => e.preventDefault()}
+      <div ref={wrapRef} onClick={toggle} onDoubleClick={full} onContextMenu={e => e.preventDefault()}
         style={{ position: "absolute", inset: 0, cursor: "pointer" }} />
       {!playing && ready && (
         <div onClick={toggle} style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", cursor: "pointer" }}>

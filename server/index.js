@@ -4677,7 +4677,8 @@ app.get("/api/admin/find-customer", async (req, res) => {
   const [orders, requests, academy, workshops, edits, users] = await Promise.all([
     safe(`SELECT order_id, created_at, paid_at, payment_status, tier, billing_cycle, blueprint_id,
                  generation_status, generation_error, provider, discount_code, final_amount_satang, instagram_account, user_id,
-                 provider_session_id, checkout_url
+                 provider_session_id, checkout_url,
+                 (COALESCE(order_payload_json,'') LIKE '%form_responses%') AS has_form_data
           FROM blueprint_orders WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
     safe(`SELECT request_id, created_at, billing_cycle, user_id, instagram_account, industry, phone
           FROM blueprint_requests WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
@@ -5095,6 +5096,60 @@ app.get("/api/admin/attribution", async (req, res) => {
 // 📊 ตรวจ "คนกดซื้อแล้วจ่ายไม่สำเร็จ" — ดูได้ว่าใครค้าง ใครได้เมลตามแล้ว ใครตกหล่น
 // GET = ดูอย่างเดียว ไม่ส่งเมล · ใช้ประเมินว่าเสียยอดไปเท่าไหร่
 // 👀 ลองยิงแบบไม่ส่งจริง — ดูว่ารอบนี้ใครจะได้เมล รอบที่เท่าไหร่ ก่อนกดส่งจริง
+// 🔓 ปลดล็อกออเดอร์ให้ลูกค้าด้วยมือ — ใช้ตอน "ลูกค้าจ่ายจริงแต่ระบบไม่รู้" (เจอครั้งแรก 7 ส.ค. เคส QR พร้อมเพย์หมดอายุ)
+// เดิมต้องออกโค้ดส่วนลด 100% แล้วให้ลูกค้ากรอกฟอร์มใหม่ทั้งหมด — เสียเวลาลูกค้าและอาจกรอกไม่เหมือนเดิม
+// อันนี้ปลดล็อกออเดอร์เดิมเลย ระบบจะสร้างเล่มจากข้อมูลที่ลูกค้ากรอกไว้แล้วภายใน 2 นาที + ส่งลิงก์เข้าเมลให้เอง
+// ⚠️ provider='manual' → live_mode=false → ไม่ถูกนับเป็น "เงินเข้าจริง" ในหน้ายอดขาย (ถูกต้อง เพราะเงินไม่ได้เข้า Stripe)
+// 🆘 ลูกค้าแจ้งเองว่า "จ่ายแล้วแต่ยังไม่ได้ของ" — ไม่ต้องไปทักไอจีให้พลอยตามให้
+// เจอเคสจริง 7 ส.ค.: ลูกค้าจ่ายแล้วเงียบไป 17 ชม. กว่าจะรู้เพราะบังเอิญทักมา
+// ยิงเข้าเมลทีมทันทีพร้อมข้อมูลออเดอร์ครบ ทีมกดปลดล็อกได้เลยไม่ต้องไปขุด
+app.post("/api/order/report-paid", rateLimit(6, M10), async (req, res) => {
+  const orderId = String(req.body?.order_id || "").trim();
+  const detail = String(req.body?.detail || "").slice(0, 500);
+  const o = await getOrder(orderId);
+  if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+  if (["paid", "mock_paid"].includes(o.payment_status))
+    return res.json({ ok: true, already_paid: true, message: "ออเดอร์นี้จ่ายเรียบร้อยแล้วค่ะ ถ้ายังไม่เห็นเล่มรอสัก 2-3 นาทีนะคะ" });
+  // กันแจ้งซ้ำรัวๆ — 1 ออเดอร์แจ้งได้ครั้งเดียวต่อชั่วโมง
+  const pl = safeJson(o.order_payload_json) || {};
+  const last = pl.paid_report?.at ? Date.parse(pl.paid_report.at) : 0;
+  if (Date.now() - last < 3600e3) return res.json({ ok: true, message: "เราได้รับเรื่องแล้วนะคะ ทีมงานกำลังตรวจสอบให้อยู่ค่ะ" });
+  await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`,
+    [JSON.stringify({ ...pl, paid_report: { at: new Date().toISOString(), detail } }), orderId]);
+  sendEmail(OPS_EMAIL, `🆘 ลูกค้าแจ้งว่าจ่ายแล้วแต่ยังไม่ได้ของ · ${o.email || "-"}`,
+    wrap(`<b>อีเมล:</b> ${o.email || "-"}<br><b>ไอจี:</b> ${o.instagram_account || "-"}<br>` +
+         `<b>ออเดอร์:</b> ${orderId}<br><b>ยอด:</b> ฿${Number(o.final_amount_satang || 0) / 100}<br>` +
+         `<b>สร้างเมื่อ:</b> ${thDate(o.created_at)}<br><b>เลข Stripe:</b> ${o.provider_session_id || "-"}<br><br>` +
+         `<b>ลูกค้าบอกว่า:</b><br>${detail || "(ไม่ได้พิมพ์อะไรมา)"}<br><br>` +
+         `ตรวจใน Stripe ว่าเงินเข้าจริงไหม ถ้าเข้าจริงกดปลดล็อกให้ลูกค้าได้ที่หน้าแอดมินค่ะ`)).catch(() => {});
+  res.json({ ok: true, message: "ได้รับเรื่องแล้วค่ะ 🩵 ทีมงานจะตรวจสอบให้ภายใน 1 วันทำการ ถ้าจ่ายจริงเราจะปลดล็อกให้ทันทีค่ะ" });
+});
+app.post("/api/admin/unlock-order", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const orderId = String(req.body?.order_id || "").trim();
+  const note = String(req.body?.note || "").slice(0, 300);
+  if (!orderId) return res.status(400).json({ ok: false, error: "NO_ORDER" });
+  if (!note) return res.status(400).json({ ok: false, error: "NEED_NOTE", message: "ใส่เหตุผลด้วยนะคะ (เช่น เลขสลิป) จะได้ตรวจย้อนหลังได้" });
+  const o = await getOrder(orderId);
+  if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+  if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, already: true, message: "ออเดอร์นี้จ่ายแล้วอยู่แล้วค่ะ", blueprint_id: o.blueprint_id });
+
+  const pl = safeJson(o.order_payload_json) || {};
+  const hasForm = !!(pl.form_responses && pl.instagram_account);
+  await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`,
+    [JSON.stringify({ ...pl, manual_unlock: { note, at: new Date().toISOString() } }), orderId]);
+  await markOrderPaid(orderId, "manual", note);
+  sendEmail(OPS_EMAIL, `🔓 ปลดล็อกออเดอร์ด้วยมือ · ${o.email || "-"}`,
+    wrap(`มีการปลดล็อกออเดอร์ให้ลูกค้าโดยไม่ผ่าน Stripe ค่ะ<br><br>` +
+         `<b>อีเมล:</b> ${o.email || "-"}<br><b>ออเดอร์:</b> ${orderId}<br><b>ยอด:</b> ฿${Number(o.final_amount_satang || 0) / 100}<br>` +
+         `<b>เหตุผล:</b> ${note}<br><br>` +
+         (hasForm ? `ระบบจะสร้างเล่มให้อัตโนมัติภายใน 2 นาที แล้วส่งลิงก์เข้าเมลลูกค้าค่ะ`
+                  : `⚠️ ออเดอร์นี้<b>ไม่มีข้อมูลฟอร์ม</b> ลูกค้ายังไม่ได้กรอก ระบบสร้างเล่มให้ไม่ได้ ต้องให้ลูกค้ากรอกฟอร์มเองค่ะ`))).catch(() => {});
+  res.json({ ok: true, order_id: orderId, email: o.email, has_form_data: hasForm,
+    message: hasForm
+      ? "ปลดล็อกแล้วค่ะ ระบบจะสร้างเล่มให้เองภายใน 2 นาที แล้วส่งลิงก์เข้าเมลลูกค้า"
+      : "ปลดล็อกแล้ว แต่ออเดอร์นี้ยังไม่มีข้อมูลฟอร์ม ลูกค้าต้องกรอกฟอร์มเองก่อนถึงจะได้เล่มค่ะ" });
+});
 app.get("/api/admin/abandoned-dry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json({ ok: true, ...(await runAbandonedFollowups(true)) });

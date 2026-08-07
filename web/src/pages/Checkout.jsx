@@ -103,6 +103,18 @@ export default function Checkout() {
           <button className="btn full" onClick={pay} disabled={busy} style={{ marginBottom: 10 }}>{t("co_pay_mock")}</button>
         </> : <button className="btn full" onClick={pay} disabled={busy}>{t("co_pay")}</button>}
 
+        {/* ⏳ เตือนเรื่อง QR หมดอายุ — ต้นเหตุที่ลูกค้าจ่ายไม่ผ่านมากที่สุด (เจอ 77 คนใน 14 วัน)
+            เคสจริง 6 ส.ค.: ลูกค้าสแกน QR ที่หมดอายุแล้ว เงินออกจากบัญชีแต่ไม่ถึงเรา
+            บอกล่วงหน้าถูกกว่าตามแก้ทีหลังเยอะ */}
+        {!isMock && <div style={{ background: "#fff8ed", border: "1px solid #f5dfb8", borderRadius: 12,
+          padding: "11px 13px", marginTop: 12, fontSize: 12.5, lineHeight: 1.75, color: "#7a5b23" }}>
+          ⏳ <b>ถ้าจ่ายด้วยพร้อมเพย์</b> QR มีอายุจำกัดนะคะ กรุณา<b>สแกนจ่ายให้เสร็จในครั้งเดียว</b> และอย่าปิดหน้าจอระหว่างรอค่ะ<br />
+          ถ้า QR หมดอายุแล้ว <b>อย่าสแกนอันเดิม</b> ให้กลับมากดจ่ายใหม่เพื่อขอ QR อันใหม่ค่ะ — สแกนอันที่หมดอายุแล้วเงินจะไม่ถึงเรา
+        </div>}
+
+        {/* 🆘 ทางออกให้ลูกค้าที่จ่ายแล้วแต่ระบบไม่รู้ — เดิมต้องไปทักไอจีถึงจะมีคนตามให้ */}
+        <PaidReport orderId={orderId} />
+
         {plan !== "monthly" ? <p className="muted" style={{ fontSize: 12.5, marginTop: 14, lineHeight: 1.7 }}>{t("co_code_longplan")}</p> : <>
         <div className="row" style={{ margin: "18px 0 10px", color: "var(--muted)", fontSize: 12 }}>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />{t("co_or_code")}<div style={{ flex: 1, height: 1, background: "var(--border)" }} />
@@ -114,6 +126,47 @@ export default function Checkout() {
         {codeMsg && <p style={{ fontSize: 13, marginTop: 8, color: codeMsg.k === "err" ? "var(--down)" : codeMsg.k === "ok" ? "var(--up)" : "var(--muted)" }}>{codeMsg.t}</p>}
         </>}
       </div>
+    </div>
+  );
+}
+
+// 🆘 "จ่ายแล้วแต่ยังไม่ได้เล่ม" — ลูกค้าแจ้งเองได้ตรงนี้ เรื่องเข้าเมลทีมทันที
+// เคส 6 ส.ค.: ลูกค้าจ่ายแล้วเงียบไป 17 ชม. กว่าจะมีคนรู้ เพราะไม่มีช่องทางแจ้ง
+function PaidReport({ orderId }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [sending, setSending] = useState(false);
+  if (!orderId) return null;
+  async function send() {
+    setSending(true);
+    try { const r = await api("/api/order/report-paid", { method: "POST", body: { order_id: orderId, detail } });
+          setMsg({ ok: true, t: r.message }); }
+    catch (e) { setMsg({ ok: false, t: e.message }); }
+    setSending(false);
+  }
+  return (
+    <div style={{ marginTop: 14, textAlign: "center" }}>
+      {!open
+        ? <button onClick={() => setOpen(true)}
+            style={{ background: "none", border: 0, color: "var(--muted)", fontSize: 12.5, textDecoration: "underline",
+                     cursor: "pointer", fontFamily: "inherit", padding: 4 }}>
+            จ่ายเงินไปแล้วแต่ยังไม่ได้รับเล่ม? แจ้งเราที่นี่
+          </button>
+        : msg
+          ? <div className="msg" style={{ background: msg.ok ? "#e7f6ec" : "#fde8e8", color: msg.ok ? "#166534" : "#b42318", fontSize: 13, textAlign: "left" }}>{msg.t}</div>
+          : <div style={{ textAlign: "left", background: "var(--soft)", borderRadius: 12, padding: 13 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>แจ้งทีมงานว่าจ่ายเงินแล้ว</div>
+              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 9px", lineHeight: 1.7 }}>
+                บอกเราหน่อยนะคะว่าจ่ายตอนไหน ด้วยวิธีอะไร ทีมงานจะตรวจสอบแล้วปลดล็อกให้ค่ะ
+              </p>
+              <textarea value={detail} onChange={e => setDetail(e.target.value)} rows={3}
+                placeholder="เช่น จ่ายพร้อมเพย์ 490 บาท เมื่อคืนประมาณ 4 ทุ่มครึ่ง มีสลิปค่ะ"
+                style={{ width: "100%", fontSize: 13.5, fontFamily: "inherit" }} />
+              <button className="btn full" onClick={send} disabled={sending} style={{ marginTop: 9 }}>
+                {sending ? "กำลังส่ง..." : "ส่งให้ทีมงานตรวจสอบ"}
+              </button>
+            </div>}
     </div>
   );
 }

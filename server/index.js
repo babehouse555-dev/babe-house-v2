@@ -3166,9 +3166,10 @@ app.post("/api/admin/regen-content", async (req, res) => {
 // ===== 🎬 ให้ทีมช่วยลงมือทำ (ตัดต่อจากแผนของลูกค้า) =====
 // ราคาคิมเคาะ 2026-08-02 — ยิ่งสั่งเยอะยิ่งถูกลง ไม่มีเพดาน · ต้นทุนฟรีแลนซ์ ~400/คลิป
 // ⛔ ไม่รับงานถ่ายในเว็บ (ตัวแปรเยอะ ตั้งราคาตายตัวแล้วขาดทุน) → มีปุ่มให้ทีมโทรกลับแทน
-// ⏰ เวลาทำงานจริงของทีม (คิมให้ข้อมูล 2026-08-02): จันทร์-ศุกร์ 12:00-19:00 · ส่งงาน ~3 วันทำการ
+// ⏰ เวลาทำงานจริงของทีม (คิมให้ข้อมูล 2026-08-02 · เลื่อนเป็น 11:00 เมื่อ 7 ส.ค.): จันทร์-ศุกร์ · ส่งงาน ~3 วันทำการ
 const WORK_DAYS = [1, 2, 3, 4, 5];          // จ-ศ
-const WORK_START = 12, WORK_END = 19;        // เวลาไทย
+const WORK_START = 11, WORK_END = 19;        // เวลาไทย (คิมเลื่อนจาก 12:00 มา 11:00 เมื่อ 7 ส.ค. — ลูกค้าขอชิ้นงานก่อนเที่ยงเป็นส่วนใหญ่)
+const WORK_HOURS_TH = `จันทร์-ศุกร์ ${WORK_START}:00-${WORK_END}:00 น.`;  // ใช้ที่เดียว ทุกหน้าจะได้ตรงกันเสมอ
 const EDIT_DAYS_PER_CLIP = Number(process.env.EDIT_DAYS_PER_CLIP) || 3;   // คิมเคาะ 2 ส.ค.: 3 วันทำการต่อคลิป
 // ทีมทำหลายคลิปขนานกันได้ (พี่ก้อง + โบว์ + ฟรีแลนซ์) — ไม่ใช่ทำทีละคลิปจนจบ
 // ⚠️ เลข 3 นี้เป็นสมมติฐาน ปรับได้ที่ EDIT_PARALLEL — ยิ่งมากยิ่งสัญญาเร็ว ต้องแน่ใจว่าทีมทำทัน
@@ -3279,7 +3280,7 @@ app.get("/api/edit/price", async (req, res) => {
   res.json({ ok: true, clips: n, price_per_clip: Math.round(p.total / n), total: p.total,
     full_total: p.full, member_off_pct: p.off_pct, member_saved: p.saved, member_plan: perks?.plan || null, tiers: EDIT_TIERS,
     free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, parallel: EDIT_PARALLEL, lead_days: leadDaysFor(n),
-    hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
+    hours: WORK_HOURS_TH, working_now: isWorkingNow(),
     eta_if_send_now: thDate(addWorkDays(new Date(), leadDaysFor(n))) });
 });
 
@@ -3437,7 +3438,7 @@ app.get("/api/edit/order/:id", async (req, res) => {
   const cs = isTeam ? o.status : customerStatus(o.status);
   res.json({ ok: true, order: { ...(isTeam ? o : pub), status: cs, status_th: EDIT_STATUS[cs] || cs, brief: safeJson(o.brief_json), ref_picks: safeJson(o.ref_picks) || [],
     due_th: o.due_at ? thDate(o.due_at) : null }, comments, free_revisions: EDIT_FREE_REVISIONS,
-    hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
+    hours: WORK_HOURS_TH, working_now: isWorkingNow() });
 });
 
 // ═══════ 🔁 รอบแก้งาน — รวบทุกจุดไว้ในรอบเดียว แล้วค่อยส่งทีเดียว (คิมสั่ง 5 ส.ค. 2569) ═══════
@@ -3630,7 +3631,7 @@ app.post("/api/edit/comment", async (req, res) => {
         revising: "รับเรื่องเพิ่มแล้วค่ะ 🩵 ทีมจะรวมแก้ไปพร้อมกันในรอบนี้เลยนะคะ",
         done: "รับเรื่องแล้วค่ะ 🩵 งานนี้ปิดไปแล้ว เดี๋ยวทีมอ่านแล้วติดต่อกลับนะคะ",
       };
-      const offHours = isWorkingNow() ? "" : " (ตอนนี้นอกเวลาทำการนะคะ ทีมทำงาน จันทร์-ศุกร์ 12:00-19:00 น. เดี๋ยวเปิดทำการแล้วทีมจะเห็นเลยค่ะ)";
+      const offHours = isWorkingNow() ? "" : " (ตอนนี้นอกเวลาทำการนะคะ ทีมทำงาน ${WORK_HOURS_TH} เดี๋ยวเปิดทำการแล้วทีมจะเห็นเลยค่ะ)";
       await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
         [uid("ec"), orderId, (ACK[o.status] || ACK.editing) + offHours]);
     }
@@ -3673,10 +3674,10 @@ async function seedTeamIfEmpty() {
   // default_slots = รับได้กี่คลิป/วัน (คิมเคาะ 4 ส.ค.: พนักงานประจำฟิก 4 · ฟรีแลนซ์ 0 ต้องติ๊กเอง)
   const T = [
     ["คิม", "kim", "owner", "เจ้าของ", "both", 0],
-    ["ลูกตาล", "lookthan", "ae", "AE / Motion (AE)", "production", 2],
+    ["ลูกตาล", "lookthan", "ae", "AE (Account Executive)", "production", 0],
     ["โบ", "bow", "senior", "ตัดต่อ", "both", 4],
     ["พี่ก้อง", "gong", "senior", "ตัดต่อ", "production", 4],
-    ["กัน", "gun", "editor", "Content + ตัดต่อ", "both", 4],
+    ["กัน", "gun", "editor", "Content (ตัดต่อวันละ 1 คลิป)", "both", 1],
     ["เบนเซ่", "benz", "teacher", "คอนเทนต์ Academy", "academy", 0],
     ["แฟรี่", "fairy", "teacher", "กราฟฟิก", "academy", 0],
   ];
@@ -3696,6 +3697,13 @@ async function setAssignTiers() {
   // 🚫 AE (ลูกตาล) ตัดต่อไม่เป็น — คิมสั่ง 7 ส.ค. "ให้เป็นคนตรวจอย่างเดียว"
   //    ตั้งโควตา 0 ด้วย เพื่อให้หน้าตารางงานไม่ขึ้นว่า "ว่างรับได้ 20 คลิป" ซึ่งไม่จริง
   await run(`UPDATE team_members SET default_slots=0 WHERE role='ae'`).catch(() => {});
+  // 🏷️ ตำแหน่งลูกตาลขึ้นผิดเป็น "AE / Motion" — คิมแจ้ง 7 ส.ค. ให้เป็น AE อย่างเดียว
+  //    seed ใช้แค่ตอนตารางว่าง ทีมที่มีอยู่แล้วจึงต้องแก้ตรงนี้ด้วย ไม่งั้นของจริงไม่เปลี่ยน
+  await run(`UPDATE team_members SET position='AE (Account Executive)' WHERE code='lookthan'`).catch(() => {});
+  // 🎬 กันเป็นตำแหน่งคอนเทนต์ (คิดคอนเทนต์ 10-15 ชิ้น/วัน) ตัดคลิปได้วันละ 1 เท่านั้น
+  await run(`UPDATE team_members SET default_slots=1, position='Content (ตัดต่อวันละ 1 คลิป)' WHERE code='gun'`).catch(() => {});
+  // 🎨 แฟรี่เป็นกราฟฟิกของทีมโปรดักชั่น ไม่ใช่ครู Academy — ต้องมองเห็นในระบบงานโปรดักชั่น
+  await run(`UPDATE team_members SET role='graphic', position='กราฟฟิก', side='production' WHERE code='fairy'`).catch(() => {});
 }
 // หาว่าคนที่ยิงคำขอมาคือใคร (จากรหัสส่วนตัว) — แอดมินคีย์ของคิมนับเป็น owner เสมอ
 async function teamWho(req) {
@@ -3773,6 +3781,14 @@ app.get("/api/team/me", async (req, res) => {
       JOIN workshops w ON w.workshop_id=s.workshop_id
       ${isOwner || isAE ? "" : "WHERE ta.member_id=$1"} ORDER BY s.starts_at`, (isOwner || isAE) ? [] : [me.member_id]);
 
+    // 🎨 งานกราฟฟิกที่เกี่ยวกับคนนี้
+    const gjWhere = (isOwner || isAE) ? "" : "WHERE assigned_to=$1 OR requested_by=$1";
+    const graphicJobs = await q(`SELECT g.*, (SELECT name FROM team_members t WHERE t.member_id=g.assigned_to) assignee_name
+      FROM graphic_jobs g ${gjWhere} ORDER BY (status IN ('done','canceled')), due_at NULLS LAST, created_at DESC LIMIT 100`,
+      (isOwner || isAE) ? [] : [me.member_id]).catch(() => []);
+    // ปุ่ม "ขอให้แฟรี่ช่วย" โผล่เฉพาะทีมในเฮ้าส์ — ฟรีแลนซ์ต้องทำอาร์ตเวิร์คเองได้ (คิมสั่ง 7 ส.ค.)
+    const canAskGraphic = INHOUSE_CODES.includes(String(me.code || "")) || isOwner || isAE;
+
     // คนที่มอบหมายงานได้ (สำหรับ AE/owner) — เอาไว้ทำเมนูเลือกคน
     const members = (isOwner || isAE)
       ? await q(`SELECT member_id,name,role,position,side FROM team_members WHERE active ORDER BY role, name`) : [];
@@ -3781,7 +3797,9 @@ app.get("/api/team/me", async (req, res) => {
         booked: Number(t.booked || 0), revenue_baht: Number(t.revenue_satang || 0) / 100,
         share_baht: Math.round(Number(t.revenue_satang || 0) / 100 * (Number(t.share_percent || 10) / 100)),
         starts_th: thDate(t.starts_at) })),
-      members, statuses: EDIT_STATUS, hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow() });
+      members, statuses: EDIT_STATUS, hours: WORK_HOURS_TH, working_now: isWorkingNow(),
+      // 🎨 คิวงานกราฟฟิก — แฟรี่เห็นงานตัวเอง · คนตัดเห็นงานที่ตัวเองขอไว้ · คิม/ลูกตาลเห็นทั้งหมด
+      graphic_jobs: graphicJobs, graphic_statuses: GJ_STATUS, can_ask_graphic: canAskGraphic });
   } catch (e) { console.error("team/me", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
@@ -4179,6 +4197,89 @@ app.get("/api/team/external", async (req, res) => {
     all ? [] : [me.member_id]);
   res.json({ ok: true, jobs: rows.map(r => ({ ...r, due_th: r.due_at ? thDate(r.due_at) : null })) });
 });
+// ═══════ 🎨 งานกราฟฟิก (แฟรี่) — คิมสั่ง 7 ส.ค. ═══════
+// "แฟรี่เป็นตำแหน่งกราฟฟิก ยังไม่มีระบบการทำงานที่ชัดเจนในเว็บ"
+// งานเข้าแฟรี่ 2 ทาง: ลูกตาลส่งบรีฟกราฟฟิกตรงๆ · คนตัดต่อในเฮ้าส์กดขอให้ช่วยทำอาร์ตเวิร์ค
+// ⚠️ เฉพาะ "ในเฮ้าส์" (โบ/พี่ก้อง/กัน) เท่านั้นที่ขอได้ — ฟรีแลนซ์ต้องทำอาร์ตเวิร์คเองได้ในคนเดียว
+const INHOUSE_CODES = ["bow", "gong", "gun"];
+const GJ_STATUS = { open: "รอเริ่ม", doing: "กำลังทำ", sent: "ส่งงานแล้ว", done: "เสร็จแล้ว", canceled: "ยกเลิก" };
+
+async function graphicMember() {
+  return one(`SELECT member_id, name, email FROM team_members WHERE role='graphic' AND active ORDER BY name LIMIT 1`)
+    || one(`SELECT member_id, name, email FROM team_members WHERE code='fairy' LIMIT 1`);
+}
+
+// ขอให้แฟรี่ช่วยงานกราฟฟิก — ใช้ได้ทั้งจากงานตัดต่อ และจากบรีฟของลูกตาล
+app.post("/api/team/graphic/request", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const orderId = String(b.order_id || "").trim() || null;
+  // ✋ ฟรีแลนซ์ขอไม่ได้ (คิมสั่ง) — owner/ae ขอแทนใครก็ได้
+  const isInhouse = INHOUSE_CODES.includes(String(me.code || "")) || ["owner", "ae"].includes(me.role);
+  if (!isInhouse) return res.status(403).json({ ok: false, error: "NOT_ALLOWED",
+    message: "งานที่ส่งให้ฟรีแลนซ์ ให้ทำอาร์ตเวิร์คในงานเองได้เลยค่ะ ไม่ต้องส่งต่อให้กราฟฟิก" });
+
+  const fairy = await graphicMember();
+  if (!fairy) return res.status(409).json({ ok: false, error: "NO_GRAPHIC", message: "ยังไม่มีคนตำแหน่งกราฟฟิกในระบบค่ะ" });
+
+  let title = String(b.title || "").trim();
+  let brief = String(b.brief || "").slice(0, 3000);
+  let client = String(b.client || "").slice(0, 160) || null;
+  let refs = String(b.ref_links || "").slice(0, 2000) || null;
+  let due = b.due_at && /^\d{4}-\d{2}-\d{2}$/.test(String(b.due_at)) ? b.due_at : null;
+
+  if (orderId) {
+    // มาจากงานตัดต่อ — ดึงบรีฟเดิมมาให้อัตโนมัติ คนตัดจะได้ไม่ต้องพิมพ์ซ้ำ
+    const o = await one(`SELECT order_id, email, brief_json, ref_links, due_at, note FROM edit_orders WHERE order_id=$1`, [orderId]);
+    if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+    const already = await one(`SELECT gj_id FROM graphic_jobs WHERE from_order_id=$1 AND status NOT IN ('done','canceled')`, [orderId]);
+    if (already) return res.json({ ok: true, already: true, gj_id: already.gj_id, message: "งานนี้ขอกราฟฟิกไว้แล้วค่ะ" });
+    const bj = safeJson(o.brief_json) || {};
+    title = title || `อาร์ตเวิร์คในคลิป #${orderId.slice(-6)}${bj.t ? ` — ${bj.t}` : ""}`;
+    brief = brief || [bj.t && `หัวข้อ: ${bj.t}`, bj.h && `ฮุก: ${bj.h}`, o.note && `ลูกค้าสั่งเพิ่ม: ${o.note}`].filter(Boolean).join("\n");
+    refs = refs || o.ref_links;
+    due = due || (o.due_at ? ymd(o.due_at) : null);
+  }
+  if (!title) return res.status(400).json({ ok: false, error: "NEED_TITLE", message: "ใส่ชื่องานด้วยนะคะ" });
+
+  const gjId = uid("gj");
+  await run(`INSERT INTO graphic_jobs (gj_id,from_order_id,brief_id,title,brief,client,ref_links,assigned_to,requested_by,requested_by_name,due_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [gjId, orderId, String(b.brief_id || "") || null, title.slice(0, 200), brief, client, refs,
+     fairy.member_id, me.member_id, me.name, due]);
+  if (orderId) teamComment(orderId, "ระบบ", `🎨 ${me.name} ขอให้ ${fairy.name} ช่วยทำอาร์ตเวิร์คงานนี้`);
+  if (fairy.email) sendEmail(fairy.email, `🎨 มีงานกราฟฟิกใหม่ — ${title}`,
+    wrap(`สวัสดีค่ะ ${fairy.name} 🩵<br><br><b>${me.name}</b> ส่งงานกราฟฟิกมาให้ค่ะ<br><br>` +
+         `<b>${title}</b><br>${brief ? brief.replace(/\n/g, "<br>") : ""}<br><br>` +
+         `${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
+  res.json({ ok: true, gj_id: gjId, to: fairy.name, message: `ส่งให้ ${fairy.name} แล้วค่ะ` });
+});
+
+// อัปเดตสถานะ/ส่งงาน (แฟรี่ทำเอง · owner/ae ก็แก้ได้)
+app.post("/api/team/graphic/update", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const gj = await one(`SELECT * FROM graphic_jobs WHERE gj_id=$1`, [String(b.gj_id || "")]);
+  if (!gj) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const mine = gj.assigned_to === me.member_id || ["owner", "ae"].includes(me.role);
+  if (!mine) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const status = Object.keys(GJ_STATUS).includes(String(b.status)) ? String(b.status) : gj.status;
+  await run(`UPDATE graphic_jobs SET status=$1, work_url=COALESCE($2,work_url), note=COALESCE($3,note),
+     done_at=CASE WHEN $1 IN ('done','canceled') THEN now() ELSE done_at END, updated_at=now() WHERE gj_id=$4`,
+    [status, String(b.work_url || "").trim() || null, String(b.note || "").slice(0, 1000) || null, gj.gj_id]);
+  // ส่งงานแล้ว → บอกคนที่ขอไว้ (คนตัดต่อ/ลูกตาล) ให้รู้ทันที ไม่ต้องมานั่งถาม
+  if (status === "sent" && gj.from_order_id) {
+    teamComment(gj.from_order_id, "ระบบ", `🎨 ${me.name} ส่งอาร์ตเวิร์คแล้ว${b.work_url ? ` — ${b.work_url}` : ""}`);
+    const r = await one(`SELECT email, name FROM team_members WHERE member_id=$1`, [gj.requested_by]);
+    if (r?.email) sendEmail(r.email, `🎨 อาร์ตเวิร์คพร้อมแล้ว — ${gj.title}`,
+      wrap(`สวัสดีค่ะ ${r.name} 🩵<br><br>${me.name} ส่งอาร์ตเวิร์คให้แล้วค่ะ<br><br>` +
+           (b.work_url ? `<a href="${b.work_url}">เปิดไฟล์งาน</a><br><br>` : "") +
+           `${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
+  }
+  res.json({ ok: true, status });
+});
 app.post("/api/team/external", async (req, res) => {
   const me = await teamWho(req);
   if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
@@ -4452,7 +4553,7 @@ app.get("/api/team/jobs", async (req, res) => {
       FROM edit_orders ORDER BY (status='done' OR status='canceled'), due_at NULLS LAST, created_at DESC`);
     const cs = await q(`SELECT order_id, COUNT(*) n FROM edit_comments GROUP BY order_id`);
     const cmap = Object.fromEntries(cs.map(c => [c.order_id, Number(c.n)]));
-    res.json({ ok: true, statuses: EDIT_STATUS, hours: "จันทร์-ศุกร์ 12:00-19:00 น.", working_now: isWorkingNow(),
+    res.json({ ok: true, statuses: EDIT_STATUS, hours: WORK_HOURS_TH, working_now: isWorkingNow(),
       orders: rows.map(({ email, ...r }) => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status, comments: cmap[r.order_id] || 0,
         ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json), due_th: r.due_at ? thDate(r.due_at) : null,
         // 🔒 ไม่ส่งอีเมลลูกค้าให้ทีม — ส่งแค่ชื่อย่อไว้แยกว่างานไหนของลูกค้าคนเดียวกัน (คุยกันผ่านกล่องคอมเมนต์ในระบบ)

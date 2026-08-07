@@ -69,12 +69,32 @@ const btn = (bg = "#2f2a26") => ({ background: bg, color: "#fff", border: 0, bor
 const ghost = { background: "#fff", color: "#2f2a26", border: "1px solid #ddd2c8", borderRadius: 999, padding: "8px 16px", fontSize: 14, cursor: "pointer" };
 const input = { width: "100%", padding: "10px 12px", border: "1px solid #ddd2c8", borderRadius: 10, fontSize: 15, fontFamily: "inherit", boxSizing: "border-box" };
 
+
+// 🔗 ทำให้ลิงก์ในข้อความกดได้ (คิมแจ้ง 7 ส.ค. "ลิงก์ของ Reference กดลิงค์ไม่ได้")
+// ลูกค้าวางลิงก์มาหลายบรรทัด/ปนกับข้อความ — เดิมโชว์เป็นตัวหนังสือเฉยๆ ทีมต้องก๊อปไปวางเอง
+// รับได้ทั้ง http(s):// และ www. · ตัดเครื่องหมายวรรคตอนท้ายลิงก์ออก (เช่น "ดูนี่ https://x.com/a." )
+function Linkify({ text }) {
+  if (!text) return null;
+  const parts = String(text).split(/(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi);
+  return <>{parts.map((p, i) => {
+    if (!/^(https?:\/\/|www\.)/i.test(p)) return <span key={i}>{p}</span>;
+    const clean = p.replace(/[.,;:!?)\]}]+$/, "");
+    const tail = p.slice(clean.length);
+    const href = /^www\./i.test(clean) ? `https://${clean}` : clean;
+    return <span key={i}>
+      <a href={href} target="_blank" rel="noreferrer noopener"
+         style={{ color: "#0b6ea8", textDecoration: "underline", wordBreak: "break-all" }}>{clean}</a>{tail}
+    </span>;
+  })}</>;
+}
+
 export default function Team() {
   const [code, setCode] = useState(localStorage.getItem("babe_my_code") || "");
   const [typed, setTyped] = useState("");
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("jobs");
+  const [gjUrl, setGjUrl] = useState({});      // ลิงก์ไฟล์งานที่แฟรี่กำลังพิมพ์ (แยกตามงาน)
   const [busy, setBusy] = useState("");
   const [draftUrl, setDraftUrl] = useState({});
   const [note, setNote] = useState({});
@@ -143,7 +163,11 @@ export default function Team() {
   const mine = active.filter(j => j.assigned_to === me.member_id).length;
   const toReview = active.filter(j => reviewGate(j, me)).length;
 
+  // 🎨 งานกราฟฟิก (คิมสั่ง 7 ส.ค.) — แฟรี่เห็นคิวตัวเอง · คนตัดเห็นงานที่ตัวเองขอไว้
+  const gjs = d.graphic_jobs || [];
+  const gjOpen = gjs.filter(g => !["done", "canceled"].includes(g.status));
   const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
+    .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
     .concat((isOwner || isAE) ? [["intake", "🏢 รับบรีฟลูกค้า", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
     .concat(isOwner ? [["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
@@ -506,6 +530,58 @@ export default function Team() {
       })()}
 
       {/* ═══ 🏢 ลูกตาลรับบรีฟลูกค้านอกเว็บ → ระบบจัดคนให้เอง (คิมสั่ง 4 ส.ค.) ═══ */}
+      {/* ═══════ 🎨 งานกราฟฟิก — คิมสั่ง 7 ส.ค. "แฟรี่ยังไม่มีระบบการทำงานที่ชัดเจน" ═══════ */}
+      {tab === "graphic" && (() => {
+        const isFairy = d.me?.role === "graphic";
+        return <>
+          <div style={card}>
+            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>🎨 งานกราฟฟิก</h3>
+            <p style={{ fontSize: 13, color: "#7c7268", margin: 0, lineHeight: 1.7 }}>
+              {isFairy
+                ? <>งานที่ทีมส่งมาให้ทำค่ะ — กด <b>เริ่มทำ</b> เพื่อบอกทีมว่ารับแล้ว พอเสร็จแปะลิงก์ไฟล์งานแล้วกด <b>ส่งงาน</b> ระบบจะแจ้งคนที่ขอให้เองค่ะ</>
+                : <>งานกราฟฟิกที่คุณขอให้ทีมกราฟฟิกช่วยค่ะ</>}
+            </p>
+          </div>
+          {!gjs.length && <div style={card}><p className="muted" style={{ margin: 0, fontSize: 14 }}>ยังไม่มีงานกราฟฟิกค่ะ</p></div>}
+          {gjs.map(g => {
+            const done = ["done", "canceled"].includes(g.status);
+            const tone = { open: "#B26A00", doing: "#0b6ea8", sent: C.green, done: "#a89f96", canceled: "#a89f96" }[g.status];
+            return (
+              <div key={g.gj_id} style={{ ...card, opacity: done ? .65 : 1, borderLeft: `4px solid ${tone}` }}>
+                <div className="between" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <b style={{ fontSize: 15 }}>{g.title}</b>
+                    <div style={{ fontSize: 12.5, color: "#a89f96", marginTop: 2 }}>
+                      {d.graphic_statuses?.[g.status] || g.status}
+                      {g.requested_by_name ? ` · ขอโดย ${g.requested_by_name}` : ""}
+                      {g.due_th ? ` · ส่ง ${g.due_th}` : ""}
+                      {!isFairy && g.assignee_name ? ` · ${g.assignee_name}` : ""}
+                    </div>
+                  </div>
+                </div>
+                {g.brief && <div style={{ background: "#fbf7f3", borderRadius: 10, padding: 11, marginTop: 9, fontSize: 13.5, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+                  <Linkify text={g.brief} />
+                </div>}
+                {g.ref_links && <p style={{ margin: "7px 0 0", fontSize: 13.5, whiteSpace: "pre-wrap" }}>🔗 ตัวอย่าง: <Linkify text={g.ref_links} /></p>}
+                {g.work_url && <p style={{ margin: "7px 0 0", fontSize: 13.5 }}>🖼️ ไฟล์งาน: <Linkify text={g.work_url} /></p>}
+                {isFairy && !done && (
+                  <div style={{ display: "flex", gap: 7, marginTop: 11, flexWrap: "wrap", alignItems: "center" }}>
+                    {g.status === "open" && <button style={btn()} disabled={busy === "gj"}
+                      onClick={() => post("/api/team/graphic/update", { gj_id: g.gj_id, status: "doing" }, "gj")}>เริ่มทำ</button>}
+                    <input style={{ ...input, flex: 1, minWidth: 190 }} placeholder="ลิงก์ไฟล์งาน (Drive / Figma)"
+                      value={gjUrl[g.gj_id] || ""} onChange={e => setGjUrl(v => ({ ...v, [g.gj_id]: e.target.value }))} />
+                    <button style={btn()} disabled={busy === "gj" || !(gjUrl[g.gj_id] || "").trim()}
+                      onClick={() => post("/api/team/graphic/update", { gj_id: g.gj_id, status: "sent", work_url: (gjUrl[g.gj_id] || "").trim() }, "gj")}>ส่งงาน</button>
+                  </div>)}
+                {!isFairy && g.status === "sent" && (
+                  <button style={{ ...ghost, marginTop: 10, fontSize: 13 }} disabled={busy === "gj"}
+                    onClick={() => post("/api/team/graphic/update", { gj_id: g.gj_id, status: "done" }, "gj")}>✓ รับงานแล้ว</button>)}
+              </div>
+            );
+          })}
+        </>;
+      })()}
+
       {tab === "intake" && (
         <div style={card}>
           <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>🏢 รับบรีฟลูกค้า</h3>
@@ -660,14 +736,33 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       {open && (
         <div style={{ background: "#fbf7f3", borderRadius: 10, padding: 12, marginTop: 10, fontSize: 14, lineHeight: 1.7 }}>
           {b.hook && <p style={{ margin: "0 0 6px" }}><b>ฮุก:</b> {b.hook}</p>}
-          {b.script && <p style={{ margin: "0 0 6px", whiteSpace: "pre-wrap" }}><b>สคริปต์:</b> {b.script}</p>}
+          {b.script && <p style={{ margin: "0 0 6px", whiteSpace: "pre-wrap" }}><b>สคริปต์:</b> <Linkify text={b.script} /></p>}
           {b.cta && <p style={{ margin: "0 0 6px" }}><b>ปิดท้าย:</b> {b.cta}</p>}
-          {j.note && <p style={{ margin: "6px 0 0", color: "#B26A00" }}><b>ลูกค้าสั่งเพิ่ม:</b> {j.note}</p>}
-          {j.internal_note && <p style={{ margin: "6px 0 0", color: "#0b6ea8" }}><b>โน้ตภายในทีม:</b> {j.internal_note}</p>}
+          {j.note && <p style={{ margin: "6px 0 0", color: "#B26A00", whiteSpace: "pre-wrap" }}><b>ลูกค้าสั่งเพิ่ม:</b> <Linkify text={j.note} /></p>}
+          {j.internal_note && <p style={{ margin: "6px 0 0", color: "#0b6ea8", whiteSpace: "pre-wrap" }}><b>โน้ตภายในทีม:</b> <Linkify text={j.internal_note} /></p>}
           {j.footage_url && <p style={{ margin: "6px 0 0" }}>🎥 <a href={j.footage_url} target="_blank" rel="noreferrer">ไฟล์วิดีโอจากลูกค้า</a></p>}
           {j.voice_url && <p style={{ margin: "4px 0 0" }}>🎙 <a href={j.voice_url} target="_blank" rel="noreferrer">ไฟล์เสียง</a></p>}
-          {j.ref_links && <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>🔗 ตัวอย่างที่ลูกค้าชอบ: {j.ref_links}</p>}
+          {j.ref_links && <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>🔗 ตัวอย่างที่ลูกค้าชอบ: <Linkify text={j.ref_links} /></p>}
           {j.draft_url && <p style={{ margin: "6px 0 0" }}>📼 <a href={j.draft_url} target="_blank" rel="noreferrer">งานที่ตัดแล้ว</a></p>}
+
+          {/* 🎨 ขอให้กราฟฟิกช่วย — คิมสั่ง 7 ส.ค.
+              "หน้าต่างงานของโบ พี่ก้อง กัน สามคนที่เป็นอินเฮ้าส์ต้องมีปุ่มประสานงานกับแฟรี่
+               แต่มันไม่ใช่ทุกงาน คนตัดต่อจะต้องเป็นคนกดว่าอยากให้แฟรี่ช่วยงานนี้"
+              ฟรีแลนซ์ไม่มีปุ่มนี้ — ต้องทำอาร์ตเวิร์คเองได้ในคนเดียว (เช็คที่หลังบ้านอีกชั้น) */}
+          {d.can_ask_graphic && (() => {
+            const g = (d.graphic_jobs || []).find(x => x.from_order_id === j.order_id && !["done", "canceled"].includes(x.status));
+            if (g) return (
+              <p style={{ margin: "9px 0 0", fontSize: 13.5, color: "#7a4fa3" }}>
+                🎨 ขอกราฟฟิกไว้แล้ว · <b>{d.graphic_statuses?.[g.status] || g.status}</b>
+                {g.work_url && <> · <Linkify text={g.work_url} /></>}
+              </p>);
+            return (
+              <button style={{ ...ghost, marginTop: 10, fontSize: 13, borderColor: "#d9c7ea", color: "#7a4fa3" }}
+                disabled={busy === "gj"}
+                onClick={() => post("/api/team/graphic/request", { order_id: j.order_id }, "gj")}>
+                🎨 ขอให้กราฟฟิกช่วยงานนี้
+              </button>);
+          })()}
         </div>
       )}
 

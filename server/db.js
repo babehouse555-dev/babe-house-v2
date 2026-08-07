@@ -192,6 +192,32 @@ export async function initDb() {
       done_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS idx_ext_member ON external_jobs(member_id, status);
+    -- 🎨 งานกราฟฟิก (คิมสั่ง 7 ส.ค.) — แฟรี่เป็นกราฟฟิกแต่ยังไม่มีระบบงานในเว็บเลย
+    -- 2 ทางที่งานเข้าหาแฟรี่:
+    --   1) ลูกตาลรับบรีฟลูกค้าแล้วเป็นงานกราฟฟิก → เข้าแฟรี่ตรงๆ (from_order_id ว่าง)
+    --   2) คนตัดต่อในเฮ้าส์ (โบ/พี่ก้อง/กัน) กดขอให้แฟรี่ช่วยทำอาร์ตเวิร์คในคลิป → ผูกกับงานตัดต่อนั้น
+    -- ⚠️ ฟรีแลนซ์ไม่มีปุ่มนี้ — คิมสั่งว่าฟรีแลนซ์ต้องทำอาร์ตเวิร์คเองได้ในคนเดียว
+    CREATE TABLE IF NOT EXISTS graphic_jobs (
+      gj_id TEXT PRIMARY KEY,
+      from_order_id TEXT,             -- งานตัดต่อต้นทาง (ถ้าเป็นงานที่คนตัดขอความช่วยเหลือ)
+      brief_id TEXT,                  -- บรีฟจากลูกตาล (ถ้ามาจากทางนั้น)
+      title TEXT NOT NULL,
+      brief TEXT,
+      client TEXT,
+      ref_links TEXT,
+      assigned_to TEXT,               -- ปกติคือแฟรี่
+      requested_by TEXT,              -- ใครเป็นคนขอ
+      requested_by_name TEXT,
+      status TEXT DEFAULT 'open',     -- open | doing | sent | done | canceled
+      due_at TIMESTAMPTZ,
+      work_url TEXT,                  -- ลิงก์ไฟล์งานที่แฟรี่ส่ง
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now(),
+      done_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_gj_assignee ON graphic_jobs(assigned_to, status);
+    CREATE INDEX IF NOT EXISTS idx_gj_order ON graphic_jobs(from_order_id);
     -- 💰 ยอดเงินของงานโปรดักชั่นนอกเว็บ (คิมสั่ง 7 ส.ค. "หน้ายอดขายต้องมียอด production ด้วย")
     -- งานโปรดักชั่นส่วนใหญ่รับตรง ไม่ได้ผ่านเว็บ ถ้าไม่เก็บยอดไว้ หน้ายอดขายจะเห็นแค่ครึ่งเดียวของธุรกิจ
     -- ใส่ 0 หรือเว้นว่างได้ = งานที่ยังไม่รู้ยอด/ไม่คิดเงิน จะไม่ถูกนับ

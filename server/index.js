@@ -4280,6 +4280,178 @@ app.post("/api/team/graphic/update", async (req, res) => {
   }
   res.json({ ok: true, status });
 });
+// ═══════ 🌴 วันลา + วันหยุดบริษัท (คิมเคาะ 7 ส.ค.) ═══════
+// "ยึดตามกฎหมายให้ด้วยว่า ลากิจกี่วัน ลาพักร้อนได้กี่วัน ลาตามวันหยุด (13 วัน) กันความมั่วในการกดวันหยุด"
+//
+// ⚖️ กฎหมายแรงงานไทย (พ.ร.บ.คุ้มครองแรงงาน) กำหนดขั้นต่ำไว้ที่:
+//    ลาป่วย 30 วัน/ปี (ม.32,57) · ลากิจ 3 วัน/ปี (ม.34) · พักร้อน 6 วัน/ปี เมื่อทำครบ 1 ปี (ม.30)
+//    วันหยุดตามประเพณี ไม่น้อยกว่า 13 วัน/ปี รวมวันแรงงาน (ม.29)
+// ⚠️ ที่คิมเคาะ: พักร้อนครบปี 3 วัน — "ต่ำกว่าขั้นต่ำตามกฎหมาย 6 วัน" แจ้งคิมแล้ว
+//    ตั้งเป็นตัวเลขแก้ได้ตรงนี้จุดเดียว ปรับได้ทันทีถ้าคิมตัดสินใจใหม่
+const LEAVE_RULES = {
+  sick:     { label: "ลาป่วย",   days: 30, legal_min: 30, need_proof: true,
+              note: "ต้องมีหลักฐานยืนยันว่าป่วยจริง (ใบรับรองแพทย์) · ยืดหยุ่นได้ตามลักษณะงาน" },
+  personal: { label: "ลากิจ",    days: 5,  legal_min: 3,  need_proof: false, note: "ลาธุระจำเป็น" },
+  vacation: { label: "พักร้อน",  days: 3,  legal_min: 6,  need_proof: false, days_before_1y: 2,
+              note: "ยังไม่ครบ 1 ปีได้ 2 วัน · ครบ 1 ปีได้ 3 วัน · สะสมข้ามปีไม่ได้" },
+};
+const yearOf = (d) => new Date(d).getFullYear();
+// โควตาของคนนี้ปีนี้ — พักร้อนขึ้นกับว่าทำงานครบ 1 ปีหรือยัง
+function leaveQuota(member, year) {
+  const q = {};
+  for (const [k, r] of Object.entries(LEAVE_RULES)) {
+    let days = r.days;
+    if (k === "vacation") {
+      const start = member.started_at ? new Date(member.started_at) : null;
+      // ครบ 1 ปีนับถึงสิ้นปีนี้ไหม · ไม่ได้บันทึกวันเริ่มงาน = ถือว่าครบแล้ว (คนเดิมของทีม)
+      const oneYear = !start || (new Date(year, 11, 31) - start) / 86400000 >= 365;
+      days = oneYear ? r.days : r.days_before_1y;
+    }
+    q[k] = days;
+  }
+  return q;
+}
+async function leaveSummary(memberId, year = new Date().getFullYear()) {
+  const m = await one(`SELECT member_id, name, started_at FROM team_members WHERE member_id=$1`, [memberId]);
+  if (!m) return null;
+  const quota = leaveQuota(m, year);
+  const used = await q(`SELECT kind, COUNT(*) n FROM leave_requests
+    WHERE member_id=$1 AND status='approved' AND EXTRACT(YEAR FROM day)=$2 GROUP BY kind`, [memberId, year]);
+  const um = Object.fromEntries(used.map(r => [r.kind, Number(r.n)]));
+  return {
+    year, name: m.name, started_at: m.started_at,
+    kinds: Object.entries(LEAVE_RULES).map(([k, r]) => ({
+      kind: k, label: r.label, quota: quota[k], used: um[k] || 0,
+      left: Math.max(0, quota[k] - (um[k] || 0)), need_proof: r.need_proof, note: r.note,
+      below_legal: quota[k] < r.legal_min, legal_min: r.legal_min,
+    })),
+  };
+}
+
+// 📅 วันหยุดบริษัท — ตั้งชุดหลักให้อัตโนมัติถ้ายังไม่มี (ปีใหม่ 5 · สงกรานต์ 4 · แรงงาน 1 = 10 วัน)
+// อีก 3 วันคิมเลือกเองจากปฏิทินวันหยุดไทย รวมเป็น 13 วันตามกฎหมาย
+async function seedHolidays(year = new Date().getFullYear()) {
+  const have = Number((await one(`SELECT COUNT(*) c FROM company_holidays WHERE EXTRACT(YEAR FROM day)=$1`, [year]))?.c || 0);
+  if (have > 0) return;
+  const p = (m, d) => `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const base = [
+    [p(12, 31), "สิ้นปี"], [p(1, 1), "ปีใหม่"], [p(1, 2), "ชดเชยปีใหม่"], [p(1, 3), "หยุดยาวปีใหม่"], [p(1, 4), "หยุดยาวปีใหม่"],
+    [p(4, 12), "สงกรานต์"], [p(4, 13), "สงกรานต์"], [p(4, 14), "สงกรานต์"], [p(4, 15), "สงกรานต์"],
+    [p(5, 1), "วันแรงงาน"],
+  ];
+  for (const [day, name] of base)
+    await run(`INSERT INTO company_holidays (day,name,fixed) VALUES ($1,$2,true) ON CONFLICT (day) DO NOTHING`, [day, name]).catch(() => {});
+  console.log(`[holidays] ตั้งวันหยุดหลัก ${base.length} วันของปี ${year} แล้ว (เหลือให้คิมเลือกอีก 3 วัน)`);
+}
+
+// ดูวันลา + โควตาคงเหลือของตัวเอง (คิม/AE ดูของทุกคนได้)
+app.get("/api/team/leave", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const year = Number(req.query.year) || new Date().getFullYear();
+  const boss = ["owner", "ae"].includes(me.role);
+  const target = (boss && req.query.member_id) ? String(req.query.member_id) : me.member_id;
+  await seedHolidays(year).catch(() => {});
+  const holidays = await q(`SELECT day, name, fixed FROM company_holidays WHERE EXTRACT(YEAR FROM day)=$1 ORDER BY day`, [year]).catch(() => []);
+  const mine = await q(`SELECT * FROM leave_requests WHERE member_id=$1 AND EXTRACT(YEAR FROM day)=$2 ORDER BY day DESC`, [target, year]);
+  const pending = boss
+    ? await q(`SELECT l.*, t.name AS member_name FROM leave_requests l JOIN team_members t ON t.member_id=l.member_id
+               WHERE l.status='pending' ORDER BY l.day`) : [];
+  res.json({ ok: true, year, is_boss: boss,
+    summary: await leaveSummary(target, year),
+    holidays: holidays.map(h => ({ ...h, day: ymd(h.day) })),
+    holidays_target: 13, holidays_left: Math.max(0, 13 - holidays.length),
+    requests: mine.map(r => ({ ...r, day: ymd(r.day) })),
+    pending: pending.map(r => ({ ...r, day: ymd(r.day) })),
+    rules: LEAVE_RULES });
+});
+
+// ขอลา — เช็คโควตา + กันกดลาชนวันหยุดบริษัท/เสาร์อาทิตย์ (คิมสั่ง "กันความมั่ว")
+app.post("/api/team/leave", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.member_id === "admin") return res.status(401).json({ ok: false, error: "UNAUTHORIZED", message: "ต้องเข้าด้วยรหัสส่วนตัวของพนักงานค่ะ" });
+  const b = req.body || {};
+  const kind = Object.keys(LEAVE_RULES).includes(String(b.kind)) ? String(b.kind) : null;
+  const days = (Array.isArray(b.days) ? b.days : [b.day]).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")));
+  if (!kind) return res.status(400).json({ ok: false, error: "BAD_KIND", message: "เลือกประเภทการลาด้วยนะคะ" });
+  if (!days.length) return res.status(400).json({ ok: false, error: "NO_DAY", message: "เลือกวันที่จะลาด้วยนะคะ" });
+  const rule = LEAVE_RULES[kind];
+  const proof = String(b.proof_url || "").trim();
+  if (rule.need_proof && !proof)
+    return res.status(400).json({ ok: false, error: "NEED_PROOF", message: "ลาป่วยต้องแนบหลักฐานด้วยนะคะ (ใบรับรองแพทย์ / รูปถ่าย)" });
+
+  const year = yearOf(days[0]);
+  const sum = await leaveSummary(me.member_id, year);
+  const k = sum.kinds.find(x => x.kind === kind);
+  const skipped = [];
+  const ok = [];
+  for (const d of days) {
+    const hol = await one(`SELECT name FROM company_holidays WHERE day=$1::date`, [d]);
+    if (hol) { skipped.push(`${d} เป็นวันหยุดบริษัทอยู่แล้ว (${hol.name})`); continue; }
+    const dow = new Date(d + "T00:00:00").getDay();
+    if (dow === 0 || dow === 6) { skipped.push(`${d} เป็นเสาร์-อาทิตย์ ไม่ต้องลาค่ะ`); continue; }
+    const dup = await one(`SELECT status FROM leave_requests WHERE member_id=$1 AND day=$2::date`, [me.member_id, d]);
+    if (dup) { skipped.push(`${d} ขอลาไว้แล้ว (${dup.status === "approved" ? "อนุมัติแล้ว" : "รออนุมัติ"})`); continue; }
+    ok.push(d);
+  }
+  if (ok.length > k.left)
+    return res.status(409).json({ ok: false, error: "OVER_QUOTA",
+      message: `${rule.label}ปีนี้เหลือ ${k.left} วัน แต่ขอมา ${ok.length} วันค่ะ` });
+  for (const d of ok)
+    await run(`INSERT INTO leave_requests (leave_id,member_id,kind,day,reason,proof_url) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [uid("lv"), me.member_id, kind, d, String(b.reason || "").slice(0, 500) || null, proof || null]);
+  if (ok.length) sendEmail(OPS_EMAIL, `🌴 ${me.name} ขอ${rule.label} ${ok.length} วัน`,
+    wrap(`<b>${me.name}</b> ขอ${rule.label}ค่ะ<br><br><b>วันที่:</b> ${ok.join(", ")}<br>` +
+         `<b>เหตุผล:</b> ${b.reason || "-"}<br>${proof ? `<b>หลักฐาน:</b> <a href="${proof}">เปิดดู</a><br>` : ""}` +
+         `<b>โควตาคงเหลือหลังอนุมัติ:</b> ${k.left - ok.length} วัน<br><br>${btn(appBaseUrl() + "/team", "เปิดหน้าอนุมัติ")}`)).catch(() => {});
+  res.json({ ok: true, requested: ok, skipped,
+    message: ok.length ? `ส่งคำขอ${rule.label} ${ok.length} วันแล้วค่ะ รออนุมัติ` : "ไม่มีวันไหนขอลาได้ค่ะ" });
+});
+
+// อนุมัติ/ไม่อนุมัติ (คิม/AE) — อนุมัติแล้วปิดที่ว่างวันนั้นให้อัตโนมัติ + กระจายงานสำรองทันที
+app.post("/api/team/leave/decide", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const id = String(req.body?.leave_id || ""); const pass = req.body?.pass !== false;
+  const lv = await one(`SELECT * FROM leave_requests WHERE leave_id=$1`, [id]);
+  if (!lv) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  await run(`UPDATE leave_requests SET status=$1, decided_by=$2, decided_at=now(), decide_note=$3 WHERE leave_id=$4`,
+    [pass ? "approved" : "rejected", me.name, String(req.body?.note || "").slice(0, 300) || null, id]);
+  let moved = [];
+  if (pass) {
+    // อนุมัติแล้ว = วันนั้นไม่ว่างจริง → ปิดที่ว่าง แล้วให้ระบบหาคนรับงานแทนทันที (ใช้ท่อเดิมที่ทดสอบแล้ว)
+    const day = ymd(lv.day);
+    await run(`INSERT INTO team_availability (avail_id,member_id,day,slots,is_leave) VALUES ($1,$2,$3,0,true)
+      ON CONFLICT (member_id, day) DO UPDATE SET slots=0, is_leave=true, updated_at=now()`, [uid("av"), lv.member_id, day]);
+    moved = await reassignOverload(lv.member_id, day).catch(() => []);
+  }
+  const m = await one(`SELECT name, email FROM team_members WHERE member_id=$1`, [lv.member_id]);
+  if (m?.email) sendEmail(m.email, pass ? `✅ อนุมัติวันลาแล้ว — ${ymd(lv.day)}` : `❌ ไม่อนุมัติวันลา — ${ymd(lv.day)}`,
+    wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>${LEAVE_RULES[lv.kind]?.label || "วันลา"} วันที่ <b>${ymd(lv.day)}</b> ` +
+         (pass ? "ได้รับการอนุมัติแล้วค่ะ" : "ไม่ได้รับการอนุมัติค่ะ") +
+         (req.body?.note ? `<br><br>หมายเหตุ: ${req.body.note}` : ""))).catch(() => {});
+  res.json({ ok: true, approved: pass, reassigned: moved });
+});
+
+// จัดการวันหยุดบริษัท (คิมเท่านั้น) — เพิ่ม/ลบวันที่เลือกเองอีก 3 วัน
+app.post("/api/team/holidays", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const day = String(req.body?.day || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ ok: false, error: "BAD_DAY" });
+  if (req.body?.remove) {
+    const h = await one(`SELECT fixed FROM company_holidays WHERE day=$1::date`, [day]);
+    if (h?.fixed) return res.status(409).json({ ok: false, error: "FIXED", message: "วันหยุดชุดหลัก (ปีใหม่/สงกรานต์/แรงงาน) ลบไม่ได้ค่ะ" });
+    await run(`DELETE FROM company_holidays WHERE day=$1::date`, [day]);
+    return res.json({ ok: true, removed: day });
+  }
+  const year = yearOf(day);
+  const n = Number((await one(`SELECT COUNT(*) c FROM company_holidays WHERE EXTRACT(YEAR FROM day)=$1`, [year]))?.c || 0);
+  if (n >= 13) return res.status(409).json({ ok: false, error: "FULL", message: "ปีนี้ครบ 13 วันแล้วค่ะ ถ้าจะเพิ่มต้องเอาวันอื่นออกก่อน" });
+  await run(`INSERT INTO company_holidays (day,name,fixed) VALUES ($1,$2,false) ON CONFLICT (day) DO UPDATE SET name=EXCLUDED.name`,
+    [day, String(req.body?.name || "วันหยุดบริษัท").slice(0, 100)]);
+  res.json({ ok: true, day, total: n + 1, left: 13 - (n + 1) });
+});
 app.post("/api/team/external", async (req, res) => {
   const me = await teamWho(req);
   if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

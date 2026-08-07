@@ -95,6 +95,10 @@ export default function Team() {
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("jobs");
   const [gjUrl, setGjUrl] = useState({});      // ลิงก์ไฟล์งานที่แฟรี่กำลังพิมพ์ (แยกตามงาน)
+  const [lv, setLv] = useState(null);         // ข้อมูลวันลา
+  const [lvF, setLvF] = useState({ kind: "personal", day: "", reason: "", proof_url: "" });
+  const [holF, setHolF] = useState({ day: "", name: "" });
+  const loadLeave = () => api(`/api/team/leave?code=${encodeURIComponent(code)}`).then(setLv).catch(() => {});
   const [busy, setBusy] = useState("");
   const [draftUrl, setDraftUrl] = useState({});
   const [note, setNote] = useState({});
@@ -130,6 +134,7 @@ export default function Team() {
     api(`/api/team/external?code=${encodeURIComponent(code)}${all ? "&all=1" : ""}`).then(r => setExt(r.jobs || [])).catch(() => {});
   };
   useEffect(() => { if (tab === "cal" && d) loadCal(); }, [tab, d]);   // eslint-disable-line
+  useEffect(() => { if (tab === "leave" && d) loadLeave(); }, [tab, d]);   // eslint-disable-line
   useEffect(() => { if (tab === "review" && d?.me?.role === "owner" && !rev)
     api(`/api/team/weekly-review?code=${encodeURIComponent(code)}`).then(setRev).catch(() => {}); }, [tab, d, rev, code]);
 
@@ -168,6 +173,7 @@ export default function Team() {
   const gjOpen = gjs.filter(g => !["done", "canceled"].includes(g.status));
   const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
     .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
+    .concat([["leave", "🌴 วันลา", null]])
     .concat((isOwner || isAE) ? [["intake", "🏢 รับบรีฟลูกค้า", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
     .concat(isOwner ? [["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
@@ -579,6 +585,110 @@ export default function Team() {
               </div>
             );
           })}
+        </>;
+      })()}
+
+      {/* ═══════ 🌴 วันลา — คิมสั่ง 7 ส.ค. "ยึดตามกฎหมาย กันความมั่วในการกดวันหยุด" ═══════ */}
+      {tab === "leave" && (() => {
+        if (!lv) return <div style={card}><p className="muted" style={{ margin: 0 }}>กำลังโหลด...</p></div>;
+        const kinds = lv.summary?.kinds || [];
+        const cur = kinds.find(k => k.kind === lvF.kind);
+        const send = async () => {
+          const r = await post("/api/team/leave", { ...lvF, days: lvF.day ? [lvF.day] : [] }, "lv");
+          if (r) { setLvF({ kind: lvF.kind, day: "", reason: "", proof_url: "" }); loadLeave(); }
+        };
+        return <>
+          {/* โควตาคงเหลือ */}
+          <div style={card}>
+            <h3 style={{ fontSize: 16, margin: "0 0 10px" }}>🌴 วันลาคงเหลือปี {lv.year}</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10 }}>
+              {kinds.map(k => (
+                <div key={k.kind} style={{ background: "#fbf7f3", borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{k.label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: k.left ? C.green : "#b42318", marginTop: 2 }}>{k.left}</div>
+                  <div style={{ fontSize: 12, color: "#a89f96" }}>เหลือ จาก {k.quota} วัน · ใช้ไป {k.used}</div>
+                  {k.below_legal && <div style={{ fontSize: 11, color: "#b4700f", marginTop: 5, lineHeight: 1.5 }}>
+                    ⚠️ กฎหมายกำหนดขั้นต่ำ {k.legal_min} วัน</div>}
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 12.5, color: "#a89f96", marginTop: 10, lineHeight: 1.75 }}>
+              {kinds.map(k => k.note).filter(Boolean).map((n, i) => <span key={i}>· {n}<br /></span>)}
+            </p>
+          </div>
+
+          {/* ขอลา */}
+          <div style={card}>
+            <h3 style={{ fontSize: 15.5, margin: "0 0 10px" }}>ขอลา</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select style={{ ...input, width: "auto" }} value={lvF.kind} onChange={e => setLvF(v => ({ ...v, kind: e.target.value }))}>
+                {kinds.map(k => <option key={k.kind} value={k.kind}>{k.label} (เหลือ {k.left})</option>)}
+              </select>
+              <input style={{ ...input, width: "auto" }} type="date" value={lvF.day} onChange={e => setLvF(v => ({ ...v, day: e.target.value }))} />
+              <input style={{ ...input, flex: 1, minWidth: 160 }} placeholder="เหตุผล" value={lvF.reason} onChange={e => setLvF(v => ({ ...v, reason: e.target.value }))} />
+            </div>
+            {cur?.need_proof && <input style={{ ...input, marginTop: 8 }} placeholder="ลิงก์หลักฐาน เช่น ใบรับรองแพทย์ (จำเป็นสำหรับลาป่วย)"
+              value={lvF.proof_url} onChange={e => setLvF(v => ({ ...v, proof_url: e.target.value }))} />}
+            <button style={{ ...btn(), marginTop: 10 }} disabled={busy === "lv" || !lvF.day} onClick={send}>ส่งคำขอลา</button>
+            <p style={{ fontSize: 12.5, color: "#a89f96", marginTop: 8 }}>ลาหลายวันให้กดทีละวันนะคะ · วันหยุดบริษัทกับเสาร์-อาทิตย์ไม่ต้องลาค่ะ</p>
+          </div>
+
+          {/* คำขอของฉัน */}
+          {!!(lv.requests || []).length && <div style={card}>
+            <h3 style={{ fontSize: 15.5, margin: "0 0 8px" }}>คำขอของฉัน</h3>
+            {lv.requests.map(r => {
+              const st = { pending: ["รออนุมัติ", "#B26A00"], approved: ["อนุมัติแล้ว", C.green], rejected: ["ไม่อนุมัติ", "#b42318"] }[r.status];
+              return <div key={r.leave_id} style={{ display: "flex", gap: 10, justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f0ebe4", fontSize: 14, flexWrap: "wrap" }}>
+                <span>{r.day} · {lv.rules?.[r.kind]?.label || r.kind}{r.reason ? ` · ${r.reason}` : ""}</span>
+                <b style={{ color: st[1] }}>{st[0]}</b>
+              </div>;
+            })}
+          </div>}
+
+          {/* คิม/AE อนุมัติ */}
+          {lv.is_boss && !!(lv.pending || []).length && <div style={card}>
+            <h3 style={{ fontSize: 15.5, margin: "0 0 8px" }}>รออนุมัติ ({lv.pending.length})</h3>
+            {lv.pending.map(r => (
+              <div key={r.leave_id} style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center",
+                padding: "9px 0", borderBottom: "1px solid #f0ebe4", fontSize: 14, flexWrap: "wrap" }}>
+                <span><b>{r.member_name}</b> · {lv.rules?.[r.kind]?.label || r.kind} · {r.day}
+                  {r.reason ? ` · ${r.reason}` : ""}
+                  {r.proof_url && <> · <Linkify text={r.proof_url} /></>}</span>
+                <span style={{ display: "flex", gap: 6 }}>
+                  <button style={{ ...btn(), padding: "6px 14px", fontSize: 13 }} disabled={busy === "lv"}
+                    onClick={async () => { await post("/api/team/leave/decide", { leave_id: r.leave_id, pass: true }, "lv"); loadLeave(); }}>อนุมัติ</button>
+                  <button style={{ ...ghost, padding: "6px 14px", fontSize: 13, color: "#b42318" }} disabled={busy === "lv"}
+                    onClick={async () => { await post("/api/team/leave/decide", { leave_id: r.leave_id, pass: false }, "lv"); loadLeave(); }}>ไม่อนุมัติ</button>
+                </span>
+              </div>
+            ))}
+          </div>}
+
+          {/* วันหยุดบริษัท */}
+          <div style={card}>
+            <h3 style={{ fontSize: 15.5, margin: "0 0 4px" }}>📅 วันหยุดบริษัทปี {lv.year}</h3>
+            <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 10px", lineHeight: 1.7 }}>
+              ตั้งไว้ <b>{lv.holidays.length} / {lv.holidays_target} วัน</b>
+              {lv.holidays_left > 0 && <> · เลือกได้อีก <b style={{ color: "#B26A00" }}>{lv.holidays_left} วัน</b> จากปฏิทินวันหยุดไทย</>}
+              <br />วันพวกนี้หยุดทั้งบริษัท ไม่ต้องกดลา และระบบไม่ส่งงานให้ใครในวันนั้น
+            </p>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+              {lv.holidays.map(h => (
+                <span key={h.day} style={{ background: h.fixed ? "#eaf1f8" : "#f4f0ea", borderRadius: 999, padding: "5px 12px", fontSize: 12.5 }}>
+                  {h.day} · {h.name}
+                  {isOwner && !h.fixed && <button style={{ background: "none", border: 0, cursor: "pointer", color: "#b42318", marginLeft: 5, fontSize: 13 }}
+                    onClick={async () => { await post("/api/team/holidays", { day: h.day, remove: true }, "lv"); loadLeave(); }}>×</button>}
+                </span>
+              ))}
+            </div>
+            {isOwner && lv.holidays_left > 0 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input style={{ ...input, width: "auto" }} type="date" value={holF.day} onChange={e => setHolF(v => ({ ...v, day: e.target.value }))} />
+                <input style={{ ...input, flex: 1, minWidth: 140 }} placeholder="ชื่อวันหยุด" value={holF.name} onChange={e => setHolF(v => ({ ...v, name: e.target.value }))} />
+                <button style={btn()} disabled={busy === "lv" || !holF.day}
+                  onClick={async () => { await post("/api/team/holidays", holF, "lv"); setHolF({ day: "", name: "" }); loadLeave(); }}>เพิ่มวันหยุด</button>
+              </div>)}
+          </div>
         </>;
       })()}
 

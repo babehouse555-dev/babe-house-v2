@@ -218,6 +218,29 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_gj_assignee ON graphic_jobs(assigned_to, status);
     CREATE INDEX IF NOT EXISTS idx_gj_order ON graphic_jobs(from_order_id);
+    -- 🌴 ระบบวันลา (คิมสั่ง 7 ส.ค. "ยึดตามกฎหมาย กันความมั่วในการกดวันหยุด")
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      leave_id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL,
+      kind TEXT NOT NULL,             -- sick=ลาป่วย · personal=ลากิจ · vacation=พักร้อน
+      day DATE NOT NULL,              -- ลาหลายวัน = หลายแถว จะได้นับโควตาและเช็คชนวันหยุดได้ทีละวัน
+      reason TEXT,
+      proof_url TEXT,                 -- หลักฐาน (ใบรับรองแพทย์) — คิมสั่งว่าลาป่วยต้องมีหลักฐาน
+      status TEXT DEFAULT 'pending',  -- pending | approved | rejected
+      decided_by TEXT,
+      decided_at TIMESTAMPTZ,
+      decide_note TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_leave_uniq ON leave_requests(member_id, day);
+    CREATE INDEX IF NOT EXISTS idx_leave_status ON leave_requests(status, day);
+    -- 📅 วันหยุดบริษัท 13 วัน/ปี — ล็อกไว้ ทุกคนหยุดพร้อมกัน กดลาซ้ำไม่ได้
+    -- คิมเคาะ: ปีใหม่ 5 · สงกรานต์ 4 · แรงงาน 1 · ที่เหลือ 3 เลือกจากปฏิทินวันหยุดไทย
+    CREATE TABLE IF NOT EXISTS company_holidays (
+      day DATE PRIMARY KEY,
+      name TEXT NOT NULL,
+      fixed BOOLEAN DEFAULT false     -- true = ชุดหลัก (ปีใหม่/สงกรานต์/แรงงาน) ลบไม่ได้
+    );
     -- 💰 ยอดเงินของงานโปรดักชั่นนอกเว็บ (คิมสั่ง 7 ส.ค. "หน้ายอดขายต้องมียอด production ด้วย")
     -- งานโปรดักชั่นส่วนใหญ่รับตรง ไม่ได้ผ่านเว็บ ถ้าไม่เก็บยอดไว้ หน้ายอดขายจะเห็นแค่ครึ่งเดียวของธุรกิจ
     -- ใส่ 0 หรือเว้นว่างได้ = งานที่ยังไม่รู้ยอด/ไม่คิดเงิน จะไม่ถูกนับ
@@ -823,6 +846,7 @@ export async function initDb() {
     -- 2 = กัน (Content + ตัดต่อ) รับต่อเมื่อขั้น 1 เต็ม
     -- 3 = ฟรีแลนซ์ + AE รับเป็นด่านสุดท้าย
     ALTER TABLE team_members ADD COLUMN IF NOT EXISTS assign_tier INTEGER DEFAULT 3;
+    ALTER TABLE team_members ADD COLUMN IF NOT EXISTS started_at DATE;   -- วันเริ่มงาน — ใช้ตัดสินว่าครบ 1 ปีหรือยัง (พักร้อน 2 vs 3 วัน)
     -- บันทึกทุกครั้งที่งานเปลี่ยนมือ/เปลี่ยนสถานะ — ไว้ย้อนดูว่าใครทำอะไรเมื่อไหร่ (กันงานหาย/เถียงกัน)
     CREATE TABLE IF NOT EXISTS edit_events (
       event_id TEXT PRIMARY KEY,

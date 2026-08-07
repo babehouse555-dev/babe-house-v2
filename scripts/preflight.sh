@@ -39,6 +39,24 @@ MISSING=$(cd "$TMP" && grep -rhoE "from ['\"](\./|\.\./)[^'\"]+['\"]" server/ we
   done)
 if [ -n "$MISSING" ]; then echo "❌ import หาไฟล์ไม่เจอในคอมมิตนี้:"; echo "$MISSING" | sed 's/^/     /'; exit 1; fi
 echo "  ✅ import ครบทุกไฟล์"
+# ─── ALTER ต้องอยู่หลัง CREATE TABLE เสมอ ───
+# เจอจริง 7 ส.ค. 2 ครั้ง: ALTER TABLE team_members วางไว้ก่อน CREATE TABLE team_members
+# → บูตไม่ขึ้น ติด "relation does not exist" วนไม่จบ
+node -e '
+const s = require("fs").readFileSync("server/db.js","utf8");
+const created = new Map();
+let m, re = /CREATE TABLE IF NOT EXISTS\s+(\w+)/g;
+while ((m = re.exec(s))) if (!created.has(m[1])) created.set(m[1], m.index);
+const bad = [];
+re = /ALTER TABLE\s+(\w+)/g;
+while ((m = re.exec(s))) {
+  const at = created.get(m[1]);
+  if (at === undefined || m.index < at) bad.push(`${m[1]} (ALTER อยู่บรรทัดก่อน CREATE)`);
+}
+if (bad.length) { console.error("  ❌ ALTER มาก่อน CREATE TABLE: " + [...new Set(bad)].join(", ")); process.exit(1); }
+console.log("  ✅ ลำดับ CREATE/ALTER ใน db.js ถูกต้อง");
+' || exit 1
+
 
 # ④ บูตจริงจากต้นไม้นี้ (DB ปลอม — เซิร์ฟเวอร์ต้องยังเปิดพอร์ตได้ตามดีไซน์)
 ( cd "$TMP" && DATABASE_URL='postgres://x:x@127.0.0.1:1/x' EMAIL_ENABLED=0 PAY_PROVIDER=mock PORT=$PORT \

@@ -427,7 +427,7 @@ export default function Account() {
       </>}
 
       <style>{`
-        .fld-row { display: flex; gap: 14px; overflow-x: auto; padding: 20px 2px 16px; margin-bottom: 6px; }
+        .fld-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; padding: 20px 2px 16px; margin-bottom: 6px; }
         .fld { flex-shrink: 0; width: 92px; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; text-align: center; }
         .fld-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
           height: 58px; border-radius: 4px 12px 12px 12px; background: var(--c);

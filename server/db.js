@@ -192,6 +192,10 @@ export async function initDb() {
       done_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS idx_ext_member ON external_jobs(member_id, status);
+    -- 💰 ยอดเงินของงานโปรดักชั่นนอกเว็บ (คิมสั่ง 7 ส.ค. "หน้ายอดขายต้องมียอด production ด้วย")
+    -- งานโปรดักชั่นส่วนใหญ่รับตรง ไม่ได้ผ่านเว็บ ถ้าไม่เก็บยอดไว้ หน้ายอดขายจะเห็นแค่ครึ่งเดียวของธุรกิจ
+    -- ใส่ 0 หรือเว้นว่างได้ = งานที่ยังไม่รู้ยอด/ไม่คิดเงิน จะไม่ถูกนับ
+    ALTER TABLE external_jobs ADD COLUMN IF NOT EXISTS amount_satang INTEGER DEFAULT 0;
     CREATE INDEX IF NOT EXISTS idx_avail_day ON team_availability(day);
 
     -- 📮 ระบบตามงานลูกค้าอัตโนมัติ — กันงานตกหล่นเพราะคนลืมตาม

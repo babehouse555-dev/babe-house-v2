@@ -90,7 +90,7 @@ export default function Team() {
   const [intake, setIntake] = useState({ client_name: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
   const [intakeMsg, setIntakeMsg] = useState(null);
   const [rev, setRev] = useState(null);               // 🧠 รายงาน AI รายสัปดาห์
-  const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "" });
+  const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "", amount_baht: "" });
 
   const load = (c) => {
     const use = c ?? code; if (!use) return;
@@ -423,10 +423,14 @@ export default function Team() {
               <input style={input} inputMode="numeric" placeholder="คลิป" value={extF.clips}
                 onChange={e => setExtF(v => ({ ...v, clips: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
               <input style={input} placeholder="ลูกค้า" value={extF.client} onChange={e => setExtF(v => ({ ...v, client: e.target.value }))} />
+              {/* 💰 ยอดเงิน — คิมสั่ง 7 ส.ค. "หน้ายอดขายต้องมียอด production ด้วย"
+                  งานรับตรงคือรายได้ก้อนใหญ่ของโปรดักชั่น ไม่กรอกยอดไว้ หน้ายอดขายจะเห็นแค่ครึ่งเดียว */}
+              <input style={input} inputMode="numeric" placeholder="ยอดเงิน (บาท)" value={extF.amount_baht}
+                onChange={e => setExtF(v => ({ ...v, amount_baht: e.target.value.replace(/[^\d]/g, "").slice(0, 7) }))} />
               <input style={input} type="date" value={extF.due_at} onChange={e => setExtF(v => ({ ...v, due_at: e.target.value }))} />
               <button style={btn()} disabled={busy === "ext" || !extF.title.trim()}
-                onClick={async () => { await post("/api/team/external", { ...extF, clips: Number(extF.clips) || 1 }, "ext");
-                  setExtF({ title: "", clips: 1, client: "", due_at: "" }); loadCal(); }}>เพิ่ม</button>
+                onClick={async () => { await post("/api/team/external", { ...extF, clips: Number(extF.clips) || 1, amount_baht: Number(extF.amount_baht) || 0 }, "ext");
+                  setExtF({ title: "", clips: 1, client: "", due_at: "", amount_baht: "" }); loadCal(); }}>เพิ่ม</button>
             </div>
           </div>
 

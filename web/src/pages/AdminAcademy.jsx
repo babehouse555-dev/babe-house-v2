@@ -28,11 +28,14 @@ export function SalesOverview({ adminKey }) {
   if (!d) return <div className="card"><h3>💰 ยอดขายรวมทุกสินค้า</h3><p className="muted">กำลังโหลด...</p></div>;
   if (d.error) return <div className="card"><h3>💰 ยอดขายรวมทุกสินค้า</h3><p className="muted">โหลดไม่สำเร็จ</p></div>;
 
-  const total = d.blueprint.period.revenue + d.courses.period.revenue + d.workshops.period.revenue;
+  // 🎬 โปรดักชั่นเพิ่งมาทีหลัง — เว็บที่ deploy ยังไม่ทันอาจไม่มีคีย์นี้ กัน undefined ไว้
+  const pd = d.production || { period: { jobs: 0, revenue: 0 }, all: { jobs: 0, revenue: 0 }, breakdown: {}, jobs_without_amount: 0 };
+  const total = d.blueprint.period.revenue + d.courses.period.revenue + d.workshops.period.revenue + pd.period.revenue;
   const cards = [
     { label: "📘 Blueprint", rev: d.blueprint.period.revenue, sub: `${d.blueprint.period.orders} เล่ม`, allRev: d.blueprint.all.revenue, allSub: `${d.blueprint.all.orders} เล่มรวม` },
     { label: "🎓 คอร์สเรียน", rev: d.courses.period.revenue, sub: `${d.courses.period.orders} คอร์ส`, allRev: d.courses.all.revenue, allSub: `${d.courses.all.orders} คอร์สรวม` },
     { label: "🎟️ Workshop", rev: d.workshops.period.revenue, sub: `${d.workshops.period.seats} ที่นั่ง`, allRev: d.workshops.all.revenue, allSub: `${d.workshops.all.seats} ที่นั่งรวม` },
+    { label: "🎬 โปรดักชั่น", rev: pd.period.revenue, sub: `${pd.period.jobs} งาน`, allRev: pd.all.revenue, allSub: `${pd.all.jobs} งานรวม` },
   ];
   return (
     <div className="card">
@@ -55,6 +58,14 @@ export function SalesOverview({ adminKey }) {
         ))}
       </div>
       <p className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>Blueprint นับเฉพาะ "เงินเข้าจริง" แบบเดียวกับการ์ดรายได้ด้านล่าง — ไม่รวมออเดอร์ทดสอบและโค้ดฟรี</p>
+      {pd.all.revenue > 0 && <p className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+        🎬 โปรดักชั่นรวม 3 ทาง: งานตัดต่อในเว็บ {money(pd.breakdown.edit_web || 0)} · แพ็กเครดิต {money(pd.breakdown.credits || 0)} · งานรับตรงนอกเว็บ {money(pd.breakdown.outside_web || 0)}
+      </p>}
+      {pd.jobs_without_amount > 0 && <p style={{ fontSize: 12.5, marginTop: 8, color: "#b4700f", background: "#fff8ed",
+        border: "1px solid #f5dfb8", borderRadius: 10, padding: "9px 12px" }}>
+        ⚠️ มีงานโปรดักชั่นรับตรง <b>{pd.jobs_without_amount} งาน</b> ที่ยังไม่ได้ใส่ยอดเงิน — ยอดโปรดักชั่นด้านบนจึงยังไม่ครบ
+        ให้ทีมใส่ยอดตอนเพิ่มงานที่หน้า <b>/team → ตารางงาน → งานนอกเว็บ</b> นะคะ
+      </p>}
       {d.courses.legacy.orders > 0 && (
         <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
           📦 ยอดคอร์สจากเว็บเก่า (ก่อนย้ายระบบ): {money(d.courses.legacy.revenue)} · {d.courses.legacy.orders} ออเดอร์ — แยกไว้ไม่ให้ปนกับยอดเว็บใหม่

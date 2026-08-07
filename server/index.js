@@ -2584,11 +2584,40 @@ async function finalizeWorkshopBooking(b) {
   }).catch(e => console.error("tax-invoice workshop", e.message));
   const left = await seatsLeft(b.session_id);
   const when = s ? new Date(s.starts_at).toLocaleString("th-TH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
+  // 📋 รายละเอียดคลาสฉบับเต็ม — ยกมาจากสคริปต์ที่ทีมพิมพ์ส่งลูกค้าเองทุกครั้ง (คิมส่งให้ 7 ส.ค.)
+  //    เดิมทีมต้องพิมพ์/ก๊อปเองหลังลูกค้าจ่ายทุกคน เสี่ยงลืม เสี่ยงพิมพ์ตกหล่น
+  //    ตอนนี้ระบบส่งให้เองทันทีที่เงินเข้า · แก้ข้อความได้ที่ตัวแปรด้านล่างโดยไม่ต้องแก้ที่อื่น
+  const WS = {
+    address: "Babe House Head Office (ลาดพร้าว 41) บ้านเลขที่ 138/39",
+    mapHouse: "https://maps.app.goo.gl/oiUkRA726cQZZnG79",
+    mapPark: "https://maps.app.goo.gl/kzbrp27cp4FdSrxt8",
+    igPost: "https://www.instagram.com/p/DPduCn3ErdD/",
+    line: "https://line.me/ti/g/qY8dkD0R33",
+    pickup: "12.30 · 12.40 · 12.50 น.",
+    phone: "081-950-9192 (ดิส)",
+  };
+  const box = (t) => `<div style="background:#f7f4f0;border-radius:12px;padding:13px 15px;margin:14px 0;line-height:1.85">${t}</div>`;
   sendEmail(b.email, `✅ ยืนยันการจอง ${s?.ws_name || "workshop"} แล้วค่ะ`, wrap(
-    `สวัสดีค่ะ คุณ${b.name}<br><br>ได้รับการจองเรียบร้อยแล้วค่ะ 🎉<br><br>` +
-    `<b>${s?.ws_name || ""}</b><br>📅 ${when}<br>📍 ${s?.location || "แจ้งสถานที่อีกครั้งก่อนวันเรียน"}<br>👥 จำนวน ${b.qty} ที่<br><br>` +
+    `สวัสดีค่ะ คุณ${b.name} 💗<br><br>ได้รับการจองเรียบร้อยแล้วค่ะ 🎉 นี่คือรายละเอียดคลาสนะคะ<br>` +
+    box(`📃 <b>คลาส:</b> ${s?.ws_name || "Workshop"} (รอบสด)<br>` +
+        `📆 <b>วันเวิร์คชอป:</b> ${when}<br>` +
+        `⏰ <b>ระยะเวลา:</b> 3.5 ชม. (13.00 – 16.30 น.)<br>` +
+        `🏠 <b>สถานที่:</b> ${s?.location || WS.address}<br>` +
+        `👥 <b>จำนวน:</b> ${b.qty} ที่`) +
     (s?.note ? `${s.note}<br><br>` : "") +
-    `หลังเรียนจบ ไฟล์สรุปและเอกสารประกอบจะขึ้นในบัญชีของคุณให้ดาวน์โหลดได้เองค่ะ<br><br>${btn(appBaseUrl() + "/account", "ดูการจองของฉัน")}<br><br>แล้วเจอกันในคลาสนะคะ<br>ครูพี่คิม · Babe House`
+    `<b>📍 การเลื่อนนัด</b><br>` +
+    `หากมีการเลื่อนนัด จำเป็นต้องแจ้งล่วงหน้าอย่างน้อย <b>2 วัน</b> ก่อนถึงวันคลาสนะคะ ไม่เช่นนั้นจะถูกปรับค่าจองคิวเต็มจำนวนค่ะ<br>` +
+    `เนื่องจากการยกเลิกนัดถือเป็นการปฏิเสธคิวของผู้ที่ต้องการนัดท่านอื่น ทางบริษัทต้องขออภัยในความไม่สะดวกมา ณ ที่นี้ค่ะ 🙇‍♀️<br><br>` +
+    `<b>🚙 การเดินทางและรับส่ง</b><br>` +
+    box(`รบกวนกดเข้ากลุ่มนี้ล่วงหน้าเพื่อนัดเจอกับคุณดิส และแจ้งว่าถึงแล้วให้มารับที่ลานจอดนะคะ<br>` +
+        `👉 <a href="${WS.line}">${WS.line}</a><br><br>` +
+        `🚙 <b>เวลารับส่ง:</b> ${WS.pickup} (แนะนำให้เผื่อเวลาเดินทางนะคะ)<br>` +
+        `🚗 <b>จอดรถได้ที่:</b> <a href="${WS.mapPark}">เปิดแผนที่ลานจอด</a><br>` +
+        `🏡 <b>พิกัด Babe House:</b> <a href="${WS.mapHouse}">เปิดแผนที่</a> · หาไม่เจอดูโพสต์นี้ได้เลยค่ะ <a href="${WS.igPost}">ดูโพสต์</a><br><br>` +
+        `จอดเรียบร้อยแล้วโทรแจ้งได้ที่ <b>${WS.phone}</b> เดี๋ยวมีรถไปรับค่า<br>` +
+        `หากติดขัดหรือล่าช้ากว่ากำหนด รบกวนโทรแจ้งล่วงหน้านะคะ`) +
+    `หลังเรียนจบ ไฟล์สรุปและเอกสารประกอบจะขึ้นในบัญชีของคุณให้ดาวน์โหลดได้เองค่ะ<br><br>` +
+    `${btn(appBaseUrl() + "/account", "ดูการจองของฉัน")}<br><br>แล้วเจอกันในคลาสนะคะ 🩵<br>ครูพี่คิม · Babe House`
   )).catch(() => {});
   sendEmail(OPS_EMAIL, `🎟️ จอง workshop ใหม่ — ${s?.ws_name || ""}`, wrap(
     `<b>${b.name}</b> (${b.email} · ${b.phone})<br>จอง ${b.qty} ที่ · ${(b.amount_satang / 100).toLocaleString()} บาท<br>รอบ: ${when}<br><br>` +
@@ -2634,6 +2663,17 @@ app.get("/api/admin/sales-overview", async (req, res) => {
     // Workshop
     const ws = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev, COALESCE(SUM(qty),0) seats FROM workshop_bookings WHERE status='paid' AND created_at > ${since}`);
     const wsAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev, COALESCE(SUM(qty),0) seats FROM workshop_bookings WHERE status='paid'`);
+    // 🎬 โปรดักชั่น (คิมสั่ง 7 ส.ค.) — 3 ทาง: งานตัดต่อในเว็บ + แพ็กเครดิต + งานรับตรงนอกเว็บ
+    //    งานรับตรงคือรายได้ก้อนใหญ่ของโปรดักชั่น ถ้าไม่นับ หน้านี้จะเห็นแค่ครึ่งเดียวของธุรกิจจริง
+    const pdWhere = `payment_status='paid' AND COALESCE(paid_by,'') <> 'credit'`;  // จ่ายด้วยเครดิตนับตอนซื้อเครดิตแล้ว จะนับซ้ำไม่ได้
+    const edit = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_orders WHERE ${pdWhere} AND created_at > ${since}`);
+    const editAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_orders WHERE ${pdWhere}`);
+    const cred = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_credit_purchases WHERE payment_status='paid' AND created_at > ${since}`);
+    const credAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_credit_purchases WHERE payment_status='paid'`);
+    const ext = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM external_jobs WHERE COALESCE(amount_satang,0) > 0 AND created_at > ${since}`).catch(() => ({ n: 0, rev: 0 }));
+    const extAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM external_jobs WHERE COALESCE(amount_satang,0) > 0`).catch(() => ({ n: 0, rev: 0 }));
+    const extTodo = await one(`SELECT COUNT(*) n FROM external_jobs WHERE COALESCE(amount_satang,0) = 0`).catch(() => ({ n: 0 }));
+
     // ขายดีรายคอร์ส (เว็บใหม่)
     const topCourses = await q(`SELECT course_id, course_name, COUNT(*) n, SUM(amount_satang) rev FROM academy_purchases
       WHERE status='paid' GROUP BY course_id, course_name ORDER BY rev DESC LIMIT 10`);
@@ -2643,6 +2683,12 @@ app.get("/api/admin/sales-overview", async (req, res) => {
       courses: { period: { orders: Number(ac.n), revenue: B(ac.rev) }, all: { orders: Number(acAll.n), revenue: B(acAll.rev) },
         legacy: { orders: Number(acLegacy.n), revenue: Math.round(Number(acLegacy.rev || 0)) } },
       workshops: { period: { bookings: Number(ws.n), seats: Number(ws.seats), revenue: B(ws.rev) }, all: { bookings: Number(wsAll.n), seats: Number(wsAll.seats), revenue: B(wsAll.rev) } },
+      production: {
+        period: { jobs: Number(edit.n) + Number(ext.n), revenue: B(Number(edit.rev) + Number(cred.rev) + Number(ext.rev)) },
+        all:    { jobs: Number(editAll.n) + Number(extAll.n), revenue: B(Number(editAll.rev) + Number(credAll.rev) + Number(extAll.rev)) },
+        breakdown: { edit_web: B(edit.rev), credits: B(cred.rev), outside_web: B(ext.rev) },
+        jobs_without_amount: Number(extTodo.n),   // งานรับตรงที่ยังไม่ได้ใส่ยอด — เตือนให้ไปกรอก ไม่งั้นยอดขาด
+      },
       top_courses: topCourses.map(c => ({ id: c.course_id, name: c.course_name, orders: Number(c.n), revenue: B(c.rev) })),
     });
   } catch (e) { console.error("sales-overview", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
@@ -4138,12 +4184,14 @@ app.post("/api/team/external", async (req, res) => {
   if (!title) return res.status(400).json({ ok: false, error: "MISSING", message: "ใส่ชื่องานด้วยนะคะ" });
   // เพิ่มให้ตัวเองเป็นค่าเริ่มต้น — AE/คิม เพิ่มแทนคนอื่นได้
   const target = (["owner", "ae"].includes(me.role) && b.member_id) ? String(b.member_id) : me.member_id;
-  await run(`INSERT INTO external_jobs (ext_id,member_id,title,clips,client,source,due_at,note,created_by)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+  // 💰 ยอดเงินของงาน (บาท) — ไม่ใส่ก็ได้ แต่ใส่แล้วจะไปโผล่ในหน้ายอดขายรวม
+  const baht = Math.max(0, Math.min(9999999, Math.round(Number(b.amount_baht) || 0)));
+  await run(`INSERT INTO external_jobs (ext_id,member_id,title,clips,client,source,due_at,note,created_by,amount_satang)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [uid("ext"), target, title.slice(0, 200), Math.max(1, Math.min(99, Number(b.clips) || 1)),
      String(b.client || "").slice(0, 120) || null, String(b.source || "manual").slice(0, 20),
      /^\d{4}-\d{2}-\d{2}$/.test(String(b.due_at || "")) ? b.due_at : null,
-     String(b.note || "").slice(0, 500) || null, me.name]);
+     String(b.note || "").slice(0, 500) || null, me.name, baht * 100]);
   res.json({ ok: true });
 });
 

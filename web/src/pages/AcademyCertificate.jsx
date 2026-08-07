@@ -9,6 +9,7 @@ const BLUE = "#2E86DE";
 export default function AcademyCertificate() {
   const { id } = useParams();
   const [cert, setCert] = useState(null);
+  const [sigOk, setSigOk] = useState(true);   // มีไฟล์ลายเซ็นไหม (ไม่มี → ใช้ตัวหนังสือเขียนหวัดแทน)
   const [err, setErr] = useState(false);
 
   useEffect(() => { api(`/api/academy/certificate/${id}`).then(d => setCert(d.cert)).catch(() => setErr(true)); }, [id]);
@@ -69,7 +70,13 @@ export default function AcademyCertificate() {
           <p style={{ fontSize: "clamp(12.5px,1.35vw,14px)", lineHeight: 1.85, margin: "12px 0 0" }}>wish you success your life</p>
 
           <div style={{ marginTop: "auto", paddingTop: "clamp(20px,3vw,34px)" }}>
-            <div style={{ fontFamily: "'Snell Roundhand','Apple Chancery',cursive", fontSize: "clamp(21px,2.8vw,27px)", color: "#1a1a1a", lineHeight: 1 }}>กัญจน์ชญา</div>
+            {/* ✍️ ลายเซ็นจริงของคิม (คิมขอ 7 ส.ค.) — วางไฟล์ที่ web/public/kim-signature.png
+                ถ้ายังไม่มีไฟล์ onError จะสลับกลับไปใช้ตัวหนังสือเขียนหวัดเหมือนเดิม
+                → เพิ่ม/เปลี่ยนลายเซ็นทีหลังได้โดยไม่ต้องแก้โค้ด */}
+            {sigOk
+              ? <img src="/kim-signature.png" alt="ลายเซ็นครูพี่คิม" onError={() => setSigOk(false)}
+                  style={{ height: "clamp(40px,5.4vw,60px)", display: "block", objectFit: "contain", objectPosition: "left bottom" }} />
+              : <div style={{ fontFamily: "'Snell Roundhand','Apple Chancery',cursive", fontSize: "clamp(21px,2.8vw,27px)", color: "#1a1a1a", lineHeight: 1 }}>กัญจน์ชญา</div>}
             <div style={{ borderBottom: "1px solid #d8b24a", width: "min(230px,80%)", margin: "7px 0 6px" }} />
             <div style={{ fontSize: "clamp(12px,1.3vw,13.5px)", fontWeight: 700 }}>Kanchaya Arthan</div>
             <div className="muted" style={{ fontSize: "clamp(11px,1.2vw,12.5px)" }}>Founder Of Babe House Academy</div>

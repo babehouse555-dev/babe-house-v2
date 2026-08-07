@@ -82,6 +82,31 @@ function MyCourses({ courses }) {
   );
 }
 
+
+// ปกคอร์ส — ชี้เมาส์ (หรือแตะบนมือถือ) แล้วค่อยๆ จางไปเป็นปกเก่า
+// ไม่มีปกเก่า = แสดงปกเดียวเฉยๆ ไม่มีอะไรให้กด
+function CoverSwap({ image, prev, name }) {
+  const [show, setShow] = useState(false);
+  const has = !!(image && prev);
+  return (
+    <div
+      onMouseEnter={() => has && setShow(true)}
+      onMouseLeave={() => has && setShow(false)}
+      onClick={e => { if (has) { e.preventDefault(); setShow(v => !v); } }}
+      title={has ? "ชี้เพื่อดูปกเดิมของคอร์สนี้" : ""}
+      style={{ position: "relative", aspectRatio: "4/3", background: "var(--soft)", overflow: "hidden", cursor: has ? "pointer" : "default" }}>
+      {image && <img src={image} alt={name || ""} loading="lazy"
+        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+        onError={e => { e.target.style.display = "none"; }} />}
+      {has && <img src={prev} alt="" loading="lazy" aria-hidden
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain",
+                 opacity: show ? 1 : 0, transition: "opacity .28s ease", background: "var(--soft)" }} />}
+      {has && !show && <span style={{ position: "absolute", right: 8, bottom: 8, background: "rgba(255,255,255,.9)",
+        borderRadius: 999, padding: "3px 9px", fontSize: 11, color: "#7c7268", pointerEvents: "none" }}>ดูปกเดิม</span>}
+    </div>
+  );
+}
+
 export default function Academy() {
   const [data, setData] = useState(null);
   const [cat, setCat] = useState("ทั้งหมด");
@@ -144,9 +169,10 @@ export default function Academy() {
             <div key={c.id} className="card" style={{ margin: 0, padding: 0, overflow: "hidden", borderRadius: 16, display: "flex", flexDirection: "column" }}>
               {/* ปกคอร์สเป็นโปสเตอร์จัตุรัส/แนวตั้ง และ "มีชื่อคอร์สอยู่ในรูป" — ถ้าครอบแบบ cover ชื่อจะโดนตัดหาย
                   ใช้ contain บนพื้นอ่อนแทน เห็นปกเต็มใบทุกคอร์ส แม้สัดส่วนรูปจะไม่เท่ากัน */}
-              <div style={{ aspectRatio: "4/3", background: "var(--soft)", overflow: "hidden" }}>
-                {c.image && <img src={c.image} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => { e.target.style.display = "none"; }} />}
-              </div>
+              {/* 🎨 ปกใหม่ + ชี้เมาส์แล้วสลับเป็นปกเก่า (คิมขอ 7 ส.ค.)
+                  "เผื่อลูกค้าจำไม่ได้ว่ามันคอร์สไหน" — ลูกค้าเก่าคุ้นปกเดิม
+                  บนมือถือไม่มีเมาส์ → แตะที่ปกก็สลับได้เหมือนกัน */}
+              <CoverSwap image={c.image} prev={c.image_prev} name={c.name} />
               <div style={{ padding: "13px 15px 15px", display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ fontSize: 12, color: BLUE, fontWeight: 700, marginBottom: 3 }}>{c.category}</div>
                 <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.4, marginBottom: 4 }}>{c.name}</div>

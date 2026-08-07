@@ -1,0 +1,18 @@
+{
+  "_note": "ปกคอร์สชุดใหม่ที่คิมทำเอง (7 ส.ค. 2569) — key = legacy_id ของคอร์ส",
+  "_hover": "หน้าเว็บจะสลับกลับไปโชว์ปกเก่าเมื่อเอาเมาส์ชี้ เผื่อลูกค้าเก่าจำปกใหม่ไม่ได้",
+  "_howto": "เพิ่มปกใหม่: วางไฟล์ที่ web/public/academy-img/new/ แล้วเติม \"เลขคอร์ส\": \"/academy-img/new/ชื่อไฟล์\" ที่นี่",
+  "10": "/academy-img/new/c10.webp",
+  "11": "/academy-img/new/c11.webp",
+  "13": "/academy-img/new/c13.webp",
+  "14": "/academy-img/new/c14.webp",
+  "16": "/academy-img/new/c16.webp",
+  "17": "/academy-img/new/c17.webp",
+  "35": "/academy-img/new/c35.webp",
+  "39": "/academy-img/new/c39.webp",
+  "49": "/academy-img/new/c49.webp",
+  "53": "/academy-img/new/c53.webp",
+  "54": "/academy-img/new/c54.webp",
+  "56": "/academy-img/new/c56.webp",
+  "57": "/academy-img/new/c57.webp"
+}

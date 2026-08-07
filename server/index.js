@@ -162,6 +162,17 @@ let ACADEMY_IMG = {};
 try { ACADEMY_IMG = JSON.parse(readFileSync(path.join(__dirname, "academy-images.json"), "utf8")); }
 catch (e) { console.warn("[img] โหลดรายการรูปคอร์สไม่ได้:", e.message); }
 const localImg = (u) => ACADEMY_IMG[String(u || "")] || u || "";
+// 🎨 ปกคอร์สชุดใหม่ที่คิมทำเอง (7 ส.ค.) — key = เลขคอร์ส
+// คิมขอ: "เอาเมาส์ไปชี้ตรงคอร์สมันเลื่อนไปเป็นปกเก่าได้ด้วย เผื่อลูกค้าจำไม่ได้ว่ามันคอร์สไหน"
+// → ส่งไปทั้ง 2 ปก หน้าเว็บสลับเอง · ไม่มีปกใหม่ = ใช้ปกเดิมเหมือนเดิม ไม่พัง
+let ACADEMY_COVER_NEW = {};
+try { ACADEMY_COVER_NEW = JSON.parse(readFileSync(path.join(__dirname, "academy-covers-new.json"), "utf8")); }
+catch { ACADEMY_COVER_NEW = {}; }
+const coverOf = (id, oldUrl) => {
+  const nu = ACADEMY_COVER_NEW[String(id)];
+  const prev = localImg(oldUrl);
+  return { image: nu || prev, image_prev: nu && prev ? prev : null };
+};
 const normEmail = (e) => String(e || "").trim().toLowerCase();
 const maskEmail = (e) => { const [u, d] = String(e || "").split("@"); return d ? `${u.slice(0, 2)}***@${d}` : "***"; };
 // 🔐 อีเมลแปลงเป็นรหัสทางเดียว (SHA-256) — ใช้ให้ Meta จับคู่ว่า "คนที่ซื้อ" คือ "คนที่เห็นแอด" คนไหน
@@ -2039,7 +2050,7 @@ app.get("/api/academy/catalog", async (req, res) => {
     res.json({ ok: true, count: courses.length, courses: courses.map(c => ({
       id: c.legacy_id, name: c.name, price: Number(c.price || 0), price_sale: Number(c.price_sale || 0), flag_sale: c.flag_sale === "1",
       category: catMap[c.category] || "อื่นๆ", instructor: (tutMap[c.instructor] || {}).name || "", instructor_image: localImg((tutMap[c.instructor] || {}).image),
-      image: localImg(c.featured_image_url), lessons: Number(c.lessons || 0),
+      ...coverOf(c.legacy_id, c.featured_image_url), lessons: Number(c.lessons || 0),
     })) });
   } catch (e) { console.error("academy catalog", e.message); res.status(500).json({ ok: false, error: "CATALOG_FAILED" }); }
 });

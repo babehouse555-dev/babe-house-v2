@@ -88,6 +88,14 @@ function Linkify({ text }) {
   })}</>;
 }
 
+
+// ป้ายเล็กเหนือช่องกรอก — ใช้ในหน้าตรวจคอนเทนต์
+function L({ t, children }) {
+  return <div style={{ marginTop: 8 }}>
+    <div style={{ fontSize: 12, color: "#a89f96", marginBottom: 3 }}>{t}</div>{children}
+  </div>;
+}
+
 export default function Team() {
   const [code, setCode] = useState(localStorage.getItem("babe_my_code") || "");
   const [typed, setTyped] = useState("");
@@ -95,6 +103,11 @@ export default function Team() {
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("jobs");
   const [gjUrl, setGjUrl] = useState({});      // ลิงก์ไฟล์งานที่แฟรี่กำลังพิมพ์ (แยกตามงาน)
+  const [cp, setCp] = useState(null);         // คอนเทนต์ลูกค้า
+  const [cpOpen, setCpOpen] = useState("");   // โปรเจคที่กางอยู่
+  const [cpF, setCpF] = useState({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" });
+  const [ciD, setCiD] = useState({});         // ร่างที่กำลังแก้ (แยกตามชิ้น)
+  const loadCp = (id) => api(`/api/team/content?code=${encodeURIComponent(code)}${id ? `&cp_id=${id}` : ""}`).then(setCp).catch(() => {});
   const [lv, setLv] = useState(null);         // ข้อมูลวันลา
   const [lvF, setLvF] = useState({ kind: "personal", day: "", reason: "", proof_url: "" });
   const [holF, setHolF] = useState({ day: "", name: "" });
@@ -135,6 +148,7 @@ export default function Team() {
   };
   useEffect(() => { if (tab === "cal" && d) loadCal(); }, [tab, d]);   // eslint-disable-line
   useEffect(() => { if (tab === "leave" && d) loadLeave(); }, [tab, d]);   // eslint-disable-line
+  useEffect(() => { if (tab === "content" && d) loadCp(cpOpen); }, [tab, d, cpOpen]);   // eslint-disable-line
   useEffect(() => { if (tab === "review" && d?.me?.role === "owner" && !rev)
     api(`/api/team/weekly-review?code=${encodeURIComponent(code)}`).then(setRev).catch(() => {}); }, [tab, d, rev, code]);
 
@@ -173,6 +187,7 @@ export default function Team() {
   const gjOpen = gjs.filter(g => !["done", "canceled"].includes(g.status));
   const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
     .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
+    .concat([["content", "📝 คอนเทนต์ลูกค้า", null]])
     .concat([["leave", "🌴 วันลา", null]])
     .concat((isOwner || isAE) ? [["intake", "🏢 รับบรีฟลูกค้า", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
@@ -582,6 +597,122 @@ export default function Team() {
                 {!isFairy && g.status === "sent" && (
                   <button style={{ ...ghost, marginTop: 10, fontSize: 13 }} disabled={busy === "gj"}
                     onClick={() => post("/api/team/graphic/update", { gj_id: g.gj_id, status: "done" }, "gj")}>✓ รับงานแล้ว</button>)}
+              </div>
+            );
+          })}
+        </>;
+      })()}
+
+      {/* ═══════ 📝 คอนเทนต์ลูกค้า — ลูกตาล → AI → กัน → ลูกตาล → ลูกค้า (คิมออกแบบ 7 ส.ค.) ═══════ */}
+      {tab === "content" && (() => {
+        if (!cp) return <div style={card}><p className="muted" style={{ margin: 0 }}>กำลังโหลด...</p></div>;
+        const tone = { draft: "#a89f96", generating: "#0b6ea8", review: "#B26A00", ae_check: "#7a4fa3", sent: C.green, error: "#b42318" };
+        return <>
+          {/* ลูกตาลกรอกบรีฟ */}
+          {cp.is_boss && <div style={card}>
+            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📝 รับบรีฟคอนเทนต์จากลูกค้า</h3>
+            <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
+              กรอกข้อมูลลูกค้าและบรีฟ กดยืนยันแล้ว <b>AI จะร่างคอนเทนต์ให้ทันที</b> แล้วส่งต่อให้ทีมคอนเทนต์ตรวจแก้ค่ะ
+            </p>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input style={{ ...input, flex: 1, minWidth: 180 }} placeholder="ชื่อลูกค้า" value={cpF.client_name}
+                  onChange={e => setCpF(v => ({ ...v, client_name: e.target.value }))} />
+                <input style={{ ...input, width: 130 }} inputMode="numeric" placeholder="กี่ชิ้น" value={cpF.want_count}
+                  onChange={e => setCpF(v => ({ ...v, want_count: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
+                <input style={{ ...input, width: 160 }} type="date" value={cpF.due_at}
+                  onChange={e => setCpF(v => ({ ...v, due_at: e.target.value }))} />
+              </div>
+              <textarea style={{ ...input, minHeight: 100, fontFamily: "inherit" }} placeholder="บรีฟจากลูกค้า — อยากได้คอนเทนต์แบบไหน กลุ่มเป้าหมายใคร จุดขายคืออะไร"
+                value={cpF.brief} onChange={e => setCpF(v => ({ ...v, brief: e.target.value }))} />
+              <textarea style={{ ...input, minHeight: 56, fontFamily: "inherit" }} placeholder="ลิงก์ตัวอย่าง/เรฟที่ลูกค้าส่งมา (วางได้หลายลิงก์)"
+                value={cpF.ref_links} onChange={e => setCpF(v => ({ ...v, ref_links: e.target.value }))} />
+              <button style={btn()} disabled={busy === "cp" || !cpF.client_name.trim() || !cpF.brief.trim()}
+                onClick={async () => { await post("/api/team/content/create", { ...cpF, want_count: Number(cpF.want_count) || 5 }, "cp");
+                  setCpF({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" }); setTimeout(() => loadCp(cpOpen), 900); }}>
+                ยืนยัน · ให้ AI ร่างคอนเทนต์
+              </button>
+            </div>
+          </div>}
+
+          {!cp.projects.length && <div style={card}><p className="muted" style={{ margin: 0, fontSize: 14 }}>ยังไม่มีงานคอนเทนต์ค่ะ</p></div>}
+
+          {cp.projects.map(p => {
+            const open = cpOpen === p.cp_id;
+            const mineToReview = p.status === "review" && (p.assigned_to === me.member_id || isOwner || isAE);
+            return (
+              <div key={p.cp_id} style={{ ...card, borderLeft: `4px solid ${tone[p.status]}` }}>
+                <div onClick={() => { setCpOpen(open ? "" : p.cp_id); }} style={{ cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "#a89f96" }}>{open ? "▾" : "▸"}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ fontSize: 15 }}>{p.client_name}</b>
+                    <div style={{ fontSize: 12.5, color: "#a89f96", marginTop: 2 }}>
+                      {cp.statuses[p.status]} · {p.want_count} ชิ้น{p.due_th ? ` · ส่ง ${p.due_th}` : ""}
+                      {p.created_by_name ? ` · รับโดย ${p.created_by_name}` : ""}
+                    </div>
+                  </div>
+                  {p.status === "sent" && <span style={{ fontSize: 12, color: C.green }}>✓ ส่งแล้ว</span>}
+                </div>
+
+                {p.status === "error" && <div style={{ marginTop: 9, fontSize: 13.5, color: "#b42318" }}>
+                  AI ทำไม่สำเร็จ: {p.error}
+                  <button style={{ ...ghost, marginLeft: 8, fontSize: 12.5, padding: "5px 12px" }} disabled={busy === "cp"}
+                    onClick={async () => { await post("/api/team/content/advance", { cp_id: p.cp_id }, "cp"); setTimeout(() => loadCp(cpOpen), 900); }}>สั่งทำใหม่</button>
+                </div>}
+
+                {open && <>
+                  {p.brief && <div style={{ background: "#fbf7f3", borderRadius: 10, padding: 11, marginTop: 10, fontSize: 13.5, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+                    <b>บรีฟ:</b> <Linkify text={p.brief} />
+                    {p.ref_links && <><br /><br /><b>เรฟ:</b> <Linkify text={p.ref_links} /></>}
+                  </div>}
+
+                  {cp.items.filter(x => x.cp_id === p.cp_id).map(it => {
+                    const dr = ciD[it.ci_id] || {};
+                    const val = (k) => (dr[k] !== undefined ? dr[k] : (it[k] || ""));
+                    const set = (k, v) => setCiD(o => ({ ...o, [it.ci_id]: { ...o[it.ci_id], [k]: v } }));
+                    const canEdit = mineToReview;
+                    return (
+                      <div key={it.ci_id} style={{ border: `1px solid ${it.approved ? "#cfe3d6" : "var(--border)"}`,
+                        background: it.approved ? "#f7fbf8" : "#fff", borderRadius: 12, padding: 12, marginTop: 10 }}>
+                        <div className="between" style={{ gap: 8, flexWrap: "wrap" }}>
+                          <b style={{ fontSize: 14.5 }}>{it.seq}. {val("title")}</b>
+                          {it.approved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ ผ่านแล้ว</span>}
+                        </div>
+                        {it.angle && <p style={{ fontSize: 13, color: "#7c7268", margin: "4px 0 8px" }}>มุมเล่า: {it.angle}</p>}
+                        {canEdit ? <>
+                          <L t="ฮุก 3 วิแรก"><input style={input} value={val("hook")} onChange={e => set("hook", e.target.value)} /></L>
+                          <L t="สคริปต์ (แก้ให้เป็นภาษาคน)"><textarea style={{ ...input, minHeight: 110, fontFamily: "inherit" }} value={val("script")} onChange={e => set("script", e.target.value)} /></L>
+                          <L t="ภาพที่ต้องถ่าย"><textarea style={{ ...input, minHeight: 56, fontFamily: "inherit" }} value={val("visual")} onChange={e => set("visual", e.target.value)} /></L>
+                          <L t="ฟอร์แมต / เรฟ (คนคอนเทนต์เป็นคนใส่)"><textarea style={{ ...input, minHeight: 56, fontFamily: "inherit" }} value={val("format_note")} onChange={e => set("format_note", e.target.value)} /></L>
+                          <L t="แคปชั่น"><textarea style={{ ...input, minHeight: 56, fontFamily: "inherit" }} value={val("caption")} onChange={e => set("caption", e.target.value)} /></L>
+                          <div style={{ display: "flex", gap: 7, marginTop: 9, flexWrap: "wrap" }}>
+                            <button style={ghost} disabled={busy === "cp"}
+                              onClick={async () => { await post("/api/team/content/item", { ci_id: it.ci_id, ...dr }, "cp"); loadCp(cpOpen); }}>บันทึก</button>
+                            <button style={btn()} disabled={busy === "cp"}
+                              onClick={async () => { await post("/api/team/content/item", { ci_id: it.ci_id, ...dr, approved: true }, "cp"); loadCp(cpOpen); }}>
+                              {it.approved ? "บันทึก + คงสถานะผ่าน" : "✓ ผ่าน"}
+                            </button>
+                          </div>
+                        </> : <div style={{ fontSize: 13.5, lineHeight: 1.8 }}>
+                          <p style={{ margin: "0 0 5px" }}><b>ฮุก:</b> {it.hook}</p>
+                          <p style={{ margin: "0 0 5px", whiteSpace: "pre-wrap" }}><b>สคริปต์:</b> {it.script}</p>
+                          {it.format_note && <p style={{ margin: "0 0 5px", whiteSpace: "pre-wrap" }}><b>ฟอร์แมต:</b> <Linkify text={it.format_note} /></p>}
+                          {it.caption && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}><b>แคปชั่น:</b> {it.caption} {it.hashtags}</p>}
+                        </div>}
+                      </div>
+                    );
+                  })}
+
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                    {mineToReview && <button style={btn()} disabled={busy === "cp"}
+                      onClick={async () => { await post("/api/team/content/advance", { cp_id: p.cp_id }, "cp"); loadCp(cpOpen); }}>ตรวจครบแล้ว · ส่งให้ AE</button>}
+                    {p.status === "ae_check" && (isOwner || isAE) && <button style={btn()} disabled={busy === "cp"}
+                      onClick={async () => { await post("/api/team/content/advance", { cp_id: p.cp_id }, "cp"); loadCp(cpOpen); }}>✓ ส่งลูกค้าแล้ว</button>}
+                    {["ae_check", "sent", "review"].includes(p.status) &&
+                      <a className="btn" href={`/api/team/content/export.csv?code=${encodeURIComponent(code)}&cp_id=${p.cp_id}`}
+                         style={{ ...ghost, textDecoration: "none", display: "inline-block" }}>📊 ดาวน์โหลด Excel</a>}
+                  </div>
+                </>}
               </div>
             );
           })}

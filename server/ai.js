@@ -1258,3 +1258,70 @@ ${people.map(p => `- ${p.name} (${p.position || p.role}): งานที่ถ�
   return { review: JSON.parse(resp.text), model: MODEL,
            usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, total: u.totalTokenCount || 0 } };
 }
+
+// ═══════ 🏢 คอนเทนต์งานลูกค้า (คิมสั่ง 7 ส.ค.) ═══════
+// ลูกตาลกรอกบรีฟลูกค้า → AI ร่างคอนเทนต์ให้ N ชิ้น → กันตรวจแก้ให้เป็นภาษาคน → ลูกตาลส่งลูกค้า
+// ⚠️ ตั้งใจให้ AI เป็น "คนร่าง" ไม่ใช่ "คนตัดสิน" — กันต้องแก้ทุกชิ้นก่อนอนุมัติเสมอ
+const CLIENT_CONTENT_PROMPT = `คุณคือทีมครีเอทีฟของ Babe House ร่างคอนเทนต์ให้ลูกค้าตามบรีฟ
+
+หลักการ
+- อ่านบรีฟให้ครบ จับ "จุดขายจริง" ของลูกค้าให้ได้ก่อน แล้วค่อยคิดมุมเล่า
+- ห้ามอ่านสเปกสินค้าดื้อๆ ต้องหามุมที่คนดูอยากดู
+- ทุกชิ้นต้องต่างมุมกันจริงๆ ห้ามเป็นเรื่องเดิมเปลี่ยนคำ
+- ภาษาพูดแบบคนไทยคุยกัน ไม่ใช่ภาษาโฆษณาแข็งๆ ไม่ใช้คำวัยรุ่นเกินจริง
+- ห้ามกล่าวอ้างสรรพคุณเกินจริง โดยเฉพาะอาหาร/เครื่องสำอาง/อาหารเสริม
+
+ตอบเป็น JSON เท่านั้น:
+{"items":[{
+  "title":"ชื่อคอนเทนต์สั้นๆ",
+  "angle":"มุมเล่าคืออะไร อธิบาย 1 ประโยค",
+  "hook":"ประโยคเปิด 3 วินาทีแรก",
+  "script":"สคริปต์พูดเต็ม แบ่งบรรทัดตามจังหวะ",
+  "visual":"ภาพที่ต้องถ่าย/ทำ อธิบายให้คนตัดต่อเข้าใจ",
+  "caption":"แคปชั่นลงโพสต์",
+  "hashtags":"#แฮชแท็ก คั่นด้วยเว้นวรรค",
+  "cta":"ปิดท้ายให้คนดูทำอะไร"
+}]}`;
+
+export async function generateClientContent({ client, brief, count = 5, refLinks = "", files = [] }) {
+  const n = Math.max(1, Math.min(30, Number(count) || 5));
+  if (!ai) {
+    return { items: Array.from({ length: n }, (_, i) => ({
+      title: `คอนเทนต์ชิ้นที่ ${i + 1} (ตัวอย่าง)`, angle: "โหมดทดสอบ ยังไม่ได้ต่อ AI",
+      hook: "ฮุกตัวอย่าง", script: `สคริปต์ตัวอย่างสำหรับ ${client || "ลูกค้า"}`,
+      visual: "ภาพตัวอย่าง", caption: "แคปชั่นตัวอย่าง", hashtags: "#BabeHouse", cta: "ทักแชทได้เลย",
+    })), model: "fallback-local", usage: { input: 0, output: 0, total: 0 } };
+  }
+  // ไฟล์บรีฟที่ลูกตาลแนบ (PDF/รูป) — Gemini อ่านได้ตรงๆ ไม่ต้องให้คนพิมพ์ซ้ำ
+  const fileParts = [];
+  for (const f of files) {
+    const m = String(f || "").match(/^data:(application\/pdf|image\/jpeg|image\/png|image\/webp);base64,(.+)$/);
+    if (m) fileParts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+    if (fileParts.length >= 4) break;
+  }
+  const text = `ลูกค้า: ${client || "-"}
+จำนวนคอนเทนต์ที่ต้องการ: ${n} ชิ้น
+
+บรีฟจากลูกค้า:
+${brief || "(ดูจากไฟล์แนบ)"}
+${refLinks ? `\nตัวอย่าง/อ้างอิงที่ลูกค้าส่งมา:\n${refLinks}` : ""}
+${fileParts.length ? "\n📎 มีไฟล์บรีฟแนบมาด้วย อ่านให้ครบ" : ""}
+
+สร้าง JSON ตามสเปก ให้ครบ ${n} ชิ้น ทุกชิ้นต้องต่างมุมกันจริงๆ`;
+  const { resp, model } = await genContent({
+    contents: [{ role: "user", parts: [...fileParts, { text }] }],
+    config: { systemInstruction: CLIENT_CONTENT_PROMPT, responseMimeType: "application/json",
+              maxOutputTokens: Math.min(32000, 2200 * n + 4000), thinkingConfig: { thinkingBudget: 2048 } },
+    retries: 2,
+  });
+  if (!resp.text?.trim()) throw new Error(`empty response (finishReason=${resp.candidates?.[0]?.finishReason || "?"})`);
+  const raw = JSON.parse(resp.text);
+  const items = (Array.isArray(raw.items) ? raw.items : []).slice(0, n).map(x => ({
+    title: String(x.title || "").slice(0, 200), angle: String(x.angle || "").slice(0, 500),
+    hook: String(x.hook || "").slice(0, 500), script: String(x.script || "").slice(0, 6000),
+    visual: String(x.visual || "").slice(0, 2000), caption: String(x.caption || "").slice(0, 2000),
+    hashtags: String(x.hashtags || "").slice(0, 500), cta: String(x.cta || "").slice(0, 300),
+  }));
+  if (!items.length) throw new Error("AI ไม่ได้ส่งคอนเทนต์กลับมา");
+  return { items, model, usage: usageOf(resp) };
+}

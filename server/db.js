@@ -232,6 +232,39 @@ export async function initDb() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_brief_files_order ON brief_files(order_id, created_at);
+    -- 📝 งานคอนเทนต์ลูกค้า (คิมออกแบบ 7 ส.ค.)
+    -- ลูกตาลกรอกบรีฟ → AI ร่าง → กันตรวจแก้ให้เป็นภาษาคน + แนบฟอร์แมต → ลูกตาลตรวจ → ส่งลูกค้า
+    CREATE TABLE IF NOT EXISTS content_projects (
+      cp_id TEXT PRIMARY KEY,
+      client_name TEXT NOT NULL,
+      client_contact TEXT,
+      brief TEXT,
+      ref_links TEXT,
+      want_count INTEGER DEFAULT 5,
+      status TEXT DEFAULT 'draft',   -- draft | generating | review(กันตรวจ) | ae_check(ลูกตาลตรวจ) | sent | error
+      created_by TEXT,
+      created_by_name TEXT,
+      assigned_to TEXT,              -- คนตรวจ (กัน)
+      ai_model TEXT,
+      error TEXT,
+      due_at DATE,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now(),
+      sent_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_cp_status ON content_projects(status, created_at DESC);
+    CREATE TABLE IF NOT EXISTS content_items (
+      ci_id TEXT PRIMARY KEY,
+      cp_id TEXT NOT NULL,
+      seq INTEGER DEFAULT 0,
+      title TEXT, angle TEXT, hook TEXT, script TEXT, visual TEXT, caption TEXT, hashtags TEXT, cta TEXT,
+      format_note TEXT,              -- ฟอร์แมต/เรฟที่กันแนบเพิ่ม — คิมสั่งว่า "การจะต้องเป็นคนทำ"
+      ai_original TEXT,              -- เก็บร่างของ AI ไว้เทียบว่ากันแก้อะไรไปบ้าง
+      approved BOOLEAN DEFAULT false,
+      edited_by TEXT,
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ci_project ON content_items(cp_id, seq);
     -- 🌴 ระบบวันลา (คิมสั่ง 7 ส.ค. "ยึดตามกฎหมาย กันความมั่วในการกดวันหยุด")
     CREATE TABLE IF NOT EXISTS leave_requests (
       leave_id TEXT PRIMARY KEY,

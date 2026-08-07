@@ -15,7 +15,7 @@ import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
 import { seedAssignments } from "./seed-assignments.js";
-import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint, reviewMonth, extractImages, reviewTeamWeek } from "./ai.js";
+import { generateBlueprint, generateAnalysis, generateContent, generateSingleScript, generateGrowthAnalysis, buildBaselineGrowth, generateAdminInsight, classifyIndustries, classifyKeyword, INDUSTRIES, aiModelName, aiCostTHB, analyzeVideo, gradeHomework, checkBlueprintQuality, rewriteTheme, BAD_THEME_RE, auditBlueprintMatch, setCuratedTrends, enrichDirections, complianceNote, politeKimBlueprint, reviewMonth, extractImages, reviewTeamWeek, generateClientContent } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "web", "dist");
@@ -4533,6 +4533,149 @@ app.post("/api/team/brief-file/delete", async (req, res) => {
   if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
   await run(`DELETE FROM brief_files WHERE file_id=$1`, [String(req.body?.file_id || "")]);
   res.json({ ok: true });
+});
+// ═══════ 📝 งานคอนเทนต์ลูกค้า — ลูกตาล → AI → กัน → ลูกตาล → ลูกค้า (คิมออกแบบ 7 ส.ค.) ═══════
+const CP_STATUS = { draft: "ร่าง", generating: "AI กำลังคิด", review: "รอกันตรวจ", ae_check: "รอ AE ตรวจ", sent: "ส่งลูกค้าแล้ว", error: "AI ทำไม่สำเร็จ" };
+// คนตรวจคอนเทนต์ = กัน (ตำแหน่ง Content) — หาแบบไม่ฮาร์ดโค้ดชื่อ เผื่อเปลี่ยนคนทีหลัง
+async function contentReviewer() {
+  return one(`SELECT member_id, name, email FROM team_members WHERE code='gun' AND active`)
+      || one(`SELECT member_id, name, email FROM team_members WHERE position ILIKE '%content%' AND active ORDER BY name LIMIT 1`);
+}
+
+// ลูกตาลสร้างโปรเจค + กดยืนยัน → AI ร่างให้เลย
+app.post("/api/team/content/create", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะ AE กับคิมค่ะ" });
+  const b = req.body || {};
+  const client = String(b.client_name || "").trim();
+  const brief = String(b.brief || "").trim();
+  if (!client) return res.status(400).json({ ok: false, error: "NEED_CLIENT", message: "ใส่ชื่อลูกค้าด้วยนะคะ" });
+  if (!brief && !(b.files || []).length) return res.status(400).json({ ok: false, error: "NEED_BRIEF", message: "ใส่บรีฟหรือแนบไฟล์บรีฟด้วยนะคะ" });
+  const want = Math.max(1, Math.min(30, Number(b.want_count) || 5));
+  const gun = await contentReviewer();
+  const id = uid("cp");
+  await run(`INSERT INTO content_projects (cp_id,client_name,client_contact,brief,ref_links,want_count,status,created_by,created_by_name,assigned_to,due_at)
+    VALUES ($1,$2,$3,$4,$5,$6,'generating',$7,$8,$9,$10)`,
+    [id, client.slice(0, 200), String(b.client_contact || "").slice(0, 200) || null, brief.slice(0, 20000),
+     String(b.ref_links || "").slice(0, 3000) || null, want, me.member_id, me.name, gun?.member_id || null,
+     /^\d{4}-\d{2}-\d{2}$/.test(String(b.due_at || "")) ? b.due_at : null]);
+  // ตอบกลับก่อน แล้วค่อยให้ AI ทำงานเบื้องหลัง — ลูกตาลไม่ต้องนั่งรอหน้าค้าง
+  res.json({ ok: true, cp_id: id, status: "generating", message: "รับบรีฟแล้วค่ะ AI กำลังร่างคอนเทนต์ให้ สักครู่กดรีเฟรชดูได้เลย" });
+  runContentGeneration(id, b.files || []).catch(e => console.error("content-gen", e.message));
+});
+
+async function runContentGeneration(cpId, files = []) {
+  const cp = await one(`SELECT * FROM content_projects WHERE cp_id=$1`, [cpId]);
+  if (!cp) return;
+  try {
+    const { items, model } = await generateClientContent({
+      client: cp.client_name, brief: cp.brief, count: cp.want_count, refLinks: cp.ref_links || "", files });
+    await run(`DELETE FROM content_items WHERE cp_id=$1`, [cpId]);
+    let i = 0;
+    for (const it of items) {
+      await run(`INSERT INTO content_items (ci_id,cp_id,seq,title,angle,hook,script,visual,caption,hashtags,cta,ai_original)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [uid("ci"), cpId, ++i, it.title, it.angle, it.hook, it.script, it.visual, it.caption, it.hashtags, it.cta, JSON.stringify(it)]);
+    }
+    await run(`UPDATE content_projects SET status='review', ai_model=$2, error=NULL, updated_at=now() WHERE cp_id=$1`, [cpId, model]);
+    const gun = await contentReviewer();
+    if (gun?.email) sendEmail(gun.email, `📝 มีคอนเทนต์รอตรวจ ${items.length} ชิ้น — ${cp.client_name}`,
+      wrap(`สวัสดีค่ะ ${gun.name} 🩵<br><br>AI ร่างคอนเทนต์ให้ลูกค้า <b>${cp.client_name}</b> เสร็จแล้ว ${items.length} ชิ้นค่ะ<br><br>` +
+           `รบกวนตรวจแก้ให้เป็นภาษาคน และแนบฟอร์แมต/เรฟให้ด้วยนะคะ<br><br>${btn(appBaseUrl() + "/team", "เปิดหน้าตรวจคอนเทนต์")}`)).catch(() => {});
+    console.log(`[content] ${cpId} เสร็จ ${items.length} ชิ้น (${model})`);
+  } catch (e) {
+    await run(`UPDATE content_projects SET status='error', error=$2, updated_at=now() WHERE cp_id=$1`, [cpId, String(e.message).slice(0, 500)]);
+    sendEmail(OPS_EMAIL, `⚠️ AI ร่างคอนเทนต์ไม่สำเร็จ — ${cp.client_name}`,
+      wrap(`โปรเจค ${cpId}<br>สาเหตุ: ${e.message}<br><br>กดสั่งใหม่ได้ที่หน้า /team ค่ะ`)).catch(() => {});
+  }
+}
+
+// รายการโปรเจค + ชิ้นงาน
+app.get("/api/team/content", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const boss = ["owner", "ae"].includes(me.role);
+  const where = boss ? "" : "WHERE assigned_to=$1";
+  const projects = await q(`SELECT * FROM content_projects ${where} ORDER BY (status='sent'), created_at DESC LIMIT 60`,
+    boss ? [] : [me.member_id]).catch(() => []);
+  const one_id = String(req.query.cp_id || "");
+  const items = one_id ? await q(`SELECT * FROM content_items WHERE cp_id=$1 ORDER BY seq`, [one_id]) : [];
+  res.json({ ok: true, statuses: CP_STATUS, is_boss: boss,
+    projects: projects.map(p => ({ ...p, due_th: p.due_at ? thDate(p.due_at) : null })), items });
+});
+
+// กันแก้ชิ้นงาน (แก้คำ + แนบฟอร์แมต) — คิมสั่งว่าฟอร์แมตกันต้องเป็นคนทำ
+app.post("/api/team/content/item", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const b = req.body || {};
+  const it = await one(`SELECT ci.*, cp.assigned_to FROM content_items ci JOIN content_projects cp ON cp.cp_id=ci.cp_id WHERE ci.ci_id=$1`, [String(b.ci_id || "")]);
+  if (!it) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (it.assigned_to !== me.member_id && !["owner", "ae"].includes(me.role))
+    return res.status(403).json({ ok: false, error: "NOT_YOURS" });
+  const f = (k, max) => (b[k] === undefined ? null : String(b[k]).slice(0, max));
+  await run(`UPDATE content_items SET
+      title=COALESCE($2,title), hook=COALESCE($3,hook), script=COALESCE($4,script), visual=COALESCE($5,visual),
+      caption=COALESCE($6,caption), hashtags=COALESCE($7,hashtags), cta=COALESCE($8,cta), format_note=COALESCE($9,format_note),
+      approved=COALESCE($10,approved), edited_by=$11, updated_at=now() WHERE ci_id=$1`,
+    [it.ci_id, f("title", 200), f("hook", 500), f("script", 6000), f("visual", 2000),
+     f("caption", 2000), f("hashtags", 500), f("cta", 300), f("format_note", 2000),
+     b.approved === undefined ? null : !!b.approved, me.name]);
+  res.json({ ok: true });
+});
+
+// กันกดอนุมัติทั้งชุด → เด้งไปลูกตาล · ลูกตาลกดส่ง → จบ
+app.post("/api/team/content/advance", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const cp = await one(`SELECT * FROM content_projects WHERE cp_id=$1`, [String(req.body?.cp_id || "")]);
+  if (!cp) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
+  if (cp.status === "review") {
+    if (cp.assigned_to !== me.member_id && !["owner", "ae"].includes(me.role))
+      return res.status(403).json({ ok: false, error: "NOT_YOURS" });
+    // ⚠️ ต้องอนุมัติครบทุกชิ้นก่อน — กันส่งงานที่ยังไม่ได้ตรวจหลุดไปหาลูกค้า
+    const left = await one(`SELECT COUNT(*) c FROM content_items WHERE cp_id=$1 AND approved=false`, [cp.cp_id]);
+    if (Number(left?.c || 0) > 0)
+      return res.status(409).json({ ok: false, error: "NOT_ALL_APPROVED", message: `ยังเหลืออีก ${left.c} ชิ้นที่ยังไม่ได้กดผ่านค่ะ` });
+    await run(`UPDATE content_projects SET status='ae_check', updated_at=now() WHERE cp_id=$1`, [cp.cp_id]);
+    const ae = await one(`SELECT email, name FROM team_members WHERE member_id=$1`, [cp.created_by]);
+    if (ae?.email) sendEmail(ae.email, `✅ คอนเทนต์ ${cp.client_name} ตรวจเสร็จแล้ว`,
+      wrap(`สวัสดีค่ะ ${ae.name} 🩵<br><br>${me.name} ตรวจคอนเทนต์ของ <b>${cp.client_name}</b> เสร็จแล้วค่ะ<br><br>` +
+           `${btn(appBaseUrl() + "/team", "เปิดดูและดาวน์โหลด Excel")}`)).catch(() => {});
+    return res.json({ ok: true, status: "ae_check", message: "ส่งให้ AE ตรวจแล้วค่ะ" });
+  }
+  if (cp.status === "ae_check") {
+    if (!["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "ด่านนี้ AE เป็นคนกดค่ะ" });
+    await run(`UPDATE content_projects SET status='sent', sent_at=now(), updated_at=now() WHERE cp_id=$1`, [cp.cp_id]);
+    return res.json({ ok: true, status: "sent", message: "บันทึกว่าส่งลูกค้าแล้วค่ะ 🎉" });
+  }
+  if (cp.status === "error") {
+    await run(`UPDATE content_projects SET status='generating', error=NULL, updated_at=now() WHERE cp_id=$1`, [cp.cp_id]);
+    runContentGeneration(cp.cp_id).catch(e => console.error("content-regen", e.message));
+    return res.json({ ok: true, status: "generating", message: "สั่ง AI ทำใหม่แล้วค่ะ" });
+  }
+  res.status(409).json({ ok: false, error: "BAD_STATUS", message: `สถานะตอนนี้คือ "${CP_STATUS[cp.status]}" กดต่อไม่ได้ค่ะ` });
+});
+
+// 📊 ดาวน์โหลดเป็น Excel (คิมเลือกแนวทางนี้ 7 ส.ค. "เดี๋ยวให้ไปเปิดใน google เอง")
+// ใช้ CSV + BOM — Excel และ Google Sheets เปิดได้ทั้งคู่ ภาษาไทยไม่เพี้ยน ไม่ต้องลงไลบรารีเพิ่ม
+app.get("/api/team/content/export.csv", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).send("unauthorized");
+  const cp = await one(`SELECT * FROM content_projects WHERE cp_id=$1`, [String(req.query.cp_id || "")]);
+  if (!cp) return res.status(404).send("not found");
+  const items = await q(`SELECT * FROM content_items WHERE cp_id=$1 ORDER BY seq`, [cp.cp_id]);
+  const cols = [["seq", "ลำดับ"], ["title", "ชื่อคอนเทนต์"], ["angle", "มุมเล่า"], ["hook", "ฮุก 3 วิแรก"],
+                ["script", "สคริปต์"], ["visual", "ภาพที่ต้องถ่าย"], ["format_note", "ฟอร์แมต/เรฟ"],
+                ["caption", "แคปชั่น"], ["hashtags", "แฮชแท็ก"], ["cta", "ปิดท้าย"]];
+  const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const csv = "﻿" + [cols.map(c => esc(c[1])).join(",")]
+    .concat(items.map(r => cols.map(c => esc(r[c[0]])).join(","))).join("\r\n");
+  const safe = String(cp.client_name).replace(/[^\p{L}\p{N}_-]+/gu, "-").slice(0, 40);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(`คอนเทนต์-${safe}.csv`)}`);
+  res.send(csv);
 });
 app.post("/api/team/external", async (req, res) => {
   const me = await teamWho(req);

@@ -4956,29 +4956,69 @@ async function runHomeworkReminders() {
 }
 // ตามคนที่กรอกฟอร์ม/เห็นสรุปแล้วแต่ไม่จ่าย — ส่งเมลชวนกลับมาทำต่อ (1 ครั้ง/อีเมล)
 // เงื่อนไข: ออเดอร์ยังไม่จ่าย อายุ 2 ชม.–7 วัน, อีเมลนั้นไม่เคยจ่ายออเดอร์ใดเลย, ยังไม่เคยตามอีเมลนี้
-async function runAbandonedFollowups() {
+// 📮 ตามคนที่กดซื้อแล้วจ่ายไม่สำเร็จ (คิมสั่ง 7 ส.ค. "หลุดมือไปเยอะมาก")
+// เดิมส่งได้ครั้งเดียวต่ออีเมลตลอดกาล → 77 คนได้เมลแล้วเงียบ = ฿37,730 ที่หายไป
+// ตอนนี้ตาม 3 รอบแล้วหยุด: 2 ชม. → +1 วัน → +3 วัน (ไม่ตื๊อจนน่ารำคาญ)
+// ⚠️ ราคาในเมลต้องดึงจากราคาจริงที่ขายอยู่ ณ ตอนนั้น — ของเดิมฮาร์ดโค้ด 1,590
+//    ทั้งที่เว็บยังขายโปร 490 อยู่ = ไล่ลูกค้าหนีด้วยตัวเลขที่แพงกว่าจริง 3 เท่า
+const ABANDON_STEPS = [
+  { after: "2 hours",  count: 0 },
+  { after: "1 day",    count: 1 },
+  { after: "3 days",   count: 2 },
+];
+async function runAbandonedFollowups(dry = false) {
+  let sent = 0;
+  const preview = [];
   try {
-    const rows = await q(`SELECT DISTINCT ON (o.email) o.order_id, o.email, o.billing_cycle FROM blueprint_orders o
-      WHERE o.payment_status IN ('pending','expired') AND o.email IS NOT NULL
-        AND COALESCE(o.tier,'') NOT LIKE 'Video%'
-        AND o.created_at < now() - interval '2 hours' AND o.created_at > now() - interval '7 days'
-        AND o.email NOT IN (SELECT email FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND email IS NOT NULL)
-        AND o.email NOT IN (SELECT email FROM abandoned_reminders)
-      ORDER BY o.email, o.created_at DESC LIMIT 100`);
-    let sent = 0;
-    for (const r of rows) {
-      const url = `${appBaseUrl()}/checkout?order_id=${encodeURIComponent(r.order_id)}`;
-      try { const l = await langOfEmail(r.email); await sendEmail(r.email,
-        tr(l, "แผนคอนเทนต์ของคุณรอเปิดอยู่นะคะ 🩵", "Your content plan is waiting for you 🩵"),
-        wrap(tr(l,
-          `เห็นว่าคุณเริ่มกรอกข้อมูลช่องไว้แล้ว แต่ยังไม่ได้เปิดดูแผนเต็มๆ เลยค่ะ<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> ไว้ให้แล้ว — กดปุ่มด้านล่างเพื่อดูสรุปและปลดล็อกได้เลยค่ะ<br><br>${btn(url, "ดูแผนของฉัน · ปลดล็อกเลย")}<br><br><span style="color:#888;font-size:14px">เลือกได้ทั้งรายเดือน 1,590฿ · 6 เดือน (ตกเดือนละ 1,110฿) · 12 เดือน (ตกเดือนละ 795฿) ทุกราคารวม VAT แล้วค่ะ</span>`,
-          `We noticed you started filling in your channel info but haven't opened your full plan yet.<br><br>Kim has analyzed your channel and prepared a <b>30-day content plan + ready-to-use scripts</b> — tap below to see your summary and unlock it.<br><br>${btn(url, "See my plan · Unlock ฿490")}<br><br><span style="color:#888;font-size:14px">Launch offer ฿490 (regular ฿1,590) — limited spots</span>`))); }
-      catch { continue; }
-      await run(`INSERT INTO abandoned_reminders (email,order_id) VALUES ($1,$2) ON CONFLICT (email) DO NOTHING`, [r.email, r.order_id]);
-      sent++;
+    for (const step of ABANDON_STEPS) {
+      const rows = await q(`SELECT DISTINCT ON (lower(o.email)) o.order_id, o.email, o.billing_cycle, o.final_amount_satang
+        FROM blueprint_orders o
+        LEFT JOIN abandoned_reminders a ON lower(a.email) = lower(o.email)
+        WHERE o.payment_status IN ('pending','expired') AND o.email IS NOT NULL
+          AND COALESCE(o.tier,'') NOT LIKE 'Video%'
+          AND o.created_at > now() - interval '14 days'
+          AND lower(o.email) NOT IN (SELECT lower(email) FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND email IS NOT NULL)
+          AND COALESCE(a.sent_count, 0) = $1
+          AND (a.last_sent_at IS NULL OR a.last_sent_at < now() - $2::interval)
+          AND o.created_at < now() - $2::interval
+        ORDER BY lower(o.email), o.created_at DESC LIMIT 100`, [step.count, step.after]);
+      for (const r of rows) {
+        const url = `${appBaseUrl()}/checkout?order_id=${encodeURIComponent(r.order_id)}`;
+        const baht = Math.round(Number(r.final_amount_satang || monthlySatang()) / 100).toLocaleString("th-TH");
+        if (dry) { preview.push({ email: r.email, round: step.count + 1, baht: Number(baht.replace(/,/g, "")) }); continue; }
+        const promo = !plansLive();
+        const l = await langOfEmail(r.email);          // ลูกค้าต่างชาติต้องได้ภาษาอังกฤษเหมือนเดิม
+        // ทั้ง 3 รอบใช้คนละมุม — รอบแรกบอกว่าของรออยู่ · รอบสองบอกวิธีจ่าย (QR หมดอายุคือสาเหตุที่เจอจริง) · รอบสามบอกว่ากำลังจะหมดเวลา
+        const body = {
+          0: `เห็นว่าคุณกดสั่งแผนคอนเทนต์ไว้แล้ว แต่การชำระเงินยังไม่สำเร็จค่ะ 🩵<br><br>ครูพี่คิมวิเคราะห์ช่องของคุณและเตรียม <b>แผนคอนเทนต์ 30 วัน + สคริปต์พร้อมใช้</b> รออยู่แล้ว กดปุ่มด้านล่างเพื่อจ่ายให้เสร็จได้เลยค่ะ<br><br>${btn(url, `จ่ายให้เสร็จ · ฿${baht}`)}`,
+          1: `แผนคอนเทนต์ของคุณยังรออยู่นะคะ 🩵<br><br>ลูกค้าหลายคนเจอปัญหาเดียวกันคือ <b>QR พร้อมเพย์หมดอายุก่อนสแกน</b> ทำให้จ่ายไม่ผ่านค่ะ<br><br>วิธีที่ง่ายที่สุดคือ <b>กดปุ่มด้านล่าง แล้วสแกนจ่ายให้เสร็จเลยภายในครั้งเดียว</b> อย่าปิดหน้าจอระหว่างรอนะคะ ถ้า QR หมดอายุแล้วกดขอใหม่ได้เรื่อยๆ ค่ะ<br><br>${btn(url, `จ่ายให้เสร็จ · ฿${baht}`)}`,
+          2: `นี่เป็นข้อความสุดท้ายที่เราจะรบกวนนะคะ 🩵<br><br>แผนคอนเทนต์ 30 วันของคุณยังเปิดค้างไว้อยู่ค่ะ` +
+             (promo ? ` และตอนนี้ยังเป็น <b>ราคาโปรเปิดตัว ฿${baht}</b> (ปกติ ฿1,590) ซึ่งจะปรับขึ้นวันที่ 1 กันยายนนี้ค่ะ` : ``) +
+             `<br><br>${btn(url, `จ่ายให้เสร็จ · ฿${baht}`)}<br><br><span style="color:#888;font-size:14px">ถ้าเปลี่ยนใจแล้วไม่เป็นไรเลยค่ะ เราจะไม่ส่งข้อความเรื่องนี้อีกนะคะ</span>`,
+        }[step.count];
+        const bodyEn = {
+          0: `We noticed you started your content plan order but the payment didn't go through.<br><br>Kim has analyzed your channel and your <b>30-day content plan + ready-to-use scripts</b> are waiting. Tap below to complete your payment.<br><br>${btn(url, `Complete payment · ฿${baht}`)}`,
+          1: `Your content plan is still waiting for you.<br><br>Many customers hit the same snag: <b>the PromptPay QR code expires before they finish scanning</b>.<br><br>The easiest fix is to <b>tap below and complete the scan in one go</b> — don't close the screen while waiting. If the code expires you can always request a new one.<br><br>${btn(url, `Complete payment · ฿${baht}`)}`,
+          2: `This is the last time we'll write about this.<br><br>Your 30-day content plan is still held open for you` +
+             (promo ? ` at the <b>launch price of ฿${baht}</b> (regular ฿1,590), which goes up on 1 September.` : `.`) +
+             `<br><br>${btn(url, `Complete payment · ฿${baht}`)}<br><br><span style="color:#888;font-size:14px">If you've changed your mind that's completely fine — we won't email you about this again.</span>`,
+        }[step.count];
+        const subj = tr(l,
+          { 0: "การชำระเงินยังไม่สำเร็จค่ะ 🩵", 1: "แผนคอนเทนต์ของคุณยังรออยู่นะคะ 🩵",
+            2: "ข้อความสุดท้ายนะคะ — แผนคอนเทนต์ของคุณยังเปิดค้างอยู่ 🩵" }[step.count],
+          { 0: "Your payment didn't go through 🩵", 1: "Your content plan is still waiting 🩵",
+            2: "Last note — your content plan is still open 🩵" }[step.count]);
+        try { await sendEmail(r.email, subj, wrap(tr(l, body, bodyEn))); } catch { continue; }
+        await run(`INSERT INTO abandoned_reminders (email, order_id, sent_count, last_sent_at) VALUES ($1,$2,1,now())
+          ON CONFLICT (email) DO UPDATE SET sent_count = COALESCE(abandoned_reminders.sent_count,0) + 1,
+            last_sent_at = now(), order_id = EXCLUDED.order_id`, [r.email, r.order_id]);
+        sent++;
+      }
     }
-    if (sent) console.log(`[abandoned] ${sent}`); return sent;
-  } catch (e) { console.error("abandoned", e.message); return 0; }
+    if (dry) return { dry: true, would_send: preview.length, people: preview };
+    if (sent) console.log(`[abandoned] ${sent}`);
+    return sent;
+  } catch (e) { console.error("abandoned", e.message); return dry ? { dry: true, error: e.message } : sent; }
 }
 // เตือน "activation": ลูกค้าได้บทวิเคราะห์แล้ว แต่ยังไม่กด "สร้างแผน 30 วัน" เกิน 24 ชม. → เตือน 1 ครั้งต่อเล่ม (กันสแปมด้วย activation_reminded_at)
 async function runActivationReminders() {
@@ -5041,6 +5081,11 @@ app.get("/api/admin/attribution", async (req, res) => {
 // 👀 ใครได้บทวิเคราะห์แล้วแต่ยังไม่กด "สร้างแผน 30 วัน" — เห็นรายชื่อจริง + รู้ว่าเตือนไปหรือยัง
 // 📊 ตรวจ "คนกดซื้อแล้วจ่ายไม่สำเร็จ" — ดูได้ว่าใครค้าง ใครได้เมลตามแล้ว ใครตกหล่น
 // GET = ดูอย่างเดียว ไม่ส่งเมล · ใช้ประเมินว่าเสียยอดไปเท่าไหร่
+// 👀 ลองยิงแบบไม่ส่งจริง — ดูว่ารอบนี้ใครจะได้เมล รอบที่เท่าไหร่ ก่อนกดส่งจริง
+app.get("/api/admin/abandoned-dry", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  res.json({ ok: true, ...(await runAbandonedFollowups(true)) });
+});
 app.get("/api/admin/abandoned", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 30));

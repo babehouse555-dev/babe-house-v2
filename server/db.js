@@ -903,6 +903,11 @@ export async function initDb() {
       order_id TEXT,
       sent_at TIMESTAMPTZ DEFAULT now()
     );
+    -- 📮 ตามคนจ่ายไม่สำเร็จหลายรอบ (คิมสั่ง 7 ส.ค. "หลุดมือไปเยอะมาก")
+    -- เดิมส่งได้ครั้งเดียวต่ออีเมลตลอดกาล — 77 คนได้เมลแล้วไม่กลับมา = ฿37,730
+    -- เปลี่ยนเป็นตาม 3 รอบ (2 ชม. → 1 วัน → 3 วัน) แล้วหยุด ไม่ตื๊อจนน่ารำคาญ
+    ALTER TABLE abandoned_reminders ADD COLUMN IF NOT EXISTS sent_count INTEGER DEFAULT 1;
+    ALTER TABLE abandoned_reminders ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMPTZ DEFAULT now();
     -- 🔁 รอบแก้งานตัดต่อ — ลูกค้ารวบจุดที่อยากแก้ทั้งหมดไว้ในรอบเดียว แล้วค่อยกดส่งทีเดียว
     -- คิมสั่ง 5 ส.ค.: "ลูกค้าพิมพ์มาเป็นนาที มันจะขึ้นเยอะมาก ต้องแยกช่องเป็นรอบๆ"
     -- เดิมลูกค้าพิมพ์ทีละบรรทัด ทีมได้งานแบบหยดทีละหยด วางแผนตัดไม่ได้

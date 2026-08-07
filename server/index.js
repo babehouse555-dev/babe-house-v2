@@ -3635,8 +3635,11 @@ async function seedTeamIfEmpty() {
 async function setAssignTiers() {
   await run(`UPDATE team_members SET assign_tier=1 WHERE code IN ('bow','gong')`).catch(() => {});
   await run(`UPDATE team_members SET assign_tier=2 WHERE code = 'gun'`).catch(() => {});
-  // AE + ฟรีแลนซ์ + คนอื่นๆ = ด่านสุดท้าย (ลูกตาลเป็น AE ควรไปดูแลงาน ไม่ใช่รับตัดเอง)
+  // ฟรีแลนซ์ + คนอื่นๆ = ด่านสุดท้าย
   await run(`UPDATE team_members SET assign_tier=3 WHERE assign_tier IS NULL OR code NOT IN ('bow','gong','gun')`).catch(() => {});
+  // 🚫 AE (ลูกตาล) ตัดต่อไม่เป็น — คิมสั่ง 7 ส.ค. "ให้เป็นคนตรวจอย่างเดียว"
+  //    ตั้งโควตา 0 ด้วย เพื่อให้หน้าตารางงานไม่ขึ้นว่า "ว่างรับได้ 20 คลิป" ซึ่งไม่จริง
+  await run(`UPDATE team_members SET default_slots=0 WHERE role='ae'`).catch(() => {});
 }
 // หาว่าคนที่ยิงคำขอมาคือใคร (จากรหัสส่วนตัว) — แอดมินคีย์ของคิมนับเป็น owner เสมอ
 async function teamWho(req) {
@@ -3819,7 +3822,9 @@ async function pickAssignee(job, excludeIds = []) {
     for (const r of off) skip.add(r.member_id);
   }
   const need = Number(job.clips) || 1;
-  const eligible = wl.filter(m => !skip.has(m.member_id) && m.capacity > 0 && m.free_slots >= need);
+  // 🚫 AE ตรวจงานอย่างเดียว ไม่รับงานตัด (คิมสั่ง 7 ส.ค.) — กันไว้ตรงนี้ด้วย
+  //    เผื่อมีคนไปกรอกความว่างให้ AE เอง ระบบก็ยังต้องไม่จ่ายงานตัดให้
+  const eligible = wl.filter(m => m.role !== "ae" && !skip.has(m.member_id) && m.capacity > 0 && m.free_slots >= need);
   if (!eligible.length) {
     return { member: null, reason: skip.size ? "ไม่มีใครว่างพอมารับแทน" : "ยังไม่มีใครว่างพอสำหรับงานนี้" };
   }
@@ -5034,6 +5039,30 @@ app.get("/api/admin/attribution", async (req, res) => {
 });
 
 // 👀 ใครได้บทวิเคราะห์แล้วแต่ยังไม่กด "สร้างแผน 30 วัน" — เห็นรายชื่อจริง + รู้ว่าเตือนไปหรือยัง
+// 📊 ตรวจ "คนกดซื้อแล้วจ่ายไม่สำเร็จ" — ดูได้ว่าใครค้าง ใครได้เมลตามแล้ว ใครตกหล่น
+// GET = ดูอย่างเดียว ไม่ส่งเมล · ใช้ประเมินว่าเสียยอดไปเท่าไหร่
+app.get("/api/admin/abandoned", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 30));
+  const rows = await q(`SELECT DISTINCT ON (lower(o.email)) o.order_id, o.email, o.created_at, o.tier,
+        o.final_amount_satang, o.instagram_account, o.payment_status,
+        (SELECT sent_at FROM abandoned_reminders a WHERE lower(a.email)=lower(o.email)) reminded_at
+      FROM blueprint_orders o
+      WHERE o.payment_status IN ('pending','expired') AND o.email IS NOT NULL
+        AND COALESCE(o.tier,'') NOT LIKE 'Video%'
+        AND o.created_at > now() - ($1 || ' days')::interval
+        AND lower(o.email) NOT IN (SELECT lower(email) FROM blueprint_orders WHERE payment_status IN ('paid','mock_paid') AND email IS NOT NULL)
+      ORDER BY lower(o.email), o.created_at DESC`, [String(days)]);
+  const lost = rows.reduce((t, r) => t + Number(r.final_amount_satang || 0), 0) / 100;
+  res.json({ ok: true, days,
+    total: rows.length,
+    reminded: rows.filter(r => r.reminded_at).length,
+    not_reminded: rows.filter(r => !r.reminded_at).length,
+    lost_baht: lost,
+    people: rows.map(r => ({ ...r, baht: Number(r.final_amount_satang || 0) / 100,
+      hours_ago: Math.round((Date.now() - new Date(r.created_at).getTime()) / 3600000) })),
+  });
+});
 app.get("/api/admin/activation-pending", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try {

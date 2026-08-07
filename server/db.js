@@ -170,6 +170,10 @@ export async function initDb() {
       updated_at TIMESTAMPTZ DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_avail_uniq ON team_availability(member_id, day);
+    -- 🌴 วันลา: เดิมกด "0 คลิป" แล้วระบบลบแถวทิ้ง = กลายเป็น "ไม่ได้ระบุ"
+    -- พอเปลี่ยนเป็น "พนักงานประจำว่างอัตโนมัติ" การลบแถวจะแปลว่า "ว่าง" ซึ่งตรงข้ามกับที่ตั้งใจ
+    -- → ต้องเก็บแถว slots=0 ไว้เป็นหลักฐานว่า "วันนี้ลา"
+    ALTER TABLE team_availability ADD COLUMN IF NOT EXISTS is_leave BOOLEAN DEFAULT false;
     -- 📦 งานนอกเว็บ (คิมถาม 3 ส.ค.: "ทีม production เค้าก็จะมีงานที่อยู่ใน production ด้วย
     --    ไม่งั้นเราจะไม่รู้ว่าใครทำงานอยู่หรือว่าว่างจริง")
     -- ⚠️ ตั้งใจให้ "คนทำงานเพิ่มเอง" ไม่ใช่ให้ลูกตาลนั่งกรอกแทนทุกคน — กรอก 3 ช่องจบ
@@ -784,6 +788,11 @@ export async function initDb() {
     -- "โบกับพี่ก้องฟิกไปเลยว่าวันละ 4 คลิป · ฟรีแลนซ์เราไม่รู้ว่าเค้าว่างวันไหน ให้เค้าติ๊กเอง"
     -- พนักงานประจำ = ใส่ค่าไว้ แล้วกดเติมทั้งสัปดาห์ทีเดียว · ฟรีแลนซ์ = 0 ต้องติ๊กเอง
     ALTER TABLE team_members ADD COLUMN IF NOT EXISTS default_slots INTEGER DEFAULT 0;
+    -- 🎯 ลำดับการจ่ายงาน (คิมเคาะ 7 ส.ค.) — เลขน้อย = ได้งานก่อน
+    -- 1 = พนักงานประจำสายตัด (โบ, พี่ก้อง) ต้องเต็มก่อน
+    -- 2 = กัน (Content + ตัดต่อ) รับต่อเมื่อขั้น 1 เต็ม
+    -- 3 = ฟรีแลนซ์ + AE รับเป็นด่านสุดท้าย
+    ALTER TABLE team_members ADD COLUMN IF NOT EXISTS assign_tier INTEGER DEFAULT 3;
     -- บันทึกทุกครั้งที่งานเปลี่ยนมือ/เปลี่ยนสถานะ — ไว้ย้อนดูว่าใครทำอะไรเมื่อไหร่ (กันงานหาย/เถียงกัน)
     CREATE TABLE IF NOT EXISTS edit_events (
       event_id TEXT PRIMARY KEY,

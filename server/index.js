@@ -3315,8 +3315,31 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
        dueNow]);
     const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
     res.json({ ok: true, order_id: id, script_day: day, credits_left: Number(c?.x || 0) });
+    // 🤖 มอบหมายให้เองทันที (คิมทัก 7 ส.ค. — งานจากเว็บเคยค้างที่ "ยังไม่มีคนทำ" เพราะไม่มีใครสั่งให้ระบบเลือก
+    //    งานที่ลูกตาลกรอกเองมีอยู่แล้ว แต่ทางนี้ตกหล่นไป) · ตอบลูกค้าไปก่อน แล้วค่อยทำเบื้องหลัง
+    autoAssignJob(id).catch(e => console.error("auto-assign", e.message));
   } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }
 });
+
+// 🤖 ให้ระบบเลือกคนทำงานชิ้นนี้ + แจ้งเมล (ใช้ร่วมกันทั้งงานจากเว็บและงานที่ทีมกรอกเอง)
+async function autoAssignJob(orderId) {
+  const job = await one(`SELECT * FROM edit_orders WHERE order_id=$1 AND assigned_to IS NULL AND status NOT IN ('done','canceled')`, [orderId]);
+  if (!job) return null;
+  const { member, reason } = await pickAssignee(job);
+  if (!member) {
+    await teamComment(orderId, "ระบบ", `⚠️ ยังไม่มีคนรับงานนี้ — ${reason}`);
+    return null;
+  }
+  await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), assigned_by='system', assign_reason=$3,
+     status=CASE WHEN status='awaiting_files' THEN status ELSE 'assigned' END, updated_at=now() WHERE order_id=$2`,
+    [member.member_id, orderId, reason]);
+  teamLog(orderId, "ระบบ", "assign", job.status, "assigned", `ระบบเลือก ${member.name} — ${reason}`);
+  await teamComment(orderId, "ระบบ", `🤖 มอบหมายให้ ${member.name} อัตโนมัติ — ${reason}`);
+  const m = await one(`SELECT email, name FROM team_members WHERE member_id=$1`, [member.member_id]);
+  if (m?.email) sendEmail(m.email, "🎬 มีงานตัดต่อใหม่รอคุณอยู่",
+    wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>ระบบมอบหมายงานใหม่ให้คุณแล้วนะคะ<br><br>${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
+  return member;
+}
 
 // สั่งงาน — บรีฟมาจากสคริปต์ในแผนลูกค้าเอง ไม่ต้องเขียนใหม่
 app.post("/api/edit/order", rateLimit(30, M10), async (req, res) => {
@@ -3607,6 +3630,14 @@ async function seedTeamIfEmpty() {
   }
   console.log("[team] ตั้งทีมเริ่มต้น 7 คนแล้ว");
 }
+// 🎯 ลำดับการจ่ายงาน (คิมเคาะ 7 ส.ค.) — ตั้งให้ทีมเดิมที่มีอยู่แล้วด้วย ไม่ใช่แค่ตอน seed
+// "โบ กับ พี่ก้อง ต้องลงให้เต็มก่อน จากนั้นเป็นกัน ขั้นสอง แล้วค่อยไปฟรีแลนซ์"
+async function setAssignTiers() {
+  await run(`UPDATE team_members SET assign_tier=1 WHERE code IN ('bow','gong')`).catch(() => {});
+  await run(`UPDATE team_members SET assign_tier=2 WHERE code = 'gun'`).catch(() => {});
+  // AE + ฟรีแลนซ์ + คนอื่นๆ = ด่านสุดท้าย (ลูกตาลเป็น AE ควรไปดูแลงาน ไม่ใช่รับตัดเอง)
+  await run(`UPDATE team_members SET assign_tier=3 WHERE assign_tier IS NULL OR code NOT IN ('bow','gong','gun')`).catch(() => {});
+}
 // หาว่าคนที่ยิงคำขอมาคือใคร (จากรหัสส่วนตัว) — แอดมินคีย์ของคิมนับเป็น owner เสมอ
 async function teamWho(req) {
   const code = String(req.headers["x-team-code"] || req.query.code || "").trim();
@@ -3631,6 +3662,7 @@ app.post("/api/team/login", rateLimit(20, M10), async (req, res) => {
   if (!code) return res.status(400).json({ ok: false, error: "NO_CODE" });
   try {
     await seedTeamIfEmpty();
+    await setAssignTiers();
     const m = await one(`SELECT member_id,name,role,position,side,default_slots FROM team_members WHERE code=$1 AND active`, [code]);
     if (!m) {
       if (isAdmin({ headers: {}, query: { admin_key: code } })) return res.json({ ok: true, me: { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" } });
@@ -3709,7 +3741,8 @@ const ymd = (d) => { try { return new Date(d).toLocaleDateString("en-CA", { time
 
 // โหลดปัจจุบันของแต่ละคน + ที่ว่างที่ลงไว้
 async function teamWorkload(days = AVAIL_DAYS) {
-  const members = await q(`SELECT member_id, name, role, position FROM team_members
+  const members = await q(`SELECT member_id, name, role, position, COALESCE(default_slots,0) default_slots,
+      COALESCE(assign_tier,3) assign_tier FROM team_members
     WHERE active AND role IN ('editor','senior','ae') ORDER BY name`);
   const load = await q(`SELECT assigned_to, COUNT(*) jobs, COALESCE(SUM(clips),1) clips
     FROM edit_orders WHERE assigned_to IS NOT NULL AND status NOT IN ('done','canceled','draft_sent')
@@ -3723,14 +3756,28 @@ async function teamWorkload(days = AVAIL_DAYS) {
   const lm = Object.fromEntries(load.map(r => [r.assigned_to, r]));
   const am = {};
   for (const a of avail) (am[a.member_id] ||= []).push({ day: ymd(a.day), slots: Number(a.slots || 0) });
+  // 📅 วันทำงานข้างหน้า (จันทร์-ศุกร์) — ใช้เติมที่ว่างอัตโนมัติให้พนักงานประจำ
+  const workdays = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + i);
+    if (d.getDay() !== 0 && d.getDay() !== 6) workdays.push(ymd(d));
+  }
   return members.map(m => {
     const a = am[m.member_id] || [];
-    const capacity = a.reduce((t, x) => t + x.slots, 0);          // รับได้รวมกี่คลิปใน 14 วัน
+    // 🔁 คิมเคาะ 7 ส.ค.: พนักงานประจำ "ว่างอัตโนมัติ" ตามโควตาต่อวัน ไม่ต้องมากดปฏิทินเอง
+    //    จะไม่ว่างก็ต่อเมื่อ "กดลาวันนั้น" (มีแถวใน team_availability) — เป็นระบบ opt-out
+    //    ฟรีแลนซ์ (default_slots = 0) ยังเป็น opt-in เหมือนเดิม ระบบไม่ยัดงานให้เอง
+    const filed = Object.fromEntries(a.map(x => [x.day, x.slots]));
+    const eff = m.default_slots > 0
+      ? workdays.map(d => ({ day: d, slots: d in filed ? filed[d] : m.default_slots }))
+      : a;
+    const capacity = eff.reduce((t, x) => t + x.slots, 0);          // รับได้รวมกี่คลิปใน 14 วัน
     const web = Number(lm[m.member_id]?.clips || 0), outside = Number(em[m.member_id]?.clips || 0);
     const busy = web + outside;
     return { ...m, open_jobs: Number(lm[m.member_id]?.jobs || 0), busy_clips: busy,
       web_clips: web, ext_clips: outside, ext_jobs: Number(em[m.member_id]?.jobs || 0),
-      capacity, free_slots: Math.max(0, capacity - busy), days: a,
+      capacity, free_slots: Math.max(0, capacity - busy), days: eff, filed_days: a,
+      auto_available: m.default_slots > 0,
       load_pct: capacity ? Math.min(999, Math.round(busy / capacity * 100)) : null };
   });
 }
@@ -3753,22 +3800,40 @@ async function teamScorecard(month) {
 }
 
 // เลือกคนที่เหมาะที่สุดสำหรับงานหนึ่ง — คืนเหตุผลกลับไปด้วยเสมอ
-async function pickAssignee(job) {
+// เลือกคนทำงาน — คิมเคาะลำดับ 7 ส.ค.:
+//   ขั้น 1 โบ + พี่ก้อง (พนักงานประจำสายตัด) ต้องเต็มก่อน
+//   ขั้น 2 กัน (Content + ตัดต่อ) รับต่อ
+//   ขั้น 3 ฟรีแลนซ์ / AE รับเป็นด่านสุดท้าย
+// ⚠️ ข้ามขั้นไม่ได้ — ถ้าขั้น 1 ยังมีที่ว่าง จะไม่มีทางจ่ายลงขั้น 2 หรือ 3 เลย
+async function pickAssignee(job, excludeIds = []) {
   const wl = await teamWorkload();
   const score = await teamScorecard();
   const sm = Object.fromEntries(score.map(s => [s.member_id, s]));
-  // ต้องมีที่ว่างเหลือ — ใครไม่ลงปฏิทินเลย ระบบไม่กล้ายัดงานให้ (โดยเฉพาะฟรีแลนซ์)
-  const eligible = wl.filter(m => m.capacity > 0 && m.free_slots >= (Number(job.clips) || 1));
-  if (!eligible.length) return { member: null, reason: "ยังไม่มีใครลงว่างพอสำหรับงานนี้" };
+  const skip = new Set(excludeIds.filter(Boolean));
+  // 🌴 ห้ามจ่ายงานให้คนที่ "ลาวันที่งานครบกำหนด"
+  //    ที่ว่างเราคิดเป็นยอดรวมทั้งช่วง คนลา 1 วันจึงยัง "ว่าง" ในภาพรวม
+  //    ถ้าไม่ตัดตรงนี้ ระบบจะโยนงานกลับไปให้คนที่เพิ่งกดลา (เจอจริงตอนทดสอบ 7 ส.ค.)
+  if (job.due_at) {
+    const off = await q(`SELECT member_id FROM team_availability WHERE slots=0 AND day = $1::date`,
+      [new Date(job.due_at).toISOString().slice(0, 10)]).catch(() => []);
+    for (const r of off) skip.add(r.member_id);
+  }
+  const need = Number(job.clips) || 1;
+  const eligible = wl.filter(m => !skip.has(m.member_id) && m.capacity > 0 && m.free_slots >= need);
+  if (!eligible.length) {
+    return { member: null, reason: skip.size ? "ไม่มีใครว่างพอมารับแทน" : "ยังไม่มีใครว่างพอสำหรับงานนี้" };
+  }
+  // จัดอันดับ: ขั้นก่อน → แล้วค่อยดูโหลด/ผลงานภายในขั้นเดียวกัน
   const rank = eligible.map(m => {
     const s = sm[m.member_id] || {};
     const onTime = s.on_time_pct == null ? 85 : s.on_time_pct;      // คนใหม่ให้กลางๆ ไม่เสียเปรียบ
     const penalty = (s.rejects_per_job || 0) * 5;
-    return { m, points: (100 - (m.load_pct ?? 0)) + (onTime - 85) / 2 - penalty };
-  }).sort((a, b) => b.points - a.points);
+    return { m, tier: m.assign_tier ?? 3, points: (100 - (m.load_pct ?? 0)) + (onTime - 85) / 2 - penalty };
+  }).sort((a, b) => (a.tier - b.tier) || (b.points - a.points));
   const best = rank[0].m;
+  const tierTh = { 1: "ทีมประจำ", 2: "ทีมประจำ (ขั้น 2)", 3: "ฟรีแลนซ์/สำรอง" }[rank[0].tier] || "สำรอง";
   return { member: best,
-    reason: `ว่างเหลือ ${best.free_slots} คลิป · โหลดตอนนี้ ${best.load_pct ?? 0}%` +
+    reason: `${tierTh} · ว่างเหลือ ${best.free_slots} คลิป · โหลดตอนนี้ ${best.load_pct ?? 0}%` +
             (sm[best.member_id]?.on_time_pct != null ? ` · ตรงเวลา ${sm[best.member_id].on_time_pct}%` : " · ยังไม่มีสถิติ") };
 }
 
@@ -3792,11 +3857,64 @@ app.post("/api/team/availability", async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ ok: false, error: "BAD_DAY" });
   // ⛔ ลงได้เฉพาะของตัวเอง (AE/คิม ลงแทนคนอื่นได้ เผื่อฟรีแลนซ์โทรมาบอก)
   const target = (["owner", "ae"].includes(me.role) && req.body?.member_id) ? String(req.body.member_id) : me.member_id;
-  if (slots === 0) { await run(`DELETE FROM team_availability WHERE member_id=$1 AND day=$2`, [target, day]); return res.json({ ok: true, cleared: true }); }
-  await run(`INSERT INTO team_availability (avail_id,member_id,day,slots) VALUES ($1,$2,$3,$4)
-    ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, updated_at=now()`, [uid("av"), target, day, slots]);
-  res.json({ ok: true, day, slots });
+  // 🔁 คิมเคาะ 7 ส.ค. — เดิม "0 คลิป" = ลบแถวทิ้ง ใช้ไม่ได้แล้ว
+  //    เพราะพนักงานประจำว่างอัตโนมัติ การไม่มีแถว = "ว่าง" → ต้องเก็บแถว 0 ไว้เป็น "วันลา"
+  //    ถ้าอยากกลับไปใช้ค่าเริ่มต้น ให้ส่ง clear:true มาแทน
+  if (req.body?.clear === true) {
+    await run(`DELETE FROM team_availability WHERE member_id=$1 AND day=$2`, [target, day]);
+    return res.json({ ok: true, cleared: true });
+  }
+  await run(`INSERT INTO team_availability (avail_id,member_id,day,slots,is_leave) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (member_id, day) DO UPDATE SET slots=EXCLUDED.slots, is_leave=EXCLUDED.is_leave, updated_at=now()`,
+    [uid("av"), target, day, slots, slots === 0]);
+  // 🚨 ลาแล้วงานที่ถืออยู่ต้องไม่ค้าง — หาคนมารับแทนทันที ไม่ต้องรอใครมากด
+  const moved = await reassignOverload(target, slots === 0 ? day : null).catch(() => []);
+  res.json({ ok: true, day, slots, is_leave: slots === 0, reassigned: moved });
 });
+
+// 🔁 ย้ายงานออกจากคนที่รับเกินที่ว่าง (เช่น เพิ่งกดลา) ไปให้คนอื่นตามลำดับขั้น
+// คืนค่ารายการงานที่ย้ายสำเร็จ · งานที่หาคนแทนไม่ได้จะปล่อยไว้ที่เดิมและเตือนคิมทางเมล
+async function reassignOverload(memberId, leaveDay = null) {
+  const wl = await teamWorkload();
+  const me = wl.find(m => m.member_id === memberId);
+  if (!me) return [];
+  let over = me.busy_clips - me.capacity;          // ล้นกี่คลิป
+  // 🎯 คิมสั่ง 7 ส.ค.: "ถ้างานลงโบ แล้วโบมาบอกว่าไม่ว่างวันนั้น ต้องกระจายงานสำรองทันที"
+  //    ลา 1 วันมักไม่ทำให้โหลด "รวมทั้งช่วง" ล้น → ถ้าดูแต่ยอดรวมจะไม่ย้ายอะไรเลย
+  //    จึงต้องดูรายวันด้วย: งานที่ครบกำหนดส่ง "วันที่ลา" ต้องย้ายออกทุกชิ้น
+  const dueThatDay = leaveDay
+    ? (await q(`SELECT order_id FROM edit_orders WHERE assigned_to=$1 AND status NOT IN ('done','canceled','draft_sent')
+                AND due_at::date = $2::date`, [memberId, leaveDay])).map(r => r.order_id)
+    : [];
+  if (over <= 0 && !dueThatDay.length) return [];
+  const mustMove = new Set(dueThatDay);
+  // ย้ายงานที่ "ยังไม่เริ่มลงมือ" ก่อน แล้วค่อยงานที่กำหนดส่งไกลสุด — กระทบงานที่กำลังทำน้อยที่สุด
+  const jobs = await q(`SELECT * FROM edit_orders WHERE assigned_to=$1 AND status NOT IN ('done','canceled','draft_sent')
+    ORDER BY (status <> 'assigned'), due_at DESC NULLS FIRST`, [memberId]);
+  const moved = [], stuck = [];
+  for (const job of jobs) {
+    if (over <= 0 && !mustMove.has(job.order_id)) continue;
+    const { member, reason } = await pickAssignee(job, [memberId]);
+    if (!member) { stuck.push(job); continue; }
+    await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), assigned_by='system',
+       assign_reason=$3, updated_at=now() WHERE order_id=$2`, [member.member_id, job.order_id, `รับแทนคนลา — ${reason}`]);
+    teamLog(job.order_id, "ระบบ", "reassign", job.status, job.status, `ย้ายจากคนลา → ${member.name}`);
+    await teamComment(job.order_id, "ระบบ", `🔁 คนเดิมลา ระบบย้ายงานให้ ${member.name} แทน — ${reason}`);
+    const m = await one(`SELECT email, name FROM team_members WHERE member_id=$1`, [member.member_id]);
+    if (m?.email) sendEmail(m.email, "🎬 มีงานตัดต่อโอนมาให้คุณ",
+      wrap(`สวัสดีค่ะ ${m.name} 🩵<br><br>มีงานโอนมาให้คุณเพราะคนเดิมลาค่ะ<br><br>${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
+    moved.push({ order_id: job.order_id, to: member.name });
+    over -= Number(job.clips) || 1;
+  }
+  if (stuck.length) {
+    const who = (await one(`SELECT name FROM team_members WHERE member_id=$1`, [memberId]))?.name || memberId;
+    sendEmail(OPS_EMAIL, `⚠️ หาคนรับแทนไม่ได้ ${stuck.length} งาน`,
+      wrap(`<b>${who}</b> กดลา แต่ระบบหาคนมารับแทนไม่ได้ ${stuck.length} งานค่ะ<br><br>` +
+           stuck.map(j => `· งาน ${j.order_id.slice(0, 12)}… (${j.clips} คลิป)`).join("<br>") +
+           `<br><br>ต้องมอบหมายเองที่หน้า /team นะคะ`)).catch(() => {});
+  }
+  return moved;
+}
 
 // ═══════ 📮 ระบบตามงานลูกค้าอัตโนมัติ (คิมสั่ง 4 ส.ค. 2569) ═══════
 // "ถ้าใช้ระบบคนตามอาจจะมีตกหล่นและหลงลืมไปว่าจะมีงานนี้ อยากได้ระบบคอยติดตามงานลูกค้าด้วย"
@@ -4211,6 +4329,7 @@ app.get("/api/team/members", async (req, res) => {
   const me = await teamWho(req);
   if (!me || me.role !== "owner") return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
   await seedTeamIfEmpty();
+  await setAssignTiers();
   res.json({ ok: true, members: await q(`SELECT * FROM team_members ORDER BY active DESC, role, name`) });
 });
 app.post("/api/team/members/save", async (req, res) => {
@@ -4529,6 +4648,51 @@ async function getStudents(industry) {
   if (industry) students = students.filter(s => s.industry === industry);
   return students;
 }
+// 🔎 ค้นหาลูกค้าจากอีเมล — ใช้ตอนลูกค้าทักมาว่า "จ่ายแล้วแต่เข้าไม่ได้"
+// กวาดทุกตารางที่ผูกกับอีเมล รวมออเดอร์ที่ "ยังไม่จ่าย/ค้าง" ด้วย (ตาราง students โชว์เฉพาะจ่ายแล้ว จึงหาไม่เจอ)
+// ถ้าไม่เจอเป๊ะ → เดาอีเมลที่พิมพ์ผิดใกล้เคียงให้ (ลูกค้าพิมพ์ .con แทน .com บ่อยมาก)
+app.get("/api/admin/find-customer", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = String(req.query.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ ok: false, error: "ต้องใส่ ?email=" });
+  const safe = (p, args = []) => q(p, args).then(r => r.rows ?? r).catch(e => [{ _error: String(e.message || e) }]);
+
+  const [orders, requests, academy, workshops, edits, users] = await Promise.all([
+    safe(`SELECT order_id, created_at, paid_at, payment_status, tier, billing_cycle, blueprint_id,
+                 generation_status, generation_error, provider, discount_code, final_amount_satang, instagram_account, user_id
+          FROM blueprint_orders WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
+    safe(`SELECT request_id, created_at, billing_cycle, user_id, instagram_account, industry, phone
+          FROM blueprint_requests WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
+    safe(`SELECT purchase_id, created_at, paid_at, status, course_name, amount_satang FROM academy_purchases WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
+    safe(`SELECT booking_id, created_at, paid_at, status, workshop_id, name, qty FROM workshop_bookings WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
+    safe(`SELECT order_id, created_at, payment_status, status, clips, amount_satang FROM edit_orders WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
+    safe(`SELECT legacy_created, name, username, phone FROM academy_users WHERE lower(email)=$1`, [email]),
+  ]);
+
+  // นับเฉพาะแถวจริง — แถวที่เป็น _error (ตารางยังไม่พร้อม) ต้องไม่ถูกนับว่า "เจอลูกค้า"
+  const real = (a) => a.filter(x => !x._error).length;
+  const found = real(orders) + real(requests) + real(academy) + real(workshops) + real(edits);
+  let similar = [];
+  if (!found) {
+    // ไม่เจอเลย → หาอีเมลใกล้เคียงจากคนที่จ่ายเงินมาแล้ว (ตัดโดเมนออกแล้วเทียบชื่อหน้า @)
+    const local = email.split("@")[0];
+    const head = local.replace(/[0-9._-]+$/, "").slice(0, 5);
+    if (head.length >= 3) {
+      similar = await safe(`SELECT DISTINCT ON (lower(email)) email, created_at, payment_status, instagram_account
+        FROM blueprint_orders WHERE email IS NOT NULL AND lower(email) LIKE $1
+        ORDER BY lower(email), created_at DESC LIMIT 10`, [head + "%"]);
+    }
+  }
+  res.json({
+    ok: true, email, found_rows: found,
+    verdict: found
+      ? "เจอในระบบ — ดูรายละเอียดด้านล่าง"
+      : "ไม่พบอีเมลนี้ในระบบเลย (ทั้งที่จ่ายแล้วและยังไม่จ่าย) → ลูกค้าน่าจะกรอกอีเมลอื่นตอนซื้อ",
+    blueprint_orders: orders, blueprint_requests: requests,
+    academy_purchases: academy, workshop_bookings: workshops, edit_orders: edits, academy_user: users[0] || null,
+    similar_emails: similar,
+  });
+});
 app.get("/api/admin/students", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const industry = req.query.industry ? String(req.query.industry) : null;

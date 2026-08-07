@@ -170,6 +170,20 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
                   📍 {b.location || "จะแจ้งสถานที่อีกครั้งก่อนวันเรียนค่ะ"}
                   {b.qty > 1 && <><br />👥 {b.qty} ที่นั่ง</>}
                 </div>
+                {/* 🗺️ ที่อยู่เต็ม + ลิงก์แผนที่ + ที่จอดรถ (คิมทัก 7 ส.ค. "ไม่มี location ให้กดอะ")
+                    เดิมข้อมูลนี้อยู่แต่ในอีเมลยืนยัน — ลูกค้าที่หาเมลไม่เจอวันงานจะไม่มีทางรู้ */}
+                {b.note && <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #c9dcf2", fontSize: 12.5, lineHeight: 1.75 }}>
+                  {String(b.note).split(/\n+/).map(x => x.trim()).filter(Boolean).map((ln, i) => {
+                    const url = ln.match(/https?:\/\/\S+/);
+                    if (url && ln.trim() === url[0]) return (
+                      <a key={i} href={url[0]} target="_blank" rel="noopener noreferrer"
+                        style={{ display: "inline-block", margin: "4px 0 8px", background: "#fff", border: "1px solid var(--blue)",
+                          color: "var(--blue)", borderRadius: 20, padding: "6px 14px", fontWeight: 700, fontSize: 12.5 }}>
+                        🗺️ เปิดแผนที่
+                      </a>);
+                    return <div key={i}>{ln}</div>;
+                  })}
+                </div>}
               </div>
             ))}
           </>}

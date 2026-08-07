@@ -2486,7 +2486,8 @@ app.get("/api/workshops/my", async (req, res) => {
   try {
     const email = await authEmail(req);
     if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED" });
-    const rows = await q(`SELECT b.booking_id, b.qty, b.status, b.created_at, s.session_id, s.starts_at, s.location, s.summary_url, s.summary_note, w.name AS workshop_name, w.workshop_id
+    // s.note = ที่อยู่เต็ม + ลิงก์แผนที่ + ที่จอดรถ + รอบรถรับส่ง (คิมทัก 7 ส.ค. "ไม่มี location ให้กดอะ")
+    const rows = await q(`SELECT b.booking_id, b.qty, b.status, b.created_at, s.session_id, s.starts_at, s.location, s.note, s.summary_url, s.summary_note, w.name AS workshop_name, w.workshop_id
       FROM workshop_bookings b JOIN workshop_sessions s ON s.session_id=b.session_id JOIN workshops w ON w.workshop_id=b.workshop_id
       WHERE lower(b.email)=lower($1) AND b.status='paid' ORDER BY s.starts_at DESC`, [email]);
     res.json({ ok: true, bookings: rows });

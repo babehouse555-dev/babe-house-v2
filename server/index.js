@@ -5744,6 +5744,60 @@ app.post("/api/admin/unlock-order", async (req, res) => {
       ? "ปลดล็อกแล้วค่ะ ระบบจะสร้างเล่มให้เองภายใน 2 นาที แล้วส่งลิงก์เข้าเมลลูกค้า"
       : "ปลดล็อกแล้ว แต่ออเดอร์นี้ยังไม่มีข้อมูลฟอร์ม ลูกค้าต้องกรอกฟอร์มเองก่อนถึงจะได้เล่มค่ะ" });
 });
+// ═══════ 📊 สถานะจริงของระบบ (สร้าง 7 ส.ค. 2569) ═══════
+// เหตุที่ทำ: คิมทักว่า "ทำไมเข้าใจอะไรผิดหลายเรื่องจัง เหมือนลืมเรื่องที่สั่ง กับเรื่องที่ตัวเองทำไปแล้ว"
+// ต้นเหตุจริง: ผมตอบคำถามว่า "ตอนนี้เว็บเป็นยังไง" จาก "บันทึกที่เขียนไว้" แทนที่จะดูของจริง
+//   บันทึกเก่าไปเรื่อยๆ ระบบเปลี่ยนแต่บันทึกไม่เปลี่ยน → ตอบผิดซ้ำๆ เรื่องเดิม
+// ทางแก้: ให้ "ระบบบอกสถานะตัวเอง" แทนการจำ — คำถามสถานะทุกข้อต้องมาจากตรงนี้เท่านั้น
+app.get("/api/admin/state", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const num = async (sql, p = []) => Number((await one(sql, p).catch(() => null))?.c || 0);
+  const [routes, plansLiveNow] = [null, plansLive()];
+  const wsRows = await q(`SELECT w.name,
+      (SELECT COUNT(*) FROM workshop_sessions s WHERE s.workshop_id=w.workshop_id AND s.status='open' AND s.starts_at > now()) c
+    FROM workshops w WHERE w.active ORDER BY w.seq`).catch(() => []);
+  res.json({
+    ok: true,
+    generated_at: new Date().toISOString(),
+    _note: "ตัวเลขทุกตัวในนี้อ่านจากฐานข้อมูลจริงของเว็บจริง ณ วินาทีนี้ — ห้ามตอบเรื่องสถานะจากความจำ ให้ดูอันนี้",
+    environment: IS_PLAYGROUND ? "สนามเด็กเล่น (ของปลอม)" : "เว็บจริง (ลูกค้าใช้อยู่)",
+
+    ราคา: {
+      แพ็กใหม่เปิดขายแล้ว: plansLiveNow,
+      เปิดวันที่: new Date(PLANS_LIVE_AT).toISOString().slice(0, 10),
+      ตอนนี้ขายราคา: plansLiveNow ? "3 แพ็ก" : `โปรเปิดตัว ฿${PROMO_SATANG / 100} ราคาเดียว`,
+      แพ็กทั้งหมด: Object.values(PLANS).map(p => `${p.plan} ฿${p.satang / 100}`),
+    },
+    ค่าเร่งด่วนวันหยุด_pct: RUSH_PCT,
+    เวลาทำงานทีม: WORK_HOURS_TH,
+
+    ลูกค้า: {
+      ซื้อเล่มแล้วทั้งหมด: await num(`SELECT COUNT(DISTINCT lower(email)) c FROM blueprint_orders WHERE payment_status='paid' AND email IS NOT NULL`),
+      เล่มที่สร้างแล้ว: await num(`SELECT COUNT(*) c FROM blueprints WHERE deleted_at IS NULL`),
+      กดซื้อแล้วยังไม่จ่าย_14วัน: await num(`SELECT COUNT(DISTINCT lower(email)) c FROM blueprint_orders WHERE payment_status IN ('pending','expired') AND email IS NOT NULL AND created_at > now() - interval '14 days' AND lower(email) NOT IN (SELECT lower(email) FROM blueprint_orders WHERE payment_status='paid' AND email IS NOT NULL)`),
+    },
+    เวิร์กช็อป: {
+      คลาสที่เปิดใช้: wsRows.length,
+      รอบที่จองได้ทั้งหมด: wsRows.reduce((t, r) => t + Number(r.c || 0), 0),
+      คลาสที่ไม่มีรอบเหลือ: wsRows.filter(r => !Number(r.c)).map(r => r.name),
+    },
+    คอร์สออนไลน์: {
+      เปิดขายอยู่: await num(`SELECT COUNT(*) c FROM academy_courses WHERE is_active='0'`),
+      ซ่อนอยู่: await num(`SELECT COUNT(*) c FROM academy_courses WHERE is_active<>'0'`),
+    },
+    ทีม: await q(`SELECT name, role, position, COALESCE(default_slots,0) slots, COALESCE(assign_tier,3) tier FROM team_members WHERE active ORDER BY assign_tier, name`).catch(() => []),
+    งานคอนเทนต์ลูกค้า: await num(`SELECT COUNT(*) c FROM content_projects WHERE status <> 'sent'`),
+    งานกราฟฟิกค้าง: await num(`SELECT COUNT(*) c FROM graphic_jobs WHERE status NOT IN ('done','canceled')`),
+    วันลารออนุมัติ: await num(`SELECT COUNT(*) c FROM leave_requests WHERE status='pending'`),
+    วันหยุดบริษัทปีนี้: await num(`SELECT COUNT(*) c FROM company_holidays WHERE EXTRACT(YEAR FROM day)=EXTRACT(YEAR FROM CURRENT_DATE)`),
+
+    สุขภาพ: {
+      เล่มที่ระบบตรวจว่าพัง: await num(`SELECT COUNT(*) c FROM blueprints WHERE content_status='error' AND deleted_at IS NULL`),
+      เล่มติดธงคุณภาพ: await num(`SELECT COUNT(*) c FROM blueprints WHERE COALESCE(quality_flags_json,'[]') <> '[]' AND deleted_at IS NULL`),
+      งานตัดต่อเลยกำหนดส่ง: await num(`SELECT COUNT(*) c FROM edit_orders WHERE due_at < now() AND status NOT IN ('done','canceled')`),
+    },
+  });
+});
 app.get("/api/admin/abandoned-dry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json({ ok: true, ...(await runAbandonedFollowups(true)) });

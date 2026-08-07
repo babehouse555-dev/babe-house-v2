@@ -3181,9 +3181,33 @@ const leadDaysFor = (clips) => Math.max(EDIT_DAYS_PER_CLIP,
 const FIXED_HOLIDAYS = ["01-01", "04-06", "04-13", "04-14", "04-15", "05-01", "07-28", "08-12", "10-13", "10-23", "12-05", "12-10", "12-31"];
 const EXTRA_HOLIDAYS = new Set(String(process.env.HOLIDAYS || "").split(",").map(x => x.trim()).filter(Boolean));
 const bkk = (d) => new Date(d.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+// 📅 วันหยุดบริษัทที่คิมตั้งเองในหน้า /team → 🌴 วันลา คือชุดจริงที่ใช้ตัดสิน
+// โหลดเก็บไว้ในหน่วยความจำ (รีเฟรชทุก 10 นาที) เพราะ isHoliday ถูกเรียกถี่มากในลูปคิดวันส่ง
+// ถ้ายังไม่มีในตาราง จะถอยไปใช้รายการวันหยุดตายตัวด้านบนเหมือนเดิม
+let COMPANY_HOLIDAYS = new Set(), holidaysLoadedAt = 0;
+async function refreshHolidays() {
+  try {
+    const rows = await q(`SELECT day FROM company_holidays`);
+    COMPANY_HOLIDAYS = new Set(rows.map(r => ymd(r.day)));
+    holidaysLoadedAt = Date.now();
+  } catch { /* ตารางยังไม่พร้อมตอนบูต — ใช้ชุดตายตัวไปก่อน */ }
+}
 function isHoliday(d) {
   const mm = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
-  return FIXED_HOLIDAYS.includes(`${mm}-${dd}`) || EXTRA_HOLIDAYS.has(`${d.getFullYear()}-${mm}-${dd}`);
+  const iso = `${d.getFullYear()}-${mm}-${dd}`;
+  if (Date.now() - holidaysLoadedAt > 600000) refreshHolidays();   // รีเฟรชแบบไม่รอ ไม่ให้ช้า
+  if (COMPANY_HOLIDAYS.size) return COMPANY_HOLIDAYS.has(iso);
+  return FIXED_HOLIDAYS.includes(`${mm}-${dd}`) || EXTRA_HOLIDAYS.has(iso);
+}
+// 🚀 ค่าเร่งด่วนวันหยุด (คิมเคาะ 7 ส.ค. "คิดเงินเพิ่ม 30% จากราคาชิ้นงาน")
+// ใช้เมื่อลูกค้าขอให้ส่งงานในวันที่ทีมหยุด — เพราะต้องเรียกคนเข้ามาทำนอกเวลา
+const RUSH_PCT = Number(process.env.RUSH_PCT) || 30;
+// ลูกค้าขอส่งวันนี้ ต้องคิดเร่งด่วนไหม — เสาร์อาทิตย์หรือวันหยุดบริษัท = ใช่
+function isRushDay(day) {
+  if (!day) return false;
+  const d = new Date(`${String(day).slice(0, 10)}T00:00:00`);
+  if (isNaN(d)) return false;
+  return !WORK_DAYS.includes(d.getDay()) || isHoliday(d);
 }
 const isWorkDay = (d) => WORK_DAYS.includes(d.getDay()) && !isHoliday(d);
 // นับไปข้างหน้า n วันทำการ (ข้ามเสาร์-อาทิตย์ + วันหยุด)
@@ -3277,7 +3301,15 @@ app.get("/api/edit/price", async (req, res) => {
   const email = await authEmail(req).catch(() => null);
   const perks = email ? await memberPerks(email).catch(() => null) : null;
   const p = editTotalFor(n, perks?.edit_off || 0);
-  res.json({ ok: true, clips: n, price_per_clip: Math.round(p.total / n), total: p.total,
+  // 🚀 ขอส่งวันที่ทีมหยุด → บวกค่าเร่งด่วน 30% (คิมเคาะ 7 ส.ค.)
+  //    ต้องเรียกคนเข้ามาทำนอกเวลา เราจ่าย OT จริง จึงคิดเพิ่ม
+  const wantDay = String(req.query.due || "").slice(0, 10);
+  const rush = isRushDay(wantDay);
+  const rushAdd = rush ? Math.round(p.total * RUSH_PCT / 100) : 0;
+  const total = p.total + rushAdd;
+  res.json({ ok: true, clips: n, price_per_clip: Math.round(total / n), total,
+    base_total: p.total, rush, rush_pct: RUSH_PCT, rush_add: rushAdd,
+    rush_note: rush ? `วันที่ ${wantDay} เป็นวันหยุดของทีมค่ะ ถ้าต้องการงานวันนั้นจะมีค่าเร่งด่วน +${RUSH_PCT}%` : null,
     full_total: p.full, member_off_pct: p.off_pct, member_saved: p.saved, member_plan: perks?.plan || null, tiers: EDIT_TIERS,
     free_revisions: EDIT_FREE_REVISIONS, days_per_clip: EDIT_DAYS_PER_CLIP, parallel: EDIT_PARALLEL, lead_days: leadDaysFor(n),
     hours: WORK_HOURS_TH, working_now: isWorkingNow(),
@@ -3764,9 +3796,15 @@ app.get("/api/team/me", async (req, res) => {
                  WHERE order_id = ANY($1) ORDER BY created_at`, [ids]) : [];
     const cmap = {};
     for (const c of cs) (cmap[c.order_id] ||= []).push({ ...c, internal: Number(c.internal || 0) === 1 });
+    // 📎 ไฟล์แนบในบรีฟ — ไม่ดึง data_b64 มาด้วย (ไฟล์ใหญ่ หน้าจะโหลดช้า) เอาแค่รายชื่อไว้ทำลิงก์
+    const bfs = ids.length
+      ? await q(`SELECT file_id, order_id, name, mime, size_bytes FROM brief_files WHERE order_id = ANY($1) ORDER BY created_at`, [ids]).catch(() => [])
+      : [];
+    const fmap = {};
+    for (const f of bfs) (fmap[f.order_id] ||= []).push(f);
     const jobs = rows.map(({ email, ...r }) => ({ ...r, status_th: EDIT_STATUS[r.status] || r.status,
       thread: cmap[r.order_id] || [], comments: (cmap[r.order_id] || []).length,
-      ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json),
+      ref_picks: safeJson(r.ref_picks) || [], brief: safeJson(r.brief_json), files: fmap[r.order_id] || [],
       due_th: r.due_at ? thDate(r.due_at) : null,
       customer: isOwner ? email : (String(email || "").split("@")[0].slice(0, 3) + "•••") }));
 
@@ -4451,6 +4489,50 @@ app.post("/api/team/holidays", async (req, res) => {
   await run(`INSERT INTO company_holidays (day,name,fixed) VALUES ($1,$2,false) ON CONFLICT (day) DO UPDATE SET name=EXCLUDED.name`,
     [day, String(req.body?.name || "วันหยุดบริษัท").slice(0, 100)]);
   res.json({ ok: true, day, total: n + 1, left: 13 - (n + 1) });
+});
+// 📎 ไฟล์แนบในบรีฟ (คิมสั่ง 7 ส.ค.) — รูป · PDF · ไฟล์อะไรก็ได้
+// เก็บลงฐานข้อมูลเพราะดิสก์ของ Railway หายทุกครั้งที่ deploy
+const BRIEF_MAX_MB = Number(process.env.BRIEF_MAX_MB) || 10;
+const briefUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: BRIEF_MAX_MB * 1024 * 1024, files: 1 } });
+app.post("/api/team/brief/upload", (req, res) => {
+  briefUpload.single("file")(req, res, async (err) => {
+    if (err) {
+      const big = err.code === "LIMIT_FILE_SIZE";
+      return res.status(big ? 413 : 400).json({ ok: false, error: big ? "TOO_LARGE" : "UPLOAD_FAILED",
+        message: big ? `ไฟล์ใหญ่เกิน ${BRIEF_MAX_MB}MB ค่ะ ไฟล์ใหญ่กว่านี้ให้แปะลิงก์ Google Drive แทนนะคะ` : "อัปโหลดไม่สำเร็จ ลองใหม่นะคะ" });
+    }
+    try {
+      const me = await teamWho(req);
+      if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+      if (!req.file) return res.status(400).json({ ok: false, error: "MISSING", message: "เลือกไฟล์ด้วยนะคะ" });
+      const orderId = String(req.body?.order_id || "").trim();
+      if (!orderId) return res.status(400).json({ ok: false, error: "NO_ORDER" });
+      const id = uid("bf");
+      await run(`INSERT INTO brief_files (file_id,order_id,name,mime,size_bytes,data_b64,uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [id, orderId, String(req.file.originalname || "ไฟล์").slice(0, 200), req.file.mimetype || "application/octet-stream",
+         req.file.size, req.file.buffer.toString("base64"), me.name]);
+      res.json({ ok: true, file_id: id, name: req.file.originalname, size: req.file.size });
+    } catch (e) { console.error("brief upload", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+  });
+});
+// เปิดดู/ดาวน์โหลดไฟล์แนบ — ต้องเป็นคนในทีมเท่านั้น (บรีฟลูกค้าเป็นข้อมูลลับ)
+app.get("/api/team/brief-file/:id", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).send("unauthorized");
+  const f = await one(`SELECT name, mime, data_b64 FROM brief_files WHERE file_id=$1`, [String(req.params.id || "")]);
+  if (!f) return res.status(404).send("not found");
+  const buf = Buffer.from(f.data_b64, "base64");
+  res.setHeader("Content-Type", f.mime || "application/octet-stream");
+  // รูปกับ PDF เปิดดูในเบราว์เซอร์ได้เลย · ไฟล์อื่นให้ดาวน์โหลด
+  const inline = /^image\//.test(f.mime || "") || f.mime === "application/pdf";
+  res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(f.name)}`);
+  res.send(buf);
+});
+app.post("/api/team/brief-file/delete", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me || !["owner", "ae"].includes(me.role)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  await run(`DELETE FROM brief_files WHERE file_id=$1`, [String(req.body?.file_id || "")]);
+  res.json({ ok: true });
 });
 app.post("/api/team/external", async (req, res) => {
   const me = await teamWho(req);
@@ -5814,7 +5896,10 @@ async function connectDbWithRetry() {
 }
 connectDbWithRetry().then(async () => {
   // seed ล้มก็ไม่ควรทำเว็บดับ — ของพวกนี้เป็นข้อมูลตั้งต้น ไม่ใช่หัวใจการให้บริการ
-  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects], ["playground", seedPlayground], ["team", seedTeamIfEmpty]]) {
+  for (const [name, fn] of [["workshops", seedWorkshops], ["assignments", seedAssignments], ["projects", seedProjects], ["playground", seedPlayground], ["team", seedTeamIfEmpty],
+                            // 📅 ต้องตั้งวันหยุดตั้งแต่บูต — ค่าเร่งด่วน/วันส่งงานใช้ตารางนี้ตัดสิน
+                            //    ถ้ารอให้มีคนเปิดหน้าวันลาก่อน ระบบจะถอยไปใช้วันหยุดตายตัวที่ไม่ตรงกับของบริษัท
+                            ["holidays", seedHolidays], ["holiday-cache", refreshHolidays]]) {
     try { await fn(); } catch (e) { console.error(`[seed ${name}]`, e.message); }
   }
   // โหลดเทรนด์ curated ล่าสุด "ของแต่ละกลุ่มอาชีพ" เข้าหน่วยความจำ AI

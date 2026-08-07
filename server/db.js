@@ -218,6 +218,20 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_gj_assignee ON graphic_jobs(assigned_to, status);
     CREATE INDEX IF NOT EXISTS idx_gj_order ON graphic_jobs(from_order_id);
+    -- 📎 ไฟล์แนบในบรีฟ (คิมสั่ง 7 ส.ค. "ขอใส่ได้ทุกประเภทไฟล์ รูป PDF หรือไฟล์อื่นๆ")
+    -- เก็บลงฐานข้อมูลเลย เพราะ Railway ลบไฟล์บนดิสก์ทุกครั้งที่ deploy — เก็บบนดิสก์ = ไฟล์หายแน่นอน
+    -- จำกัด 10MB/ไฟล์ ไฟล์ใหญ่กว่านั้นให้แปะลิงก์ Drive แทน (ลิงก์กดได้แล้ว)
+    CREATE TABLE IF NOT EXISTS brief_files (
+      file_id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      mime TEXT,
+      size_bytes INTEGER,
+      data_b64 TEXT NOT NULL,
+      uploaded_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_brief_files_order ON brief_files(order_id, created_at);
     -- 🌴 ระบบวันลา (คิมสั่ง 7 ส.ค. "ยึดตามกฎหมาย กันความมั่วในการกดวันหยุด")
     CREATE TABLE IF NOT EXISTS leave_requests (
       leave_id TEXT PRIMARY KEY,

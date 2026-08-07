@@ -45,6 +45,9 @@ const dueChip = (due) => {
 // 🎨 ระบบสี 3 สี (คิมกำหนดเอง 3 ส.ค.)
 // แดง = ด่วน ต้องส่งแล้ว · เหลือง = ยังไม่เสร็จ แต่ไม่ด่วน · เขียว = เสร็จแล้ว
 const C = { red: "#d1382c", yellow: "#d99100", green: "#1a7f43" };
+// ปุ่มไฟล์ในบรีฟ — กดง่ายกว่าลิงก์ตัวหนังสือ และเห็นชัดว่ามีไฟล์อะไรบ้างในแวบเดียว
+const fileBtn = { display: "inline-block", border: "1px solid #e5ded6", background: "#fff", borderRadius: 999,
+  padding: "6px 13px", fontSize: 13, color: "#5b5147", textDecoration: "none", whiteSpace: "nowrap" };
 function jobColor(j) {
   if (["done", "draft_sent"].includes(j.status)) return "green";      // ส่งลูกค้าแล้ว = จบฝั่งเรา
   if (j.due_at) {
@@ -940,8 +943,22 @@ function Stat({ n, label, tone }) {
 function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, note, setNote, busy, post, spotlight }) {
   const [msg, setMsg] = useState("");
   const [showThread, setShowThread] = useState(false);
+  const [showBrief, setShowBrief] = useState(false);   // สคริปต์เต็ม — พับไว้ก่อน กางเมื่ออยากอ่าน
   const chip = dueChip(j.due_at);
-  const b = j.brief || {};
+  // 🐛 แก้ 7 ส.ค. — บรีฟในระบบมี 2 รูปแบบ แต่การ์ดงานอ่านเป็นแบบเดียว
+  //    (ก) งานที่ลูกตาลรับบรีฟลูกค้ามาเอง  → {title, brief}
+  //    (ข) งานที่ลูกค้าสั่งจากแผนของตัวเอง → {d, t, h, script, cta}
+  //    ผลคือ: งานแบบ (ก) "ข้อความบรีฟไม่เคยขึ้นให้คนตัดเห็นเลย" (เจอตอนคิมทดสอบระบบทีม)
+  //           งานแบบ (ข) ชื่องานกับฮุกไม่ขึ้น เห็นแค่ "งานตัดต่อ #abc123"
+  //    → แปลงให้เป็นชุดเดียวก่อนใช้ รองรับทั้งของเก่าและของใหม่
+  const raw = j.brief || {};
+  const b = {
+    title: raw.title || raw.t || "",
+    hook: raw.hook || raw.h || "",
+    script: raw.script || raw.brief || "",   // งานจากลูกตาลเก็บเนื้อบรีฟไว้ในช่อง brief
+    cta: raw.cta || "",
+    day: raw.d || j.script_day || null,
+  };
   const canAssign = isOwner || isAE;
   const isMine = j.assigned_to === me.member_id;
   const canSubmit = isMine || isOwner || (me.role === "senior" && j.status !== "senior_review");
@@ -975,16 +992,55 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       </div>}
 
       {open && (
-        <div style={{ background: "#fbf7f3", borderRadius: 10, padding: 12, marginTop: 10, fontSize: 14, lineHeight: 1.7 }}>
-          {b.hook && <p style={{ margin: "0 0 6px" }}><b>ฮุก:</b> {b.hook}</p>}
-          {b.script && <p style={{ margin: "0 0 6px", whiteSpace: "pre-wrap" }}><b>สคริปต์:</b> <Linkify text={b.script} /></p>}
-          {b.cta && <p style={{ margin: "0 0 6px" }}><b>ปิดท้าย:</b> {b.cta}</p>}
-          {j.note && <p style={{ margin: "6px 0 0", color: "#B26A00", whiteSpace: "pre-wrap" }}><b>ลูกค้าสั่งเพิ่ม:</b> <Linkify text={j.note} /></p>}
-          {j.internal_note && <p style={{ margin: "6px 0 0", color: "#0b6ea8", whiteSpace: "pre-wrap" }}><b>โน้ตภายในทีม:</b> <Linkify text={j.internal_note} /></p>}
-          {j.footage_url && <p style={{ margin: "6px 0 0" }}>🎥 <a href={j.footage_url} target="_blank" rel="noreferrer">ไฟล์วิดีโอจากลูกค้า</a></p>}
-          {j.voice_url && <p style={{ margin: "4px 0 0" }}>🎙 <a href={j.voice_url} target="_blank" rel="noreferrer">ไฟล์เสียง</a></p>}
-          {j.ref_links && <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>🔗 ตัวอย่างที่ลูกค้าชอบ: <Linkify text={j.ref_links} /></p>}
-          {j.draft_url && <p style={{ margin: "6px 0 0" }}>📼 <a href={j.draft_url} target="_blank" rel="noreferrer">งานที่ตัดแล้ว</a></p>}
+        <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.7 }}>
+          {/* 🧹 จัดใหม่ 7 ส.ค. — คิมบอก "รายละเอียดข้างในมันเยอะมาก"
+              เดิมทุกอย่างกองรวมกันเป็นพรืดเดียว ตัวหนังสือขนาดเท่ากันหมด ไม่รู้ว่าต้องอ่านอะไรก่อน
+              → แยกเป็น 3 ก้อนตามลำดับที่คนตัดต้องใช้จริง:
+                (1) ลูกค้าขออะไรเป็นพิเศษ — จุดที่โดนตีกลับบ่อยที่สุด ต้องเด่นสุด
+                (2) ไฟล์ — ทำเป็นปุ่มเรียงแถว กดง่ายกว่าลิงก์ตัวหนังสือ
+                (3) สคริปต์เต็ม — ยาวสุด พับเก็บได้ กางเมื่ออยากอ่าน */}
+
+          {/* (1) สิ่งที่ลูกค้าสั่งพิเศษ */}
+          {(j.note || j.internal_note) && (
+            <div style={{ background: "#fff8ed", border: "1px solid #f2ddb8", borderRadius: 10, padding: "10px 12px", marginBottom: 9 }}>
+              {j.note && <div style={{ whiteSpace: "pre-wrap" }}>
+                <b style={{ color: "#B26A00" }}>ลูกค้าขอเป็นพิเศษ</b><br /><Linkify text={j.note} /></div>}
+              {j.internal_note && <div style={{ whiteSpace: "pre-wrap", marginTop: j.note ? 8 : 0, paddingTop: j.note ? 8 : 0, borderTop: j.note ? "1px dashed #ecdcc0" : 0 }}>
+                <b style={{ color: "#0b6ea8" }}>โน้ตจากทีม</b><br /><Linkify text={j.internal_note} /></div>}
+            </div>)}
+
+          {/* (2) ไฟล์ — ปุ่มเรียงแถว */}
+          {(j.footage_url || j.voice_url || j.draft_url || (j.files || []).length || j.ref_links) && (
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
+              {j.footage_url && <a href={j.footage_url} target="_blank" rel="noreferrer" style={fileBtn}>🎥 ฟุตเทจ</a>}
+              {j.voice_url && <a href={j.voice_url} target="_blank" rel="noreferrer" style={fileBtn}>🎙 เสียง</a>}
+              {(j.files || []).map(f => (
+                <a key={f.file_id} href={`/api/team/brief-file/${f.file_id}`} target="_blank" rel="noreferrer" style={fileBtn}
+                   title={`${f.name} · ${Math.round((f.size_bytes || 0) / 1024)}KB`}>
+                  📎 {f.name.length > 18 ? f.name.slice(0, 16) + "…" : f.name}</a>))}
+              {String(j.ref_links || "").split(/\s+/).filter(u => /^https?:\/\//.test(u)).map((u, i) => (
+                <a key={i} href={u} target="_blank" rel="noreferrer" style={fileBtn}>🔗 ตัวอย่าง {i + 1}</a>))}
+              {j.draft_url && <a href={j.draft_url} target="_blank" rel="noreferrer" style={{ ...fileBtn, borderColor: C.green, color: C.green }}>📼 งานที่ตัดแล้ว</a>}
+            </div>)}
+
+          {/* (3) บรีฟ/สคริปต์ — พับเก็บได้ */}
+          {(b.hook || b.script || b.cta) && (
+            <div style={{ background: "#fbf7f3", borderRadius: 10, padding: "10px 12px" }}>
+              {b.hook && <div style={{ marginBottom: b.script || b.cta ? 6 : 0 }}><b>ฮุก:</b> {b.hook}</div>}
+              {(b.script || b.cta) && !showBrief && b.script.length > 180 && (
+                <button onClick={() => setShowBrief(true)}
+                  style={{ background: "none", border: 0, color: "#0b6ea8", fontSize: 13.5, cursor: "pointer", padding: 0, fontFamily: "inherit", textDecoration: "underline" }}>
+                  ดูสคริปต์เต็ม ▾
+                </button>)}
+              {(showBrief || (b.script || "").length <= 180) && <>
+                {b.script && <div style={{ whiteSpace: "pre-wrap", marginBottom: 6 }}>
+                  {/* งานจากลูกตาลเป็น "บรีฟ" · งานจากแผนลูกค้าเป็น "สคริปต์" — เรียกให้ตรงของ */}
+                  <b>{raw.brief && !raw.script ? "บรีฟจากลูกค้า:" : "สคริปต์:"}</b><br /><Linkify text={b.script} /></div>}
+                {b.cta && <div><b>ปิดท้าย:</b> {b.cta}</div>}
+                {showBrief && b.script.length > 180 && <button onClick={() => setShowBrief(false)}
+                  style={{ background: "none", border: 0, color: "#a89f96", fontSize: 13, cursor: "pointer", padding: "6px 0 0", fontFamily: "inherit" }}>ย่อ ▴</button>}
+              </>}
+            </div>)}
 
           {/* 🎨 ขอให้กราฟฟิกช่วย — คิมสั่ง 7 ส.ค.
               "หน้าต่างงานของโบ พี่ก้อง กัน สามคนที่เป็นอินเฮ้าส์ต้องมีปุ่มประสานงานกับแฟรี่

@@ -5547,6 +5547,33 @@ const ABANDON_STEPS = [
   { after: "1 day",    count: 1 },
   { after: "3 days",   count: 2 },
 ];
+// 📅 เตือนเมื่อเวิร์กช็อปใกล้ไม่มีรอบให้จอง (คิมถาม 7 ส.ค. เรื่องรอบที่เลยวันไปแล้ว)
+// รอบที่เลยวันหลุดจากหน้าจองเองอยู่แล้ว (WHERE starts_at > now()) — ตรงนี้ไม่ใช่ปัญหา
+// ปัญหาจริงคือ "ไม่มีใครบอกคิมว่ารอบกำลังจะหมด" → พอหมดแล้วหน้าเวิร์กช็อปว่างเปล่าเงียบๆ ขายไม่ได้ทั้งเดือน
+// → เช็ควันละครั้ง ส่งเมลเฉพาะตอนมีคลาสที่ไม่มีรอบเหลือใน 14 วันข้างหน้า (ไม่มีปัญหา = ไม่ส่ง ไม่กวน)
+const WS_RUNWAY_DAYS = Number(process.env.WS_RUNWAY_DAYS) || 14;
+let wsRunwaySentOn = "";
+async function runWorkshopRunwayCheck() {
+  try {
+    const today = ymd(new Date());
+    if (wsRunwaySentOn === today) return;            // วันละครั้งพอ
+    const rows = await q(`SELECT w.workshop_id, w.name,
+        (SELECT MIN(s.starts_at) FROM workshop_sessions s
+          WHERE s.workshop_id=w.workshop_id AND s.status='open' AND s.starts_at > now()) AS next_at
+      FROM workshops w WHERE w.active ORDER BY w.seq, w.created_at`);
+    const soon = rows.filter(r => !r.next_at || (new Date(r.next_at) - Date.now()) / 86400000 < WS_RUNWAY_DAYS);
+    if (!soon.length) return;
+    wsRunwaySentOn = today;
+    const none = soon.filter(r => !r.next_at);
+    await sendEmail(OPS_EMAIL, `📅 เวิร์กช็อป ${soon.length} คลาสใกล้ไม่มีรอบให้จอง`,
+      wrap(`สวัสดีค่ะคิม 🩵<br><br>` +
+        (none.length ? `<b style="color:#b42318">⚠️ ${none.length} คลาสไม่มีรอบเหลือเลย</b> — ตอนนี้ลูกค้าเข้าไปแล้วเจอ "ยังไม่มีรอบที่เปิดรับสมัคร" ค่ะ<br><br>` : "") +
+        `<b>คลาสที่ต้องลงรอบใหม่:</b><br>` +
+        soon.map(r => `· ${r.name} — ${r.next_at ? `รอบสุดท้าย ${thDate(r.next_at)}` : "<b>ไม่มีรอบเลย</b>"}`).join("<br>") +
+        `<br><br>ลงรอบใหม่ได้ที่หน้าแอดมิน แล้วลูกค้าจะจองได้ทันทีค่ะ<br><br>${btn(appBaseUrl() + "/admin", "เปิดหน้าแอดมิน")}`)).catch(() => {});
+    console.log(`[workshop-runway] เตือน ${soon.length} คลาส`);
+  } catch (e) { console.error("workshop-runway", e.message); }
+}
 async function runAbandonedFollowups(dry = false) {
   let sent = 0;
   const preview = [];
@@ -6067,7 +6094,9 @@ connectDbWithRetry().then(async () => {
   setTimeout(() => { run(`UPDATE blueprints SET content_started_at = now() - interval '10 minutes' WHERE (content_status='generating' OR analysis_status='generating') AND (content_started_at IS NULL OR content_started_at > now() - interval '8 minutes')`).then(() => retryStuckContent()).catch(() => {}); }, 50000);
   setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
   setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
-  setInterval(runActivationReminders, 6 * 3600 * 1000); // ทุก 6 ชม. เตือนคนได้บทวิเคราะห์แล้วยังไม่กดสร้างแผน 30 วัน (เกิน 24 ชม.)
+  setInterval(runActivationReminders, 6 * 3600 * 1000);
+  setTimeout(runWorkshopRunwayCheck, 70000);            // เตือนคิมถ้าเวิร์กช็อปใกล้ไม่มีรอบให้จอง
+  setInterval(runWorkshopRunwayCheck, 6 * 3600 * 1000);  // เช็คทุก 6 ชม. แต่ส่งเมลวันละครั้งพอ // ทุก 6 ชม. เตือนคนได้บทวิเคราะห์แล้วยังไม่กดสร้างแผน 30 วัน (เกิน 24 ชม.)
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง
   setInterval(() => run(`UPDATE video_audits SET video_data=NULL WHERE status='uploaded' AND video_data IS NOT NULL AND created_at < now() - interval '24 hours' AND order_id IN (SELECT order_id FROM blueprint_orders WHERE payment_status NOT IN ('paid','mock_paid'))`).catch(e => console.error("va cleanup", e.message)), 3600 * 1000); // ทุก 1 ชม. ลบคลิปที่อัปแต่ไม่จ่ายเกิน 24 ชม.

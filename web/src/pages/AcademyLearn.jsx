@@ -19,6 +19,107 @@ function toEmbed(url) {
   if (u.includes("/embed/")) return u;
   return u; // ไม่รู้จักทรง — ลองใส่ iframe ตรงๆ
 }
+// ดึงเฉพาะรหัสคลิปออกมา (ใช้กับ player ของเราเอง)
+function ytId(url) {
+  const u = String(url || "").trim(); if (!u) return null;
+  const pats = [/[?&]v=([A-Za-z0-9_-]{6,})/, /youtu\.be\/([A-Za-z0-9_-]{6,})/,
+                /youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/, /\/embed\/([A-Za-z0-9_-]{6,})/];
+  for (const p of pats) { const m = u.match(p); if (m) return m[1]; }
+  return null;
+}
+const mmss = (s) => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+// ═══════ 🎬 เครื่องเล่นของเราเอง — ไม่มีโลโก้ YouTube ═══════
+// คิมทัก 7 ส.ค.: "มันไม่มีวิธีไหนที่จะไม่ขึ้นยูทูปหรอ ไม่มี logo youtube ขึ้นเลย"
+// ⚠️ ทำไมต้องสร้างปุ่มเอง: YouTube เลิกให้ผลของ modestbranding แล้ว ใส่ไปก็ยังขึ้นโลโก้
+//    ทางเดียวคือปิดแถบควบคุมของเขา (controls=0) แล้วเราทำปุ่มเล่น/หยุด/เลื่อนเอง
+// 🔒 หมายเหตุ: นี่คือ "ซ่อนแบรนด์" ไม่ใช่ "ป้องกันคลิป" — คนที่ตั้งใจยังหาไอดีคลิปจาก source ได้
+//    ถ้าต้องการกันจริงต้องย้ายไปโฮสต์วิดีโอที่คิดเงิน (Vimeo/Cloudflare Stream)
+function CleanPlayer({ videoId, lessonKey }) {
+  const boxRef = useRef(null), playerRef = useRef(null);
+  const [ready, setReady] = useState(false), [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0), [dur, setDur] = useState(0), [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let dead = false, tick = null;
+    // โหลดสคริปต์ของ YouTube ครั้งเดียว แล้วใช้ซ้ำทุกบทเรียน
+    const load = () => new Promise((res, rej) => {
+      if (window.YT && window.YT.Player) return res(window.YT);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { prev && prev(); res(window.YT); };
+      if (!document.getElementById("yt-api")) {
+        const s = document.createElement("script");
+        s.id = "yt-api"; s.src = "https://www.youtube.com/iframe_api"; s.onerror = rej;
+        document.head.appendChild(s);
+      }
+      setTimeout(() => (window.YT && window.YT.Player) ? res(window.YT) : rej(new Error("timeout")), 8000);
+    });
+    load().then(YT => {
+      if (dead || !boxRef.current) return;
+      playerRef.current = new YT.Player(boxRef.current, {
+        videoId, host: "https://www.youtube-nocookie.com",
+        playerVars: { controls: 0, rel: 0, modestbranding: 1, disablekb: 1, fs: 0, playsinline: 1, iv_load_policy: 3 },
+        events: {
+          onReady: (e) => { if (dead) return; setReady(true); setDur(e.target.getDuration() || 0); },
+          onStateChange: (e) => { if (!dead) setPlaying(e.data === YT.PlayerState.PLAYING); },
+        },
+      });
+      tick = setInterval(() => {
+        const p = playerRef.current;
+        if (p && p.getCurrentTime) { setCur(p.getCurrentTime() || 0); if (!dur) setDur(p.getDuration() || 0); }
+      }, 400);
+    }).catch(() => !dead && setFailed(true));
+    return () => { dead = true; if (tick) clearInterval(tick); try { playerRef.current?.destroy(); } catch {} };
+  }, [videoId, lessonKey]);   // eslint-disable-line
+
+  const toggle = () => { const p = playerRef.current; if (!p) return; playing ? p.pauseVideo() : p.playVideo(); };
+  const seek = (e) => {
+    const p = playerRef.current; if (!p || !dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    p.seekTo(((e.clientX - r.left) / r.width) * dur, true);
+  };
+  const full = () => { const el = boxRef.current?.parentElement; if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); };
+
+  // โหลด API ไม่ได้ (เน็ตบล็อก/adblock) → ถอยไปใช้ iframe ปกติ ดีกว่าจอดำ
+  if (failed) return <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`}
+    title="บทเรียน" style={{ width: "100%", height: "100%", border: 0 }} allowFullScreen />;
+
+  const pct = dur ? (cur / dur) * 100 : 0;
+  return (
+    <>
+      <div ref={boxRef} style={{ width: "100%", height: "100%", pointerEvents: "none" }} />
+      {/* ชั้นทับทั้งจอ — คลิกที่ไหนก็เล่น/หยุด และคลิกไม่ทะลุไปโดน UI ของ YouTube */}
+      <div onClick={toggle} onContextMenu={e => e.preventDefault()}
+        style={{ position: "absolute", inset: 0, cursor: "pointer" }} />
+      {!playing && ready && (
+        <div onClick={toggle} style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", cursor: "pointer" }}>
+          <div style={{ width: 84, height: 84, borderRadius: "50%", background: "rgba(255,255,255,.94)",
+            display: "grid", placeItems: "center", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
+            <div style={{ width: 0, height: 0, marginLeft: 7, borderTop: "17px solid transparent",
+              borderBottom: "17px solid transparent", borderLeft: "27px solid #16202b" }} />
+          </div>
+        </div>)}
+      {/* แถบควบคุมของเรา */}
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 14px 12px",
+        background: "linear-gradient(transparent,rgba(0,0,0,.75))", display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={toggle} aria-label={playing ? "หยุด" : "เล่น"}
+          style={{ background: "none", border: 0, color: "#fff", fontSize: 19, cursor: "pointer", lineHeight: 1, padding: 0 }}>
+          {playing ? "❚❚" : "▶"}
+        </button>
+        <div onClick={seek} style={{ flex: 1, height: 16, display: "flex", alignItems: "center", cursor: "pointer" }}>
+          <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,.34)", borderRadius: 3 }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: "#fff", borderRadius: 3 }} />
+          </div>
+        </div>
+        <span style={{ color: "#fff", fontSize: 12.5, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+          {mmss(cur)} / {mmss(dur)}
+        </span>
+        <button onClick={full} aria-label="เต็มจอ"
+          style={{ background: "none", border: 0, color: "#fff", fontSize: 16, cursor: "pointer", padding: 0 }}>⛶</button>
+      </div>
+    </>
+  );
+}
 // คลิปตัดต่อจัดเต็มเกิน 100MB ได้ง่ายๆ (คิมบอกเอง) → ไฟล์ใหญ่ส่งแบบ multipart เขียนลงดิสก์ที่เซิร์ฟเวอร์
 // รูปเล็กยังส่งแบบเดิม (ย่อ+บีบในเบราว์เซอร์แล้ว จะได้เก็บไว้โชว์เป็นผลงานได้)
 const MAX_MB = 200;
@@ -122,17 +223,13 @@ export default function AcademyLearn() {
             {/* 🔒 ลายน้ำอีเมลผู้เรียนทับบนคลิป — อัดจอไปแจกก็รู้ว่าใครทำ (กันการอัดจอ 100% ไม่ได้ แต่ทำให้ไม่คุ้มที่จะทำ) */}
             <div style={{ position: "relative", aspectRatio: "16/9", background: "#000", borderRadius: 14, overflow: "hidden" }}
                  onContextMenu={e => e.preventDefault()}>
-              {embed
-                ? <iframe key={lesson.id} src={embed} title={lesson.name} style={{ width: "100%", height: "100%", border: 0 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-                : <div style={{ color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 14 }}>บทนี้ยังไม่มีวิดีโอ</div>}
-              {/* 🔒 บังแถบบนของ YouTube (ชื่อคลิป + ปุ่มแชร์ + "ดูใน YouTube") ไม่ให้กดคัดลอกลิงก์ไปแจกต่อ
-                  เว้นช่องกลางไว้ให้กดเล่น/หยุดได้ตามปกติ */}
-              {embed && <>
-                <div aria-hidden onContextMenu={e => e.preventDefault()}
-                     style={{ position: "absolute", top: 0, left: 0, width: "26%", height: 62, cursor: "default" }} />
-                <div aria-hidden onContextMenu={e => e.preventDefault()}
-                     style={{ position: "absolute", top: 0, right: 0, width: "34%", height: 62, cursor: "default" }} />
-              </>}
+              {/* 🎬 คลิป YouTube → ใช้เครื่องเล่นของเราเอง ไม่มีโลโก้/ปุ่ม "ดูใน YouTube"
+                  คลิปที่ไม่ใช่ YouTube (ถ้ามีในอนาคต) ยังใช้ iframe เดิมได้ */}
+              {ytId(lesson?.url)
+                ? <CleanPlayer key={lesson.id} videoId={ytId(lesson.url)} lessonKey={lesson.id} />
+                : embed
+                  ? <iframe key={lesson.id} src={embed} title={lesson.name} style={{ width: "100%", height: "100%", border: 0 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                  : <div style={{ color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 14 }}>บทนี้ยังไม่มีวิดีโอ</div>}
               {data.watermark && embed && <Watermark text={data.watermark} />}
             </div>
             {lesson && (

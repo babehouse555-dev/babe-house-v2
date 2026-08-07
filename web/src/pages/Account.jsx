@@ -173,13 +173,17 @@ export default function Account() {
               { key: "course", icon: "🎓", label: "คอร์สเรียน", pastel: "#DDCCEE", deep: "#C9B4E3", n: counts.courses },
               { key: "cert", icon: "🏆", label: "ประกาศนียบัตร", pastel: "#C6DBCB", deep: "#AECBB6", n: counts.certs },
               { key: "ws", icon: "🎟️", label: "คลาสสด", pastel: "#F3D6B6", deep: "#E9C398", n: counts.ws },
-              { key: "edit", icon: "🎬", label: "งานตัดต่อ", pastel: "#E4D6F0", deep: "#D0BCE6", n: counts.edits },
+              // 🔴 คิมขอ 8 ส.ค.: "ต้องมีเลขพร้อมแจ้งเตือนขึ้น สีแดงๆ เหมือน line จะได้รู้ว่าทีมส่งงานกลับมาแล้ว"
+              { key: "edit", icon: "🎬", label: "งานตัดต่อ", pastel: "#E4D6F0", deep: "#D0BCE6", n: counts.edits,
+                badge: counts.editsUnseen || 0 },
               // 🧾 คิมสั่ง 5 ส.ค.: "แยกออกมาอีกโฟลเดอร์นึงเลย เพราะลูกค้าไม่ได้เอาใบกำกับแค่งานตัด"
               { key: "tax", icon: "🧾", label: "ใบกำกับภาษี", pastel: "#DCE4EF", deep: "#C2CFE0", n: TAX_INVOICE_LIVE ? taxInv.length : 0 },
               // 💳 คิมสั่ง 6 ส.ค.: "มันควรจะอยู่ในโฟลเดอร์ จะได้ไม่รบกวนหน้าอื่น อันนี้มาใหญ่มาก"
               //    บัตรสมาชิกย้ายมาอยู่ในนี้ · จุดแดงเตือนเมื่อยังไม่ได้เลือกคอร์สฟรี (กันลืมของมูลค่า 5,990)
               { key: "member", icon: "💳", label: "แพ็กเกจของฉัน", pastel: "#C7DEF0", deep: "#8FB9DF",
-                n: perks && perks.plan !== "monthly" ? (perks.months_left || 1) : 0,
+                // คิมทัก 8 ส.ค. "หน้าแพ็กเกจของฉันหายไป" — เดิมโชว์เฉพาะคนมีแพ็ก 6/12 เดือน
+                // ซึ่งตอนนี้ยังไม่มีใครมี (แพ็กเปิดขาย 1 ก.ย.) → ลูกค้ารายเดือนก็ควรเห็นสิทธิ์ตัวเอง
+                n: perks ? (perks.plan !== "monthly" ? (perks.months_left || 1) : 1) : 0,
                 dot: !!(perks?.free_course && !perks.free_course.claimed) },
             ].filter(f => f.n > 0).map(f => {
               const on = f.key === folder;
@@ -192,15 +196,20 @@ export default function Account() {
                   </span>
                   <span className="fld-label">{f.label}</span>
                   {/* จุดแดง = มีของรอให้กด (ตอนนี้ใช้กับคอร์สฟรีที่ยังไม่ได้เลือก) */}
-                  {f.dot && <span style={{ position: "absolute", top: 2, right: 6, width: 11, height: 11, borderRadius: "50%",
+                  {f.dot && !f.badge && <span style={{ position: "absolute", top: 2, right: 6, width: 11, height: 11, borderRadius: "50%",
                     background: "#e5484d", border: "2px solid #fff" }} />}
+                  {/* 🔴 ป้ายเลขแดงแบบไลน์ — ทีมส่งงานกลับมากี่ชิ้นที่ยังไม่ได้ดู */}
+                  {f.badge > 0 && <span style={{ position: "absolute", top: 0, right: 0, minWidth: 20, height: 20, padding: "0 6px",
+                    borderRadius: 999, background: "#e5484d", color: "#fff", fontSize: 12, fontWeight: 800,
+                    display: "grid", placeItems: "center", border: "2px solid #fff", boxShadow: "0 2px 6px rgba(229,72,77,.4)" }}>
+                    {f.badge}</span>}
                 </button>
               );
             })}
           </div>
           </div>
         )}
-        {perks && perks.plan !== "monthly" && (!showFolders || folder === "member") && (() => {
+        {perks && (!showFolders || folder === "member") && (() => {
           const DIM = "#D3E7FA";
           const rule = "1px solid rgba(255,255,255,.24)";
           const Row = ({ k, v, unit }) => (
@@ -220,7 +229,7 @@ export default function Account() {
                 <div>
                   <div style={{ fontSize: 11.5, letterSpacing: ".14em", textTransform: "uppercase", color: DIM, fontWeight: 700 }}>Babe House Member</div>
                   <div className="serif" style={{ fontSize: 27, fontWeight: 700, marginTop: 2 }}>
-                    แพ็ก {perks.plan === "12m" ? "12" : "6"} เดือน
+                    {perks.plan === "monthly" ? "แผนรายเดือน" : `แพ็ก ${perks.plan === "12m" ? "12" : "6"} เดือน`}
                   </div>
                 </div>
                 {perks.months_left > 0 && (

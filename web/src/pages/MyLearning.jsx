@@ -34,6 +34,8 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
   const [edits, setEdits] = useState([]);   // 🎬 งานที่สั่งให้ทีมตัด
   const [ws, setWs] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  // 🔴 งานที่ทีมส่งกลับมาแล้วรอลูกค้าดู + เครดิตคงเหลือ (คิมขอ 8 ส.ค.)
+  const [editMeta, setEditMeta] = useState({ unseen: 0, credits: 0 });
 
   useEffect(() => {
     if (!session.token) return;
@@ -47,13 +49,13 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
       if (a.status === "fulfilled") setCourses(a.value.courses || []);
       if (b.status === "fulfilled") setCerts(b.value.certificates || []);
       if (c.status === "fulfilled") setWs(c.value.bookings || []);
-      if (e.status === "fulfilled") setEdits(e.value.orders || []);
+      if (e.status === "fulfilled") { setEdits(e.value.orders || []); setEditMeta({ unseen: e.value.unseen || 0, credits: e.value.credits || 0 }); }
       setLoaded(true);
     });
   }, []);
 
   // บอกหน้าบัญชีว่ามีของกี่ชิ้นในแต่ละหมวด เพื่อไปทำเลขบนโฟลเดอร์
-  useEffect(() => { if (loaded && onCounts) onCounts({ courses: courses.length, certs: certs.length, ws: ws.length, edits: edits.length }); }, [loaded, courses.length, certs.length, ws.length, edits.length]);   // eslint-disable-line
+  useEffect(() => { if (loaded && onCounts) onCounts({ courses: courses.length, certs: certs.length, ws: ws.length, edits: edits.length, editsUnseen: editMeta.unseen, credits: editMeta.credits }); }, [loaded, courses.length, certs.length, ws.length, edits.length, editMeta.unseen, editMeta.credits]);   // eslint-disable-line
   if (!loaded || (!courses.length && !certs.length && !ws.length && !edits.length)) return null;
   const show = (k) => !only || only === k;
 
@@ -140,6 +142,23 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
       {EDIT_LIVE && show("edit") && edits.length > 0 && <>
         <SectionHead icon="🎬" title="งานที่ทีมกำลังทำให้" count={edits.length}
           right={<Link className="link" to="/edit" style={{ fontSize: 13 }}>สั่งงานเพิ่ม →</Link>} />
+
+        {/* 🎟️ เครดิตคงเหลือ + ปุ่มเติม (คิมขอ 8 ส.ค.)
+            เดิมลูกค้าต้องเดาว่าเหลือกี่เครดิต ต้องกดเข้าหน้าสั่งงานถึงจะรู้
+            เติมเครดิตไว้ล่วงหน้า = สั่งตัดได้ทันทีไม่ต้องจ่ายทีละครั้ง */}
+        <div className="card" style={{ marginTop: 0, marginBottom: 10, display: "flex", justifyContent: "space-between",
+          alignItems: "center", gap: 12, flexWrap: "wrap", background: "#F7F4F0" }}>
+          <div>
+            <div className="muted" style={{ fontSize: 12.5 }}>เครดิตตัดต่อคงเหลือ</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: editMeta.credits > 0 ? "var(--blue-d)" : "#a89f96" }}>
+              {editMeta.credits} <small style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>คลิป</small>
+            </div>
+          </div>
+          <Link className="btn" to="/edit/new" style={{ padding: "10px 18px", textDecoration: "none" }}>
+            {editMeta.credits > 0 ? "เติมเครดิต" : "ซื้อเครดิต"}
+          </Link>
+        </div>
+
         <div className="card" style={{ marginTop: 0 }}>
           {edits.map(o => (
             <Link key={o.order_id} to={`/edit/${o.order_id}`}

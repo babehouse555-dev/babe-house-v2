@@ -3491,7 +3491,14 @@ app.get("/api/edit/my", async (req, res) => {
   const rows = await q(`SELECT * FROM edit_orders WHERE lower(email)=lower($1) ORDER BY created_at DESC`, [email]);
   res.json({ ok: true, orders: rows.map(r => { const s = customerStatus(r.status);   // ⛔ ลูกค้าไม่เห็นสถานะภายใน/ชื่อคนตัด
     const { internal_note, assigned_to, assigned_at, senior_by, senior_at, ae_by, ae_at, ...pub } = r;
-    return { ...pub, status: s, status_th: EDIT_STATUS[s] || s }; }), free_revisions: EDIT_FREE_REVISIONS });
+    return { ...pub, status: s, status_th: EDIT_STATUS[s] || s }; }),
+    free_revisions: EDIT_FREE_REVISIONS,
+    // 🔴 จำนวนงานที่ "ทีมส่งกลับมาแล้ว รอลูกค้าดู" — หน้าเว็บเอาไปทำป้ายแดงแบบไลน์ (คิมขอ 8 ส.ค.)
+    //    นับเฉพาะที่ยังไม่กดรับ ลูกค้าจะได้รู้ว่ามีของใหม่รออยู่โดยไม่ต้องเปิดเข้าไปดูทีละอัน
+    unseen: rows.filter(r => r.status === "draft_sent").length,
+    // 🎟️ เครดิตตัดต่อคงเหลือ — คิมขอให้ขึ้นในหน้าลูกค้า พร้อมปุ่มเติม
+    credits: Number((await one(`SELECT COALESCE(edit_credits,0) c FROM customers WHERE lower(email)=lower($1)`, [email]))?.c || 0),
+  });
 });
 app.get("/api/edit/order/:id", async (req, res) => {
   const email = await authEmail(req);

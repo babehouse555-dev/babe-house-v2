@@ -44,12 +44,21 @@ const dueChip = (due) => {
 
 // 🎨 ระบบสี 3 สี (คิมกำหนดเอง 3 ส.ค.)
 // แดง = ด่วน ต้องส่งแล้ว · เหลือง = ยังไม่เสร็จ แต่ไม่ด่วน · เขียว = เสร็จแล้ว
-const C = { red: "#d1382c", yellow: "#d99100", green: "#1a7f43" };
+const C = { red: "#d1382c", yellow: "#d99100", green: "#1a7f43", orange: "#e8590c" };
 // ปุ่มไฟล์ในบรีฟ — กดง่ายกว่าลิงก์ตัวหนังสือ และเห็นชัดว่ามีไฟล์อะไรบ้างในแวบเดียว
 const fileBtn = { display: "inline-block", border: "1px solid #e5ded6", background: "#fff", borderRadius: 999,
   padding: "6px 13px", fontSize: 13, color: "#5b5147", textDecoration: "none", whiteSpace: "nowrap" };
+// 🎨 สีบอกสถานะงาน (คิมเคาะเพิ่ม 8 ส.ค.)
+// "โบกดส่งมันต้องเปลี่ยนเป็นสีเขียวปะ จะได้รู้ว่าตัวเองแก้ส่งไปแล้ว
+//  ถ้าลูกค้าส่ง feedback มาใหม่ก็เปลี่ยนเป็นสีส้ม จะได้รู้ว่ายังไม่ได้ทำ"
+// สีตอบคำถามเดียว: "ตอนนี้ลูกบอลอยู่ที่ใคร"
+//   เขียว = ส่งไปแล้ว ไม่ได้อยู่ที่เรา (รอตรวจ / รอลูกค้าดู / จบ)
+//   ส้ม  = ลูกค้าตีกลับมา ต้องลงมือแก้  ← เร่งกว่าเหลือง เพราะลูกค้ารออยู่
+//   แดง  = เลยกำหนดส่งหรือส่งวันนี้
+//   เหลือง = งานปกติที่ยังไม่เสร็จ
 function jobColor(j) {
-  if (["done", "draft_sent"].includes(j.status)) return "green";      // ส่งลูกค้าแล้ว = จบฝั่งเรา
+  if (j.status === "revising") return "orange";                       // ลูกค้าส่งจุดแก้มา = ยังไม่ได้ทำ
+  if (["done", "draft_sent", "senior_review", "ae_review"].includes(j.status)) return "green";  // ส่งออกจากมือเราแล้ว
   if (j.due_at) {
     const left = Math.ceil((new Date(j.due_at) - Date.now()) / DAY);
     if (left <= 0) return "red";                                       // เลยกำหนดหรือส่งวันนี้
@@ -276,8 +285,9 @@ export default function Team() {
             {/* คำอธิบายสี — บอกครั้งเดียวใช้ได้ทั้งหน้า */}
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "#7c7268", marginBottom: 12 }}>
               <span><Dot c={C.red} /> ด่วน · เลยกำหนดหรือส่งวันนี้</span>
+              <span><Dot c={C.orange} /> ลูกค้าส่งจุดแก้มา · ยังไม่ได้ทำ</span>
               <span><Dot c={C.yellow} /> ยังไม่เสร็จ ไม่ด่วน</span>
-              <span><Dot c={C.green} /> เสร็จแล้ว</span>
+              <span><Dot c={C.green} /> ส่งไปแล้ว · ไม่ได้อยู่ที่เรา</span>
             </div>
 
             {/* ── รอฉันตรวจ / งานฉัน ── */}

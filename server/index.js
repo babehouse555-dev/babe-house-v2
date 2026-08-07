@@ -5552,24 +5552,30 @@ const ABANDON_STEPS = [
 // ปัญหาจริงคือ "ไม่มีใครบอกคิมว่ารอบกำลังจะหมด" → พอหมดแล้วหน้าเวิร์กช็อปว่างเปล่าเงียบๆ ขายไม่ได้ทั้งเดือน
 // → เช็ควันละครั้ง ส่งเมลเฉพาะตอนมีคลาสที่ไม่มีรอบเหลือใน 14 วันข้างหน้า (ไม่มีปัญหา = ไม่ส่ง ไม่กวน)
 const WS_RUNWAY_DAYS = Number(process.env.WS_RUNWAY_DAYS) || 14;
-let wsRunwaySentOn = "";
 async function runWorkshopRunwayCheck() {
   try {
     const today = ymd(new Date());
-    if (wsRunwaySentOn === today) return;            // วันละครั้งพอ
+    // 🐛 แก้ 7 ส.ค. (เมลฉบับแรกเตือนผิด): เดิมใช้ MIN = รอบที่ "ใกล้ที่สุด"
+    //    คลาสที่มีรอบ 8 ส.ค. และ 12 ก.ย. เลยถูกนับว่า "รอบสุดท้าย 8 ส.ค." ทั้งที่ลงรอบกันยาไว้แล้ว
+    //    คำถามที่ถูกคือ "ลงรอบไว้ไกลสุดถึงเมื่อไหร่" = MAX ไม่ใช่ MIN
     const rows = await q(`SELECT w.workshop_id, w.name,
-        (SELECT MIN(s.starts_at) FROM workshop_sessions s
-          WHERE s.workshop_id=w.workshop_id AND s.status='open' AND s.starts_at > now()) AS next_at
+        (SELECT MAX(s.starts_at) FROM workshop_sessions s
+          WHERE s.workshop_id=w.workshop_id AND s.status='open' AND s.starts_at > now()) AS last_at
       FROM workshops w WHERE w.active ORDER BY w.seq, w.created_at`);
-    const soon = rows.filter(r => !r.next_at || (new Date(r.next_at) - Date.now()) / 86400000 < WS_RUNWAY_DAYS);
+    const soon = rows.filter(r => !r.last_at || (new Date(r.last_at) - Date.now()) / 86400000 < WS_RUNWAY_DAYS);
     if (!soon.length) return;
-    wsRunwaySentOn = today;
-    const none = soon.filter(r => !r.next_at);
+    // 🔁 กันเมลซ้ำตอน deploy: เดิมจำไว้ในหน่วยความจำ พอ deploy ใหม่ก็ลืมแล้วส่งซ้ำ
+    //    (7 ส.ค. คิมได้ 2 ฉบับใน 1 ชม. เพราะ deploy 2 รอบ) → เก็บลงฐานข้อมูลแทน
+    const mark = `ws_runway_${today}`;
+    const dup = await one(`SELECT 1 x FROM month_reminders WHERE email=$1 AND cycle=$2`, [mark, "ws_runway"]).catch(() => null);
+    if (dup) return;
+    await run(`INSERT INTO month_reminders (email, cycle) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [mark, "ws_runway"]).catch(() => {});
+    const none = soon.filter(r => !r.last_at);
     await sendEmail(OPS_EMAIL, `📅 เวิร์กช็อป ${soon.length} คลาสใกล้ไม่มีรอบให้จอง`,
       wrap(`สวัสดีค่ะคิม 🩵<br><br>` +
         (none.length ? `<b style="color:#b42318">⚠️ ${none.length} คลาสไม่มีรอบเหลือเลย</b> — ตอนนี้ลูกค้าเข้าไปแล้วเจอ "ยังไม่มีรอบที่เปิดรับสมัคร" ค่ะ<br><br>` : "") +
         `<b>คลาสที่ต้องลงรอบใหม่:</b><br>` +
-        soon.map(r => `· ${r.name} — ${r.next_at ? `รอบสุดท้าย ${thDate(r.next_at)}` : "<b>ไม่มีรอบเลย</b>"}`).join("<br>") +
+        soon.map(r => `· ${r.name} — ${r.last_at ? `ลงรอบไว้ถึงแค่ ${thDate(r.last_at)}` : "<b>ไม่มีรอบเลย</b>"}`).join("<br>") +
         `<br><br>ลงรอบใหม่ได้ที่หน้าแอดมิน แล้วลูกค้าจะจองได้ทันทีค่ะ<br><br>${btn(appBaseUrl() + "/admin", "เปิดหน้าแอดมิน")}`)).catch(() => {});
     console.log(`[workshop-runway] เตือน ${soon.length} คลาส`);
   } catch (e) { console.error("workshop-runway", e.message); }

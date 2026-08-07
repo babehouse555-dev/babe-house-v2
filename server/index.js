@@ -3771,8 +3771,12 @@ async function teamWorkload(days = AVAIL_DAYS) {
     //    จะไม่ว่างก็ต่อเมื่อ "กดลาวันนั้น" (มีแถวใน team_availability) — เป็นระบบ opt-out
     //    ฟรีแลนซ์ (default_slots = 0) ยังเป็น opt-in เหมือนเดิม ระบบไม่ยัดงานให้เอง
     const filed = Object.fromEntries(a.map(x => [x.day, x.slots]));
+    // ⚠️ คิมถาม 7 ส.ค. "พนักงานประจำเปิดรับงานเสาร์อาทิตย์ได้ใช่ปะ" — เดิม "ไม่ได้"
+    //    เพราะวนเฉพาะ workdays (จ-ศ) วันเสาร์อาทิตย์ที่เขากดเปิดเองเลยถูกทิ้งทั้งดุ้น
+    //    → รวมวันที่เขากดเองเข้ามาด้วย (จ-ศ ว่างอัตโนมัติ + เสาร์อาทิตย์เปิดเองได้)
     const eff = m.default_slots > 0
-      ? workdays.map(d => ({ day: d, slots: d in filed ? filed[d] : m.default_slots }))
+      ? [...new Set([...workdays, ...Object.keys(filed)])].sort()
+          .map(d => ({ day: d, slots: d in filed ? filed[d] : m.default_slots }))
       : a;
     const capacity = eff.reduce((t, x) => t + x.slots, 0);          // รับได้รวมกี่คลิปใน 14 วัน
     const web = Number(lm[m.member_id]?.clips || 0), outside = Number(em[m.member_id]?.clips || 0);

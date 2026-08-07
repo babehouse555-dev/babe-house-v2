@@ -319,14 +319,16 @@ export default function Team() {
         };
         const setDay = async (day, slots) => { await post("/api/team/availability", { day, slots }, "cal"); loadCal(); };
         const resetDay = async (day) => { await post("/api/team/availability", { day, clear: true }, "cal"); loadCal(); };
-        // แตะวนเป็นวง: อัตโนมัติ → 1 → 2 … → 8 → 🌴 ลา → กลับเป็นอัตโนมัติ
-        // ทำให้ "ลดจำนวน" และ "กดลา" ทำได้จากปุ่มเดียว โดยไม่ต้องมีปุ่มเล็กๆ ในช่องแคบ
-        const tapDay = (key, st) => {
-          if (st.kind === "leave") return resetDay(key);
-          if (st.kind === "auto" || st.kind === "none") return setDay(key, 1);
-          if (st.n >= 8) return setDay(key, 0);        // 0 = ลา
-          return setDay(key, st.n + 1);
+        // คิมแจ้ง 7 ส.ค. "ต้องแตะตั้ง 8 รอบ เหนื่อยมาก มีปุ่มให้เลยได้ไหม เพิ่ม ลด ลา"
+        // → เลิกแตะวน ใช้ปุ่ม − / + / 🌴 ตรงๆ ในแต่ละวัน
+        const plusDay  = (key, st) => setDay(key, Math.min(8, (st.kind === "leave" ? 0 : st.n) + 1));
+        const minusDay = (key, st) => {
+          if (st.kind === "leave") return resetDay(key);          // ยกเลิกวันลา → กลับเป็นค่าเริ่มต้น
+          const next = st.n - 1;
+          if (next <= 0) return defSlots > 0 ? setDay(key, 0) : resetDay(key);   // ประจำ: ลดจนสุด = วันลา
+          return setDay(key, next);
         };
+        const leaveDay = (key, st) => (st.kind === "leave" ? resetDay(key) : setDay(key, 0));
         return <>
           {/* ลงวันว่างของตัวเอง — ทุกคนทำได้ รวมฟรีแลนซ์ */}
           <div style={card}>
@@ -354,32 +356,41 @@ export default function Team() {
             {defSlots > 0 && <p style={{ fontSize: 12.5, color: "#a89f96", margin: "0 0 10px" }}>
               💡 คิมตั้งกำลังรับงานของคุณไว้ที่ <b>{defSlots} คลิป/วัน</b> — วันไหนรับได้มากกว่า/น้อยกว่า แตะแก้รายวันได้เลย
             </p>}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(112px,1fr))", gap: 7 }}>
               {days.map(dd => {
                 const st = dayState(dd.key, dd.weekend);
                 const tone = { leave: { bd: "#f0c6c0", bg: "#fdf2f0", fg: "#b42318" },
                                set:   { bd: C.green,   bg: "#eaf6ee", fg: C.green },
                                auto:  { bd: "#cfe3f5", bg: "#f2f8fd", fg: "#2E86DE" },
                                none:  { bd: "#e5ded6", bg: dd.weekend ? "#faf8f6" : "#fff", fg: "#d8d2cb" } }[st.kind];
+                const mini = (extra) => ({ border: "1px solid #e5ded6", background: "#fff", borderRadius: 8,
+                  width: 28, height: 28, cursor: "pointer", fontFamily: "inherit", fontSize: 15, lineHeight: 1,
+                  display: "grid", placeItems: "center", padding: 0, color: "#5b5147", ...extra });
                 return (
-                  <button key={dd.key} onClick={() => tapDay(dd.key, st)} disabled={busy === "cal"}
-                    title={st.kind === "auto" ? "ระบบถือว่าคุณว่างวันนี้อัตโนมัติ" : st.kind === "leave" ? "วันลา — ระบบจะไม่ส่งงานให้" : ""}
-                    style={{ borderRadius: 10, padding: "9px 4px", cursor: "pointer", fontFamily: "inherit",
-                      border: `1.5px solid ${tone.bd}`, background: tone.bg }}>
+                  <div key={dd.key}
+                    style={{ borderRadius: 11, padding: "8px 6px 9px", border: `1.5px solid ${tone.bd}`, background: tone.bg, textAlign: "center" }}>
                     <div style={{ fontSize: 10.5, color: "#a89f96" }}>{dd.dow}</div>
                     <div style={{ fontSize: 12.5, fontWeight: 700 }}>{dd.lbl}</div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: tone.fg, marginTop: 2 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: tone.fg, margin: "3px 0 1px" }}>
                       {st.kind === "leave" ? "🌴 ลา" : st.n ? `${st.n} คลิป` : "—"}
                     </div>
-                    {st.kind === "auto" && <div style={{ fontSize: 9.5, color: "#8fb8e0", marginTop: 1 }}>อัตโนมัติ</div>}
-                  </button>
+                    <div style={{ fontSize: 9.5, color: "#a9bdd0", minHeight: 13 }}>{st.kind === "auto" ? "อัตโนมัติ" : ""}</div>
+                    <div style={{ display: "flex", gap: 4, justifyContent: "center", marginTop: 5 }}>
+                      <button onClick={() => minusDay(dd.key, st)} disabled={busy === "cal"} title="ลดลง 1 คลิป" aria-label="ลด" style={mini()}>−</button>
+                      <button onClick={() => plusDay(dd.key, st)} disabled={busy === "cal"} title="เพิ่ม 1 คลิป" aria-label="เพิ่ม" style={mini()}>+</button>
+                      <button onClick={() => leaveDay(dd.key, st)} disabled={busy === "cal"}
+                        title={st.kind === "leave" ? "ยกเลิกวันลา" : "กดลาวันนี้"} aria-label="วันลา"
+                        style={mini(st.kind === "leave" ? { borderColor: "#e79c92", background: "#fff1ee" } : {})}>🌴</button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
-            <p style={{ fontSize: 12, color: "#a89f96", marginTop: 8, lineHeight: 1.8 }}>
-              แตะวนไปเรื่อยๆ: <b style={{ color: "#2E86DE" }}>อัตโนมัติ</b> → 1 → 2 → … → 8 คลิป → <b style={{ color: "#b42318" }}>🌴 ลา</b> → กลับเป็นอัตโนมัติ<br />
+            <p style={{ fontSize: 12.5, color: "#a89f96", marginTop: 9, lineHeight: 1.85 }}>
+              <b>−</b> ลดทีละคลิป · <b>+</b> เพิ่มทีละคลิป · <b>🌴</b> กดลาวันนั้น (กดซ้ำ = ยกเลิกวันลา)<br />
               <b style={{ color: "#2E86DE" }}>ฟ้า = อัตโนมัติ</b> ระบบถือว่าคุณว่างวันละ {defSlots || 0} คลิปโดยไม่ต้องกดอะไร ·
-              <b style={{ color: C.green }}> เขียว = คุณตั้งเอง</b> · <b style={{ color: "#b42318" }}>แดง = วันลา</b> ระบบจะย้ายงานวันนั้นให้คนอื่นทันที
+              <b style={{ color: C.green }}> เขียว = คุณตั้งเอง</b> · <b style={{ color: "#b42318" }}>แดง = วันลา</b> ระบบจะย้ายงานวันนั้นให้คนอื่นทันที<br />
+              {defSlots > 0 && <>🗓️ <b>เสาร์-อาทิตย์ระบบไม่ส่งงานให้อัตโนมัติ</b> — อยากรับงานเสริมวันหยุด กด <b>+</b> ที่วันนั้นได้เลยค่ะ</>}
             </p>
           </div>
 

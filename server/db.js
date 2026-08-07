@@ -915,6 +915,10 @@ export async function initDb() {
     -- เก็บไว้กับออเดอร์ของแต่ละสินค้า เพราะใบกำกับต้องออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
     -- ⚠️ ALTER ต้องอยู่หลัง CREATE ของตารางนั้นเสมอ (ฐานข้อมูลใหม่จะบูตไม่ขึ้นถ้าสลับ)
     ALTER TABLE academy_purchases ADD COLUMN IF NOT EXISTS tax_json TEXT;
+    -- 🎓 ชื่อ-นามสกุลที่จะขึ้นบนเกียรติบัตร (คิมสั่ง 7 ส.ค. — workshop ถามอยู่แล้ว แต่คอร์สออนไลน์ยังไม่ถาม)
+    -- เดิมเกียรติบัตรใช้ชื่อจาก academy_users (ลูกค้าเก่าที่อิมพอร์ตมา) ไม่มีก็ตัดอีเมลมาใช้
+    -- → ลูกค้าใหม่ได้ใบที่เขียนว่า "babehouse555" ซึ่งเอาไปอวดไม่ได้
+    ALTER TABLE academy_purchases ADD COLUMN IF NOT EXISTS student_name TEXT;
     ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS tax_json TEXT;
   `);
   console.log("[db] schema ready");

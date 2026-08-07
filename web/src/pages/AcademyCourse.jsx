@@ -29,6 +29,7 @@ export default function AcademyCourse() {
   const [promo, setPromo] = useState(null);   // {percent, final} หลังกดใช้โค้ด
   const [codeMsg, setCodeMsg] = useState("");
   const [tax, setTax] = useState(null);   // 🧾 ใบกำกับในนามบริษัท (null = ไม่ได้ขอ)
+  const [stuName, setStuName] = useState("");   // 🎓 ชื่อ-นามสกุลที่จะขึ้นบนเกียรติบัตร
 
   useEffect(() => {
     api(`/api/academy/course/${id}`).then(setD).catch(() => setErr(true));
@@ -49,9 +50,12 @@ export default function AcademyCourse() {
     if (!session.token) { window.location.href = "/account"; return; }
     const bad = validateTax(tax);          // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
     if (bad) { alert(bad); return; }
+    // 🎓 ชื่อบนเกียรติบัตร — ต้องถามตอนนี้ เพราะใบออกอัตโนมัติตอนเรียนจบ แก้ทีหลังไม่ได้
+    const nm = stuName.trim();
+    if (nm.length < 2) { alert("กรอกชื่อ-นามสกุลสำหรับเกียรติบัตรด้วยนะคะ"); return; }
     setBuying(true);
     try {
-      const r = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id, code: code.trim() || undefined, tax } });
+      const r = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id, code: code.trim() || undefined, tax, student_name: nm } });
       window.location.href = r.free ? r.redirect_url : r.checkout_url;
     }
     catch (e) { alert(e.message || "ลองใหม่อีกครั้งนะคะ"); setBuying(false); }
@@ -177,6 +181,14 @@ export default function AcademyCourse() {
             <div className="muted" style={{ fontSize: 13, margin: "4px 0 14px" }}>จ่ายครั้งเดียว · เรียนซ้ำได้ไม่จำกัด</div>
             {/* ⚠️ ช่องโค้ดต้องอยู่ "เหนือ" ปุ่มจ่ายเงินเสมอ — ถ้าอยู่ใต้ปุ่ม ลูกค้าจะกดจ่ายไปก่อนโดยไม่ทันเห็น
                 (คิมเจอเองตอนเทสต์: "กดเข้าไปแล้วมันหายจ่ายเงินเลย ไหนปุ่มใส่โค้ด") */}
+            {/* 🎓 ชื่อบนเกียรติบัตร — ต้องถามตอนซื้อ เพราะใบออกอัตโนมัติทันทีที่เรียนจบ แก้ทีหลังไม่ได้
+                (เดิมไม่ถาม เลยไปตัดอีเมลมาใช้ ได้ใบที่เขียนว่า "babehouse555" เอาไปอวดไม่ได้ — คิมทัก 7 ส.ค.) */}
+            {!owned && session.token && <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, display: "block", marginBottom: 5 }}>ชื่อ-นามสกุล (สำหรับเกียรติบัตร)</label>
+              <input value={stuName} onChange={e => setStuName(e.target.value)} placeholder="เช่น กัญจน์ชญา อาจหาญ"
+                     style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 14, fontFamily: "inherit" }} />
+              <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>ชื่อนี้จะขึ้นบนเกียรติบัตรตอนเรียนจบ กรอกให้ถูกนะคะ แก้ทีหลังไม่ได้ค่ะ</div>
+            </div>}
             {!owned && <div style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <input value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPromo(null); setCodeMsg(""); }} placeholder="มีโค้ดส่วนลด? ใส่ตรงนี้"

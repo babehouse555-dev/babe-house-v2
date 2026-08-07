@@ -2227,20 +2227,25 @@ app.post("/api/academy/buy", async (req, res) => {
     if (owned.includes(courseId)) return res.status(409).json({ ok: false, error: "ALREADY_OWNED", message: "คุณมีคอร์สนี้อยู่แล้วค่ะ เข้าเรียนได้เลย" });
     const baht = (c.flag_sale === "1" && Number(c.price_sale) > 0) ? Number(c.price_sale) : Number(c.price);
     if (!(baht > 0)) return res.status(400).json({ ok: false, error: "BAD_PRICE" });
-    if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
     const purchaseId = uid("apay");
     const ct = cleanTax(req.body?.tax);   // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า
     if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
+    // 🎓 ชื่อบนเกียรติบัตร — ถามตอนซื้อ เพราะแก้ทีหลังไม่ได้เมื่อใบออกแล้ว
+    const studentName = String(req.body?.student_name || "").trim().slice(0, 80);
+    if (studentName && studentName.length < 2) return res.status(400).json({ ok: false, error: "BAD_NAME", message: "กรอกชื่อ-นามสกุลให้ครบนะคะ" });
     const promo = await redeemPromo(String(req.body?.code || ""), email, Math.round(baht * 100));
     if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
     const amountSatang = promo.final;
     const origin = appBaseUrl();
     // โค้ดส่วนลด 100% → ข้าม Stripe ให้สิทธิ์เรียนเลย
     if (amountSatang <= 0) {
-      await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang) VALUES ($1, lower($2), $3, $4, 0)`, [purchaseId, email, courseId, c.name]);
+      await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, student_name) VALUES ($1, lower($2), $3, $4, 0, $5)`, [purchaseId, email, courseId, c.name, studentName || null]);
       await finalizeAcademyPurchase(await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [purchaseId]));
       return res.json({ ok: true, free: true, purchase_id: purchaseId, redirect_url: `/academy/paid?purchase_id=${encodeURIComponent(purchaseId)}` });
     }
+    // ⚠️ เช็ค Stripe ตรงนี้เท่านั้น — ของเดิมเช็คก่อนคิดส่วนลด ทำให้ "โค้ดฟรี 100%"
+    //    ที่ไม่ต้องใช้ Stripe เลย ก็ยังถูกปฏิเสธ (เจอตอนทดสอบในสนามเด็กเล่น 7 ส.ค.)
+    if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const s = await stripe.checkout.sessions.create({
@@ -2252,8 +2257,8 @@ app.post("/api/academy/buy", async (req, res) => {
       cancel_url: `${origin}/academy?payment=cancelled`,
       metadata: { academy_purchase_id: purchaseId, course_id: courseId },
     });
-    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id, tax_json) VALUES ($1, lower($2), $3, $4, $5, $6, $7)`,
-      [purchaseId, email, courseId, c.name, amountSatang, s.id, JSON.stringify(ct.tax)]);
+    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id, tax_json, student_name) VALUES ($1, lower($2), $3, $4, $5, $6, $7, $8)`,
+      [purchaseId, email, courseId, c.name, amountSatang, s.id, JSON.stringify(ct.tax), studentName || null]);
     res.json({ ok: true, checkout_url: s.url, purchase_id: purchaseId });
   } catch (e) { console.error("academy buy", e.message); res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
 });
@@ -2323,8 +2328,11 @@ async function maybeIssueCertificate(email, courseId) {
       AND NOT EXISTS (SELECT 1 FROM academy_submissions s WHERE s.assignment_id=a.assignment_id AND lower(s.email)=lower($2) AND s.status='passed')`,
     [courseId, email]))?.c || 0);
   if (pending > 0) return { cert_id: null, blocked_by: "homework", homework_left: pending };
+  // ลำดับที่ใช้: ชื่อที่กรอกตอนซื้อ → ชื่อจากระบบเก่า → ชื่อที่กรอกตอนจอง workshop → ตัดอีเมลมาใช้ (ทางสุดท้าย)
+  const own = await one(`SELECT student_name FROM academy_purchases WHERE lower(email)=lower($1) AND COALESCE(student_name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [email]);
   const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
-  const student = (u && (u.name || u.username)) || email.split("@")[0];
+  const wb = await one(`SELECT name FROM workshop_bookings WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [email]);
+  const student = own?.student_name || (u && (u.name || u.username)) || wb?.name || email.split("@")[0];
   const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
   const certId = uid("cert");
   await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`, [certId, email, courseId, cName, student]);

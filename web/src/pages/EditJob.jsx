@@ -44,6 +44,15 @@ export default function EditJob() {
   }
   // ส่งทั้งรอบให้ทีมทีเดียว — ถ้าเป็นรอบที่ต้องจ่าย จะเด้งไปหน้าจ่ายเงินก่อน
   async function roundSubmit() {
+    // ⚠️ ถามยืนยันก่อนเสมอ — คิมเจอเอง 7 ส.ค. "จะลองกดเพิ่มคอมเมนต์ แต่ดันไปกดส่งเลย"
+    //    ส่งแล้วตัดโควตาฟรีทันที ลูกค้าพลาดครั้งเดียวเสียสิทธิ์ ต้องมีด่านถามก่อน
+    const used = (rounds.history || []).length;
+    const left = Math.max(0, (rounds.free_revisions || 0) - used - 1);
+    if (!window.confirm(
+      `ส่งรอบแก้ให้ทีม ${notes.length} จุด\n\n` +
+      `ส่งแล้วจะเพิ่มจุดไม่ได้จนกว่าจะได้คลิปใหม่\n` +
+      `หลังส่งรอบนี้จะเหลือสิทธิ์แก้ฟรีอีก ${left} รอบ\n\n` +
+      `ยืนยันส่งเลยไหมคะ?`)) return;
     setBusy(true); setMsg("");
     try {
       await api("/api/edit/rounds/submit", { method: "POST", token: session.token, body: { order_id: id } });
@@ -52,6 +61,15 @@ export default function EditJob() {
       if (/PAYMENT_REQUIRED/i.test(e.code || "") || /ค่าใช้จ่าย/.test(e.message || "")) { await payRound(); return; }
       setMsg(e.message || "ส่งไม่สำเร็จ");
     } finally { setBusy(false); }
+  }
+  // ↩️ ยกเลิกรอบที่เพิ่งส่ง (ถ้าทีมยังไม่เริ่มดู) — คืนสิทธิ์ให้ครบ
+  async function roundCancel() {
+    if (!window.confirm("ยกเลิกรอบแก้ที่เพิ่งส่งไหมคะ?\n\nจุดที่พิมพ์ไว้จะยังอยู่ครบ เพิ่ม/แก้ได้ต่อ แล้วค่อยกดส่งใหม่")) return;
+    setBusy(true); setMsg("");
+    try { const r = await api("/api/edit/rounds/cancel", { method: "POST", token: session.token, body: { order_id: id } });
+      setMsg(r.message || "ยกเลิกแล้วค่ะ"); load(); }
+    catch (e) { setMsg(e.message || "ยกเลิกไม่สำเร็จ"); }
+    finally { setBusy(false); }
   }
   async function payRound() {
     setBusy(true);
@@ -210,6 +228,21 @@ export default function EditJob() {
         {rounds && !rounds.can_open && rounds.locked_reason && (
           <div className="msg" style={{ marginTop: 12, background: "#EAF3FD", color: "#3F6BAE" }}>
             {rounds.locked_reason}
+          </div>
+        )}
+
+        {/* ↩️ เพิ่งกดส่งไปแล้วอยากเรียกกลับ — คิมเจอเอง 7 ส.ค. ว่ากดพลาดแล้วแก้อะไรไม่ได้เลย
+            โผล่เฉพาะตอนที่ยกเลิกได้จริง (ทีมยังไม่เริ่มดู และยังไม่เกินเวลา) */}
+        {rounds?.undo && (
+          <div style={{ marginTop: 12, background: "#FFF8ED", border: "1px solid #F2DDB8", borderRadius: 12, padding: "12px 14px" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#B26A00" }}>เพิ่งส่งรอบแก้ที่ {rounds.undo.round_no} ไป</div>
+            <div className="muted" style={{ fontSize: 13, margin: "4px 0 10px", lineHeight: 1.65 }}>
+              กดผิดใช่ไหมคะ? ยกเลิกได้ภายใน {rounds.undo.minutes_left} นาที ตราบใดที่ทีมยังไม่เริ่มดู
+              — จุดที่พิมพ์ไว้ยังอยู่ครบ และได้สิทธิ์แก้ฟรีคืนค่ะ
+            </div>
+            <button className="btn ghost" disabled={busy} onClick={roundCancel} style={{ padding: "9px 18px" }}>
+              ↩️ ยกเลิกรอบที่เพิ่งส่ง
+            </button>
           </div>
         )}
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}

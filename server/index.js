@@ -3569,6 +3569,15 @@ app.get("/api/edit/rounds", async (req, res) => {
                  : o.status !== "draft_sent" ? "รอทีมส่งงานให้ดูก่อนนะคะ" : null,
     free_revisions: EDIT_FREE_REVISIONS,
     extra_baht: REVISION_EXTRA_SATANG / 100,
+    // ↩️ รอบที่เพิ่งส่งและยังยกเลิกได้ — หน้าเว็บเอาไปโชว์ปุ่ม "ยกเลิก" ให้ลูกค้าที่กดพลาด
+    undo: await (async () => {
+      const last = await one(`SELECT round_no, submitted_at FROM edit_rounds WHERE order_id=$1 AND status='submitted' ORDER BY submitted_at DESC LIMIT 1`, [o.order_id]);
+      if (!last?.submitted_at) return null;
+      const left = ROUND_UNDO_MIN - (Date.now() - new Date(last.submitted_at).getTime()) / 60000;
+      if (left <= 0) return null;
+      const acted = await one(`SELECT 1 x FROM edit_comments WHERE order_id=$1 AND author='team' AND COALESCE(is_auto,0)=0 AND created_at > $2 LIMIT 1`, [o.order_id, last.submitted_at]);
+      return acted ? null : { round_no: last.round_no, minutes_left: Math.ceil(left) };
+    })(),
     current: cur ? { ...cur, notes: safeJson(cur.notes_json) || [] } : null,
     history: all.filter(r => r.status === "submitted").map(r => ({
       round_no: r.round_no, notes: safeJson(r.notes_json) || [], submitted_at: r.submitted_at,
@@ -3625,6 +3634,38 @@ app.post("/api/edit/rounds/submit", rateLimit(30, M10), async (req, res) => {
   res.json({ ok: true, round_no: r.round_no, notes: notes.length, due_th: thDate(redue) });
 });
 
+// ↩️ ยกเลิกรอบแก้ที่เพิ่งส่ง (คิมเจอเอง 7 ส.ค.)
+// "จะลองกดเพิ่มคอมเมนต์ แต่ดันไปกดส่งเลย แก้อะไรไม่ได้แล้ว"
+// เดิมกดส่งปุ๊บล็อกทันที + ตัดโควตาฟรีทันที ลูกค้าพลาดครั้งเดียวเสียสิทธิ์เลย
+// → ให้ยกเลิกได้ถ้า "ทีมยังไม่ได้เริ่มแก้จริง" — ปลอดภัยเพราะไม่มีงานไหนถูกทำทิ้ง
+//   เงื่อนไข: ส่งไปไม่เกิน 30 นาที · ทีมยังไม่พิมพ์อะไรตอบหลังจากนั้น
+const ROUND_UNDO_MIN = Number(process.env.ROUND_UNDO_MIN) || 30;
+app.post("/api/edit/rounds/cancel", rateLimit(20, M10), async (req, res) => {
+  const { o, err } = await myEditOrder(req);
+  if (err) return res.status(err[0]).json({ ok: false, error: err[1], message: err[2] });
+  const r = await one(`SELECT * FROM edit_rounds WHERE order_id=$1 AND status='submitted' ORDER BY submitted_at DESC LIMIT 1`, [o.order_id]);
+  if (!r) return res.status(404).json({ ok: false, error: "NO_ROUND", message: "ไม่มีรอบแก้ที่ยกเลิกได้ค่ะ" });
+  const mins = (Date.now() - new Date(r.submitted_at).getTime()) / 60000;
+  if (mins > ROUND_UNDO_MIN)
+    return res.status(409).json({ ok: false, error: "TOO_LATE",
+      message: `ยกเลิกได้ภายใน ${ROUND_UNDO_MIN} นาทีหลังส่งค่ะ ตอนนี้เกินมาแล้ว — ทักทีมในช่องแชทได้เลยนะคะ` });
+  // ทีมตอบอะไรหลังส่งรอบแล้ว = เริ่มดูงานแล้ว ยกเลิกไม่ได้ (ไม่นับข้อความอัตโนมัติของระบบ)
+  const acted = await one(`SELECT 1 x FROM edit_comments WHERE order_id=$1 AND author='team'
+     AND COALESCE(is_auto,0)=0 AND created_at > $2 LIMIT 1`, [o.order_id, r.submitted_at]);
+  if (acted) return res.status(409).json({ ok: false, error: "TEAM_STARTED",
+    message: "ทีมเริ่มดูรอบนี้แล้วค่ะ ยกเลิกไม่ได้ — บอกทีมในช่องแชทได้เลยนะคะ" });
+
+  // คืนทุกอย่างกลับเป็นก่อนส่ง: รอบกลับเป็นร่าง · คืนโควตา · สถานะกลับเป็น "ส่งงานให้ดูแล้ว"
+  await run(`UPDATE edit_rounds SET status='draft', submitted_at=NULL WHERE round_id=$1`, [r.round_id]);
+  await run(`UPDATE edit_orders SET status='draft_sent',
+     revisions_used=GREATEST(0, COALESCE(revisions_used,0)-1),
+     client_revisions=GREATEST(0, COALESCE(client_revisions,0)-1), updated_at=now() WHERE order_id=$1`, [o.order_id]);
+  await run(`DELETE FROM edit_comments WHERE order_id=$1 AND created_at >= $2 AND (text LIKE '📝 รอบแก้ที่%' OR text LIKE 'รับรอบแก้ที่%')`,
+    [o.order_id, r.submitted_at]);
+  await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
+    [uid("ec"), o.order_id, `ยกเลิกรอบแก้ที่ ${r.round_no} แล้วค่ะ 🩵 จุดที่พิมพ์ไว้ยังอยู่ครบ เพิ่ม/แก้ได้ต่อ แล้วค่อยกดส่งใหม่นะคะ`]);
+  res.json({ ok: true, round_no: r.round_no, message: "ยกเลิกแล้วค่ะ จุดที่พิมพ์ไว้ยังอยู่ครบ เพิ่มได้ต่อเลย" });
+});
 // จ่ายค่ารอบแก้เกินโควตา — ใช้ท่อจ่ายเงินเดียวกับสินค้าอื่น จะได้มีใบกำกับ+บันทึกครบ
 app.post("/api/edit/rounds/checkout", rateLimit(20, M10), async (req, res) => {
   const { o, email, err } = await myEditOrder(req);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { useI18n } from "../i18n.jsx";
@@ -12,6 +12,19 @@ const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("ba
 export default function Account() {
   const [taxInv, setTaxInv] = useState([]);   // 🧾 ใบกำกับภาษีของลูกค้าคนนี้
   const [taxQ, setTaxQ] = useState("");       // ค้นหาใบกำกับ — คิมทัก 5 ส.ค. "คนซื้อเยอะ หาไม่เจออีก"
+  // 🔘 ปุ่มเลื่อนโฟลเดอร์ — คิมขอ 7 ส.ค. "ขอแค่มีปุ่มที่ทำให้รู้ว่าเลื่อนได้"
+  //    ปุ่มโผล่เฉพาะด้านที่ยังเลื่อนต่อได้จริง จะได้ไม่มีปุ่มกดแล้วไม่เกิดอะไร
+  const fldRef = useRef(null);
+  const [fldCan, setFldCan] = useState({ l: false, r: false });
+  const fldScroll = () => {
+    const e = fldRef.current; if (!e) return;
+    setFldCan({ l: e.scrollLeft > 4, r: e.scrollLeft + e.clientWidth < e.scrollWidth - 4 });
+  };
+  useEffect(() => {
+    fldScroll();
+    window.addEventListener("resize", fldScroll);
+    return () => window.removeEventListener("resize", fldScroll);
+  });   // ไม่ใส่ deps ตั้งใจ — จำนวนโฟลเดอร์เปลี่ยนได้ตลอด (โหลดคอร์ส/ใบกำกับมาทีหลัง) ต้องคำนวณใหม่ทุกรอบ
   const { t, lang } = useI18n();
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -149,7 +162,12 @@ export default function Account() {
         {/* 🗂️ โฟลเดอร์ — คิมขอ 2 ส.ค. ให้หน้าบัญชีเป็นโฟลเดอร์แบบเดียวกับที่ดูใน /preview/account
             โผล่เฉพาะคนที่มีของมากกว่า 1 ประเภท · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน */}
         {showFolders && (
-          <div className="fld-row">
+          <div className="fld-wrap">
+          {fldCan.l && <button className="fld-arrow l" aria-label="เลื่อนไปทางซ้าย"
+            onClick={() => fldRef.current?.scrollBy({ left: -220, behavior: "smooth" })}>‹</button>}
+          {fldCan.r && <button className="fld-arrow r" aria-label="เลื่อนไปทางขวา"
+            onClick={() => fldRef.current?.scrollBy({ left: 220, behavior: "smooth" })}>›</button>}
+          <div className="fld-row" ref={fldRef} onScroll={fldScroll}>
             {[
               { key: "plan", icon: "📘", label: "แผนคอนเทนต์", pastel: "#C7DEF0", deep: "#A9CCE6", n: (data.channels || []).length },
               { key: "course", icon: "🎓", label: "คอร์สเรียน", pastel: "#DDCCEE", deep: "#C9B4E3", n: counts.courses },
@@ -179,6 +197,7 @@ export default function Account() {
                 </button>
               );
             })}
+          </div>
           </div>
         )}
         {perks && perks.plan !== "monthly" && (!showFolders || folder === "member") && (() => {
@@ -427,7 +446,18 @@ export default function Account() {
       </>}
 
       <style>{`
-        .fld-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; padding: 20px 2px 16px; margin-bottom: 6px; }
+        .fld-wrap { position: relative; }
+        .fld-row { display: flex; gap: 14px; overflow-x: auto; padding: 20px 2px 16px; margin-bottom: 6px;
+          scroll-behavior: smooth; scrollbar-width: none; }
+        .fld-row::-webkit-scrollbar { display: none; }
+        /* 🔘 ปุ่มลูกศร — คิมขอ 7 ส.ค. "ขอแค่มีปุ่มที่ทำให้รู้ว่าเลื่อนได้"
+           โผล่เฉพาะตอนที่เลื่อนไปทางนั้นได้จริง ไม่งั้นจะเป็นปุ่มหลอก */
+        .fld-arrow { position: absolute; top: 46%; transform: translateY(-50%); z-index: 3;
+          width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: #fff;
+          box-shadow: 0 2px 8px rgba(90,80,110,.18); cursor: pointer; font-size: 15px; line-height: 1;
+          display: grid; place-items: center; color: var(--ink); padding: 0; }
+        .fld-arrow:hover { background: var(--soft); }
+        .fld-arrow.l { left: -6px; } .fld-arrow.r { right: -6px; }
         .fld { flex-shrink: 0; width: 92px; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; text-align: center; }
         .fld-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
           height: 58px; border-radius: 4px 12px 12px 12px; background: var(--c);

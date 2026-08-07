@@ -176,7 +176,7 @@ export default function PreviewAccount() {
       </div>
 
       <style>{`
-        .fld-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 10px; padding: 4px 2px 16px; margin-bottom: 8px; }
+        .fld-row { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 16px; margin-bottom: 8px; }
         .fld { flex-shrink: 0; width: 92px; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; text-align: center; }
         .fld-body {
           position: relative; display: flex; align-items: center; justify-content: center; gap: 5px;

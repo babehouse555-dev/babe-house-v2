@@ -30,13 +30,16 @@ export function SalesOverview({ adminKey }) {
 
   // 🎬 โปรดักชั่นเพิ่งมาทีหลัง — เว็บที่ deploy ยังไม่ทันอาจไม่มีคีย์นี้ กัน undefined ไว้
   const pd = d.production || { period: { jobs: 0, revenue: 0 }, all: { jobs: 0, revenue: 0 }, breakdown: {}, jobs_without_amount: 0 };
-  const total = d.blueprint.period.revenue + d.courses.period.revenue + d.workshops.period.revenue + pd.period.revenue;
+  const sv = d.services || { period: { orders: 0, revenue: 0 }, all: { orders: 0, revenue: 0 } };
+  const total = d.blueprint.period.revenue + d.courses.period.revenue + d.workshops.period.revenue + pd.period.revenue + sv.period.revenue;
   const cards = [
     { label: "📘 Blueprint", rev: d.blueprint.period.revenue, sub: `${d.blueprint.period.orders} เล่ม`, allRev: d.blueprint.all.revenue, allSub: `${d.blueprint.all.orders} เล่มรวม` },
     { label: "🎓 คอร์สเรียน", rev: d.courses.period.revenue, sub: `${d.courses.period.orders} คอร์ส`, allRev: d.courses.all.revenue, allSub: `${d.courses.all.orders} คอร์สรวม` },
     { label: "🎟️ Workshop", rev: d.workshops.period.revenue, sub: `${d.workshops.period.seats} ที่นั่ง`, allRev: d.workshops.all.revenue, allSub: `${d.workshops.all.seats} ที่นั่งรวม` },
     { label: "🎬 โปรดักชั่น", rev: pd.period.revenue, sub: `${pd.period.jobs} งาน`, allRev: pd.all.revenue, allSub: `${pd.all.jobs} งานรวม` },
-  ];
+    // 🧩 เครดิตสคริปต์ · ตรวจคลิป · ค่ารอบแก้ — เดิมไม่ถูกนับที่ไหนเลย เงินเข้าจริงแต่หายจากหน้ายอดขาย
+    { label: "🧩 บริการอื่น", rev: sv.period.revenue, sub: `${sv.period.orders} รายการ`, allRev: sv.all.revenue, allSub: `${sv.all.orders} รายการรวม` },
+  ].filter(c => c.rev > 0 || c.allRev > 0 || ["📘 Blueprint", "🎓 คอร์สเรียน", "🎟️ Workshop", "🎬 โปรดักชั่น"].includes(c.label));
   return (
     <div className="card">
       <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>

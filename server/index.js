@@ -2668,8 +2668,17 @@ app.get("/api/admin/sales-overview", async (req, res) => {
     const pdWhere = `payment_status='paid' AND COALESCE(paid_by,'') <> 'credit'`;  // จ่ายด้วยเครดิตนับตอนซื้อเครดิตแล้ว จะนับซ้ำไม่ได้
     const edit = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_orders WHERE ${pdWhere} AND created_at > ${since}`);
     const editAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_orders WHERE ${pdWhere}`);
-    const cred = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_credit_purchases WHERE payment_status='paid' AND created_at > ${since}`);
-    const credAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM edit_credit_purchases WHERE payment_status='paid'`);
+    // ⚠️ แพ็กเครดิตตัดต่ออยู่ใน blueprint_orders (tier EditCredits_*) ไม่ได้อยู่ในตาราง edit_credit_purchases
+    //    ตารางนั้นสร้างไว้แต่ไม่เคยถูกเขียนเลย — ตอนแรกผมไปนับตารางร้าง เลยได้ 0 ตลอด
+    //    tier พวกนี้ถูก bpOnly() กันออกจากยอด Blueprint อยู่แล้ว จึงไม่นับซ้ำ
+    const paidReal = `payment_status='paid' AND COALESCE(provider,'') NOT IN ('mock','code','manual') AND COALESCE(final_amount_satang,0) > 0`;
+    const cred = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0) rev FROM blueprint_orders WHERE ${paidReal} AND COALESCE(tier,'') LIKE 'EditCredits%' AND created_at > ${since}`);
+    const credAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0) rev FROM blueprint_orders WHERE ${paidReal} AND COALESCE(tier,'') LIKE 'EditCredits%'`);
+    // 🧩 บริการอื่นที่เดิมไม่ได้ถูกนับที่ไหนเลย — เครดิตสคริปต์ (Credits_*) + บริการตรวจคลิป (Video*) + ค่ารอบแก้ (Revision*)
+    const misc = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0) rev FROM blueprint_orders WHERE ${paidReal}
+      AND (COALESCE(tier,'') LIKE 'Credits%' OR COALESCE(tier,'') LIKE 'Video%' OR COALESCE(tier,'') LIKE 'Revision%') AND created_at > ${since}`);
+    const miscAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0) rev FROM blueprint_orders WHERE ${paidReal}
+      AND (COALESCE(tier,'') LIKE 'Credits%' OR COALESCE(tier,'') LIKE 'Video%' OR COALESCE(tier,'') LIKE 'Revision%')`);
     const ext = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM external_jobs WHERE COALESCE(amount_satang,0) > 0 AND created_at > ${since}`).catch(() => ({ n: 0, rev: 0 }));
     const extAll = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0) rev FROM external_jobs WHERE COALESCE(amount_satang,0) > 0`).catch(() => ({ n: 0, rev: 0 }));
     const extTodo = await one(`SELECT COUNT(*) n FROM external_jobs WHERE COALESCE(amount_satang,0) = 0`).catch(() => ({ n: 0 }));
@@ -2689,6 +2698,7 @@ app.get("/api/admin/sales-overview", async (req, res) => {
         breakdown: { edit_web: B(edit.rev), credits: B(cred.rev), outside_web: B(ext.rev) },
         jobs_without_amount: Number(extTodo.n),   // งานรับตรงที่ยังไม่ได้ใส่ยอด — เตือนให้ไปกรอก ไม่งั้นยอดขาด
       },
+      services: { period: { orders: Number(misc.n), revenue: B(misc.rev) }, all: { orders: Number(miscAll.n), revenue: B(miscAll.rev) } },
       top_courses: topCourses.map(c => ({ id: c.course_id, name: c.course_name, orders: Number(c.n), revenue: B(c.rev) })),
     });
   } catch (e) { console.error("sales-overview", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }

@@ -5924,6 +5924,21 @@ app.post("/api/admin/edit-order/set-email", async (req, res) => {
     link: `${appBaseUrl()}/edit/${id}` });
 });
 // 🔌 ทดสอบการเชื่อมต่อ FlowAccount — ขอโทเคนอย่างเดียว ไม่สร้างเอกสาร ปลอดภัยกดได้ตลอด
+// 🧪 ลองออกใบกำกับ "1 ใบ" เข้า FlowAccount — ใช้ตอนทดสอบก่อนส่งทั้งหมด
+// เลือกใบที่ยอดน้อยที่สุดเป็นตัวทดลอง เสียหายน้อยสุดถ้าฟอร์แมตผิด
+app.post("/api/admin/flowaccount/try-one", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  if (!flowAccountReady()) return res.status(409).json({ ok: false, error: "NO_KEY", message: "ยังไม่ได้ใส่รหัส FlowAccount" });
+  const id = String(req.body?.invoice_id || "").trim();
+  const inv = id
+    ? await one(`SELECT * FROM tax_invoices WHERE invoice_id=$1`, [id])
+    : await one(`SELECT * FROM tax_invoices WHERE status IN ('manual','failed','pending') AND issued_manually=false
+                 ORDER BY amount_satang ASC, created_at ASC LIMIT 1`);
+  if (!inv) return res.status(404).json({ ok: false, error: "NONE", message: "ไม่มีใบที่รอส่ง" });
+  const r = await retryPendingInvoices(1, inv.invoice_id);
+  const after = await one(`SELECT invoice_id, status, doc_number, provider_doc_id, error, customer_name, amount_satang, net_satang, vat_satang, doc_date FROM tax_invoices WHERE invoice_id=$1`, [inv.invoice_id]);
+  res.json({ ok: after?.status === "issued", result: r, invoice: after });
+});
 app.get("/api/admin/flowaccount/ping", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json(await flowAccountPing());

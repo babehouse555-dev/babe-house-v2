@@ -3061,10 +3061,15 @@ app.post("/api/admin/workshop/booking", async (req, res) => {
     const qty = Math.max(1, Number(b.qty) || 1);
     const id = uid("wsb");
     const amt = b.amount_satang != null ? Number(b.amount_satang) : Math.round(Number(s.price_override || s.price || 0) * 100) * qty;
-    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, status, paid_at)
-      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,'paid',now())`,
+    // 🔁 ลงเป็น pending ก่อน แล้วเรียกท่อเดียวกับการจ่ายผ่านเว็บ (คิมถาม 8 ส.ค. เรื่องลูกค้าที่จ่ายผ่าน LINE MyShop)
+    //    เดิมลงเป็น paid ตรงๆ → ที่นั่งลดถูก แต่ลูกค้า "ไม่ได้เมลรายละเอียดคลาส" และ "ไม่มีใบกำกับภาษี"
+    //    = คนที่จ่ายทางไลน์ได้บริการแย่กว่าคนที่จ่ายผ่านเว็บ ทั้งที่จ่ายเงินเท่ากัน
+    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, status)
+      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,'pending')`,
       [id, s.session_id, s.workshop_id, String(b.email || ""), String(b.name || ""), String(b.phone || ""), qty, amt]);
-    res.json({ ok: true, booking_id: id });
+    const fresh = await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [id]);
+    await finalizeWorkshopBooking(fresh).catch(e => console.error("manual booking finalize", e.message));
+    res.json({ ok: true, booking_id: id, emailed: !!String(b.email || "").trim() });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 

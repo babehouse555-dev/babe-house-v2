@@ -5939,6 +5939,13 @@ app.post("/api/admin/flowaccount/try-one", async (req, res) => {
   const after = await one(`SELECT invoice_id, status, doc_number, provider_doc_id, error, customer_name, amount_satang, net_satang, vat_satang, doc_date FROM tax_invoices WHERE invoice_id=$1`, [inv.invoice_id]);
   res.json({ ok: after?.status === "issued", result: r, invoice: after });
 });
+app.get("/api/admin/flowaccount/peek", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const r = await q(`SELECT invoice_id, customer_name, status, doc_number, docs_json, error
+    FROM tax_invoices WHERE docs_json IS NOT NULL OR status IN ('issued','failed') ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT 5`).catch(() =>
+    q(`SELECT invoice_id, customer_name, status, doc_number, docs_json, error FROM tax_invoices WHERE docs_json IS NOT NULL OR status IN ('issued','failed') LIMIT 5`));
+  res.json({ ok: true, rows: r });
+});
 app.get("/api/admin/flowaccount/ping", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json(await flowAccountPing());

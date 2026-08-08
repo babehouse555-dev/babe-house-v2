@@ -95,9 +95,12 @@ function buildDocument(inv) {
 const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "tax-invoices,receipts").split(",").map(x => x.trim()).filter(Boolean);
 const DOC_TH = { "tax-invoices": "ใบกำกับภาษี", "receipts": "ใบเสร็จรับเงิน" };
 async function pushOne(path, doc, token) {
+  // 🧾 ใบเสร็จของ FlowAccount บังคับ isBatchDocument = true
+  //    (ลองแล้วได้ 400 "Receipt document requires isBatchDocument = true" เมื่อ 8 ส.ค.)
+  const body = path === "receipts" ? { ...doc, isBatchDocument: true } : doc;
   const r = await fetch(`${BASE}/${path}`, { method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(doc) });
+    body: JSON.stringify(body) });
   const text = await r.text();
   if (!r.ok) throw new Error(`สร้าง ${path} ไม่สำเร็จ (${r.status}) ${text.slice(0, 300)}`);
   let j = {}; try { j = JSON.parse(text); } catch {}

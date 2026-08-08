@@ -10,7 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing } from "./tax.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -5963,6 +5963,16 @@ app.get("/api/admin/flowaccount/peek", async (req, res) => {
 app.get("/api/admin/flowaccount/ping", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json(await flowAccountPing());
+});
+// เปิดดูเอกสารที่ออกไปแล้วใน FlowAccount — /api/admin/flowaccount/doc?type=receipts&id=72606
+app.get("/api/admin/flowaccount/doc", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const type = String(req.query?.type || "tax-invoices");
+  if (!["tax-invoices", "receipts"].includes(type)) return res.status(400).json({ ok: false, error: "BAD_TYPE" });
+  const id = String(req.query?.id || "").replace(/[^0-9]/g, "");
+  if (!id) return res.status(400).json({ ok: false, error: "BAD_ID" });
+  try { res.json(await fetchFlowDoc(type, id)); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 300) }); }
 });
 app.get("/api/admin/abandoned-dry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

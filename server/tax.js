@@ -285,3 +285,12 @@ export async function flowAccountPing() {
              mode: /\/test\b/.test(BASE) ? "sandbox (ของทดสอบ)" : "production (ของจริง)" };
   } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }
+
+// 🔎 ดึงเอกสารที่ออกไปแล้วกลับมาดู — ใช้ตรวจว่าตัวเลขในใบถูกจริงไหม โดยไม่ต้องเปิดหน้าเว็บ FlowAccount
+export async function fetchFlowDoc(type, id) {
+  const token = await getToken();
+  const r = await fetch(`${BASE}/${type}/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  const text = await r.text();
+  let j = null; try { j = JSON.parse(text); } catch {}
+  return { ok: r.ok, status: r.status, body: j || text.slice(0, 800) };
+}

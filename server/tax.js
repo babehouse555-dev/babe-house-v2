@@ -101,9 +101,7 @@ function buildDocument(inv) {
 const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "tax-invoices,receipts").split(",").map(x => x.trim()).filter(Boolean);
 const DOC_TH = { "tax-invoices": "ใบกำกับภาษี", "receipts": "ใบเสร็จรับเงิน" };
 async function pushOne(path, doc, token) {
-  // 🧾 ใบเสร็จของ FlowAccount บังคับ isBatchDocument = true
-  //    (ลองแล้วได้ 400 "Receipt document requires isBatchDocument = true" เมื่อ 8 ส.ค.)
-  const body = path === "receipts" ? { ...doc, isBatchDocument: true } : doc;
+  const body = doc;
   const r = await fetch(`${BASE}/${path}`, { method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body) });
@@ -113,20 +111,43 @@ async function pushOne(path, doc, token) {
   const d = j.data || j;
   return { doc_id: String(d.id || d.documentId || ""), doc_number: String(d.documentSerial || d.documentNumber || "") };
 }
+// 🧾 ใบเสร็จต้อง "ต่อยอด" มาจากใบกำกับภาษี ไม่ใช่เอกสารลอยๆ
+//    FlowAccount ตอบมา 8 ส.ค.: ใช้ POST /upgrade/receipts/with-payment · referenceDocumentType = 7 (Tax Invoices)
+//    ที่เหลืออ่านจาก error ที่มันฟ้องกลับมา: ต้องมี documentId · documentType · partialAmount (= ยอดรวม)
+//    · partialPaymentMethod = 11 · creditType = 3
+function buildReceiptFrom(inv, taxInvoiceId) {
+  const total = inv.amount_satang / 100;
+  return {
+    ...buildDocument(inv),
+    referenceDocumentType: 7,          // 7 = ใบกำกับภาษี (FlowAccount ระบุมา)
+    documentId: Number(taxInvoiceId),
+    documentType: 7,
+    creditType: 3,
+    isBatchDocument: true,
+    partialAmount: total,              // ชำระเต็มจำนวน ต้องเท่ากับ grandTotal เป๊ะ
+    partialPaymentMethod: 11,
+    paymentAmount: total,
+  };
+}
 async function pushToFlowAccount(inv) {
   const token = await getToken();
   const doc = buildDocument(inv);
   // ⚠️ ออกเฉพาะประเภทที่ "ยังไม่เคยสำเร็จ" — กันออกซ้ำตอนกดลองใหม่หลังใบใดใบหนึ่งพัง
   const done = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
-  for (const t of DOC_TYPES) {
-    if (done[t]?.id) continue;                       // ใบนี้ออกไปแล้ว ข้าม
-    const r = await pushOne(t, doc, token);          // พังตรงไหน โยน error ออกไป ของที่สำเร็จแล้วถูกบันทึกไว้ด้านล่าง
-    done[t] = { id: r.doc_id, number: r.doc_number };
+  // ต้องออกใบกำกับก่อนเสมอ เพราะใบเสร็จต้องอ้างอิงเลขของใบกำกับ
+  if (!done["tax-invoices"]?.id) {
+    const r = await pushOne("tax-invoices", doc, token);
+    done["tax-invoices"] = { id: r.doc_id, number: r.doc_number };
     await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
   }
-  const parts = DOC_TYPES.filter(t => done[t]).map(t => `${DOC_TH[t] || t} ${done[t].number}`);
-  return { doc_id: DOC_TYPES.map(t => done[t]?.id).filter(Boolean).join("|"),
-           doc_number: parts.join(" · "), docs: done };
+  if (DOC_TYPES.includes("receipts") && !done["receipts"]?.id) {
+    const r = await pushOne("upgrade/receipts/with-payment", buildReceiptFrom(inv, done["tax-invoices"].id), token);
+    done["receipts"] = { id: r.doc_id, number: r.doc_number };
+    await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
+  }
+  const order = ["tax-invoices", "receipts"].filter(t => done[t]);
+  return { doc_id: order.map(t => done[t].id).join("|"),
+           doc_number: order.map(t => `${DOC_TH[t] || t} ${done[t].number}`).join(" · "), docs: done };
 }
 
 // ── ออกใบกำกับสำหรับออเดอร์หนึ่ง (เรียกตอนจ่ายเงินสำเร็จ) ──

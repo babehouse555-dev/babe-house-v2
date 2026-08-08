@@ -71,6 +71,12 @@ function buildDocument(inv) {
     totalAfterDiscount: netBaht,
     vatAmount: inv.vat_satang / 100,
     documentStructureType: "0",
+    // 💸 หัก ณ ที่จ่าย — ตามใบจริงของคิม: โชว์เป็นบรรทัดแยกท้ายใบ แล้วยอดชำระลดลงเท่าที่หัก
+    ...(Number(inv.wht_satang || 0) > 0 ? {
+      documentShowWithholdingTax: true,
+      documentWithholdingTaxPercentage: 3,
+      documentWithholdingTaxAmount: Number(inv.wht_satang) / 100,
+    } : {}),
     grandTotal: inv.amount_satang / 100,
     reference: inv.order_id,
   };
@@ -137,16 +143,18 @@ export async function issueTaxInvoice({ orderId, kind, email, amountSatang, desc
   const name = String(t.name || "").trim() || String(t.fallback_name || "").trim()
     || String(email || "").split("@")[0] || "ลูกค้าทั่วไป";
   const { net, vat } = splitVat(amount);
+  // 💸 หัก ณ ที่จ่าย 3% จากยอดก่อน VAT (นิติบุคคลเท่านั้น)
+  const wht = (isCompany && t.wht) ? Math.round(net * 3 / 100) : 0;
   const id = `inv_${orderId.slice(-12)}_${Date.now().toString(36)}`;
 
   try {
-    await run(`INSERT INTO tax_invoices (invoice_id,order_id,order_kind,email,customer_name,is_company,tax_id,branch,address,description,amount_satang,net_satang,vat_satang,status,doc_date)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14)`,
+    await run(`INSERT INTO tax_invoices (invoice_id,order_id,order_kind,email,customer_name,is_company,tax_id,branch,address,description,amount_satang,net_satang,vat_satang,status,doc_date,wht_satang)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,$15)`,
       [id, orderId, kind || null, email || null, name.slice(0, 200), isCompany,
        String(t.tax_id || "").replace(/\D/g, "").slice(0, 13) || null,
        String(t.branch || "").slice(0, 100) || null, String(t.address || "").slice(0, 500) || null,
        String(description || "").slice(0, 300) || null, amount, net, vat,
-       docDate ? new Date(docDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)]);
+       docDate ? new Date(docDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10), wht]);
   } catch (e) {
     if (/unique/i.test(e.message)) return await one(`SELECT invoice_id, status FROM tax_invoices WHERE order_id=$1`, [orderId]);
     throw e;
@@ -207,21 +215,23 @@ export async function invoicesCsv(month) {
     WHERE to_char(COALESCE(doc_date, created_at::date), 'YYYY-MM') = $1
     ORDER BY COALESCE(doc_date, created_at::date), created_at`, [month]);
   const head = ["วันที่", "เลขที่เอกสาร", "ชื่อลูกค้า", "นิติบุคคล", "เลขผู้เสียภาษี", "สาขา", "ที่อยู่",
-                "รายการ", "ก่อน VAT", "VAT 7%", "รวมทั้งสิ้น", "สถานะ", "อีเมล", "เลขที่ออเดอร์"];
+                "รายการ", "ก่อน VAT", "VAT 7%", "รวมทั้งสิ้น", "หัก ณ ที่จ่าย 3%", "ยอดรับจริง", "สถานะ", "อีเมล", "เลขที่ออเดอร์"];
   const lines = [head.join(",")];
-  let net = 0, vat = 0, total = 0;
+  let net = 0, vat = 0, total = 0, wht = 0;
   for (const r of rows) {
-    net += Number(r.net_satang); vat += Number(r.vat_satang); total += Number(r.amount_satang);
+    net += Number(r.net_satang); vat += Number(r.vat_satang); total += Number(r.amount_satang); wht += Number(r.wht_satang || 0);
     lines.push([
       new Date(r.doc_date || r.created_at).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }),
       r.doc_number || "(ยังไม่ออก)", r.customer_name, r.is_company ? "ใช่" : "ไม่ใช่",
       r.tax_id || "", r.branch || "", r.address || "", r.description || "",
       (r.net_satang / 100).toFixed(2), (r.vat_satang / 100).toFixed(2), (r.amount_satang / 100).toFixed(2),
+      ((r.wht_satang || 0) / 100).toFixed(2), ((r.amount_satang - (r.wht_satang || 0)) / 100).toFixed(2),
       r.status, r.email || "", r.order_id,
     ].map(csvCell).join(","));
   }
   lines.push(["", "", "รวมทั้งเดือน", "", "", "", "", "",
-    (net / 100).toFixed(2), (vat / 100).toFixed(2), (total / 100).toFixed(2), "", "", ""].map(csvCell).join(","));
+    (net / 100).toFixed(2), (vat / 100).toFixed(2), (total / 100).toFixed(2),
+    (wht / 100).toFixed(2), ((total - wht) / 100).toFixed(2), "", "", ""].map(csvCell).join(","));
   return { csv: "﻿" + lines.join("\n"), count: rows.length, net, vat, total };
 }
 

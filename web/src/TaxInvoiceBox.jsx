@@ -18,12 +18,28 @@ export function validateTax(tax) {
   return null;
 }
 
-export default function TaxInvoiceBox({ onChange }) {
+// 💸 ภาษีหัก ณ ที่จ่าย 3% (คิมสั่ง 8 ส.ค. — ลูกค้าบริษัทบางเจ้าหัก)
+// บริการของเราเป็น "ค่าจ้างทำของ/บริการ" → นิติบุคคลที่จ่ายเงินมีหน้าที่หัก 3% นำส่งสรรพากร
+// ⚠️ หักจาก "ยอดก่อน VAT" เท่านั้น ไม่ใช่ยอดรวม (ตามใบจริงของคิม: 20,000 → หัก 600 ไม่ใช่ 642)
+// ⚠️ บุคคลธรรมดาหักไม่ได้ → ช่องนี้โผล่เฉพาะตอนติ๊กว่าออกในนามบริษัท
+export const WHT_PCT = 3;
+export function whtAmount(totalSatang, wantWht) {
+  if (!wantWht) return 0;
+  const net = Math.round(Number(totalSatang || 0) / 1.07);   // ราคาเรารวม VAT แล้ว ถอดออกก่อน
+  return Math.round(net * WHT_PCT / 100);
+}
+
+export default function TaxInvoiceBox({ onChange, totalSatang = 0 }) {
   const [want, setWant] = useState(false);
+  const [wht, setWht] = useState(false);
   const [f, setF] = useState({ name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
 
   // ส่งค่ากลับให้หน้าที่เรียกใช้ทุกครั้งที่แก้ — null = ไม่ได้ขอในนามบริษัท
-  useEffect(() => { onChange?.(want ? { is_company: true, ...f } : null); }, [want, f]);   // eslint-disable-line
+  useEffect(() => { onChange?.(want ? { is_company: true, wht: wht, ...f } : null); }, [want, wht, f]);   // eslint-disable-line
+  // เลิกติ๊กบริษัท = ยกเลิกหัก ณ ที่จ่ายด้วย (บุคคลธรรมดาหักไม่ได้)
+  useEffect(() => { if (!want && wht) setWht(false); }, [want]);   // eslint-disable-line
+  const whtSat = whtAmount(totalSatang, wht);
+  const baht = (n) => (n / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
@@ -46,6 +62,33 @@ export default function TaxInvoiceBox({ onChange }) {
           onChange={e => setF(v => ({ ...v, branch: e.target.value }))} />
         <textarea placeholder="ที่อยู่บริษัทตามที่จดทะเบียน" value={f.address} style={{ minHeight: 62 }}
           onChange={e => setF(v => ({ ...v, address: e.target.value }))} />
+        {/* 💸 หัก ณ ที่จ่าย 3% — เฉพาะนิติบุคคล */}
+        <label className="row" style={{ gap: 9, alignItems: "flex-start", fontSize: 14, cursor: "pointer",
+          background: "#fff", borderRadius: 10, padding: "10px 12px" }}>
+          <input type="checkbox" style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }}
+            checked={wht} onChange={e => setWht(e.target.checked)} />
+          <span>บริษัทของเรา<b>หักภาษี ณ ที่จ่าย {WHT_PCT}%</b>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 2, lineHeight: 1.6 }}>
+              ติ๊กเฉพาะกรณีที่ฝ่ายบัญชีของคุณต้องหักนะคะ · หักจากยอดก่อน VAT ตามที่กฎหมายกำหนด
+            </div>
+          </span>
+        </label>
+        {wht && totalSatang > 0 && (
+          <div style={{ background: "#fff", borderRadius: 10, padding: "11px 13px", fontSize: 13.5, lineHeight: 1.9 }}>
+            <div className="between"><span>ราคาก่อน VAT</span><span>฿{baht(Math.round(totalSatang / 1.07))}</span></div>
+            <div className="between"><span>VAT 7%</span><span>฿{baht(totalSatang - Math.round(totalSatang / 1.07))}</span></div>
+            <div className="between" style={{ borderTop: "1px solid var(--border)", paddingTop: 4, marginTop: 4 }}>
+              <span>รวมทั้งสิ้น</span><span>฿{baht(totalSatang)}</span></div>
+            <div className="between" style={{ color: "#b42318" }}>
+              <span>หัก ณ ที่จ่าย {WHT_PCT}%</span><span>−฿{baht(whtSat)}</span></div>
+            <div className="between" style={{ fontWeight: 800, fontSize: 16, borderTop: "1px solid var(--border)", paddingTop: 5, marginTop: 4 }}>
+              <span>ยอดที่ต้องชำระ</span><span>฿{baht(totalSatang - whtSat)}</span></div>
+            <p className="muted" style={{ fontSize: 12, margin: "8px 0 0", lineHeight: 1.6 }}>
+              📄 หลังชำระเงิน รบกวน<b>ส่งหนังสือรับรองการหักภาษี ณ ที่จ่าย</b>มาที่ babehouse.work@gmail.com นะคะ
+              ทางเราต้องใช้ยื่นภาษีค่ะ
+            </p>
+          </div>
+        )}
         <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.6 }}>
           ⚠️ ตรวจให้ถูกก่อนชำระเงินนะคะ — ใบกำกับจะออกทันทีที่ชำระสำเร็จ แก้เองทีหลังไม่ได้ค่ะ
         </p>

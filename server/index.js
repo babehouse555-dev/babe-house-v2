@@ -716,7 +716,10 @@ function cleanTax(b) {
   if (!String(b?.address || "").trim()) return { error: "NEED_ADDRESS", message: "ใส่ที่อยู่บริษัทด้วยนะคะ" };
   return { tax: { is_company: true, name, tax_id: taxId,
                   branch: String(b.branch || "สำนักงานใหญ่").slice(0, 100),
-                  address: String(b.address || "").slice(0, 500) } };
+                  address: String(b.address || "").slice(0, 500),
+                  // 💸 หัก ณ ที่จ่าย 3% — เฉพาะนิติบุคคล (คิมสั่ง 8 ส.ค.)
+                  //    บุคคลธรรมดาหักไม่ได้ จึงรับค่านี้เฉพาะตอน is_company เท่านั้น
+                  wht: !!b.wht } };
 }
 
 app.post("/api/order/tax-info", rateLimit(60, M10), async (req, res) => {
@@ -854,7 +857,13 @@ app.post("/api/create-payment-session", async (req, res) => {
     const donePath = isVideo ? `/video-audit?order_id=${encodeURIComponent(o.order_id)}` : `/processing?order_id=${encodeURIComponent(o.order_id)}`;
     if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, redirect_url: donePath });
     // จ่ายเงินจริง: ซื้อได้หลายเล่ม ไม่บล็อกซ้ำ
-    const amount = o.final_amount_satang || PRICE_SATANG;
+    let amount = o.final_amount_satang || PRICE_SATANG;
+    // 💸 ลูกค้านิติบุคคลที่หัก ณ ที่จ่าย 3% จ่ายน้อยลงเท่าที่หัก (คิมสั่ง 8 ส.ค.)
+    //    ⚠️ ต้องลดยอดที่เก็บจริงด้วย ไม่งั้นใบเสร็จบอกว่าหัก แต่เงินเข้าเต็ม = บัญชีไม่ตรง
+    //    หักจากยอดก่อน VAT ตามกฎหมาย (ยอดเรารวม VAT แล้ว ต้องถอดก่อน)
+    const taxInfo = (safeJson(o.order_payload_json) || {}).tax || {};
+    const whtCut = (taxInfo.is_company && taxInfo.wht) ? Math.round(Math.round(amount / 1.07) * 3 / 100) : 0;
+    if (whtCut > 0) amount = Math.max(100, amount - whtCut);   // ขั้นต่ำ 1 บาท กัน Stripe ปฏิเสธ
     if (o.provider === "stripe") {
       // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงานค่ะ" });

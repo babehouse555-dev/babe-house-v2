@@ -286,6 +286,31 @@ export async function flowAccountPing() {
   } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }
 
+// 🧪 ยิงใบทดสอบ "หัก ณ ที่จ่าย 3%" ขึ้น sandbox — ไม่แตะฐานข้อมูล ไม่ผูกกับออเดอร์ลูกค้าคนไหน
+//     มีไว้เพราะยังไม่มีลูกค้านิติบุคคลที่ติ๊กหัก 3% จริง แต่ต้องรู้ว่าทางนี้ออกใบได้ก่อนขึ้นของจริง
+export async function flowAccountTestWht({ amountSatang = 159000 } = {}) {
+  if (!/\/test\b/.test(BASE)) throw new Error("ใช้ได้เฉพาะโหมด sandbox เท่านั้น");
+  const amount = Math.round(Number(amountSatang) || 0);
+  const { net, vat } = splitVat(amount);
+  const fake = {
+    invoice_id: "TEST-WHT", order_id: "test-wht-" + amount,
+    customer_name: "บริษัท ทดสอบ หัก ณ ที่จ่าย จำกัด",
+    tax_id: "0105558096348", branch: "สำนักงานใหญ่", is_company: true,
+    address: "123 ถนนทดสอบ กรุงเทพฯ 10110", email: "test-wht@babehouse.local",
+    description: "ทดสอบหัก ณ ที่จ่าย 3%",
+    amount_satang: amount, net_satang: net, vat_satang: vat,
+    wht_satang: Math.round(net * 0.03),          // หัก 3% จากยอดก่อน VAT ตามกฎสรรพากร
+    doc_date: new Date().toISOString().slice(0, 10), docs_json: "{}",
+  };
+  const token = await getToken();
+  const ti = await pushOne("tax-invoices", buildDocument(fake), token);
+  const re = await pushOne("upgrade/receipts/with-payment",
+    buildReceiptFrom(fake, { record_id: ti.record_id, id: ti.doc_id, number: ti.doc_number }), token);
+  return { ok: true, สรุป: { ยอดรวม: amount / 100, ก่อนVat: net / 100, vat: vat / 100, หัก3: fake.wht_satang / 100,
+                             ยอดรับจริง: (amount - fake.wht_satang) / 100 },
+           ใบกำกับภาษี: ti, ใบเสร็จ: re };
+}
+
 // 🔎 ดึงเอกสารที่ออกไปแล้วกลับมาดู — ใช้ตรวจว่าตัวเลขในใบถูกจริงไหม โดยไม่ต้องเปิดหน้าเว็บ FlowAccount
 export async function fetchFlowDoc(type, id) {
   const token = await getToken();

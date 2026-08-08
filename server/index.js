@@ -10,7 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc } from "./tax.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -5965,6 +5965,12 @@ app.get("/api/admin/flowaccount/ping", async (req, res) => {
   res.json(await flowAccountPing());
 });
 // เปิดดูเอกสารที่ออกไปแล้วใน FlowAccount — /api/admin/flowaccount/doc?type=receipts&id=72606
+// ทดสอบใบที่มีหัก ณ ที่จ่าย 3% (sandbox เท่านั้น · ไม่แตะฐานข้อมูล)
+app.post("/api/admin/flowaccount/test-wht", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try { res.json(await flowAccountTestWht({ amountSatang: Number(req.body?.amount_satang) || 159000 })); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 400) }); }
+});
 app.get("/api/admin/flowaccount/doc", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const type = String(req.query?.type || "tax-invoices");

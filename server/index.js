@@ -10,7 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat } from "./tax.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -5922,6 +5922,11 @@ app.post("/api/admin/edit-order/set-email", async (req, res) => {
   }
   res.json({ ok: true, order_id: id, from: o.email, to: email, emailed_customer: mailed,
     link: `${appBaseUrl()}/edit/${id}` });
+});
+// 🔌 ทดสอบการเชื่อมต่อ FlowAccount — ขอโทเคนอย่างเดียว ไม่สร้างเอกสาร ปลอดภัยกดได้ตลอด
+app.get("/api/admin/flowaccount/ping", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  res.json(await flowAccountPing());
 });
 app.get("/api/admin/abandoned-dry", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

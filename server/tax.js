@@ -8,7 +8,13 @@
 //    เงินของลูกค้าต้องไม่มีทางค้างเพราะระบบบัญชีมีปัญหา
 import { q, one, run } from "./db.js";
 
+// 🌐 ที่อยู่ API — ของจริงกับ sandbox คนละที่
+//    ของจริง : https://openapi.flowaccount.com/v1
+//    sandbox : https://openapi.flowaccount.com/test   (FlowAccount ส่งมาให้ 8 ส.ค.)
 const BASE = process.env.FLOWACCOUNT_API_BASE || "https://openapi.flowaccount.com/v1";
+// ⚠️ scope ที่ถูกคือ "flowaccount-api" — เดิมเราเขียน "openapi" ไว้ ขอโทเคนไม่ผ่านแน่นอน
+//    (เทียบกับเมลที่ FlowAccount ส่งมา 8 ส.ค.) เผื่อเขาเปลี่ยนทีหลังเลยทำให้แก้ผ่าน env ได้
+const SCOPE = process.env.FLOWACCOUNT_SCOPE || "flowaccount-api";
 const CLIENT_ID = process.env.FLOWACCOUNT_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.FLOWACCOUNT_CLIENT_SECRET || "";
 export const flowAccountReady = () => !!(CLIENT_ID && CLIENT_SECRET);
@@ -26,7 +32,7 @@ let cachedToken = null, tokenExpiresAt = 0;
 async function getToken() {
   if (!flowAccountReady()) throw new Error("ยังไม่ได้ตั้งรหัส FlowAccount");
   if (cachedToken && Date.now() < tokenExpiresAt - 60000) return cachedToken;
-  const body = new URLSearchParams({ grant_type: "client_credentials", scope: "openapi",
+  const body = new URLSearchParams({ grant_type: "client_credentials", scope: SCOPE,
     client_id: CLIENT_ID, client_secret: CLIENT_SECRET });
   const r = await fetch(`${BASE}/token`, { method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
@@ -183,4 +189,16 @@ export async function invoicesCsv(month) {
   lines.push(["", "", "รวมทั้งเดือน", "", "", "", "", "",
     (net / 100).toFixed(2), (vat / 100).toFixed(2), (total / 100).toFixed(2), "", "", ""].map(csvCell).join(","));
   return { csv: "﻿" + lines.join("\n"), count: rows.length, net, vat, total };
+}
+
+// 🔌 ทดสอบการเชื่อมต่อ — ขอโทเคนอย่างเดียว ไม่สร้างเอกสารอะไรทั้งนั้น
+// ใช้เช็คว่ารหัส/scope/ที่อยู่ API ถูกต้องก่อน ค่อยลองออกใบจริง
+export async function flowAccountPing() {
+  if (!flowAccountReady()) return { ok: false, reason: "ยังไม่ได้ใส่ FLOWACCOUNT_CLIENT_ID / CLIENT_SECRET ใน Railway" };
+  try {
+    cachedToken = null;                     // บังคับขอใหม่ จะได้รู้ว่ารหัสใช้ได้จริง
+    const t = await getToken();
+    return { ok: true, base: BASE, scope: SCOPE, token_len: String(t).length,
+             mode: /\/test\b/.test(BASE) ? "sandbox (ของทดสอบ)" : "production (ของจริง)" };
+  } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }

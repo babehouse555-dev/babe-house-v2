@@ -5863,7 +5863,8 @@ app.get("/api/admin/state", async (req, res) => {
 
     ราคา: {
       แพ็กใหม่เปิดขายแล้ว: plansLiveNow,
-      เปิดวันที่: new Date(PLANS_LIVE_AT).toISOString().slice(0, 10),
+      // ⚠️ ต้องแสดงเป็นเวลาไทย — toISOString() เป็น UTC ทำให้เที่ยงคืน 1 ก.ย. โชว์เป็น 31 ส.ค. (เจอ 8 ส.ค.)
+      เปิดวันที่: new Date(PLANS_LIVE_AT).toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" }),
       ตอนนี้ขายราคา: plansLiveNow ? "3 แพ็ก" : `โปรเปิดตัว ฿${PROMO_SATANG / 100} ราคาเดียว`,
       แพ็กทั้งหมด: Object.values(PLANS).map(p => `${p.plan} ฿${p.satang / 100}`),
     },

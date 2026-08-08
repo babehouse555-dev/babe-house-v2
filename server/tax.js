@@ -109,24 +109,38 @@ async function pushOne(path, doc, token) {
   if (!r.ok) throw new Error(`สร้าง ${path} ไม่สำเร็จ (${r.status}) ${text.slice(0, 300)}`);
   let j = {}; try { j = JSON.parse(text); } catch {}
   const d = j.data || j;
-  return { doc_id: String(d.id || d.documentId || ""), doc_number: String(d.documentSerial || d.documentNumber || "") };
+  return { doc_id: String(d.id || d.documentId || ""),
+           record_id: Number(d.recordId ?? d.id ?? d.documentId ?? 0) || 0,
+           doc_number: String(d.documentSerial || d.documentNumber || "") };
 }
 // 🧾 ใบเสร็จต้อง "ต่อยอด" มาจากใบกำกับภาษี ไม่ใช่เอกสารลอยๆ
 //    FlowAccount ตอบมา 8 ส.ค.: ใช้ POST /upgrade/receipts/with-payment · referenceDocumentType = 7 (Tax Invoices)
-//    ที่เหลืออ่านจาก error ที่มันฟ้องกลับมา: ต้องมี documentId · documentType · partialAmount (= ยอดรวม)
-//    · partialPaymentMethod = 11 · creditType = 3
-function buildReceiptFrom(inv, taxInvoiceId) {
+//    ✅ อ่านสเปกจริงจาก developers.flowaccount.com แล้ว 8 ส.ค. — เอกสารต้นทางส่งใน `documentReference` (อาร์เรย์)
+//       ไม่ใช่ documentId/documentType/partialAmount ลอยๆ ข้างบน (ที่ลองรอบแรกแล้ว 400 เพราะไปเข้าโหมด batch)
+//    ส่วนที่เหลือคือ "ฟิลด์รับชำระ": paymentDate · collected · withheld* · remainingCollected*
+function buildReceiptFrom(inv, taxInvoice) {
+  const doc = buildDocument(inv);
   const total = inv.amount_satang / 100;
+  const wht = Number(inv.wht_satang || 0) / 100;
   return {
-    ...buildDocument(inv),
-    referenceDocumentType: 7,          // 7 = ใบกำกับภาษี (FlowAccount ระบุมา)
-    documentId: Number(taxInvoiceId),
-    documentType: 7,
-    creditType: 3,
-    isBatchDocument: true,
-    partialAmount: total,              // ชำระเต็มจำนวน ต้องเท่ากับ grandTotal เป๊ะ
-    partialPaymentMethod: 11,
-    paymentAmount: total,
+    ...doc,
+    creditType: 3,          // 3 = เงินสด (จ่ายแล้ว)
+    creditDays: 0,
+    documentReference: [{
+      recordId: Number(taxInvoice.record_id || taxInvoice.id) || 0,
+      referenceDocumentSerial: String(taxInvoice.number || ""),
+      referenceDocumentType: 7,        // 7 = ใบกำกับภาษี (FlowAccount ระบุมา)
+    }],
+    paymentMethod: 1,                  // 1 = เงินสด (ตัวเลือกเดียวที่ API นี้รับ)
+    paymentDate: doc.publishedOn,
+    collected: Math.round((total - wht) * 100) / 100,   // ยอดรับสุทธิ = ยอดรวม − หัก ณ ที่จ่าย
+    paymentDeductionType: 0,
+    paymentDeductionAmount: 0,
+    withheldPercentage: wht > 0 ? 3 : 0,
+    withheldAmount: wht,
+    paymentRemarks: inv.order_id || "",
+    remainingCollectedType: 0,
+    remainingCollected: 0,
   };
 }
 async function pushToFlowAccount(inv) {
@@ -137,12 +151,12 @@ async function pushToFlowAccount(inv) {
   // ต้องออกใบกำกับก่อนเสมอ เพราะใบเสร็จต้องอ้างอิงเลขของใบกำกับ
   if (!done["tax-invoices"]?.id) {
     const r = await pushOne("tax-invoices", doc, token);
-    done["tax-invoices"] = { id: r.doc_id, number: r.doc_number };
+    done["tax-invoices"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number };
     await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
   }
   if (DOC_TYPES.includes("receipts") && !done["receipts"]?.id) {
-    const r = await pushOne("upgrade/receipts/with-payment", buildReceiptFrom(inv, done["tax-invoices"].id), token);
-    done["receipts"] = { id: r.doc_id, number: r.doc_number };
+    const r = await pushOne("upgrade/receipts/with-payment", buildReceiptFrom(inv, done["tax-invoices"]), token);
+    done["receipts"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number };
     await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
   }
   const order = ["tax-invoices", "receipts"].filter(t => done[t]);
@@ -267,6 +281,7 @@ export async function flowAccountPing() {
              // 🔎 บอกด้วยว่าโค้ดรุ่นไหนกำลังรันอยู่ — กันทดสอบก่อน deploy เสร็จแล้วสรุปผิด
              //     (เจอเอง 8 ส.ค.: เห็น ping ok เลยนึกว่าโค้ดใหม่ขึ้นแล้ว ที่จริงยังเป็นของเก่า)
              doc_types: DOC_TYPES,
+             build: "receipt-documentReference-v2",   // ← เปลี่ยนทุกครั้งที่แก้รูปเอกสาร ใช้เช็คว่า deploy ขึ้นจริงยัง
              mode: /\/test\b/.test(BASE) ? "sandbox (ของทดสอบ)" : "production (ของจริง)" };
   } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }

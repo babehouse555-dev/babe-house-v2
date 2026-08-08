@@ -233,6 +233,9 @@ export async function flowAccountPing() {
     cachedToken = null;                     // บังคับขอใหม่ จะได้รู้ว่ารหัสใช้ได้จริง
     const t = await getToken();
     return { ok: true, base: BASE, scope: SCOPE, token_len: String(t).length,
+             // 🔎 บอกด้วยว่าโค้ดรุ่นไหนกำลังรันอยู่ — กันทดสอบก่อน deploy เสร็จแล้วสรุปผิด
+             //     (เจอเอง 8 ส.ค.: เห็น ping ok เลยนึกว่าโค้ดใหม่ขึ้นแล้ว ที่จริงยังเป็นของเก่า)
+             doc_types: DOC_TYPES,
              mode: /\/test\b/.test(BASE) ? "sandbox (ของทดสอบ)" : "production (ของจริง)" };
   } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }

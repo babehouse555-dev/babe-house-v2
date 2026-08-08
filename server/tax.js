@@ -91,7 +91,9 @@ function buildDocument(inv) {
 // 📄 ประเภทเอกสารที่จะออก — คิมสั่ง 8 ส.ค. "ต้องออกสองใบ ใบเสร็จ กับ กำกับภาษี"
 //    ขายเก็บเงินทันทีแบบเรา ปกติออก "ใบเสร็จรับเงิน/ใบกำกับภาษี" ใบเดียวจบ (= receipts)
 //    ถ้าคิมอยากได้แยก 2 ใบจริงๆ ตั้ง FLOWACCOUNT_DOC_TYPES=tax-invoices,receipts
-const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "receipts").split(",").map(x => x.trim()).filter(Boolean);
+// นักบัญชีของคิมยืนยัน 8 ส.ค. ว่าต้องแยก 2 ใบ → ออกทั้งใบกำกับภาษีและใบเสร็จรับเงิน
+const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "tax-invoices,receipts").split(",").map(x => x.trim()).filter(Boolean);
+const DOC_TH = { "tax-invoices": "ใบกำกับภาษี", "receipts": "ใบเสร็จรับเงิน" };
 async function pushOne(path, doc, token) {
   const r = await fetch(`${BASE}/${path}`, { method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -105,21 +107,17 @@ async function pushOne(path, doc, token) {
 async function pushToFlowAccount(inv) {
   const token = await getToken();
   const doc = buildDocument(inv);
-  const out = [];
-  for (const t of DOC_TYPES) out.push({ type: t, ...(await pushOne(t, doc, token)) });
-  // เก็บเลขของใบแรกเป็นเลขหลัก · ถ้าออกหลายใบเก็บทุกเลขไว้ในช่องเดียวคั่นด้วย |
-  return { doc_id: out.map(o => o.doc_id).join("|"), doc_number: out.map(o => o.doc_number).join("|") };
-}
-async function pushToFlowAccountOld(inv) {
-  const token = await getToken();
-  const r = await fetch(`${BASE}/tax-invoices`, { method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(buildDocument(inv)) });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`สร้างเอกสารไม่สำเร็จ (${r.status}) ${text.slice(0, 300)}`);
-  let j = {}; try { j = JSON.parse(text); } catch {}
-  const d = j.data || j;
-  return { doc_id: String(d.id || d.documentId || ""), doc_number: String(d.documentNumber || d.documentSerial || "") };
+  // ⚠️ ออกเฉพาะประเภทที่ "ยังไม่เคยสำเร็จ" — กันออกซ้ำตอนกดลองใหม่หลังใบใดใบหนึ่งพัง
+  const done = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
+  for (const t of DOC_TYPES) {
+    if (done[t]?.id) continue;                       // ใบนี้ออกไปแล้ว ข้าม
+    const r = await pushOne(t, doc, token);          // พังตรงไหน โยน error ออกไป ของที่สำเร็จแล้วถูกบันทึกไว้ด้านล่าง
+    done[t] = { id: r.doc_id, number: r.doc_number };
+    await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
+  }
+  const parts = DOC_TYPES.filter(t => done[t]).map(t => `${DOC_TH[t] || t} ${done[t].number}`);
+  return { doc_id: DOC_TYPES.map(t => done[t]?.id).filter(Boolean).join("|"),
+           doc_number: parts.join(" · "), docs: done };
 }
 
 // ── ออกใบกำกับสำหรับออเดอร์หนึ่ง (เรียกตอนจ่ายเงินสำเร็จ) ──

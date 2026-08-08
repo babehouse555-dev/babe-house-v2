@@ -343,6 +343,11 @@ export async function initDb() {
       issued_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT now()
     );
+    -- 📄 เก็บว่าออกเอกสารประเภทไหนไปแล้วบ้าง (คิมสั่ง 8 ส.ค. นักบัญชียืนยันต้องแยก 2 ใบ)
+    -- ⚠️ จำเป็นเพราะ 1 ออเดอร์ต้องออก 2 ใบ (ใบกำกับภาษี + ใบเสร็จ)
+    --    ถ้าใบแรกสำเร็จแล้วใบสองพัง แล้วกดลองใหม่ทั้งก้อน ใบแรกจะถูกออกซ้ำ = เลขเอกสารซ้ำ
+    --    เก็บไว้เป็น {"tax-invoices":{"id":..,"number":..}} แล้วลองใหม่เฉพาะประเภทที่ยังไม่สำเร็จ
+    ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS docs_json TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_inv_order ON tax_invoices(order_id);
     -- ⚠️ ธงกันออกใบซ้ำ: ออเดอร์เก่าที่คิมออกใบมือไว้ใน FlowAccount แล้ว ห้ามระบบส่งขึ้นไปอีก
     -- ออกใบกำกับซ้ำ = เลขที่เอกสารซ้ำ = ยื่นภาษีผิด เรื่องใหญ่กว่าการไม่มีใบ

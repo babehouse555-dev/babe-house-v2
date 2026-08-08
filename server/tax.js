@@ -63,6 +63,14 @@ function buildDocument(inv) {
     vatType: 7,
     items: [{ name: inv.description || "AI Creator Blueprint", quantity: 1,
               pricePerUnit: netBaht, total: netBaht, vatRate: 7 }],
+    // ⚠️ 4 ช่องนี้ FlowAccount บังคับ ถ้าไม่ส่งมันจะเดาเอง แล้วเอกสารออกมาเป็น "ราคารวมภาษี"
+    //    ทั้งที่คิมตั้งค่าบัญชีไว้เป็น "ราคาไม่รวมภาษี" (คิมทัก 8 ส.ค.)
+    //    ส่งครบเองจะได้ตรงกับที่ตั้งไว้ และไม่มีเศษทศนิยมเพี้ยน (เคยได้ 50.0011)
+    dueDate: docDate.toISOString().slice(0, 10),   // จ่ายแล้ว = ครบกำหนดวันเดียวกับวันที่ออก
+    subTotal: netBaht,
+    totalAfterDiscount: netBaht,
+    vatAmount: inv.vat_satang / 100,
+    documentStructureType: "0",
     grandTotal: inv.amount_satang / 100,
     reference: inv.order_id,
   };
@@ -80,7 +88,29 @@ function buildDocument(inv) {
 //   2. vatType: 7 — ไม่เจอฟิลด์นี้ในเอกสาร อาจต้องใช้ vatRate ในแต่ละรายการแทน
 //   3. reference — เอกสารบอกว่าคือ "เลขที่เอกสาร" แต่เราใส่ order_id ไว้
 //      ถ้าอยากให้ FlowAccount ออกเลขเองตามวันที่ อาจต้องไม่ส่งฟิลด์นี้เลย
+// 📄 ประเภทเอกสารที่จะออก — คิมสั่ง 8 ส.ค. "ต้องออกสองใบ ใบเสร็จ กับ กำกับภาษี"
+//    ขายเก็บเงินทันทีแบบเรา ปกติออก "ใบเสร็จรับเงิน/ใบกำกับภาษี" ใบเดียวจบ (= receipts)
+//    ถ้าคิมอยากได้แยก 2 ใบจริงๆ ตั้ง FLOWACCOUNT_DOC_TYPES=tax-invoices,receipts
+const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "receipts").split(",").map(x => x.trim()).filter(Boolean);
+async function pushOne(path, doc, token) {
+  const r = await fetch(`${BASE}/${path}`, { method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(doc) });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`สร้าง ${path} ไม่สำเร็จ (${r.status}) ${text.slice(0, 300)}`);
+  let j = {}; try { j = JSON.parse(text); } catch {}
+  const d = j.data || j;
+  return { doc_id: String(d.id || d.documentId || ""), doc_number: String(d.documentSerial || d.documentNumber || "") };
+}
 async function pushToFlowAccount(inv) {
+  const token = await getToken();
+  const doc = buildDocument(inv);
+  const out = [];
+  for (const t of DOC_TYPES) out.push({ type: t, ...(await pushOne(t, doc, token)) });
+  // เก็บเลขของใบแรกเป็นเลขหลัก · ถ้าออกหลายใบเก็บทุกเลขไว้ในช่องเดียวคั่นด้วย |
+  return { doc_id: out.map(o => o.doc_id).join("|"), doc_number: out.map(o => o.doc_number).join("|") };
+}
+async function pushToFlowAccountOld(inv) {
   const token = await getToken();
   const r = await fetch(`${BASE}/tax-invoices`, { method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

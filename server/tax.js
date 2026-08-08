@@ -223,8 +223,14 @@ export async function retryPendingInvoices(limit = 50, onlyId = null) {
     ? await q(`SELECT * FROM tax_invoices WHERE invoice_id=$1 AND issued_manually=false`, [onlyId])
     : await q(`SELECT * FROM tax_invoices WHERE status IN ('failed','manual','pending')
         AND issued_manually = false ORDER BY created_at LIMIT $1`, [limit]);
-  let done = 0, failed = 0;
+  let done = 0, failed = 0, stopped = null;
+  // ⏱️ FlowAccount จำกัด 100 ครั้ง/นาที (แจ้ง 8 ส.ค. 69) — ใบนึงยิง 2 ครั้ง (ใบกำกับ+ใบเสร็จ)
+  //    เว้นจังหวะ 1.5 วิ/ใบ = ~40 ครั้ง/นาที เหลือที่ว่างให้ลูกค้าที่จ่ายเงินสดๆ ตอนนั้นด้วย
+  const PACE_MS = Number(process.env.FLOWACCOUNT_PACE_MS || 1500);
+  let first = true;
   for (const inv of rows) {
+    if (!first) await new Promise(r => setTimeout(r, PACE_MS));
+    first = false;
     try {
       const r = await pushToFlowAccount(inv);
       await run(`UPDATE tax_invoices SET status='issued', provider='flowaccount', provider_doc_id=$2, doc_number=$3, issued_at=now(), error=NULL WHERE invoice_id=$1`,
@@ -233,9 +239,14 @@ export async function retryPendingInvoices(limit = 50, onlyId = null) {
     } catch (e) {
       await run(`UPDATE tax_invoices SET status='failed', error=$2 WHERE invoice_id=$1`, [inv.invoice_id, String(e.message).slice(0, 500)]);
       failed++;
+      // 🛑 ชนลิมิต/โควตาเดือน = หยุดทั้งชุดทันที ยิงต่อมีแต่พังเปล่าและใบจะขึ้นสถานะพลาดเป็นแถบ
+      if (/\(429\)|rate limit|quota|เกินจำนวน/i.test(String(e.message))) {
+        stopped = "ชนลิมิตของ FlowAccount — หยุดยิงที่เหลือไว้ก่อน (ใบที่ยังไม่ได้ยิงยังอยู่ครบ กดใหม่ทีหลังได้)";
+        break;
+      }
     }
   }
-  return { ok: true, done, failed, total: rows.length };
+  return { ok: true, done, failed, total: rows.length, ...(stopped ? { stopped } : {}) };
 }
 
 // ── ส่งออกให้นักบัญชีรายเดือน (CSV) ──

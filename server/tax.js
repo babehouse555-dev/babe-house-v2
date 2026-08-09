@@ -270,6 +270,13 @@ const csvCell = (v) => {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
+// 🧪 เลขเอกสารที่ออกตอนทดสอบระบบ ห้ามโชว์ให้นักบัญชีเห็นเป็นเลขจริง เดี๋ยวเอาไปลงบัญชีผิด
+function docNumForAccountant(r) {
+  const d = (() => { try { return JSON.parse(r.docs_json || "{}"); } catch { return {}; } })();
+  const real = Object.values(d).some(v => v?.mode === "production");
+  if (real) return r.doc_number || "(ยังไม่ออก)";
+  return r.doc_number ? "(ยังไม่ออก · เลขทดสอบระบบ)" : "(ยังไม่ออก)";
+}
 export async function invoicesCsv(month) {
   // จัดกลุ่มตามวันที่บนใบ (= วันรับเงินจริง) ไม่ใช่วันที่กดออกใบ — นักบัญชียื่นภาษีตามวันนี้
   const rows = await q(`SELECT * FROM tax_invoices
@@ -283,11 +290,11 @@ export async function invoicesCsv(month) {
     net += Number(r.net_satang); vat += Number(r.vat_satang); total += Number(r.amount_satang); wht += Number(r.wht_satang || 0);
     lines.push([
       new Date(r.doc_date || r.created_at).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }),
-      r.doc_number || "(ยังไม่ออก)", r.customer_name, r.is_company ? "ใช่" : "ไม่ใช่",
+      docNumForAccountant(r), r.customer_name, r.is_company ? "ใช่" : "ไม่ใช่",
       r.tax_id || "", r.branch || "", r.address || "", r.description || "",
       (r.net_satang / 100).toFixed(2), (r.vat_satang / 100).toFixed(2), (r.amount_satang / 100).toFixed(2),
       ((r.wht_satang || 0) / 100).toFixed(2), ((r.amount_satang - (r.wht_satang || 0)) / 100).toFixed(2),
-      r.status, r.email || "", r.order_id,
+      docNumForAccountant(r).includes("ทดสอบ") ? "ยังไม่ออก" : r.status, r.email || "", r.order_id,
     ].map(csvCell).join(","));
   }
   lines.push(["", "", "รวมทั้งเดือน", "", "", "", "", "",

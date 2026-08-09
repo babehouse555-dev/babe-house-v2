@@ -143,23 +143,31 @@ function buildReceiptFrom(inv, taxInvoice) {
     remainingCollected: 0,
   };
 }
+// 🧪/🏢 เอกสารที่ออกใน sandbox ไม่ใช่เอกสารจริง — พอเปลี่ยนไปใช้รหัสของจริงต้องออกใหม่ทั้งหมด
+//     ถ้าไม่แยกโหมด ตัวกันออกซ้ำจะเห็นว่า "ออกไปแล้ว" แล้วข้าม = ลูกค้าจริงไม่เคยได้ใบกำกับเลย
+//     ใบเก่าที่ไม่มีป้ายโหมด = ออกตอนทดสอบทั้งหมด → ถือเป็น sandbox
+const FA_MODE = () => (/\/test\b/.test(BASE) ? "sandbox" : "production");
+const sameMode = (d) => !!d?.id && (d.mode || "sandbox") === FA_MODE();
 async function pushToFlowAccount(inv) {
   const token = await getToken();
   const doc = buildDocument(inv);
   // ⚠️ ออกเฉพาะประเภทที่ "ยังไม่เคยสำเร็จ" — กันออกซ้ำตอนกดลองใหม่หลังใบใดใบหนึ่งพัง
-  const done = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
+  const all = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
+  // เก็บของโหมดเก่าไว้ดูย้อนหลังได้ แต่ไม่เอามานับว่า "ออกแล้ว"
+  const done = Object.fromEntries(Object.entries(all).filter(([, v]) => sameMode(v)));
+  if (all["tax-invoices"] && !done["tax-invoices"]) done._sandbox_เดิม = all["tax-invoices"];
   // ต้องออกใบกำกับก่อนเสมอ เพราะใบเสร็จต้องอ้างอิงเลขของใบกำกับ
   if (!done["tax-invoices"]?.id) {
     const r = await pushOne("tax-invoices", doc, token);
-    done["tax-invoices"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number };
+    done["tax-invoices"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number, mode: FA_MODE() };
     await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
   }
   if (DOC_TYPES.includes("receipts") && !done["receipts"]?.id) {
     const r = await pushOne("upgrade/receipts/with-payment", buildReceiptFrom(inv, done["tax-invoices"]), token);
-    done["receipts"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number };
+    done["receipts"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number, mode: FA_MODE() };
     await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
   }
-  const order = ["tax-invoices", "receipts"].filter(t => done[t]);
+  const order = ["tax-invoices", "receipts"].filter(t => done[t]?.id);
   return { doc_id: order.map(t => done[t].id).join("|"),
            doc_number: order.map(t => `${DOC_TH[t] || t} ${done[t].number}`).join(" · "), docs: done };
 }
@@ -219,10 +227,17 @@ export async function issueTaxInvoice({ orderId, kind, email, amountSatang, desc
 export async function retryPendingInvoices(limit = 50, onlyId = null) {
   if (!flowAccountReady()) return { ok: false, reason: "ยังไม่ได้ตั้งรหัส FlowAccount" };
   // onlyId = ทดลองทีละใบก่อนส่งทั้งหมด (ปลอดภัยกว่ายิงรวดเดียวแล้วฟอร์แมตผิดทั้งชุด)
+  // ✅ รวมใบที่ขึ้นว่า "ออกแล้ว" แต่ออกไว้คนละโหมดด้วย (ออกใน sandbox = ยังไม่มีใบจริง)
+  //    กรองในโค้ดแทน SQL เพราะต้องเทียบป้ายโหมดในกล่อง docs_json ทีละใบ
+  const needsWork = (inv) => {
+    const d = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
+    if (!sameMode(d["tax-invoices"])) return true;
+    return DOC_TYPES.includes("receipts") && !sameMode(d["receipts"]);
+  };
   const rows = onlyId
     ? await q(`SELECT * FROM tax_invoices WHERE invoice_id=$1 AND issued_manually=false`, [onlyId])
-    : await q(`SELECT * FROM tax_invoices WHERE status IN ('failed','manual','pending')
-        AND issued_manually = false ORDER BY created_at LIMIT $1`, [limit]);
+    : (await q(`SELECT * FROM tax_invoices WHERE status IN ('failed','manual','pending','issued')
+        AND issued_manually = false ORDER BY created_at`)).filter(needsWork).slice(0, limit);
   let done = 0, failed = 0, stopped = null;
   // ⏱️ FlowAccount จำกัด 100 ครั้ง/นาที (แจ้ง 8 ส.ค. 69) — ใบนึงยิง 2 ครั้ง (ใบกำกับ+ใบเสร็จ)
   //    เว้นจังหวะ 1.5 วิ/ใบ = ~40 ครั้ง/นาที เหลือที่ว่างให้ลูกค้าที่จ่ายเงินสดๆ ตอนนั้นด้วย

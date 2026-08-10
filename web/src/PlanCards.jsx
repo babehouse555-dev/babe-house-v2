@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "./api.js";
+import { PREVIEW } from "./config.js";
 
 // ═══════ 💳 การ์ดเลือกแพ็ก — ใช้ทั้งหน้าแรกและหน้าจ่ายเงิน ═══════
 // คิมสั่ง 3 ส.ค.: "ฉันชอบราคาแบบแนวตั้งมากกว่า ให้เห็นรายละเอียดชัดๆ เหมือนตอนที่ทำคลับ"
@@ -48,10 +49,18 @@ const featuresFor = (plan, k) => ({
   },
 }[plan] || null);
 
+// อันดับแพ็ก — ใช้ตัดสินว่าอันไหน "อัปเกรดขึ้น" อันไหน "ต่ำกว่าที่ใช้อยู่"
+const RANK = { monthly: 0, "6m": 1, "12m": 2 };
+
 // 🗓️ ก่อน 1 ก.ย. 2569 = ช่วงโปรเปิดตัว 490 → การ์ดแพ็กจะไม่ขึ้นเลย (เซิร์ฟเวอร์ส่ง live:false)
-export function PlanCards({ selected, onPick, ctaLabel, busy, compact }) {
+//    ยกเว้นโหมดพรีวิว (?preview=on) ที่คิมเปิดดูของที่ยังไม่ถึงเวลาขายได้
+// 📌 current = แพ็กที่ลูกค้าใช้อยู่ → การ์ดนั้นจะขึ้นว่า "แพ็กปัจจุบัน" แทนปุ่มซื้อ
+export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current }) {
   const [plans, setPlans] = useState([]);
-  useEffect(() => { api("/api/plans").then(d => setPlans(d.live ? (d.plans || []) : [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api(`/api/plans${PREVIEW ? "?preview=1" : ""}`)
+      .then(d => setPlans((d.live || PREVIEW) ? (d.plans || []) : [])).catch(() => {});
+  }, []);
   if (!plans.length) return null;
 
   return (
@@ -63,18 +72,22 @@ export function PlanCards({ selected, onPick, ctaLabel, busy, compact }) {
         const F = featuresFor(p.plan, k) || featuresFor("monthly", k);
         const on = selected === p.plan;
         const best = p.plan === "12m";
+        const isNow = current && p.plan === current;                  // แพ็กที่ใช้อยู่ตอนนี้
+        const lower = current && RANK[p.plan] < RANK[current];        // ต่ำกว่าที่ใช้อยู่ = ไม่ต้องเสนอ
         return (
           <div key={p.plan} className="card"
             onClick={() => onPick && onPick(p.plan)}
             style={{ margin: 0, borderRadius: 22, padding: "28px 24px", position: "relative",
               cursor: onPick ? "pointer" : "default",
-              border: on ? `2px solid ${BLUE}` : best ? "2px solid #d6e7fa" : "1px solid var(--border)",
-              background: on ? "#F7FBFF" : "#fff",
-              boxShadow: on || best ? "0 14px 40px rgba(46,134,222,.13)" : "none" }}>
+              border: isNow ? "2px solid #1a7f43" : on ? `2px solid ${BLUE}` : best ? "2px solid #d6e7fa" : "1px solid var(--border)",
+              background: isNow ? "#F4FBF6" : on ? "#F7FBFF" : "#fff",
+              opacity: lower ? .55 : 1,
+              boxShadow: isNow || on || best ? "0 14px 40px rgba(46,134,222,.13)" : "none" }}>
 
-            {F.tag && <div style={{ position: "absolute", top: -13, left: 22,
-              background: best ? "#1a7f43" : "#B26A00", color: "#fff", fontSize: 12, fontWeight: 800,
-              padding: "5px 14px", borderRadius: 20, whiteSpace: "nowrap" }}>{F.tag}</div>}
+            {/* ป้ายบนหัวการ์ด — "แพ็กปัจจุบัน" สำคัญกว่าป้ายโปรโมต เลยทับไปเลย */}
+            {(isNow || F.tag) && <div style={{ position: "absolute", top: -13, left: 22,
+              background: isNow ? "#1a7f43" : best ? "#1a7f43" : "#B26A00", color: "#fff", fontSize: 12, fontWeight: 800,
+              padding: "5px 14px", borderRadius: 20, whiteSpace: "nowrap" }}>{isNow ? "✓ แพ็กปัจจุบันของคุณ" : F.tag}</div>}
 
             <div style={{ fontWeight: 800, fontSize: 18 }}>
               {p.plan === "monthly" ? "รายเดือน" : p.plan === "6m" ? "6 เดือน" : "12 เดือน"}
@@ -108,9 +121,16 @@ export function PlanCards({ selected, onPick, ctaLabel, busy, compact }) {
               style={{ background: on ? BLUE : "#fff", color: on ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, opacity: busy ? .6 : 1 }}>
               {on ? "✓ เลือกแพ็กนี้แล้ว" : "เลือกแพ็กนี้"}
             </button>}
-            {!onPick && ctaLabel && <a className="btn full" href={`/form?plan=${p.plan}`}
+            {/* แพ็กที่ใช้อยู่ = ไม่มีปุ่มซื้อ · แพ็กที่ต่ำกว่า = ไม่เสนอให้ลดชั้น */}
+            {!onPick && isNow && <div className="center" style={{ padding: "12px 0", fontWeight: 800, color: "#1a7f43", fontSize: 15 }}>
+              กำลังใช้แพ็กนี้อยู่
+            </div>}
+            {!onPick && lower && <div className="center muted" style={{ padding: "12px 0", fontSize: 14 }}>
+              ต่ำกว่าแพ็กที่คุณใช้อยู่
+            </div>}
+            {!onPick && ctaLabel && !isNow && !lower && <a className="btn full" href={`/form?plan=${p.plan}`}
               style={{ background: best ? BLUE : "#fff", color: best ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, textDecoration: "none", display: "block", textAlign: "center" }}>
-              {ctaLabel}
+              {current ? `อัปเป็นแพ็ก${p.plan === "12m" ? " 12 เดือน" : " 6 เดือน"} →` : ctaLabel}
             </a>}
           </div>
         );

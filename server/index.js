@@ -497,7 +497,9 @@ app.get("/api/plans", async (req, res) => {
     live_at: new Date(PLANS_LIVE_AT).toISOString(),
     promo_baht: PROMO_SATANG / 100, full_baht: PRICE_SATANG / 100,
     // แนบสิทธิ์ที่ได้ของแต่ละแพ็กไปด้วย — หน้าเว็บจะได้โชว์ "จ่ายแล้วได้อะไร" โดยไม่ต้องฝังรายการไว้เอง
-    plans: plansLive() ? Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true, perks: perksOf(p.plan) })) : [],
+    // ?preview=1 = คิมเปิดโหมดพรีวิว ขอดูการ์ดแพ็กก่อนถึงวันเปิดขาย · ลูกค้าปกติยังได้ [] เหมือนเดิม
+    plans: (plansLive() || String(req.query.preview || "") === "1")
+      ? Object.values(PLANS).map(p => ({ ...p, baht: p.satang / 100, vat_included: true, perks: perksOf(p.plan) })) : [],
     active: sub ? { plan: sub.plan, months_total: sub.months_total, months_used: sub.months_used,
                     months_left: sub.months_total - sub.months_used, channel: sub.instagram_account,
                     perks: perksOf(sub.plan) } : null });

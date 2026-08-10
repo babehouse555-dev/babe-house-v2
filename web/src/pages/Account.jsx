@@ -4,6 +4,7 @@ import { api, session } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import MyLearning, { SectionHead } from "./MyLearning.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
+import { PlanCards } from "../PlanCards.jsx";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
@@ -289,6 +290,26 @@ export default function Account() {
             </div>
           );
         })()}
+
+        {/* ⬆️ อัปเกรดแพ็ก — คิมสั่ง 10 ส.ค. "ลูกค้าเห็นสถานะของตัวเองแล้วก็อัปเกรดได้เลย เห็นบ่อยๆ จะได้กดง่ายๆ"
+            การ์ด 3 ช่องชุดเดียวกับหน้าแรก/หน้าจ่ายเงิน — แพ็กที่ใช้อยู่จะขึ้นป้ายเขียว ไม่มีปุ่มซื้อซ้ำ
+            ⛔ ก่อน 1 ก.ย. เซิร์ฟเวอร์ยังส่งแพ็กมาไม่ครบ → ทั้งบล็อกนี้หายไปเอง ลูกค้าไม่เห็นอะไรเลย */}
+        {perks && (!showFolders || folder === "member") && (
+          // หน้าบัญชีเป็นคอลัมน์แคบ (ราว 600px) การ์ด 3 ใบจะเรียงลงมาเป็นแถวเดียว
+          // → กางออกให้กว้างเท่าหน้าจอตรงบล็อกนี้บล็อกเดียว จะได้เห็น 3 ช่องเทียบกันในตาเดียว (คิมสั่ง 10 ส.ค.)
+          <div style={{ width: "min(1040px, calc(100vw - 32px))", marginLeft: "50%",
+                        transform: "translateX(-50%)", marginBottom: 22, marginTop: 26 }}>
+            <div className="center" style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
+              {perks.plan === "12m" ? "แพ็กของคุณ" : "อัปเกรดแพ็ก"}
+            </div>
+            <p className="center muted" style={{ fontSize: 13.5, margin: "0 auto 22px", maxWidth: 560, lineHeight: 1.7 }}>
+              {perks.plan === "12m"
+                ? "คุณอยู่แพ็กสูงสุดแล้ว ได้สิทธิ์ครบทุกอย่าง 🩵"
+                : "จ่ายครั้งเดียว ถูกลงสูงสุด 50% · สิทธิ์ต่อเดือนเพิ่มขึ้นทุกอย่าง"}
+            </p>
+            <PlanCards current={perks.plan} ctaLabel="เลือกแพ็กนี้ →" />
+          </div>
+        )}
 
         {(data.pending || []).map(p => p.status === "error"
           ? <div key={p.order_id} className="card" style={{ background: "#fff7e6", border: "1px solid #e8d49a" }}>

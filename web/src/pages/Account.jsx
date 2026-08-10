@@ -127,9 +127,15 @@ export default function Account() {
   function copyRef() { if (refLink) { navigator.clipboard.writeText(refLink); setCopied("link"); setTimeout(() => setCopied(""), 1800); } }
   function copyMsg() { if (shareMsg) { navigator.clipboard.writeText(shareMsg); setCopied("msg"); setTimeout(() => setCopied(""), 1800); } }
   function shareNative() { if (navigator.share) navigator.share({ text: shareMsg }).catch(() => {}); else copyMsg(); }
+  // 💳 จำนวนในโฟลเดอร์ "แพ็กเกจของฉัน" — ตั้งเป็น 1 ไว้ก่อนตั้งแต่รู้ว่ามีเล่ม ไม่ต้องรอ /api/me/perks โหลดเสร็จ
+  //    ไม่งั้นแถวโฟลเดอร์จะโผล่ทีหลังแล้วหน้ากระโดด (คิมทัก 10 ส.ค. "หน้าแผนเด้งมา")
+  const memberN = perks ? (perks.plan !== "monthly" ? (perks.months_left || 1) : 1)
+                        : ((data?.channels || []).length ? 1 : 0);
   // มีของมากกว่า 1 ประเภท → โชว์แท็บโฟลเดอร์ · ลูกค้า Blueprint ล้วนเห็นหน้าเดิมเป๊ะ
+  // ⚠️ ต้องนับ "แพ็กเกจของฉัน" ด้วย ไม่งั้นคนที่มีแค่เล่มอย่างเดียวจะไม่ได้โฟลเดอร์
+  //    แล้วบัตรสมาชิกใบใหญ่จะเด้งขึ้นกลางหน้าแทนที่จะอยู่ในโฟลเดอร์ของมัน (คิมสั่ง 6 ส.ค. ว่าห้ามมารบกวนหน้าอื่น)
   const showFolders = [(data?.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits,
-                       TAX_INVOICE_LIVE ? taxInv.length : 0].filter(n => n > 0).length > 1;
+                       TAX_INVOICE_LIVE ? taxInv.length : 0, memberN].filter(n => n > 0).length > 1;
   const lineShare = ref ? `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(refLink)}` : "";
 
   return (
@@ -183,7 +189,7 @@ export default function Account() {
               { key: "member", icon: "💳", label: "แพ็กเกจของฉัน", pastel: "#C7DEF0", deep: "#8FB9DF",
                 // คิมทัก 8 ส.ค. "หน้าแพ็กเกจของฉันหายไป" — เดิมโชว์เฉพาะคนมีแพ็ก 6/12 เดือน
                 // ซึ่งตอนนี้ยังไม่มีใครมี (แพ็กเปิดขาย 1 ก.ย.) → ลูกค้ารายเดือนก็ควรเห็นสิทธิ์ตัวเอง
-                n: perks ? (perks.plan !== "monthly" ? (perks.months_left || 1) : 1) : 0,
+                n: memberN,
                 dot: !!(perks?.free_course && !perks.free_course.claimed) },
             ].filter(f => f.n > 0).map(f => {
               const on = f.key === folder;

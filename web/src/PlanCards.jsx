@@ -55,7 +55,7 @@ const RANK = { monthly: 0, "6m": 1, "12m": 2 };
 // 🗓️ ก่อน 1 ก.ย. 2569 = ช่วงโปรเปิดตัว 490 → การ์ดแพ็กจะไม่ขึ้นเลย (เซิร์ฟเวอร์ส่ง live:false)
 //    ยกเว้นโหมดพรีวิว (?preview=on) ที่คิมเปิดดูของที่ยังไม่ถึงเวลาขายได้
 // 📌 current = แพ็กที่ลูกค้าใช้อยู่ → การ์ดนั้นจะขึ้นว่า "แพ็กปัจจุบัน" แทนปุ่มซื้อ
-export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current }) {
+export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current, onUpgrade }) {
   const [plans, setPlans] = useState([]);
   useEffect(() => {
     api(`/api/plans${PREVIEW ? "?preview=1" : ""}`)
@@ -107,6 +107,12 @@ export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current }
                 </div>
               : <div className="muted" style={{ fontSize: 13.5, marginTop: 8 }}>จ่ายทุกเดือน</div>}
             <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>ราคารวม VAT 7% แล้ว</div>
+            {/* 📺 คิมทัก 10 ส.ค. "อ่านแล้วเหมือนจะซื้อกี่ช่องก็ได้" — ต้องบอกให้ชัดว่าราคานี้ต่อ 1 ช่อง */}
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, background: "var(--soft)",
+                          borderRadius: 10, padding: "9px 12px", fontSize: 13.5, fontWeight: 700 }}>
+              <span style={{ fontSize: 15 }}>📺</span>
+              <span>ใช้กับ <b>1 ช่อง</b> · มีหลายช่องซื้อแยกช่องได้</span>
+            </div>
 
             <ul style={{ listStyle: "none", margin: "18px 0 22px", padding: "12px 0 0", borderTop: "1px solid var(--border)" }}>
               {F.items.map(([ic, txt], i) => (
@@ -128,7 +134,13 @@ export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current }
             {!onPick && lower && <div className="center muted" style={{ padding: "12px 0", fontSize: 14 }}>
               ต่ำกว่าแพ็กที่คุณใช้อยู่
             </div>}
-            {!onPick && ctaLabel && !isNow && !lower && <a className="btn full" href={`/form?plan=${p.plan}`}
+            {/* ⬆️ ลูกค้าเดิมกดแล้วไปหน้าจ่ายเงินเลย ไม่ต้องกรอกฟอร์มซ้ำ (คิมสั่ง 10 ส.ค.) */}
+            {!onPick && onUpgrade && !isNow && !lower && <button type="button" className="btn full" disabled={busy}
+              onClick={() => onUpgrade(p.plan)}
+              style={{ background: best ? BLUE : "#fff", color: best ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, opacity: busy ? .6 : 1 }}>
+              {busy ? "กำลังเตรียม..." : `อัปเป็นแพ็ก${p.plan === "12m" ? " 12 เดือน" : " 6 เดือน"} →`}
+            </button>}
+            {!onPick && !onUpgrade && ctaLabel && !isNow && !lower && <a className="btn full" href={`/form?plan=${p.plan}`}
               style={{ background: best ? BLUE : "#fff", color: best ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, textDecoration: "none", display: "block", textAlign: "center" }}>
               {current ? `อัปเป็นแพ็ก${p.plan === "12m" ? " 12 เดือน" : " 6 เดือน"} →` : ctaLabel}
             </a>}

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import MyLearning, { SectionHead } from "./MyLearning.jsx";
-import { TAX_INVOICE_LIVE } from "../config.js";
+import { TAX_INVOICE_LIVE, PREVIEW } from "../config.js";
 import { PlanCards } from "../PlanCards.jsx";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
@@ -44,10 +44,24 @@ export default function Account() {
   const [perks, setPerks] = useState(null);       // 🎁 สิทธิ์สมาชิก + คอร์สฟรี (แพ็ก 12 เดือน)
   const [pickBusy, setPickBusy] = useState("");
   const [showCourses, setShowCourses] = useState(false);  // กางรายชื่อคอร์สฟรีหลังกดปุ่ม
+  const [upCh, setUpCh] = useState("");           // ⬆️ ช่องที่จะเอาแพ็กใหม่ไปใช้ (คนมีหลายช่องต้องเลือก)
+  const [upBusy, setUpBusy] = useState(false);
+  const [upErr, setUpErr] = useState("");
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // 🎁 สิทธิ์ของฉัน — โหลดครั้งเดียวตอนเข้าหน้า
   useEffect(() => { if (session.token) api("/api/me/perks", { token: session.token }).then(setPerks).catch(() => {}); }, [step]);
+  // ⬆️ อัปเกรดแพ็ก — ลูกค้าเดิมไม่ต้องกรอกฟอร์มซ้ำ ระบบใช้ข้อมูลช่องเดิมสร้างออเดอร์แล้วพาไปจ่ายเงินเลย
+  async function goUpgrade(plan) {
+    setUpErr(""); setUpBusy(true);
+    try {
+      const chs = data?.channels || [];
+      const channel = upCh || (chs.length === 1 ? chs[0].channel : "");
+      const r = await api("/api/me/upgrade", { method: "POST", token: session.token,
+        body: { plan, channel, ...(PREVIEW ? { preview: "1" } : {}) } });
+      window.location.href = r.checkout_url;
+    } catch (e) { setUpErr(e.message || "ลองใหม่อีกครั้งนะคะ"); setUpBusy(false); }
+  }
   async function pickFreeCourse(id, name) {
     if (!window.confirm(`เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?\n\nเลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ`)) return;
     setPickBusy(id);
@@ -305,9 +319,32 @@ export default function Account() {
             <p className="center muted" style={{ fontSize: 13.5, margin: "0 auto 22px", maxWidth: 560, lineHeight: 1.7 }}>
               {perks.plan === "12m"
                 ? "คุณอยู่แพ็กสูงสุดแล้ว ได้สิทธิ์ครบทุกอย่าง 🩵"
-                : "จ่ายครั้งเดียว ถูกลงสูงสุด 50% · สิทธิ์ต่อเดือนเพิ่มขึ้นทุกอย่าง"}
+                : "ทุกแพ็กเป็นราคา ต่อ 1 ช่อง · จ่ายครั้งเดียว ถูกลงสูงสุด 50%"}
             </p>
-            <PlanCards current={perks.plan} ctaLabel="เลือกแพ็กนี้ →" />
+            {/* 📺 มีหลายช่อง = ต้องเลือกก่อนว่าเอาแพ็กไปใช้กับช่องไหน (สิทธิ์ผูกกับช่องเดียว)
+                คิมทัก 10 ส.ค. "ลูกค้าที่มีหลายช่อง เราจะรู้ได้ยังไงว่าเค้าจะเอาไปใช้กับช่องไหน" */}
+            {(data.channels || []).length > 1 && perks.plan !== "12m" && (() => {
+              const chosen = upCh || (data.channels[0] || {}).channel || "";
+              return (
+                <div style={{ maxWidth: 560, margin: "0 auto 22px", background: "#F4F9FF", border: "1.5px solid #cfe3f7",
+                              borderRadius: 14, padding: "14px 16px" }}>
+                  <div className="between" style={{ gap: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 800, fontSize: 14.5 }}>📺 แพ็กนี้จะใช้กับช่อง</span>
+                    <select value={chosen} onChange={e => setUpCh(e.target.value)}
+                      style={{ fontSize: 15, fontWeight: 700, padding: "9px 12px", border: "1px solid var(--border)",
+                               borderRadius: 10, background: "#fff", maxWidth: "100%" }}>
+                      {(data.channels || []).map(ch => <option key={ch.channel} value={ch.channel}>{ch.channel}</option>)}
+                    </select>
+                  </div>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 9, lineHeight: 1.7 }}>
+                    คุณมี {(data.channels || []).length} ช่อง — อีก {(data.channels || []).length - 1} ช่องยังใช้แบบรายเดือนตามเดิม
+                    ถ้าอยากได้แพ็กให้ช่องอื่นด้วย ซื้อเพิ่มทีละช่องได้เลยค่ะ
+                  </div>
+                </div>
+              );
+            })()}
+            {upErr && <div className="center" style={{ color: "#c22", fontSize: 14, marginBottom: 12 }}>{upErr}</div>}
+            <PlanCards current={perks.plan} onUpgrade={goUpgrade} busy={upBusy} />
           </div>
         )}
 

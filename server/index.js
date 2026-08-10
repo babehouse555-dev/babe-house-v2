@@ -763,6 +763,46 @@ app.post("/api/subscription/claim-month", rateLimit(20, M10), async (req, res) =
   } catch (err) { console.error("claim-month", err.message); res.status(400).json({ ok: false, error: "FAILED", message: err.message }); }
 });
 
+// ⬆️ อัปเกรดแพ็กสำหรับ "ลูกค้าที่ซื้อไปแล้ว" — คิมสั่ง 10 ส.ค. "ไม่ควรต้องกรอกอะไรอีกเลย"
+//    ก๊อปคำตอบฟอร์มจากออเดอร์ล่าสุดของช่องนั้นมาใช้ แล้วพาไปหน้าจ่ายเงินตรงๆ
+//    ⚠️ ห้ามลดราคา/ใส่โค้ดซ้อน — ราคาแพ็กลด 30-50% อยู่แล้ว (กฎเดียวกับ /api/checkout)
+app.post("/api/me/upgrade", rateLimit(20, M10), async (req, res) => {
+  try {
+    const email = await authEmail(req);
+    if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
+    const plan = PLANS[String(req.body?.plan || "")];
+    if (!plan || plan.months <= 1) return res.status(400).json({ ok: false, error: "BAD_PLAN", message: "เลือกแพ็กไม่ถูกต้องค่ะ" });
+    // ยังไม่ถึงวันเปิดขายแพ็ก = ซื้อไม่ได้ (ยกเว้นโหมดพรีวิวที่คิมใช้ทดสอบ)
+    if (!plansLive() && String(req.body?.preview || "") !== "1")
+      return res.status(409).json({ ok: false, error: "NOT_LIVE", message: "แพ็กนี้ยังไม่เปิดขายค่ะ" });
+    // มีแพ็กที่ยังใช้ได้อยู่ → ห้ามซื้อซ้อน เดี๋ยวสิทธิ์ 2 ก้อนตีกัน
+    const active = await activeSubscription(email, String(req.body?.channel || ""));
+    if (active) return res.status(409).json({ ok: false, error: "HAS_PLAN",
+      message: `คุณมีแพ็ก ${active.months_total} เดือนที่ยังเหลืออีก ${active.months_total - active.months_used} เดือนอยู่ค่ะ ทักทีมงานเพื่ออัปเกรดนะคะ` });
+
+    const channel = String(req.body?.channel || "").trim();
+    const last = channel
+      ? await one(`SELECT * FROM blueprint_orders WHERE lower(email)=lower($1) AND instagram_account=$2
+           AND payment_status IN ('paid','mock_paid') AND COALESCE(tier,'')='Premium_490' ORDER BY created_at DESC LIMIT 1`, [email, channel])
+      : await one(`SELECT * FROM blueprint_orders WHERE lower(email)=lower($1)
+           AND payment_status IN ('paid','mock_paid') AND COALESCE(tier,'')='Premium_490' ORDER BY created_at DESC LIMIT 1`, [email]);
+    if (!last) return res.status(404).json({ ok: false, error: "NO_HISTORY", message: "ยังไม่พบเล่มเดิมของคุณค่ะ" });
+    const old = safeJson(last.order_payload_json) || {};
+    if (!old.form_responses) return res.status(409).json({ ok: false, error: "NO_PROFILE", message: "ข้อมูลเดิมไม่ครบ กรุณากรอกฟอร์มค่ะ" });
+
+    const cycle = String(req.body?.billing_cycle || "").trim() || last.billing_cycle;
+    const orderId = uid("ord");
+    const payload = { ...old, plan: plan.plan, plan_chosen: true,
+      meta_purchase: { tier: "Premium_490", billing_cycle: cycle } };
+    const checkoutUrl = `/checkout?order_id=${encodeURIComponent(orderId)}`;
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,discount_percent,checkout_url,source)
+      VALUES ($1,$2,$3,$4,'Premium_490',$5,'pending',$6,$7,$8,$9,$10,'upgrade')`,
+      [orderId, last.user_id, last.instagram_account, email, cycle, JSON.stringify(payload), PROVIDER, plan.satang, plan.off, checkoutUrl]);
+    res.json({ ok: true, order_id: orderId, checkout_url: checkoutUrl,
+               plan: plan.plan, months: plan.months, amount_satang: plan.satang, channel: last.instagram_account });
+  } catch (err) { console.error("upgrade", err.message); res.status(400).json({ ok: false, error: "FAILED", message: err.message }); }
+});
+
 app.get("/api/orders/:orderId", async (req, res) => {
   const o = await getOrder(req.params.orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });

@@ -77,19 +77,25 @@ export default function Landing() {
   return (
     <div>
       <nav style={{ position: "sticky", top: 0, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)", zIndex: 50 }}>
-        <div className="wrap between" style={{ height: 60 }}>
+        <div className="wrap between nav-bar" style={{ height: 60 }}>
           <div style={{ fontWeight: 800, fontSize: 18 }}>BABE <span style={{ color: "var(--blue)" }}>HOUSE</span></div>
-          <div className="row" style={{ gap: 14, alignItems: "center" }}>
+          <div className="row nav-links" style={{ gap: 14, alignItems: "center" }}>
             <a href="#offer" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>{plansLive ? t("nav_plans") : t("nav_promo")}</a>
-            {/* สินค้าอื่นต้องโผล่บนหน้าแรกด้วย — หน้าแรกคือหน้าที่ลูกค้าเจอเยอะสุด ถ้าไม่มีตรงนี้ก็ไม่มีใครหาเจอ */}
-            {ACADEMY_LIVE && <Link to="/academy" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
-            {ACADEMY_LIVE && <Link to="/workshop" className="muted nav-hide-sm" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
+            {/* สินค้าอื่นต้องโผล่บนหน้าแรกด้วย — หน้าแรกคือหน้าที่ลูกค้าเจอเยอะสุด ถ้าไม่มีตรงนี้ก็ไม่มีใครหาเจอ
+                ⛔ เดิมซ่อนบนมือถือ (nav-hide-sm) → คนเข้าจากมือถือ ~90% ไม่เห็นคอร์ส/คลาสสดเลย (คิมทัก 10 ส.ค.)
+                ตอนนี้ให้ขึ้นบรรทัดที่สองแทนการซ่อน */}
+            {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>คอร์สเรียน</Link>}
+            {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>คลาสสด</Link>}
             <Link to="/account" className="link" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{t("nav_login")}</Link>
             <LangToggle />
           </div>
         </div>
       </nav>
-      <style>{`@media (max-width: 560px){ .nav-hide-sm { display: none; } }`}</style>
+      <style>{`@media (max-width: 620px){
+        .nav-bar { height: auto !important; padding-top: 9px; padding-bottom: 9px; align-items: flex-start; }
+        .nav-links { flex-wrap: wrap; gap: 10px 12px !important; justify-content: flex-end; max-width: 62%; }
+        .nav-links a { font-size: 13px !important; }
+      }`}</style>
 
       {/* 1. HERO — สะอาด มีพรีวิวสินค้า (สไตล์ Apple) */}
       <header className="center" style={{ background: "linear-gradient(180deg,var(--soft),#fff)", padding: "48px 0 0", overflow: "hidden" }}>

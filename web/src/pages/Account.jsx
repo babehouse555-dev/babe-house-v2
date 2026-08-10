@@ -8,6 +8,14 @@ import { PlanCards } from "../PlanCards.jsx";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
+// 🏷️ ป้าย "ใหม่" มีอายุ 7 วันนับจากวันที่สร้างเล่ม — คิมทัก 10 ส.ค. "สร้างมาเป็นเดือนแล้วยังขึ้นว่าใหม่อยู่เลย"
+//    เดิมดูแค่ "เคยเปิดในเครื่องนี้ไหม" → เปลี่ยนเครื่อง/ล้างแคช = ขึ้นใหม่หมดทุกเล่มตลอดไป
+const NEW_DAYS = 7;
+const isFresh = (m) => {
+  if (isOpened(m.blueprint_id)) return false;
+  const t = Date.parse(m.created_at || "");
+  return Number.isFinite(t) ? (Date.now() - t) < NEW_DAYS * 864e5 : false;
+};
 const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("babe_opened") || "[]"); if (!a.includes(id)) { a.push(id); localStorage.setItem("babe_opened", JSON.stringify(a)); } } catch {} };
 
 export default function Account() {
@@ -47,10 +55,15 @@ export default function Account() {
   const [upCh, setUpCh] = useState("");           // ⬆️ ช่องที่จะเอาแพ็กใหม่ไปใช้ (คนมีหลายช่องต้องเลือก)
   const [upBusy, setUpBusy] = useState(false);
   const [upErr, setUpErr] = useState("");
+  const [planCount, setPlanCount] = useState(0);  // แพ็กที่ขายได้จริงตอนนี้ (0 = ยังไม่ถึงวันเปิด → ซ่อนทั้งบล็อก)
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // 🎁 สิทธิ์ของฉัน — โหลดครั้งเดียวตอนเข้าหน้า
   useEffect(() => { if (session.token) api("/api/me/perks", { token: session.token }).then(setPerks).catch(() => {}); }, [step]);
+  // ⛔ หัวข้อ "อัปเกรดแพ็ก" + ตัวเลือกช่อง ต้องไม่โผล่ก่อนการ์ดราคา ไม่งั้นลูกค้าเห็นหัวข้อลอยๆ ไม่มีอะไรให้กด
+  //    (คิมเจอเอง 10 ส.ค. บนมือถือที่ไม่ได้เปิดโหมดพรีวิว)
+  useEffect(() => { api(`/api/plans${PREVIEW ? "?preview=1" : ""}`)
+    .then(d => setPlanCount(((d.live || PREVIEW) ? (d.plans || []) : []).length)).catch(() => {}); }, []);
   // ⬆️ อัปเกรดแพ็ก — ลูกค้าเดิมไม่ต้องกรอกฟอร์มซ้ำ ระบบใช้ข้อมูลช่องเดิมสร้างออเดอร์แล้วพาไปจ่ายเงินเลย
   async function goUpgrade(plan) {
     setUpErr(""); setUpBusy(true);
@@ -308,7 +321,7 @@ export default function Account() {
         {/* ⬆️ อัปเกรดแพ็ก — คิมสั่ง 10 ส.ค. "ลูกค้าเห็นสถานะของตัวเองแล้วก็อัปเกรดได้เลย เห็นบ่อยๆ จะได้กดง่ายๆ"
             การ์ด 3 ช่องชุดเดียวกับหน้าแรก/หน้าจ่ายเงิน — แพ็กที่ใช้อยู่จะขึ้นป้ายเขียว ไม่มีปุ่มซื้อซ้ำ
             ⛔ ก่อน 1 ก.ย. เซิร์ฟเวอร์ยังส่งแพ็กมาไม่ครบ → ทั้งบล็อกนี้หายไปเอง ลูกค้าไม่เห็นอะไรเลย */}
-        {perks && (!showFolders || folder === "member") && (
+        {perks && planCount > 0 && (!showFolders || folder === "member") && (
           // หน้าบัญชีเป็นคอลัมน์แคบ (ราว 600px) การ์ด 3 ใบจะเรียงลงมาเป็นแถวเดียว
           // → กางออกให้กว้างเท่าหน้าจอตรงบล็อกนี้บล็อกเดียว จะได้เห็น 3 ช่องเทียบกันในตาเดียว (คิมสั่ง 10 ส.ค.)
           <div style={{ width: "min(1040px, calc(100vw - 32px))", marginLeft: "50%",
@@ -377,7 +390,7 @@ export default function Account() {
           const months = ch.months.slice().reverse(); // ใหม่ → เก่า
           // ซื้อหลายเล่มในเดือนเดียวกันได้ (เช่น ช่อง TikTok กับ IG ใช้ชื่อเดียวกัน) → เติมวันที่กันสับสนว่าอันไหนเป็นอันไหน
           const dupMonth = months.reduce((a, m) => ({ ...a, [m.billing_cycle]: (a[m.billing_cycle] || 0) + 1 }), {});
-          const anyFresh = months.some(m => !isOpened(m.blueprint_id));
+          const anyFresh = months.some(isFresh);
           const open = chOpen(ch, ci);
           const latest = months[0];
           return <div key={ch.channel} className="card" style={anyFresh ? { borderTop: "4px solid #2C8E8C" } : undefined}>
@@ -390,7 +403,7 @@ export default function Account() {
             {open && <>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
               {months.map((m, i) => {
-                const fresh = !isOpened(m.blueprint_id);
+                const fresh = isFresh(m);
                 const to = `/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`;
                 return <div key={m.blueprint_id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <Link onClick={() => markOpened(m.blueprint_id)} to={to} style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: fresh ? "linear-gradient(135deg,#EAF3FD,#F4F9FF)" : "var(--bg-soft,#f7f7f8)", border: fresh ? "1px solid #d6e7fa" : "1px solid var(--border)", color: "inherit" }}>

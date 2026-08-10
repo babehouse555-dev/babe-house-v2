@@ -1,6 +1,10 @@
 :root{--blue:#2E86DE;--blue-d:#1B6FC4;--ink:#16202b;--muted:#6b7787;--bg:#fff;--soft:#F4F8FD;--border:#e7eef6;--cream:#FBF9F4;--up:#1a7f43;--down:#b3261e}
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
+/* 📱 ล็อกขนาดตัวอักษรไม่ให้เบราว์เซอร์ขยายเอง
+   iOS WebView (เบราว์เซอร์ในแอป LINE/Facebook/IG) มีระบบ "text autosizing" ที่ขยายตัวหนังสือบางก้อนเอง
+   ทำให้หน้าเว็บดูใหญ่ผิดส่วนและล้นจอ — คิมเจอตอนเปิดหน้าเวิร์กช็อปจากลิงก์ใน LINE (10 ส.ค. 69)
+   ลูกค้าส่วนใหญ่กดเข้าเว็บจากลิงก์ในแชท = เจอเบราว์เซอร์ตัวนี้กันแทบทุกคน */
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family:"Noto Sans Thai",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;overflow-x:clip;overflow-wrap:break-word}
 #root{overflow-x:clip}
 img{max-width:100%}

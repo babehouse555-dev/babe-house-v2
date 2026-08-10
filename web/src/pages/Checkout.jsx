@@ -115,7 +115,14 @@ export default function Checkout() {
         {/* 🆘 ทางออกให้ลูกค้าที่จ่ายแล้วแต่ระบบไม่รู้ — เดิมต้องไปทักไอจีถึงจะมีคนตามให้ */}
         <PaidReport orderId={orderId} />
 
-        {plan !== "monthly" ? <p className="muted" style={{ fontSize: 12.5, marginTop: 14, lineHeight: 1.7 }}>{t("co_code_longplan")}</p> : <>
+        {/* 🎟️ ใส่โค้ดได้ทุกแพ็ก — คิมสั่ง 10 ส.ค. "หน้าอัพแพ็ก อยากให้มีใส่โค้ดด้วย"
+            เดิมปิดไว้สำหรับแพ็ก 6/12 เดือน (กันลดซ้อนบนราคาที่ลด 30-50% อยู่แล้ว)
+            ⚠️ ส่วนลดคิดจากราคาแพ็กนั้นจริงๆ แล้ว ไม่ใช่ราคารายเดือน (แก้ที่ applyCode ฝั่งเซิร์ฟเวอร์) */}
+        {plan !== "monthly" && <p className="muted" style={{ fontSize: 12.5, marginTop: 14, lineHeight: 1.7 }}>
+          💡 แพ็กนี้ลดราคาให้แล้ว {}
+          {plan === "12m" ? "50%" : "30%"} — ถ้ามีโค้ดส่วนลดอีก ใส่เพิ่มได้เลยค่ะ
+        </p>}
+        <>
         <div className="row" style={{ margin: "18px 0 10px", color: "var(--muted)", fontSize: 12 }}>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />{t("co_or_code")}<div style={{ flex: 1, height: 1, background: "var(--border)" }} />
         </div>

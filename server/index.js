@@ -859,7 +859,12 @@ async function applyCode(req, res) {
   }
   const upd = await run(`UPDATE promo_codes SET used_count=used_count+1 WHERE code=$1 AND active=1 AND (max_uses IS NULL OR used_count<max_uses)`, [code]);
   if (upd.rowCount !== 1) return res.status(400).json({ ok: false, error: "CODE_USED_UP", message: "โค้ดถูกใช้ครบแล้ว" });
-  const finalAmount = Math.round(monthlySatang() * (100 - percent) / 100);
+  // ⚠️ ฐานที่เอามาลด ต้องเป็น "ราคาของออเดอร์นั้นจริงๆ" ไม่ใช่ราคารายเดือนเสมอไป
+  //    เดิมใช้ monthlySatang() ตายตัว → ถ้าใส่โค้ดกับแพ็ก 12 เดือน (฿9,540) ยอดจะเหลือหลักพัน = ขาดทุนยับ
+  //    (เจอตอนคิมสั่งเปิดช่องใส่โค้ดในหน้าอัปแพ็ก 10 ส.ค. — เดิมปิดไว้เลยไม่มีใครเจอบั๊กนี้)
+  const orderPlan = planOf((safeJson(o.order_payload_json) || {}).plan);
+  const codeBase = orderPlan.months > 1 ? orderPlan.satang : monthlySatang();
+  const finalAmount = Math.round(codeBase * (100 - percent) / 100);
   await run(`UPDATE blueprint_orders SET discount_code=$1, discount_percent=$2, final_amount_satang=$3 WHERE order_id=$4`, [code, percent, finalAmount, orderId]);
   // โค้ดที่แถมเครดิต (เช่น โค้ดทดลอง) → เติมเครดิตให้อีเมลนี้ตอนใช้โค้ด (1 ครั้ง/อีเมล จาก guard usedFreeCodeBefore ด้านบน)
   if (Number(row.credit_grant) > 0 && o.email) {
@@ -868,7 +873,7 @@ async function applyCode(req, res) {
     console.log(`[credits] โค้ด ${code} +${row.credit_grant} → ${o.email}`);
   }
   if (isFree || finalAmount <= 0) { await markOrderPaid(orderId, "code", code); return res.json({ ok: true, free: true, percent, redirect_url: `/processing?order_id=${encodeURIComponent(orderId)}` }); }
-  res.json({ ok: true, free: false, percent, original_satang: PRICE_SATANG, final_satang: finalAmount });
+  res.json({ ok: true, free: false, percent, original_satang: codeBase, final_satang: finalAmount });
 }
 app.post("/api/apply-code", applyCode);
 app.post("/api/redeem-code", applyCode);

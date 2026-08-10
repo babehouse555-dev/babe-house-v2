@@ -1479,22 +1479,30 @@ async function authEmail(req) {
 }
 // คีย์รวมช่อง: ตัด @ เว้นวรรค _ . - และตัวพิมพ์ ออก → "@babehouse_academy" = "babe house academy" = ช่องเดียวกัน
 const chKey = (s) => String(s || "").toLowerCase().replace(/^@/, "").replace(/[\s._-]/g, "").trim() || "(ไม่ระบุ)";
-async function getCustomerMonths(email, channel) {
-  // dedupe ตาม (ช่อง + เดือน) — เอาเล่มล่าสุดของช่องนั้นในเดือนนั้น · หลายช่องเดือนเดียวกัน "ไม่ชนกันแล้ว" (แก้ bug เล่มหาย)
+// 📚 เล่มทั้งหมดของลูกค้า
+// โหมด all=true  → "ทุกเล่มที่จ่ายเงินซื้อ" ใช้กับหน้าบัญชีของฉัน
+// โหมด ปกติ      → 1 เดือน 1 เล่ม (เอาเล่มล่าสุด) ใช้กับหน้าเทียบการเติบโต ที่ต้องเทียบเดือนต่อเดือน
+//
+// ⚠️ ห้ามเอา dedupe ไปใช้กับหน้าบัญชีเด็ดขาด (บั๊กจริง 10 ส.ค. 69 · พลอยแจ้ง)
+//    ลูกค้าซื้อเล่มที่ 2 ให้ช่องชื่อเดิมในเดือนเดียวกัน (ช่อง TikTok กับ IG ใช้ชื่อเดียวกัน)
+//    → คีย์ "ช่อง|เดือน" ชนกัน เล่มใหม่ทับเล่มเก่าในลิสต์ = เล่มที่จ่ายเงินไปแล้วหายจากหน้าจอ
+//    ข้อมูลไม่ได้หาย แค่ไม่ถูกแสดง — แต่ลูกค้าเห็นว่าหาย ก็คือหายสำหรับเขา
+async function getCustomerMonths(email, channel, { all = false } = {}) {
   const rows = await q(`SELECT b.blueprint_id,b.billing_cycle,b.created_at,b.user_id,b.blueprint_json,r.instagram_account,r.business_type,r.monthly_goal FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id WHERE lower(r.email)=lower($1) AND b.deleted_at IS NULL ORDER BY b.created_at ASC`, [email]);
-  const byKey = new Map();
-  for (const r of rows) {
-    if (channel && chKey(r.instagram_account) !== chKey(channel)) continue;
+  const item = (r) => {
     let metrics = null; try { metrics = (safeJson(r.blueprint_json) || {}).metrics || null; } catch {}
-    const key = `${chKey(r.instagram_account)}|${r.billing_cycle}`;
-    byKey.set(key, { blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics });
-  }
+    return { blueprint_id: r.blueprint_id, billing_cycle: r.billing_cycle, created_at: r.created_at, user_id: r.user_id, instagram_account: r.instagram_account, business_type: r.business_type, monthly_goal: r.monthly_goal, metrics };
+  };
+  const mine = rows.filter(r => !channel || chKey(r.instagram_account) === chKey(channel));
+  if (all) return mine.map(item);
+  const byKey = new Map();
+  for (const r of mine) byKey.set(`${chKey(r.instagram_account)}|${r.billing_cycle}`, item(r));
   return [...byKey.values()];
 }
 // จัดกลุ่มเล่มตาม "ช่อง" → [{channel, months:[...], latest}]  (1 อีเมล ดูแลหลายช่อง)
 // รวมช่องเดียวกันที่พิมพ์ต่างกัน (@/เว้นวรรค/ตัวพิมพ์) ให้เป็นโฟลเดอร์เดียว
 async function getCustomerChannels(email) {
-  const months = await getCustomerMonths(email);
+  const months = await getCustomerMonths(email, undefined, { all: true });   // หน้าบัญชี = ต้องเห็นทุกเล่มที่จ่ายเงิน
   const byCh = new Map();
   for (const m of months) { const k = chKey(m.instagram_account); if (!byCh.has(k)) byCh.set(k, []); byCh.get(k).push(m); }
   return [...byCh.values()].map(list => {
@@ -1504,7 +1512,7 @@ async function getCustomerChannels(email) {
 }
 app.get("/api/me/blueprints", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const months = await getCustomerMonths(email);
+  const months = await getCustomerMonths(email, undefined, { all: true });
   const channels = await getCustomerChannels(email);
   // ออเดอร์ที่จ่ายแล้วแต่เล่มยังไม่เสร็จ (กำลังสร้าง/ติดขัด) — โชว์สถานะให้ลูกค้ารู้ว่ากำลังทำอยู่
   const pendRows = await q(`SELECT order_id, billing_cycle, created_at, COALESCE(generation_status,'pending') gs FROM blueprint_orders WHERE email=$1 AND payment_status IN ('paid','mock_paid') AND blueprint_id IS NULL AND ${bpOnly()} ORDER BY created_at DESC`, [normEmail(email)]);

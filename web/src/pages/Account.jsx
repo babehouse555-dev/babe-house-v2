@@ -311,6 +311,8 @@ export default function Account() {
           {filtered.length === 0 && <div className="card center muted" style={{ fontSize: 14 }}>{t("ac_no_channel_found")} “{chQ}”</div>}
           {filtered.map((ch, ci) => {
           const months = ch.months.slice().reverse(); // ใหม่ → เก่า
+          // ซื้อหลายเล่มในเดือนเดียวกันได้ (เช่น ช่อง TikTok กับ IG ใช้ชื่อเดียวกัน) → เติมวันที่กันสับสนว่าอันไหนเป็นอันไหน
+          const dupMonth = months.reduce((a, m) => ({ ...a, [m.billing_cycle]: (a[m.billing_cycle] || 0) + 1 }), {});
           const anyFresh = months.some(m => !isOpened(m.blueprint_id));
           const open = chOpen(ch, ci);
           const latest = months[0];
@@ -328,7 +330,7 @@ export default function Account() {
                 const to = `/dashboard?user_id=${encodeURIComponent(m.user_id)}&billing_cycle=${encodeURIComponent(m.billing_cycle)}&blueprint_id=${encodeURIComponent(m.blueprint_id)}`;
                 return <div key={m.blueprint_id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <Link onClick={() => markOpened(m.blueprint_id)} to={to} style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: fresh ? "linear-gradient(135deg,#EAF3FD,#F4F9FF)" : "var(--bg-soft,#f7f7f8)", border: fresh ? "1px solid #d6e7fa" : "1px solid var(--border)", color: "inherit" }}>
-                    <div><span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.billing_cycle.replace("_", " ")}{i === 0 ? t("ac_latest") : ""}</span>{fresh && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, background: "#2C8E8C", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>{t("ac_new_badge")}</span>}</div>
+                    <div><span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.billing_cycle.replace("_", " ")}{dupMonth[m.billing_cycle] > 1 ? ` · ${new Date(m.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}` : ""}{i === 0 ? t("ac_latest") : ""}</span>{fresh && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, background: "#2C8E8C", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>{t("ac_new_badge")}</span>}</div>
                     <span style={{ color: "var(--blue)", fontSize: 18 }}>›</span>
                   </Link>
                   <button onClick={() => deleteBook(m.blueprint_id, m.billing_cycle)} title="ลบเล่มนี้" style={{ background: "none", border: 0, cursor: "pointer", color: "#b9b9c2", fontSize: 16, padding: "8px 6px", flexShrink: 0 }}>🗑️</button>

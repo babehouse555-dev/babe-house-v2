@@ -5257,6 +5257,24 @@ app.post("/api/admin/fix-theme", async (req, res) => {
   }
   res.json({ ok: true, fixed: done.length, skipped: skipped.length, done, skipped });
 });
+// 🔍 เปิดดู "ลูกค้ากรอกอะไรมา + AI ตีความเป็นอะไร" — ใช้ตอนลูกค้าบอกว่าเล่มจับแนวผิด
+//    ต้องดูของจริงก่อนสั่งเจนใหม่เสมอ เพราะเจนใหม่ = ทับเล่มเดิม กู้ไม่ได้
+app.get("/api/admin/blueprint-peek", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.query?.blueprint_id || "").trim();
+  const bp = bpId
+    ? await one(`SELECT * FROM blueprints WHERE blueprint_id=$1`, [bpId])
+    : await one(`SELECT b.* FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
+        WHERE lower(r.email)=lower($1) AND b.deleted_at IS NULL ORDER BY b.created_at DESC LIMIT 1`, [normEmail(req.query?.email || "")]);
+  if (!bp) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  const r = await one(`SELECT instagram_account, industry, business_type, starting_point, monthly_goal, competitor_1, competitor_2, raw_payload_json FROM blueprint_requests WHERE request_id=$1`, [bp.request_id]);
+  const raw = safeJson(r?.raw_payload_json) || {};
+  const b = safeJson(bp.blueprint_json) || {};
+  res.json({ ok: true, blueprint_id: bp.blueprint_id, channel: r?.instagram_account, cycle: bp.billing_cycle,
+    created_at: bp.created_at, deleted: !!bp.deleted_at,
+    ลูกค้ากรอกมา: { industry: r?.industry, ...(raw.form_responses || {}) },
+    เอไอตีความเป็น: { theme: b.theme, positioning: b.positioning, scripts: (b.scripts || []).length } });
+});
 app.post("/api/admin/reanalyze", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const bpId = String(req.body?.blueprint_id || "").trim();

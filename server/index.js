@@ -5293,8 +5293,24 @@ app.post("/api/admin/reanalyze", async (req, res) => {
   const parsed = GenSchema.parse(normalizePayload(raw));
   const hasNums = (m) => m && Object.values(m).some(v => typeof v === "number" && v > 0);
   if (hasNums(current.metrics)) parsed.prior_metrics = current.metrics; // รูปถูกลบแล้ว → คงตัวเลขเดิม
+  // ✏️ แก้คำตอบฟอร์มให้ถูกก่อนเจนใหม่ — ต้นเหตุที่เล่มออกมาผิดแนวส่วนใหญ่คือ "ลูกค้ากรอกสั้นเกินไป"
+  //    ไม่ใช่ AI อ่านผิด · แก้ที่ฟอร์มแล้วบันทึกถาวร เดือนถัดไปก็ได้ข้อมูลที่ถูกไปด้วย
+  const ov = (req.body && typeof req.body.form_overrides === "object") ? req.body.form_overrides : null;
+  if (ov) {
+    for (const [k, v] of Object.entries(ov)) {
+      if (typeof v === "string" && v.trim()) parsed.form_responses[k] = v.trim().slice(0, 4000);
+    }
+  }
+  const industry = String(req.body?.industry || "").trim();
   const hint = String(req.body?.focus_hint || "").trim();
-  if (hint) parsed.form_responses.business_type = `${parsed.form_responses.business_type || ""}\n[หมายเหตุจากทีม: แนวคอนเทนต์หลักที่คนดูติดตามช่องนี้จริงๆ คือ "${hint.slice(0, 200)}" — ให้โฟกัสแนวนี้เป็นแกนของบทวิเคราะห์+คอนเทนต์ 30 วัน]`;
+  // เพดานเดิม 200 ตัวอักษรสั้นเกินไป — บรีฟจริงที่ทีมเก็บมาจากลูกค้ายาวกว่านั้นมาก แล้วใจความสำคัญโดนตัดทิ้ง
+  if (hint) parsed.form_responses.business_type = `${parsed.form_responses.business_type || ""}\n[หมายเหตุจากทีม: แนวคอนเทนต์หลักที่คนดูติดตามช่องนี้จริงๆ คือ "${hint.slice(0, 1500)}" — ให้โฟกัสแนวนี้เป็นแกนของบทวิเคราะห์+คอนเทนต์ 30 วัน]`;
+  // บันทึกคำตอบชุดใหม่กลับเข้าใบคำขอ เผื่อต้องเจนซ้ำ/เดือนหน้าจะได้ไม่ต้องมาแก้ซ้ำอีก
+  if (ov || industry) {
+    const lean = { ...raw, form_responses: { ...(raw.form_responses || {}), ...(ov || {}) } };
+    await run(`UPDATE blueprint_requests SET raw_payload_json=$1${industry ? ", industry=$3" : ""} WHERE request_id=$2`,
+      industry ? [JSON.stringify(lean), bp.request_id, industry] : [JSON.stringify(lean), bp.request_id]).catch(e => console.warn("save form", e.message));
+  }
   parsed.prev_context = await getPrevContext(parsed.email, bp.billing_cycle, parsed.instagram_account);
   await acquireGen();
   let out;

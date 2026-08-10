@@ -53,8 +53,8 @@ export default function Account() {
   const [pickBusy, setPickBusy] = useState("");
   const [showCourses, setShowCourses] = useState(false);  // กางรายชื่อคอร์สฟรีหลังกดปุ่ม
   const [upCh, setUpCh] = useState("");           // ⬆️ ช่องที่จะเอาแพ็กใหม่ไปใช้ (คนมีหลายช่องต้องเลือก)
-  const [upBusy, setUpBusy] = useState(false);
-  const [upErr, setUpErr] = useState("");
+  const [upBusy, setUpBusy] = useState("");      // คีย์แพ็กที่กำลังเตรียมออเดอร์ ("" = ว่าง)
+  const [upErr, setUpErr] = useState(null);   // { plan, msg } — ผูกกับปุ่มที่กด
   const [planCount, setPlanCount] = useState(0);  // แพ็กที่ขายได้จริงตอนนี้ (0 = ยังไม่ถึงวันเปิด → ซ่อนทั้งบล็อก)
 
   useEffect(() => { if (session.token) loadMonths(); }, []);
@@ -66,14 +66,21 @@ export default function Account() {
     .then(d => setPlanCount(((d.live || PREVIEW) ? (d.plans || []) : []).length)).catch(() => {}); }, []);
   // ⬆️ อัปเกรดแพ็ก — ลูกค้าเดิมไม่ต้องกรอกฟอร์มซ้ำ ระบบใช้ข้อมูลช่องเดิมสร้างออเดอร์แล้วพาไปจ่ายเงินเลย
   async function goUpgrade(plan) {
-    setUpErr(""); setUpBusy(true);
+    setUpErr(""); setUpBusy(plan);
+    // 🛟 กันปุ่มค้างที่ "กำลังเตรียม..." ตลอดกาล ถ้าเน็ตหลุด/เซิร์ฟเวอร์ไม่ตอบ
+    const guard = setTimeout(() => { setUpBusy(""); setUpErr({ plan, msg: "เชื่อมต่อไม่สำเร็จ ลองกดใหม่อีกครั้งนะคะ" }); }, 20000);
     try {
       const chs = data?.channels || [];
       const channel = upCh || (chs.length === 1 ? chs[0].channel : "");
       const r = await api("/api/me/upgrade", { method: "POST", token: session.token,
         body: { plan, channel, ...(PREVIEW ? { preview: "1" } : {}) } });
+      clearTimeout(guard);
+      if (!r?.checkout_url) throw new Error("ระบบไม่ได้ส่งลิงก์จ่ายเงินกลับมา ลองใหม่อีกครั้งนะคะ");
       window.location.href = r.checkout_url;
-    } catch (e) { setUpErr(e.message || "ลองใหม่อีกครั้งนะคะ"); setUpBusy(false); }
+    } catch (e) {
+      clearTimeout(guard);
+      setUpErr({ plan, msg: e.message || "ลองใหม่อีกครั้งนะคะ" }); setUpBusy("");
+    }
   }
   async function pickFreeCourse(id, name) {
     if (!window.confirm(`เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?\n\nเลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ`)) return;
@@ -356,8 +363,8 @@ export default function Account() {
                 </div>
               );
             })()}
-            {upErr && <div className="center" style={{ color: "#c22", fontSize: 14, marginBottom: 12 }}>{upErr}</div>}
-            <PlanCards current={perks.plan} onUpgrade={goUpgrade} busy={upBusy} />
+            <PlanCards current={perks.plan} onUpgrade={goUpgrade} busy={upBusy}
+                       errorFor={upErr?.plan} errorMsg={upErr?.msg} />
           </div>
         )}
 

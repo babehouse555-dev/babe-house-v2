@@ -55,7 +55,9 @@ const RANK = { monthly: 0, "6m": 1, "12m": 2 };
 // 🗓️ ก่อน 1 ก.ย. 2569 = ช่วงโปรเปิดตัว 490 → การ์ดแพ็กจะไม่ขึ้นเลย (เซิร์ฟเวอร์ส่ง live:false)
 //    ยกเว้นโหมดพรีวิว (?preview=on) ที่คิมเปิดดูของที่ยังไม่ถึงเวลาขายได้
 // 📌 current = แพ็กที่ลูกค้าใช้อยู่ → การ์ดนั้นจะขึ้นว่า "แพ็กปัจจุบัน" แทนปุ่มซื้อ
-export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current, onUpgrade }) {
+// busy = คีย์แพ็กที่กำลังโหลด (เช่น "12m") — ไม่ใช่ true/false ทั้งแถว
+//   ไม่งั้นกดใบเดียวแต่ทุกใบขึ้น "กำลังเตรียม..." พร้อมกัน อ่านแล้วงงว่าเรากดอันไหน (คิมเจอ 10 ส.ค.)
+export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current, onUpgrade, errorFor, errorMsg }) {
   const [plans, setPlans] = useState([]);
   useEffect(() => {
     api(`/api/plans${PREVIEW ? "?preview=1" : ""}`)
@@ -135,11 +137,19 @@ export function PlanCards({ selected, onPick, ctaLabel, busy, compact, current, 
               ต่ำกว่าแพ็กที่คุณใช้อยู่
             </div>}
             {/* ⬆️ ลูกค้าเดิมกดแล้วไปหน้าจ่ายเงินเลย ไม่ต้องกรอกฟอร์มซ้ำ (คิมสั่ง 10 ส.ค.) */}
-            {!onPick && onUpgrade && !isNow && !lower && <button type="button" className="btn full" disabled={busy}
-              onClick={() => onUpgrade(p.plan)}
-              style={{ background: best ? BLUE : "#fff", color: best ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, opacity: busy ? .6 : 1 }}>
-              {busy ? "กำลังเตรียม..." : `อัปเป็นแพ็ก${p.plan === "12m" ? " 12 เดือน" : " 6 เดือน"} →`}
-            </button>}
+            {!onPick && onUpgrade && !isNow && !lower && (() => {
+              const loading = busy === p.plan;
+              return <>
+                <button type="button" className="btn full" disabled={!!busy}
+                  onClick={() => onUpgrade(p.plan)}
+                  style={{ background: best ? BLUE : "#fff", color: best ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, opacity: busy && !loading ? .5 : 1 }}>
+                  {loading ? "กำลังเตรียม..." : `อัปเป็นแพ็ก${p.plan === "12m" ? " 12 เดือน" : " 6 เดือน"} →`}
+                </button>
+                {/* ข้อความผิดพลาดต้องอยู่ติดปุ่มที่กด ไม่ใช่ลอยอยู่บนสุดที่เลื่อนไม่เห็น */}
+                {errorFor === p.plan && errorMsg &&
+                  <p style={{ color: "#c22", fontSize: 13.5, margin: "10px 0 0", lineHeight: 1.6 }}>{errorMsg}</p>}
+              </>;
+            })()}
             {!onPick && !onUpgrade && ctaLabel && !isNow && !lower && <a className="btn full" href={`/form?plan=${p.plan}`}
               style={{ background: best ? BLUE : "#fff", color: best ? "#fff" : BLUE, border: `1.5px solid ${BLUE}`, textDecoration: "none", display: "block", textAlign: "center" }}>
               {current ? `อัปเป็นแพ็ก${p.plan === "12m" ? " 12 เดือน" : " 6 เดือน"} →` : ctaLabel}

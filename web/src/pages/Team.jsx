@@ -596,6 +596,14 @@ export default function Team() {
                 {g.brief && <div style={{ background: "#fbf7f3", borderRadius: 10, padding: 11, marginTop: 9, fontSize: 13.5, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
                   <Linkify text={g.brief} />
                 </div>}
+                {/* 🎬 คลิปที่ตัดแล้ว — ของสำคัญที่สุดของงานกราฟฟิก ต้องเด่นกว่าลิงก์อื่น
+                    คิมทัก 11 ส.ค.: "กราฟฟิคต้องดูจากคลิปที่ตัดคัทชนเสร็จแล้ว" */}
+                {g.clip_url && <a href={g.clip_url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "block", marginTop: 9, background: "#EEF4FF", border: "1.5px solid #b9cdf2", borderRadius: 10,
+                           padding: "10px 12px", fontSize: 13.5, fontWeight: 700, color: "#0b4da8", textDecoration: "none" }}>
+                  🎬 เปิดคลิปที่ตัดคัทชนแล้ว →
+                </a>}
+                {g.footage_url && <p style={{ margin: "7px 0 0", fontSize: 13 }}>🎞️ ฟุตเทจต้นฉบับ: <Linkify text={g.footage_url} /></p>}
                 {g.ref_links && <p style={{ margin: "7px 0 0", fontSize: 13.5, whiteSpace: "pre-wrap" }}>🔗 ตัวอย่าง: <Linkify text={g.ref_links} /></p>}
                 {g.work_url && <p style={{ margin: "7px 0 0", fontSize: 13.5 }}>🖼️ ไฟล์งาน: <Linkify text={g.work_url} /></p>}
                 {isFairy && !done && (
@@ -960,6 +968,8 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
   const [msg, setMsg] = useState("");
   const [showThread, setShowThread] = useState(false);
   const [showBrief, setShowBrief] = useState(false);   // สคริปต์เต็ม — พับไว้ก่อน กางเมื่ออยากอ่าน
+  // 🎬 ลิงก์คลิปที่ตัดแล้ว ก่อนส่งให้กราฟฟิก — เติมจากงานที่เคยส่งให้ลูกค้าดูแล้วให้อัตโนมัติ
+  const [gjClip, setGjClip] = useState(j.draft_url || "");
   const chip = dueChip(j.due_at);
   // 🐛 แก้ 7 ส.ค. — บรีฟในระบบมี 2 รูปแบบ แต่การ์ดงานอ่านเป็นแบบเดียว
   //    (ก) งานที่ลูกตาลรับบรีฟลูกค้ามาเอง  → {title, brief}
@@ -1069,12 +1079,23 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
                 🎨 ขอกราฟฟิกไว้แล้ว · <b>{d.graphic_statuses?.[g.status] || g.status}</b>
                 {g.work_url && <> · <Linkify text={g.work_url} /></>}
               </p>);
+            // 🎬 ต้องแปะลิงก์คลิปที่ตัดคัทชนแล้วก่อนถึงจะส่งให้กราฟฟิกได้ (คิมสั่ง 11 ส.ค.)
+            const cv = gjClip;
             return (
-              <button style={{ ...ghost, marginTop: 10, fontSize: 13, borderColor: "#d9c7ea", color: "#7a4fa3" }}
-                disabled={busy === "gj"}
-                onClick={() => post("/api/team/graphic/request", { order_id: j.order_id }, "gj")}>
-                🎨 ขอให้กราฟฟิกช่วยงานนี้
-              </button>);
+              <div style={{ marginTop: 10, background: "#FAF7FD", border: "1px solid #e4d8f2", borderRadius: 12, padding: "11px 12px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#7a4fa3", marginBottom: 3 }}>🎨 ขอให้กราฟฟิกช่วยงานนี้</div>
+                <div style={{ fontSize: 12.5, color: "#7c7268", marginBottom: 8, lineHeight: 1.65 }}>
+                  แปะลิงก์คลิปที่ตัดคัทชนแล้วด้วยนะคะ — กราฟฟิกต้องดูของจริงก่อนถึงจะวางอาร์ตเวิร์คให้ตรงจังหวะได้ค่ะ
+                </div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <input style={{ ...input, flex: 1, minWidth: 190 }} placeholder="ลิงก์คลิปที่ตัดแล้ว (Drive / Frame.io)"
+                    value={cv} onChange={e => setGjClip(e.target.value)} />
+                  <button style={{ ...btn(), background: "#7a4fa3" }} disabled={busy === "gj" || !cv.trim()}
+                    onClick={() => post("/api/team/graphic/request", { order_id: j.order_id, clip_url: cv.trim() }, "gj")}>
+                    ส่งให้กราฟฟิก
+                  </button>
+                </div>
+              </div>);
           })()}
         </div>
       )}

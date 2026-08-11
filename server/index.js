@@ -4567,10 +4567,13 @@ app.post("/api/team/graphic/request", async (req, res) => {
   let client = String(b.client || "").slice(0, 160) || null;
   let refs = String(b.ref_links || "").slice(0, 2000) || null;
   let due = b.due_at && /^\d{4}-\d{2}-\d{2}$/.test(String(b.due_at)) ? b.due_at : null;
+  // 🎬 ลิงก์คลิปที่ตัดคัทชนแล้ว — กราฟฟิกดูของจริงก่อนถึงจะวางอาร์ตเวิร์คให้ตรงจังหวะได้ (คิมสั่ง 11 ส.ค.)
+  let clip = String(b.clip_url || "").trim().slice(0, 1000) || null;
+  let footage = null;
 
   if (orderId) {
     // มาจากงานตัดต่อ — ดึงบรีฟเดิมมาให้อัตโนมัติ คนตัดจะได้ไม่ต้องพิมพ์ซ้ำ
-    const o = await one(`SELECT order_id, email, brief_json, ref_links, due_at, note FROM edit_orders WHERE order_id=$1`, [orderId]);
+    const o = await one(`SELECT order_id, email, brief_json, ref_links, due_at, note, draft_url, footage_url FROM edit_orders WHERE order_id=$1`, [orderId]);
     if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
     const already = await one(`SELECT gj_id FROM graphic_jobs WHERE from_order_id=$1 AND status NOT IN ('done','canceled')`, [orderId]);
     if (already) return res.json({ ok: true, already: true, gj_id: already.gj_id, message: "งานนี้ขอกราฟฟิกไว้แล้วค่ะ" });
@@ -4579,19 +4582,26 @@ app.post("/api/team/graphic/request", async (req, res) => {
     brief = brief || [bj.t && `หัวข้อ: ${bj.t}`, bj.h && `ฮุก: ${bj.h}`, o.note && `ลูกค้าสั่งเพิ่ม: ${o.note}`].filter(Boolean).join("\n");
     refs = refs || o.ref_links;
     due = due || (o.due_at ? ymd(o.due_at) : null);
+    clip = clip || o.draft_url || null;      // ยังไม่ได้แปะเอง → ใช้ตัวที่ส่งให้ลูกค้าดูแล้ว (ถ้ามี)
+    footage = o.footage_url || null;         // ฟุตเทจต้นฉบับ ไว้ให้กราฟฟิกดึงภาพนิ่ง/โลโก้
   }
   if (!title) return res.status(400).json({ ok: false, error: "NEED_TITLE", message: "ใส่ชื่องานด้วยนะคะ" });
+  // ⛔ ไม่มีคลิปให้ดู = กราฟฟิกทำงานไม่ได้ ต้องเด้งกลับไปถามตั้งแต่ตอนนี้ ดีกว่าให้ไปค้างที่แฟรี่
+  if (orderId && !clip) return res.status(400).json({ ok: false, error: "NEED_CLIP",
+    message: "แปะลิงก์คลิปที่ตัดคัทชนแล้วด้วยนะคะ กราฟฟิกต้องดูของจริงก่อนถึงจะวางอาร์ตเวิร์คให้ตรงจังหวะได้ค่ะ" });
 
   const gjId = uid("gj");
-  await run(`INSERT INTO graphic_jobs (gj_id,from_order_id,brief_id,title,brief,client,ref_links,assigned_to,requested_by,requested_by_name,due_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+  await run(`INSERT INTO graphic_jobs (gj_id,from_order_id,brief_id,title,brief,client,ref_links,assigned_to,requested_by,requested_by_name,due_at,clip_url,footage_url)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [gjId, orderId, String(b.brief_id || "") || null, title.slice(0, 200), brief, client, refs,
-     fairy.member_id, me.member_id, me.name, due]);
+     fairy.member_id, me.member_id, me.name, due, clip, footage]);
   if (orderId) teamComment(orderId, "ระบบ", `🎨 ${me.name} ขอให้ ${fairy.name} ช่วยทำอาร์ตเวิร์คงานนี้`);
-  if (fairy.email) sendEmail(fairy.email, `🎨 มีงานกราฟฟิกใหม่ — ${title}`,
+  if (fairy.email) sendEmail(fairy.email, `🎨 มีงานกราฟฟิกใหม่ — ${title.length > 60 ? title.slice(0, 57).trim() + "…" : title}`,
     wrap(`สวัสดีค่ะ ${fairy.name} 🩵<br><br><b>${me.name}</b> ส่งงานกราฟฟิกมาให้ค่ะ<br><br>` +
          `<b>${title}</b><br>${brief ? brief.replace(/\n/g, "<br>") : ""}<br><br>` +
-         `${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
+         (clip ? `🎬 <b>คลิปที่ตัดแล้ว:</b> <a href="${clip}">${clip}</a><br>` : "") +
+         (footage ? `🎞️ <b>ฟุตเทจต้นฉบับ:</b> <a href="${footage}">${footage}</a><br>` : "") +
+         `<br>${btn(appBaseUrl() + "/team", "เปิดหน้างานของฉัน")}`)).catch(() => {});
   res.json({ ok: true, gj_id: gjId, to: fairy.name, message: `ส่งให้ ${fairy.name} แล้วค่ะ` });
 });
 

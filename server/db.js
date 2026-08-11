@@ -218,6 +218,10 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_gj_assignee ON graphic_jobs(assigned_to, status);
     CREATE INDEX IF NOT EXISTS idx_gj_order ON graphic_jobs(from_order_id);
+    -- 🎬 คลิปที่ตัดคัทชนเสร็จแล้ว — กราฟฟิกต้องดูของจริงก่อนถึงจะวางอาร์ตเวิร์คให้ตรงจังหวะได้
+    -- คิมทัก 11 ส.ค.: "กราฟฟิคต้องดูจากคลิปที่ตัดคัทชนเสร็จแล้ว"
+    ALTER TABLE graphic_jobs ADD COLUMN IF NOT EXISTS clip_url TEXT;   -- คลิปที่คนตัดคัทชนแล้ว
+    ALTER TABLE graphic_jobs ADD COLUMN IF NOT EXISTS footage_url TEXT; -- ฟุตเทจต้นฉบับจากลูกค้า (ไว้ดึงภาพนิ่ง/โลโก้)
     -- 📎 ไฟล์แนบในบรีฟ (คิมสั่ง 7 ส.ค. "ขอใส่ได้ทุกประเภทไฟล์ รูป PDF หรือไฟล์อื่นๆ")
     -- เก็บลงฐานข้อมูลเลย เพราะ Railway ลบไฟล์บนดิสก์ทุกครั้งที่ deploy — เก็บบนดิสก์ = ไฟล์หายแน่นอน
     -- จำกัด 10MB/ไฟล์ ไฟล์ใหญ่กว่านั้นให้แปะลิงก์ Drive แทน (ลิงก์กดได้แล้ว)

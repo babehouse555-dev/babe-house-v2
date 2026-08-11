@@ -6071,6 +6071,28 @@ app.get("/api/admin/flowaccount/peek", async (req, res) => {
     q(`SELECT invoice_id, customer_name, status, doc_number, docs_json, error FROM tax_invoices WHERE docs_json IS NOT NULL OR status IN ('issued','failed') LIMIT 5`));
   res.json({ ok: true, rows: r });
 });
+// 🔎 ดูข้อมูลผู้จ่ายเงินจริงจาก Stripe — ใช้หาว่า "ชื่อจริง" ของลูกค้าอยู่ในระบบ Stripe ไหม
+//    (นักบัญชีขอ 11 ส.ค.: ชื่อบนใบต้องเป็นชื่อจริงที่ตรงกับยอดเงินที่เข้ามา)
+app.get("/api/admin/stripe-peek", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(409).json({ ok: false, error: "NO_KEY" });
+  const orderId = String(req.query?.order_id || "").trim();
+  const o = orderId ? await getOrder(orderId) : null;
+  const sid = String(req.query?.session_id || o?.provider_session_id || "");
+  if (!sid) return res.status(404).json({ ok: false, error: "NO_SESSION" });
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const ses = await stripe.checkout.sessions.retrieve(sid, { expand: ["payment_intent.latest_charge"] });
+    const ch = ses?.payment_intent?.latest_charge || null;
+    res.json({ ok: true, order_id: orderId,
+      customer_details: ses.customer_details || null,
+      charge_billing_name: ch?.billing_details?.name || null,
+      charge_method: ch?.payment_method_details?.type || null,
+      amount: (ses.amount_total || 0) / 100, paid: ses.payment_status,
+      created: new Date((ses.created || 0) * 1000).toISOString() });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 300) }); }
+});
 app.get("/api/admin/flowaccount/ping", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json(await flowAccountPing());

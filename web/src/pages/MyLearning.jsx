@@ -13,6 +13,9 @@ import { workshopForCourse, shouldSuggestWorkshop } from "../workshopMap.js";
 const BLUE = "var(--blue)";
 const thDate = (iso) => iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "";
 const thDay = (iso) => iso ? new Date(iso).toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" }) : "";
+// ปุ่มเม็ดยาสำหรับลิงก์นอกเว็บ (แผนที่/ลานจอด/กลุ่มไลน์) — สูง 34px กดง่ายบนมือถือ
+const pillLink = { display: "inline-block", background: "#fff", border: `1.5px solid ${BLUE}`, color: BLUE,
+  borderRadius: 20, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" };
 
 // หัวข้อหมวด — ใช้หน้าตาเดียวกันทุกหมวด เพื่อให้อ่านเป็น "ระบบเดียว" ไม่ใช่ของแปะเพิ่ม
 export function SectionHead({ icon, title, count, right }) {
@@ -189,20 +192,24 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
                   📍 {b.location || "จะแจ้งสถานที่อีกครั้งก่อนวันเรียนค่ะ"}
                   {b.qty > 1 && <><br />👥 {b.qty} ที่นั่ง</>}
                 </div>
-                {/* 🗺️ ที่อยู่เต็ม + ลิงก์แผนที่ + ที่จอดรถ (คิมทัก 7 ส.ค. "ไม่มี location ให้กดอะ")
-                    เดิมข้อมูลนี้อยู่แต่ในอีเมลยืนยัน — ลูกค้าที่หาเมลไม่เจอวันงานจะไม่มีทางรู้ */}
-                {b.note && <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #c9dcf2", fontSize: 12.5, lineHeight: 1.75 }}>
-                  {String(b.note).split(/\n+/).map(x => x.trim()).filter(Boolean).map((ln, i) => {
-                    const url = ln.match(/https?:\/\/\S+/);
-                    if (url && ln.trim() === url[0]) return (
-                      <a key={i} href={url[0]} target="_blank" rel="noopener noreferrer"
-                        style={{ display: "inline-block", margin: "4px 0 8px", background: "#fff", border: "1px solid var(--blue)",
-                          color: "var(--blue)", borderRadius: 20, padding: "6px 14px", fontWeight: 700, fontSize: 12.5 }}>
-                        🗺️ เปิดแผนที่
-                      </a>);
-                    return <div key={i}>{ln}</div>;
-                  })}
-                </div>}
+                {/* 🗺️ ปุ่มแผนที่ + ลานจอด + กลุ่มไลน์ — ต้องมีเสมอ (คิมทัก 11 ส.ค. "อยากกด maps ได้จากหน้านี้ด้วย")
+                    เดิมปุ่มมาจากลิงก์ที่แอดมินพิมพ์ไว้ในโน้ตของรอบเท่านั้น รอบไหนลืมพิมพ์ = ลูกค้าไม่มีแผนที่
+                    ตอนนี้เซิร์ฟเวอร์ส่ง map_url/park_url มาให้ทุกครั้ง (ดูที่ /api/workshops/my) */}
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #c9dcf2" }}>
+                  <div className="row" style={{ gap: 7, flexWrap: "wrap" }}>
+                    {b.map_url && <a href={b.map_url} target="_blank" rel="noopener noreferrer" style={pillLink}>🗺️ เปิดแผนที่</a>}
+                    {b.park_url && <a href={b.park_url} target="_blank" rel="noopener noreferrer" style={pillLink}>🅿️ ลานจอดรถ</a>}
+                    {b.line_url && <a href={b.line_url} target="_blank" rel="noopener noreferrer" style={{ ...pillLink, borderColor: "#06C755", color: "#06902F" }}>💬 เข้ากลุ่มไลน์</a>}
+                  </div>
+                  {b.contact_phone && <div className="muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>
+                    จอดรถเรียบร้อยแล้วโทรแจ้ง <b>{b.contact_phone}</b> เดี๋ยวมีรถไปรับค่ะ
+                  </div>}
+                  {/* ข้อความอื่นที่ทีมพิมพ์ไว้ในโน้ตของรอบ (ตัดลิงก์แผนที่ออก เพราะขึ้นเป็นปุ่มไปแล้ว) */}
+                  {b.note && <div style={{ fontSize: 12.5, lineHeight: 1.75, marginTop: 8 }}>
+                    {String(b.note).split(/\n+/).map(x => x.trim()).filter(ln => ln && !/^https?:\/\/\S+$/.test(ln))
+                      .map((ln, i) => <div key={i}>{ln}</div>)}
+                  </div>}
+                </div>
               </div>
             ))}
           </>}

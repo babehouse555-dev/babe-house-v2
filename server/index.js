@@ -2575,6 +2575,16 @@ async function seatsLeft(sessionId) {
   if (!r) return null;
   return { seats: Number(r.seats || 0), taken: Number(r.taken || 0), left: Math.max(0, Number(r.seats || 0) - Number(r.taken || 0)) };
 }
+// 📍 ที่ตั้ง Babe House — ใช้ร่วมกันทั้งอีเมลยืนยันและหน้าบัญชีลูกค้า
+// แก้ที่เดียวตรงนี้ที่เดียว เปลี่ยนพร้อมกันทุกที่ (ย้ายออฟฟิศเมื่อไหร่ไม่ต้องไล่แก้หลายจุด)
+const WORKSHOP_PLACE = {
+  address: "Babe House Head Office (ลาดพร้าว 41) บ้านเลขที่ 138/39",
+  mapHouse: "https://maps.app.goo.gl/oiUkRA726cQZZnG79",
+  mapPark: "https://maps.app.goo.gl/kzbrp27cp4FdSrxt8",
+  igPost: "https://www.instagram.com/p/DPduCn3ErdD/",
+  line: "https://line.me/ti/g/qY8dkD0R33",
+  phone: "081-950-9192 (ดิส)",
+};
 app.get("/api/workshops", async (req, res) => {
   try {
     const ws = await q(`SELECT * FROM workshops WHERE active ORDER BY seq, created_at`);
@@ -2602,7 +2612,21 @@ app.get("/api/workshops/my", async (req, res) => {
     const rows = await q(`SELECT b.booking_id, b.qty, b.status, b.created_at, s.session_id, s.starts_at, s.location, s.note, s.summary_url, s.summary_note, w.name AS workshop_name, w.workshop_id
       FROM workshop_bookings b JOIN workshop_sessions s ON s.session_id=b.session_id JOIN workshops w ON w.workshop_id=b.workshop_id
       WHERE lower(b.email)=lower($1) AND b.status='paid' ORDER BY s.starts_at DESC`, [email]);
-    res.json({ ok: true, bookings: rows });
+    // 🗺️ ปุ่มแผนที่ต้องมีเสมอ — คิมทัก 11 ส.ค. "อยากกด maps ได้จากหน้านี้ด้วย"
+    // เดิมปุ่มโผล่ก็ต่อเมื่อแอดมินพิมพ์ลิงก์ไว้ในช่องโน้ตของรอบนั้น · รอบไหนลืมพิมพ์ = ลูกค้าไม่มีแผนที่เลย
+    // ตอนนี้ถ้าเรียนที่ Babe House ระบบใส่ลิงก์บ้าน+ลานจอดให้เอง · ถ้าเป็นสถานที่อื่นก็ค้นแผนที่จากชื่อสถานที่ให้
+    const atHQ = (loc) => !String(loc || "").trim() || /babe\s*house/i.test(String(loc));
+    res.json({ ok: true, bookings: rows.map(b => {
+      const noteUrl = String(b.note || "").match(/https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|www\.google\.[^/]+\/maps)\S*/);
+      return { ...b,
+        map_url: noteUrl ? noteUrl[0]
+          : atHQ(b.location) ? WORKSHOP_PLACE.mapHouse
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.location)}`,
+        park_url: atHQ(b.location) ? WORKSHOP_PLACE.mapPark : null,
+        line_url: atHQ(b.location) ? WORKSHOP_PLACE.line : null,
+        contact_phone: atHQ(b.location) ? WORKSHOP_PLACE.phone : null,
+      };
+    }) });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 app.get("/api/workshops/:id", async (req, res) => {
@@ -2642,12 +2666,15 @@ app.post("/api/workshops/book", rateLimit(20, M10), async (req, res) => {
     if (!avail || avail.left < qty) return res.status(409).json({ ok: false, error: "SOLD_OUT", message: avail?.left ? `เหลือที่นั่งแค่ ${avail.left} ที่ค่ะ` : "รอบนี้เต็มแล้วค่ะ" });
     const unit = Number(s.price_override || s.ws_price || 0);
     if (!(unit > 0)) return res.status(400).json({ ok: false, error: "BAD_PRICE" });
-    if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
 
     let amountSatang = Math.round(unit * 100) * qty;
     const promo = await redeemPromo(String(req.body?.code || ""), email, amountSatang);
     if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
     amountSatang = promo.final;
+    // ⚠️ เช็ค Stripe หลังคิดส่วนลดเท่านั้น — บั๊กเดียวกับที่แก้ไปแล้วฝั่งซื้อคอร์ส (7 ส.ค.)
+    //    ถ้าเช็คก่อน "โค้ดแจกฟรี 100%" ที่ไม่ต้องใช้ Stripe เลย จะโดนปฏิเสธว่า "ระบบชำระเงินยังไม่พร้อม"
+    if (amountSatang > 0 && !String(process.env.STRIPE_SECRET_KEY || "").trim())
+      return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
 
     const bookingId = uid("wsb");
     const origin = appBaseUrl();
@@ -2693,14 +2720,7 @@ async function finalizeWorkshopBooking(b) {
   // 📋 รายละเอียดคลาสฉบับเต็ม — ยกมาจากสคริปต์ที่ทีมพิมพ์ส่งลูกค้าเองทุกครั้ง (คิมส่งให้ 7 ส.ค.)
   //    เดิมทีมต้องพิมพ์/ก๊อปเองหลังลูกค้าจ่ายทุกคน เสี่ยงลืม เสี่ยงพิมพ์ตกหล่น
   //    ตอนนี้ระบบส่งให้เองทันทีที่เงินเข้า · แก้ข้อความได้ที่ตัวแปรด้านล่างโดยไม่ต้องแก้ที่อื่น
-  const WS = {
-    address: "Babe House Head Office (ลาดพร้าว 41) บ้านเลขที่ 138/39",
-    mapHouse: "https://maps.app.goo.gl/oiUkRA726cQZZnG79",
-    mapPark: "https://maps.app.goo.gl/kzbrp27cp4FdSrxt8",
-    igPost: "https://www.instagram.com/p/DPduCn3ErdD/",
-    line: "https://line.me/ti/g/qY8dkD0R33",
-    phone: "081-950-9192 (ดิส)",
-  };
+  const WS = WORKSHOP_PLACE;
   // ⏰ เวลาเรียน + เวลารับส่ง ต้องคิดจาก "รอบที่ลูกค้าจองจริง" เท่านั้น ห้ามพิมพ์ตายตัว
   //    พลอยทัก 10 ส.ค.: เวลารับส่งไม่ตรงกัน — เพราะเดิมอีเมลฟิกไว้ 13.00-16.30 และรับส่ง 12.30/12.40/12.50
   //    แต่แต่ละรอบเลิกไม่เท่ากัน (16.00 บ้าง 16.30 บ้าง) ลูกค้าเลยได้ข้อมูลไม่ตรงกับรอบตัวเอง

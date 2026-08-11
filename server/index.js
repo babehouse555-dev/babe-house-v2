@@ -3613,11 +3613,11 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
 // จะไม่มีเมลถึงใครเลย งานนอนอยู่ในระบบเงียบๆ ซึ่งคือเคสที่อันตรายที่สุด
 async function notifyOpsNewEditJob(orderId) {
   const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [orderId]);
-  if (!o) return;
+  if (!o) return { ok: false, reason: "ORDER_NOT_FOUND" };
   const br = safeJson(o.brief_json) || {};
   const title = br.title || (o.script_day != null ? `สคริปต์วันที่ ${o.script_day}` : "งานตัดต่อ");
   const waiting = o.status === "awaiting_files";
-  sendEmail(OPS_EMAIL, `🎬 ลูกค้าสั่งงานตัดต่อใหม่ — ${title}`, wrap(
+  return sendEmail(OPS_EMAIL, `🎬 ลูกค้าสั่งงานตัดต่อใหม่ — ${title}`, wrap(
     `<b>${o.email}</b> สั่งงานเข้ามาแล้วค่ะ<br><br>` +
     `📌 <b>งาน:</b> ${title}<br>` +
     (br.brief ? `📝 <b>บรีฟ:</b> ${String(br.brief).slice(0, 400).replace(/\n/g, "<br>")}<br>` : "") +
@@ -3625,7 +3625,7 @@ async function notifyOpsNewEditJob(orderId) {
     (o.note ? `💬 <b>โน้ตจากลูกค้า:</b> ${String(o.note).slice(0, 300)}<br>` : "") +
     `<br>${waiting ? "⏳ <b>ยังไม่ส่งไฟล์มา</b> — รอลูกค้าแนบฟุตเทจก่อนถึงจะเริ่มจับเวลา" : `⏰ <b>กำหนดส่ง:</b> ${o.due_at ? thDate(o.due_at) : "-"}`}<br><br>` +
     `${btn(appBaseUrl() + "/team", "เปิดหน้างานของทีม")}`
-  )).catch(() => {});
+  )).then(sent => ({ ok: !!sent, to: OPS_EMAIL, title })).catch(e => ({ ok: false, error: e.message, to: OPS_EMAIL }));
 }
 // 🤖 ให้ระบบเลือกคนทำงานชิ้นนี้ + แจ้งเมล (ใช้ร่วมกันทั้งงานจากเว็บและงานที่ทีมกรอกเอง)
 async function autoAssignJob(orderId) {
@@ -5710,7 +5710,15 @@ app.post("/api/admin/email-test", async (req, res) => {
   const to = String(req.body?.to || "").trim();
   lastEmailError = null;
   const ok = to ? await sendEmail(to, "Babe House · email test", wrap("email test ✓")) : false;
-  res.json({ ok: true, sent: ok, from: process.env.APP_FROM_EMAIL || "(default onboarding@resend.dev)", key_present: !!process.env.RESEND_API_KEY, key_prefix: String(process.env.RESEND_API_KEY || "").slice(0, 5), last_error: lastEmailError });
+  // 🔎 ops_email = ปลายทางจริงของเมลแจ้งเตือนทุกฉบับ · ต้องดูได้ ไม่งั้นเวลาเมลไม่เข้าจะเดาไม่ออกว่ามันไปไหน
+  res.json({ ok: true, sent: ok, from: process.env.APP_FROM_EMAIL || "(default onboarding@resend.dev)", key_present: !!process.env.RESEND_API_KEY, key_prefix: String(process.env.RESEND_API_KEY || "").slice(0, 5), ops_email: OPS_EMAIL, ops_email_from_env: !!process.env.OPS_EMAIL, last_error: lastEmailError });
+});
+// 🔁 ยิงเมลแจ้งงานตัดต่อซ้ำ — ไว้ตรวจว่าเมลออกจริงไหม + กู้เคสที่เมลหลุด
+app.post("/api/admin/edit-order/renotify", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  lastEmailError = null;
+  const r = await notifyOpsNewEditJob(String(req.body?.order_id || ""));
+  res.json({ ok: true, result: r, last_error: lastEmailError });
 });
 app.post("/api/admin/codes", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

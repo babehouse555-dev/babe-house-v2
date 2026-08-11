@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import "./styles.css";
 import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
-import { ACADEMY_LIVE, PREVIEW } from "./config.js";
+import { ACADEMY_LIVE, EDIT_LIVE, PREVIEW } from "./config.js";
 import { initPixel, track as fbTrack } from "./pixel.js";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
@@ -37,6 +37,8 @@ function TopBar() {
           {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
           {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
           {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
+          {/* 🎬 พลอยขอ 11 ส.ค. — ให้จ้างทีมตัดต่อได้จากเมนูเลย ไม่ต้องเข้าผ่านหน้าเล่มอย่างเดียว */}
+          {EDIT_LIVE && <Link to="/edit" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>จ้างทีมตัดต่อ</Link>}
           <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>
           <LangToggle />
         </div>

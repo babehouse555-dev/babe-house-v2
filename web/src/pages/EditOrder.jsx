@@ -65,6 +65,13 @@ export default function EditOrder() {
           <div className="muted" style={{ fontSize: 12.5, marginTop: 5, lineHeight: 1.6 }}>
             เข้าเล่มของคุณ → แท็บคอนเทนต์ → แตะวันที่อยากให้ทีมตัด แล้วกด “ให้ทีมตัดคลิปนี้” ได้เลยค่ะ
           </div>
+          {/* 📝 งานนอกแผน 30 วัน — พลอยทัก 11 ส.ค. "ถ้าเขามีโปรเจคแยกล่ะ จะสั่งตรงไหน" */}
+          <Link to="/edit/new?free=1" className="btn full" style={{ marginTop: 13, background: "#4B2FA8", textAlign: "center", display: "block", textDecoration: "none" }}>
+            ＋ บรีฟงานนอกแผน 30 วัน
+          </Link>
+          <div className="muted center" style={{ fontSize: 12, marginTop: 7, lineHeight: 1.6 }}>
+            มีคลิปที่ไม่ได้อยู่ในแผน เช่น งานอีเวนต์ · รีวิวสินค้า · คลิปสปอนเซอร์ — บรีฟตรงนี้ได้เลย ใช้เครดิตใบเดียวกันค่ะ
+          </div>
         </div>
       )}
 

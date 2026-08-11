@@ -56,12 +56,20 @@ export default function Dashboard() {
   const [editTile, setEditTile] = useState(null);  // ช่องที่กำลังแก้
   // 🎟️ เครดิตตัดต่อ: เหลือกี่คลิป + วันไหนสั่งให้ทีมตัดไปแล้ว
   const [editCredits, setEditCredits] = useState(0);
-  const [editDays, setEditDays] = useState(new Set());
+  const [editDays, setEditDays] = useState(new Set());       // วันที่สั่งตัดไว้ (ทุกสถานะ)
+  const [editDone, setEditDone] = useState(new Set());        // วันที่ทีมส่งงานจบแล้ว — ป้ายต้องเปลี่ยน ไม่ใช่ค้างที่ "กำลังตัด"
   const [usingCredit, setUsingCredit] = useState(false);
   const loadEditCredits = () => {
     if (demo || !session.token || !bpId) return;
     api(`/api/edit/credits?blueprint_id=${encodeURIComponent(bpId)}`, { token: session.token })
-      .then(d => { setEditCredits(Number(d.credits || 0)); setEditDays(new Set((d.used_days || []).map(x => Number(x.day)))); })
+      .then(d => {
+        setEditCredits(Number(d.credits || 0));
+        const used = d.used_days || [];
+        setEditDays(new Set(used.map(x => Number(x.day))));
+        // 🎬 พลอยทัก 11 ส.ค.: "กดยืนยันรับคลิปไปแล้ว ทำไมยังขึ้นทีมกำลังตัด?"
+        //    เดิมป้ายดูแค่ว่า "เคยสั่งวันนี้ไหม" ไม่ได้ดูสถานะ → งานจบแล้วป้ายก็ยังค้าง
+        setEditDone(new Set(used.filter(x => x.status === "done").map(x => Number(x.day))));
+      })
       .catch(() => {});
   };
   useEffect(loadEditCredits, [bpId, demo]);   // eslint-disable-line
@@ -429,7 +437,7 @@ export default function Dashboard() {
               <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
                 <span style={{ fontWeight: 800, fontSize: 14 }}>
                   🎬 เครดิตตัดต่อคงเหลือ <span style={{ color: "var(--blue)" }}>{editCredits} คลิป</span>
-                  {editDays.size > 0 && <span className="muted" style={{ fontWeight: 500 }}> · สั่งทีมตัดแล้ว {editDays.size} วัน</span>}
+                  {editDays.size > 0 && <span className="muted" style={{ fontWeight: 500 }}> · สั่งทีมตัดแล้ว {editDays.size} วัน{editDone.size > 0 ? ` · ส่งงานแล้ว ${editDone.size}` : ""}</span>}
                 </span>
                 <Link className="link" to="/edit" style={{ fontSize: 13, fontWeight: 700 }}>ซื้อเครดิตเพิ่ม →</Link>
               </div>
@@ -443,7 +451,9 @@ export default function Dashboard() {
               <div className="between"><span style={{ fontWeight: 800, fontSize: 14, color: done ? "#1a7f43" : "inherit" }}>{done ? "✓ " : ""}{t("db_day")} {c.d}</span><span style={{ width: 9, height: 9, borderRadius: "50%", background: G_COLORS[c.g] || "var(--muted)", display: "inline-block" }} /></div>
               <div style={{ fontSize: 10, color: G_COLORS[c.g] || "var(--muted)", fontWeight: 700, margin: "2px 0 5px" }}>{G_LABEL[c.g] || c.g}</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", color: done ? "#1a7f43" : "inherit" }}>{c.t}</div>
-              {edited && <div style={{ marginTop: 6, fontSize: 10.5, fontWeight: 800, color: "#6E63A6", background: "#F0EBFA", borderRadius: 20, padding: "3px 8px", display: "inline-block" }}>🎬 ทีมกำลังตัด</div>}
+              {edited && (editDone.has(c.d)
+                ? <div style={{ marginTop: 6, fontSize: 10.5, fontWeight: 800, color: "#1a7f43", background: "#E4F5EB", borderRadius: 20, padding: "3px 8px", display: "inline-block" }}>✅ ทีมส่งงานแล้ว</div>
+                : <div style={{ marginTop: 6, fontSize: 10.5, fontWeight: 800, color: "#6E63A6", background: "#F0EBFA", borderRadius: 20, padding: "3px 8px", display: "inline-block" }}>🎬 ทีมกำลังตัด</div>)}
             </button>; })}
           </div>
           {script && (() => {
@@ -474,8 +484,11 @@ export default function Dashboard() {
               {EDIT_LIVE && !demo && (() => {
                 const cal = (bp.calendar || []).find(c => Number(c.d) === Number(script.d)) || {};
                 const ordered = editDays.has(Number(script.d));
-                const box = { display: "flex", gap: 12, alignItems: "center", textDecoration: "none", color: "inherit",
-                  marginTop: 14, borderRadius: 14, padding: "13px 15px", width: "100%", textAlign: "left" };
+                // 🎬 พลอยทัก 11 ส.ค.: "ตอนนี้ดูกลืนกับแคปชั่น อยากให้แยกออกมาเป็นก้อน สีชัดขึ้น เด่นขึ้น"
+                //    → เว้นระยะห่างมากขึ้น · เงาเข้มขึ้น · ตัวหนังสือ CTA เข้มขึ้นให้อ่านออกจริง
+                const box = { display: "flex", gap: 13, alignItems: "center", textDecoration: "none", color: "inherit",
+                  marginTop: 26, marginBottom: 6, borderRadius: 16, padding: "16px 17px", width: "100%", textAlign: "left",
+                  boxShadow: "0 6px 18px rgba(92,60,190,.16)", cursor: "pointer" };
 
                 // สั่งไปแล้ว = บอกสถานะ ไม่ต้องชวนซื้ออีก
                 if (ordered) return (
@@ -500,14 +513,14 @@ export default function Dashboard() {
                         คุณมีเครดิตอยู่ {editCredits} คลิป · กดแล้วไปกรอกรายละเอียด <b>ยังไม่หักเครดิต</b>
                       </span>
                     </span>
-                    <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>สั่งงาน →</span>
+                    <span style={{ background: "#4B2FA8", color: "#fff", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap", borderRadius: 999, padding: "9px 16px" }}>สั่งงาน →</span>
                   </button>
                 );
 
                 // ยังไม่มีเครดิต = ชวนไปซื้อ
                 return (
                   <Link to={`/edit?bp=${encodeURIComponent(bpId || "")}&cycle=${encodeURIComponent(cycle || "")}`}
-                    style={{ ...box, background: "linear-gradient(135deg,#F3EFFC,#FAF8FE)", border: "1px solid #DDD2F0" }}>
+                    style={{ ...box, background: "linear-gradient(135deg,#EDE6FB,#F7F3FE)", border: "1.5px solid #C4B2EC" }}>
                     <span style={{ fontSize: 24 }}>🎬</span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontWeight: 800, fontSize: 14.5 }}>ไม่มีเวลาตัดคลิปนี้? ให้ทีมทำให้</span>
@@ -515,7 +528,7 @@ export default function Dashboard() {
                         ซื้อเครดิตตัดต่อไว้ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง
                       </span>
                     </span>
-                    <span style={{ color: "#7C5CE6", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap" }}>ดูราคา →</span>
+                    <span style={{ background: "#4B2FA8", color: "#fff", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap", borderRadius: 999, padding: "9px 16px" }}>ดูตัวอย่างงาน + ราคา →</span>
                   </Link>
                 );
               })()}

@@ -36,7 +36,14 @@ export default function EditBrief() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
+  // 🆕 งานนอกแผน 30 วัน — ไม่ผูกกับเล่ม/วันไหน (พลอยขอ 11 ส.ค.)
+  const freeJob = sp.get("free") === "1";
+  const [jobTitle, setJobTitle] = useState("");
   useEffect(() => {
+    if (freeJob) {
+      api(`/api/edit/credits`, { token: session.token }).then(d => setCredits(d.credits ?? 0)).catch(() => {});
+      return;
+    }
     if (!bpId || !cycle) return;
     const uid = sp.get("user_id") || "";
     api(`/api/blueprints/latest?user_id=${encodeURIComponent(uid)}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId)}`)
@@ -51,10 +58,11 @@ export default function EditBrief() {
   async function submit() {
     setBusy(true); setErr("");
     try {
-      const r = await api("/api/edit/use-credit", { method: "POST", token: session.token, body: {
-        blueprint_id: bpId, billing_cycle: cycle, script_day: day,
-        brief: { d: day, t: cal.t || "", h: cal.h || "", script },
-        ref_picks: picks, ...f } });
+      const r = await api("/api/edit/use-credit", { method: "POST", token: session.token, body: freeJob
+        ? { script_day: null, job_title: jobTitle, ref_picks: picks, ...f }
+        : { blueprint_id: bpId, billing_cycle: cycle, script_day: day,
+            brief: { d: day, t: cal.t || "", h: cal.h || "", script },
+            ref_picks: picks, ...f } });
       nav(`/edit/${r.order_id}`);
     } catch (e) {
       setErr(e.message || "ส่งไม่สำเร็จ ลองใหม่นะคะ");
@@ -62,15 +70,23 @@ export default function EditBrief() {
     }
   }
 
-  const back = `/dashboard?user_id=${encodeURIComponent(sp.get("user_id") || "")}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId)}`;
+  const back = freeJob ? "/edit"
+    : `/dashboard?user_id=${encodeURIComponent(sp.get("user_id") || "")}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId)}`;
 
-  if (!day || !bpId) return <div className="wrap narrow page-pad"><p className="muted">ลิงก์ไม่ถูกต้องค่ะ</p></div>;
+  if (!freeJob && (!day || !bpId)) return <div className="wrap narrow page-pad"><p className="muted">ลิงก์ไม่ถูกต้องค่ะ</p></div>;
 
   return (
     <div className="wrap narrow page-pad">
       <Link className="link" to={back}>← กลับไปที่เล่มของฉัน</Link>
       <div className="brand" style={{ marginTop: 12 }}>BABE HOUSE · ให้ทีมตัดคลิป</div>
-      <h1 className="page" style={{ marginBottom: 4 }}>คลิปวันที่ {day}</h1>
+      <h1 className="page" style={{ marginBottom: 4 }}>{freeJob ? "บรีฟงานตัดต่อ" : `คลิปวันที่ ${day}`}</h1>
+      {freeJob && (
+        <div className="field" style={{ marginTop: 14 }}>
+          <label>งานนี้เกี่ยวกับอะไร <span className="muted">(ตั้งชื่อสั้นๆ ให้ทีมเรียกงานนี้)</span></label>
+          <input value={jobTitle} onChange={e => setJobTitle(e.target.value)}
+            placeholder="เช่น คลิปรีวิวสินค้าใหม่ · คลิปงานอีเวนต์เมื่อวาน" />
+        </div>
+      )}
       <p className="sub">{cal.t || "ให้ทีม Babe House ตัดคลิปนี้ให้"}</p>
 
       {/* ✅ บอกให้ชัดตั้งแต่แรกว่ายังไม่หักอะไร ลูกค้าจะได้กล้ากรอก */}

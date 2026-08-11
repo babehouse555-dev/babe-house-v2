@@ -3502,10 +3502,17 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
   const email = await authEmail(req);
   if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
   const bp = String(req.body?.blueprint_id || "").trim();
-  const day = Number(req.body?.script_day);
-  if (!bp || !Number.isFinite(day)) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องระบุเล่มและวัน" });
+  const rawDay = req.body?.script_day;
+  const day = (rawDay === null || rawDay === undefined || rawDay === "") ? null : Number(rawDay);
+  // 🆕 งานนอกแผน 30 วัน (พลอยขอ 11 ส.ค. "ถ้าเขามีโปรเจคแยกล่ะ จะสั่งตรงไหน")
+  //    ไม่ต้องผูกกับเล่ม/วันไหน — บรีฟเองได้เลย ใช้เครดิตใบเดียวกัน
+  const isFree = day === null;
+  if (!isFree && (!bp || !Number.isFinite(day)))
+    return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องระบุเล่มและวัน" });
+  if (isFree && !String(req.body?.note || "").trim() && !String(req.body?.footage_url || "").trim())
+    return res.status(400).json({ ok: false, error: "NEED_BRIEF", message: "ใส่รายละเอียดงานหรือลิงก์ฟุตเทจอย่างน้อย 1 อย่างนะคะ" });
   try {
-    const dup = await one(`SELECT order_id FROM edit_orders WHERE lower(email)=lower($1) AND blueprint_id=$2 AND script_day=$3`, [email, bp, day]);
+    const dup = isFree ? null : await one(`SELECT order_id FROM edit_orders WHERE lower(email)=lower($1) AND blueprint_id=$2 AND script_day=$3`, [email, bp, day]);
     if (dup) return res.status(409).json({ ok: false, error: "ALREADY_ORDERED", order_id: dup.order_id, message: "วันนี้สั่งให้ทีมตัดไปแล้วค่ะ" });
     // หักเครดิตแบบมีเงื่อนไข — ถ้าเครดิตไม่พอจะไม่มีแถวไหนถูกแก้ (กันติดลบตอนกดรัวๆ)
     const upd = await run(`UPDATE customers SET edit_credits=edit_credits-1 WHERE lower(email)=lower($1) AND COALESCE(edit_credits,0) > 0`, [email]);
@@ -3521,8 +3528,10 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
     const dueNow = hasFootage ? addWorkDays(new Date(), leadDaysFor(1)).toISOString() : null;
     await run(`INSERT INTO edit_orders (order_id,email,blueprint_id,billing_cycle,script_day,brief_json,clips,price_per_clip,amount_satang,payment_status,provider,paid_by,note,footage_url,voice_url,ref_links,ref_picks,status,files_ready_at,due_at)
       VALUES ($1,lower($2),$3,$4,$5,$6,1,0,0,'paid','credit','credit',$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [id, email, bp, req.body?.billing_cycle || null, day,
-       JSON.stringify(await pickBrief(req.body?.brief, bp, day)).slice(0, 20000),
+      [id, email, bp || null, req.body?.billing_cycle || null, day,
+       JSON.stringify(isFree
+         ? { title: String(req.body?.job_title || "งานนอกแผน 30 วัน").slice(0, 200), brief: String(req.body?.note || "").slice(0, 4000) }
+         : await pickBrief(req.body?.brief, bp, day)).slice(0, 20000),
        String(req.body?.note || "").slice(0, 2000),
        String(req.body?.footage_url || "").slice(0, 1000) || null,
        String(req.body?.voice_url || "").slice(0, 1000) || null,
@@ -3532,7 +3541,7 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
        hasFootage ? new Date().toISOString() : null,
        dueNow]);
     const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
-    res.json({ ok: true, order_id: id, script_day: day, credits_left: Number(c?.x || 0) });
+    res.json({ ok: true, order_id: id, script_day: day, free_job: isFree, credits_left: Number(c?.x || 0) });
     // 🤖 มอบหมายให้เองทันที (คิมทัก 7 ส.ค. — งานจากเว็บเคยค้างที่ "ยังไม่มีคนทำ" เพราะไม่มีใครสั่งให้ระบบเลือก
     //    งานที่ลูกตาลกรอกเองมีอยู่แล้ว แต่ทางนี้ตกหล่นไป) · ตอบลูกค้าไปก่อน แล้วค่อยทำเบื้องหลัง
     autoAssignJob(id).catch(e => console.error("auto-assign", e.message));

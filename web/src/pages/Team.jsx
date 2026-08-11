@@ -131,7 +131,11 @@ export default function Team() {
   const [note, setNote] = useState({});
   const [open, setOpen] = useState({});
   const [showDone, setShowDone] = useState(false);
-  const [sub, setSub] = useState("review");   // แท็บย่อย: รอตรวจ / งานฉัน / ดูรายคน
+  // แท็บย่อย: ลูกค้าส่งจุดแก้ / รอตรวจ / งานฉัน / ดูรายคน
+  // ⚠️ null = "ยังไม่ได้เลือกเอง" → ให้ระบบเปิดแท็บแรกที่มีงานจริงให้ (ดู autoSub ด้านล่าง)
+  //    ของเดิมตั้งไว้ที่ "รอฉันตรวจ" ตายตัว ซึ่งของคนตัดมักว่าง เปิดมาเจอ "ไม่มีงานในหมวดนี้ค่ะ"
+  //    ทั้งที่มีงานรออยู่อีกแท็บ — คิมเจอ 11 ส.ค. ลูกค้าส่งรอบแก้แล้วทีมไม่เห็น
+  const [sub, setSub] = useState(null);
   const [person, setPerson] = useState(null); // ดูงานของใครอยู่ (มุมมองรายคน)
   const [ov, setOv] = useState(null);
   const [wl, setWl] = useState(null);      // 📅 ตารางงานทุกคน (AE/คิม)
@@ -250,6 +254,16 @@ export default function Team() {
       {tab === "jobs" && (() => {
         const inReview = active.filter(j => reviewGate(j, me));
         const myJobs = active.filter(j => j.assigned_to === me.member_id && !reviewGate(j, me));
+        // 🔁 ลูกค้าส่งจุดแก้เข้ามาแล้ว ยังไม่มีใครลงมือ — ด่วนที่สุดในบรรดางานทั้งหมด
+        //    คิมเจอเอง 11 ส.ค.: ส่งรอบแก้จากฝั่งลูกค้าแล้ว "ไม่ขึ้นทั้งของโบแล้วก็ของตาล"
+        //    ของเดิมมันขึ้นอยู่ (อยู่ในแท็บ "งานที่ฉันต้องตัด") แต่หน้าเปิดมาที่แท็บ "รอฉันตรวจ" ซึ่งว่าง
+        //    คนเปิดมาเห็น "ไม่มีงานในหมวดนี้ค่ะ" ก็ปิดไป — งานลูกค้าเลยไม่มีใครแตะ
+        const revising = active.filter(j => j.status === "revising" && (isOwner || isAE || j.assigned_to === me.member_id));
+        // เปิดมาที่แท็บแรกที่ "มีงานจริง" เสมอ — ไล่จากด่วนสุดไปหาน้อยสุด
+        // ถ้าไม่มีงานเลยค่อยตกไปที่ "งานที่ฉันต้องตัด" (จะขึ้นว่าไม่มีงาน ซึ่งเป็นความจริง)
+        const autoSub = revising.length ? "revising" : inReview.length ? "review"
+                      : myJobs.length ? "mine" : (isOwner || isAE) ? "people" : "mine";
+        const cur = sub || autoSub;
 
         // ── มุมมองรายคน (เฉพาะคนที่ดูงานคนอื่นได้: AE / คิม / หัวหน้า) ──
         const canSeeTeam = isOwner || isAE || me.role === "senior";
@@ -271,11 +285,14 @@ export default function Team() {
           {active.length > 0 && <>
             {/* แท็บย่อย */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-              {[["review", "🔍 รอฉันตรวจ", inReview.length, "#0b6ea8"],
+              {[...(revising.length ? [["revising", "🔁 ลูกค้าส่งจุดแก้มา", revising.length, "#C2410C"]] : []),
+                ["review", "🔍 รอฉันตรวจ", inReview.length, "#0b6ea8"],
                 ["mine", "✂️ งานที่ฉันต้องตัด", myJobs.length, "#5a3fc0"],
-                ...(isOwner ? [["people", "👥 ดูรายคน", active.length, "#2f2a26"]] : [])]
+                // 👥 ลูกตาลต้องเห็นงานของทุกคนด้วย — เธอเป็นคนคุมคิวทั้งทีม แต่เดิมแท็บนี้เปิดให้คิมคนเดียว
+                //    ผลคืองานที่ไม่ได้มอบหมายให้เธอ เธอมองไม่เห็นเลยสักงาน (คิมเจอ 11 ส.ค.)
+                ...((isOwner || isAE) ? [["people", "👥 ดูรายคน", active.length, "#2f2a26"]] : [])]
                 .map(([k, label, n, tone]) => {
-                  const on = sub === k;
+                  const on = cur === k;
                   return <button key={k} onClick={() => { setSub(k); setPerson(null); }}
                     style={{ borderRadius: 999, padding: "9px 16px", fontSize: 14, cursor: "pointer", fontWeight: 700,
                       border: `1.5px solid ${on ? tone : "#ddd2c8"}`, background: on ? tone : "#fff", color: on ? "#fff" : "#2f2a26" }}>
@@ -293,11 +310,14 @@ export default function Team() {
             </div>
 
             {/* ── รอฉันตรวจ / งานฉัน ── */}
-            {sub !== "people" && (() => {
-              const list = sub === "review" ? inReview : myJobs;
+            {cur !== "people" && (() => {
+              const list = cur === "revising" ? revising : cur === "review" ? inReview : myJobs;
               if (!list.length) return <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ไม่มีงานในหมวดนี้ค่ะ</div>;
               return <>
-                {sub === "review" && <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
+                {cur === "revising" && <p style={{ fontSize: 13, color: "#9a3412", margin: "0 0 10px", fontWeight: 600 }}>
+                  ลูกค้าส่งจุดที่อยากแก้มาแล้ว — แก้ให้ครบทุกจุดในรอบเดียว แล้วส่งกลับไปให้ดูใหม่นะคะ
+                </p>}
+                {cur === "review" && <p style={{ fontSize: 13, color: "#5b7f96", margin: "0 0 10px" }}>
                   กดที่งานเพื่อเปิดดู แล้วเลือก <b>อนุมัติ</b> หรือ <b>ไม่อนุมัติ</b>
                 </p>}
                 <ExpandBar list={list} setOpen={setOpen} />
@@ -306,7 +326,7 @@ export default function Team() {
             })()}
 
             {/* ── ดูรายคน: การ์ดคน → กดเข้าไปเห็นงานของคนนั้น ── */}
-            {sub === "people" && !openPerson && <>
+            {cur === "people" && !openPerson && <>
               <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))" }}>
                 {[...people.map(m => ({ m, list: jobsOf(m.member_id) })),
                   ...(unassigned.length ? [{ m: { member_id: "_none", name: "⚠️ ยังไม่มีคนทำ", position: "รอมอบหมาย" }, list: unassigned }] : [])]
@@ -340,7 +360,7 @@ export default function Team() {
             </>}
 
             {/* ── งานของคนที่เลือก ── */}
-            {sub === "people" && openPerson && <>
+            {cur === "people" && openPerson && <>
               <button style={{ ...ghost, fontSize: 13, marginBottom: 12 }} onClick={() => setPerson(null)}>← กลับไปดูทุกคน</button>
               <h3 style={{ fontSize: 16, margin: "0 0 10px" }}>งานของ {openPerson.name} ({personJobs.length})</h3>
               {!personJobs.length && <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ไม่มีงานค้างค่ะ</div>}

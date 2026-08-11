@@ -440,7 +440,15 @@ export async function fixDocNames({ limit = 5, dry = true } = {}) {
       const now = cur?.data?.list?.[0]?.contactName;
       if (now === want) { out.push({ doc: d.number, skip: "ชื่อถูกอยู่แล้ว" }); continue; }
       if (dry) { out.push({ doc: d.number, from: now, to: want, dry: true }); continue; }
-      const body = type === "cash-invoices" ? buildCashInvoice(inv) : buildDocument(inv);
+      let body;
+      if (type === "cash-invoices") body = buildCashInvoice(inv);
+      else {
+        // ใบกำกับ/ใบเสร็จคู่เก่า: ตอน PUT ห้ามส่ง documentStructureType (API ตีกลับว่า Invalid)
+        //   แต่ตอน POST ต้องส่ง — สเปกไม่ตรงกันระหว่างสร้างกับแก้
+        body = buildDocument(inv);
+        delete body.documentStructureType;
+        if (type === "receipts") Object.assign(body, paymentFields(inv, body));
+      }
       const r = await fetch(`${BASE}/${type}/${d.id}`, { method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body) });

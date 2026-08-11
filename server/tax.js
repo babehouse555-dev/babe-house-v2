@@ -468,3 +468,29 @@ export async function fixDocNames({ limit = 5, dry = true } = {}) {
   }
   return { ok: true, dry, changed: out.filter(x => x.ok).length, rows: out };
 }
+
+// 🔄 ลบเอกสารประเภทเก่าแล้วออกใหม่ให้ตรงประเภทที่ใช้อยู่ (ใช้กับใบทดสอบที่ออกผิดชุดก่อนนักบัญชีเคาะ)
+//    ⚠️ ลบเอกสารภาษี = เรื่องใหญ่ ต้องระบุ invoice_id ทีละใบเท่านั้น ไม่มีโหมดลบทั้งชุด
+export async function redoInvoice(invoiceId) {
+  if (!flowAccountReady()) return { ok: false, reason: "ยังไม่ได้ตั้งรหัส FlowAccount" };
+  const inv = await one(`SELECT * FROM tax_invoices WHERE invoice_id=$1`, [invoiceId]);
+  if (!inv) return { ok: false, error: "NOT_FOUND" };
+  const token = await getToken();
+  const docs = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
+  const deleted = [];
+  // ลบใบเสร็จก่อนใบกำกับเสมอ เพราะใบเสร็จอ้างอิงใบกำกับอยู่
+  for (const type of ["receipts", "tax-invoices", "cash-invoices"]) {
+    const d = docs[type];
+    if (!d?.id || d.mode !== "production" || DOC_TYPES.includes(type)) continue;
+    const r = await fetch(`${BASE}/${type}/${d.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    const t = await r.text();
+    deleted.push({ type, number: d.number, ok: r.ok, status: r.status, ...(r.ok ? {} : { error: t.slice(0, 200) }) });
+    if (r.ok) delete docs[type];
+    await new Promise(x => setTimeout(x, 600));
+  }
+  await run(`UPDATE tax_invoices SET docs_json=$1, status='manual', doc_number=NULL, provider_doc_id=NULL WHERE invoice_id=$2`,
+    [JSON.stringify(docs), invoiceId]);
+  const again = await retryPendingInvoices(1, invoiceId);
+  const after = await one(`SELECT status, doc_number FROM tax_invoices WHERE invoice_id=$1`, [invoiceId]);
+  return { ok: true, deleted, reissued: again, now: after };
+}

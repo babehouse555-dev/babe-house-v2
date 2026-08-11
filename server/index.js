@@ -10,7 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht, tryAttachShapes, fixDocNames } from "./tax.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht, tryAttachShapes, fixDocNames, redoInvoice } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -6105,6 +6105,14 @@ app.post("/api/admin/flowaccount/try-attach", async (req, res) => {
 app.post("/api/admin/flowaccount/fix-names", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try { res.json(await fixDocNames({ limit: Number(req.body?.limit) || 5, dry: req.body?.dry !== false })); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 400) }); }
+});
+// 🔄 ลบเอกสารเก่าของใบนี้แล้วออกใหม่ให้ตรงประเภทที่ใช้อยู่ (ทีละใบเท่านั้น)
+app.post("/api/admin/flowaccount/redo", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.invoice_id || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  try { res.json(await redoInvoice(id)); }
   catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 400) }); }
 });
 app.get("/api/admin/flowaccount/ping", async (req, res) => {

@@ -33,9 +33,14 @@ export default function TaxInvoiceBox({ onChange, totalSatang = 0 }) {
   const [want, setWant] = useState(false);
   const [wht, setWht] = useState(false);
   const [f, setF] = useState({ name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
+  const [fullName, setFullName] = useState("");   // ชื่อ-นามสกุลจริงของผู้ซื้อ (ใช้เป็นชื่อบนใบกำกับ)
 
-  // ส่งค่ากลับให้หน้าที่เรียกใช้ทุกครั้งที่แก้ — null = ไม่ได้ขอในนามบริษัท
-  useEffect(() => { onChange?.(want ? { is_company: true, wht: wht, ...f } : null); }, [want, wht, f]);   // eslint-disable-line
+  // ส่งค่ากลับให้หน้าที่เรียกใช้ทุกครั้งที่แก้
+  // ⚠️ ต้องส่ง full_name ออกไปเสมอ แม้ไม่ได้ติ๊กบริษัท — ไม่งั้นใบกำกับจะไม่มีชื่อจริงของลูกค้า
+  useEffect(() => {
+    const fn = fullName.trim();
+    onChange?.(want ? { is_company: true, wht, full_name: fn, ...f } : (fn ? { full_name: fn } : null));
+  }, [want, wht, f, fullName]);   // eslint-disable-line
   // เลิกติ๊กบริษัท = ยกเลิกหัก ณ ที่จ่ายด้วย (บุคคลธรรมดาหักไม่ได้)
   useEffect(() => { if (!want && wht) setWht(false); }, [want]);   // eslint-disable-line
   const whtSat = whtAmount(totalSatang, wht);
@@ -43,6 +48,16 @@ export default function TaxInvoiceBox({ onChange, totalSatang = 0 }) {
 
   return (
     <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+      {/* 🧾 ชื่อบนใบกำกับภาษี — นักบัญชีขอ 11 ส.ค. ว่าต้องเป็นชื่อจริง ไม่ใช่ชื่อเล่น
+          ถ้าไม่กรอก ใบจะระบุว่า "ลูกค้าไม่ประสงค์รับใบกำกับภาษี" ตามที่นักบัญชีกำหนด */}
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 13.5, fontWeight: 700 }}>ชื่อ-นามสกุล <span className="muted" style={{ fontWeight: 400 }}>(สำหรับออกใบกำกับภาษี)</span></label>
+        <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="เช่น สมหญิง ใจดี"
+               style={{ width: "100%", boxSizing: "border-box" }} />
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.6 }}>
+          กรอกเป็นชื่อจริงนะคะ เพราะใบกำกับภาษีต้องใช้ชื่อตามบัตรประชาชนค่ะ
+        </div>
+      </div>
       <label className="row" style={{ gap: 9, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
         <input type="checkbox" style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }}
           checked={want} onChange={e => setWant(e.target.checked)} />

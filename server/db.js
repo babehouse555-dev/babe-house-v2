@@ -351,6 +351,7 @@ export async function initDb() {
     -- 💸 ภาษีหัก ณ ที่จ่าย 3% (คิมสั่ง 8 ส.ค. — ลูกค้านิติบุคคลบางเจ้าหัก)
     -- หักจากยอดก่อน VAT · ลูกค้าจ่ายน้อยลงเท่ายอดที่หัก แล้วส่งหนังสือรับรองมาให้เรายื่นภาษี
     ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS wht_satang INTEGER DEFAULT 0;
+    ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS full_name TEXT;  -- ชื่อ-นามสกุลจริงสำหรับใบกำกับภาษี (นักบัญชีขอ 11 ส.ค.)
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_inv_order ON tax_invoices(order_id);
     -- ⚠️ ธงกันออกใบซ้ำ: ออเดอร์เก่าที่คิมออกใบมือไว้ใน FlowAccount แล้ว ห้ามระบบส่งขึ้นไปอีก
     -- ออกใบกำกับซ้ำ = เลขที่เอกสารซ้ำ = ยื่นภาษีผิด เรื่องใหญ่กว่าการไม่มีใบ

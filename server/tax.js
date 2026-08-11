@@ -48,6 +48,11 @@ async function getToken() {
 // ── รูปเอกสารที่ส่งให้ FlowAccount ──
 // ⚠️ อ้างอิงจากใบจริงที่คิมส่งมา: ราคาต่อหน่วยเป็น "ก่อน VAT" แล้วบวก VAT 7% ท้ายใบ
 //    เราขายรวม VAT → ต้องถอดออกก่อนส่ง ไม่งั้นยอดรวมจะเกินไป 7%
+export const NO_TAX_NAME = "ลูกค้าไม่ประสงค์รับใบกำกับภาษี";
+function docContactName(inv) {
+  if (inv.is_company) return String(inv.customer_name || "").trim() || NO_TAX_NAME;
+  return String(inv.full_name || "").trim() || NO_TAX_NAME;
+}
 function buildDocument(inv) {
   const netBaht = inv.net_satang / 100;
   // ⚠️ ใช้ "วันที่รับเงินจริง" เสมอ — ใบย้อนหลังต้องลงวันที่เดิม ไม่ใช่วันที่กดปุ่ม
@@ -55,7 +60,11 @@ function buildDocument(inv) {
   return {
     publishedOn: docDate.toISOString().slice(0, 10),   // ✅ ชื่อฟิลด์ตามเอกสารจริง (เดิมเขียนผิดเป็น documentDate)
     isVat: true,                                       // ✅ เปิดคิด VAT ให้เอกสารนี้
-    contactName: inv.customer_name,
+    // 🧾 ชื่อบนใบกำกับ (นักบัญชีเคาะ 11 ส.ค.)
+    //    นิติบุคคล → ชื่อบริษัท · บุคคลธรรมดาที่กรอกชื่อจริง → ชื่อ-นามสกุล
+    //    ไม่มีข้อมูล → ระบุว่า "ลูกค้าไม่ประสงค์รับใบกำกับภาษี" ห้ามใส่ชื่อเล่น/ชื่อไอจี
+    //    (ชื่อเล่นยังเก็บไว้ในฐานข้อมูลเราเองที่ช่อง customer_name ไว้ใช้อ้างอิงภายใน)
+    contactName: docContactName(inv),
     contactTaxId: inv.tax_id || undefined,
     contactBranch: inv.branch || (inv.is_company ? "สำนักงานใหญ่" : undefined),
     contactAddress: inv.address || undefined,
@@ -221,13 +230,14 @@ export async function issueTaxInvoice({ orderId, kind, email, amountSatang, desc
   const id = `inv_${orderId.slice(-12)}_${Date.now().toString(36)}`;
 
   try {
-    await run(`INSERT INTO tax_invoices (invoice_id,order_id,order_kind,email,customer_name,is_company,tax_id,branch,address,description,amount_satang,net_satang,vat_satang,status,doc_date,wht_satang)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,$15)`,
+    await run(`INSERT INTO tax_invoices (invoice_id,order_id,order_kind,email,customer_name,is_company,tax_id,branch,address,description,amount_satang,net_satang,vat_satang,status,doc_date,wht_satang,full_name)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,$15,$16)`,
       [id, orderId, kind || null, email || null, name.slice(0, 200), isCompany,
        String(t.tax_id || "").replace(/\D/g, "").slice(0, 13) || null,
        String(t.branch || "").slice(0, 100) || null, String(t.address || "").slice(0, 500) || null,
        String(description || "").slice(0, 300) || null, amount, net, vat,
-       docDate ? new Date(docDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10), wht]);
+       docDate ? new Date(docDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10), wht,
+       String(t.full_name || "").trim().slice(0, 150) || null]);
   } catch (e) {
     if (/unique/i.test(e.message)) return await one(`SELECT invoice_id, status FROM tax_invoices WHERE order_id=$1`, [orderId]);
     throw e;

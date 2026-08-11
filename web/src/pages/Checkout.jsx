@@ -96,7 +96,8 @@ export default function Checkout() {
             พอกดสลับแพ็ก ยอดเปลี่ยนแต่ป้ายไม่เปลี่ยน → ขึ้นเลขเก่าค้างไว้ เช่นจ่าย 9,540 แต่ป้ายบอก 10%
             ส่วนลดจริงโชว์อยู่บนการ์ดแพ็กแล้ว (−30% / −50%) และโค้ดส่วนลดมีข้อความบอกแยกอยู่แล้ว */
         }
-        {TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTaxF} />}
+        {/* กล่องนี้เก็บชื่อ-นามสกุลจริงสำหรับใบกำกับ ต้องโผล่เสมอ (สวิตช์ TAX_INVOICE_LIVE คุมหน้า “ใบกำกับของฉัน” คนละเรื่องกัน) */}
+        <TaxInvoiceBox onChange={setTaxF} totalSatang={price} />
         {taxMsg && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{taxMsg.t}</div>}
 
         {isMock ? <>

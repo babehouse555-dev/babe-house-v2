@@ -711,12 +711,14 @@ app.post("/api/admin/tax-invoices/retry", async (req, res) => {
 function cleanTax(b) {
   const isCompany = !!b?.is_company;
   const name = String(b?.name || "").trim();
-  if (!isCompany) return { tax: { is_company: false, name: name || undefined } };
+  // ชื่อ-นามสกุลจริงของผู้ซื้อ — เก็บทั้งกรณีบุคคลธรรมดาและนิติบุคคล (นักบัญชีขอ 11 ส.ค.)
+  const fullName = String(b?.full_name || "").trim().slice(0, 150);
+  if (!isCompany) return { tax: { is_company: false, name: name || undefined, full_name: fullName || undefined } };
   const taxId = String(b?.tax_id || "").replace(/\D/g, "");
   if (!name) return { error: "NEED_NAME", message: "ใส่ชื่อบริษัทด้วยนะคะ" };
   if (taxId.length !== 13) return { error: "BAD_TAX_ID", message: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ" };
   if (!String(b?.address || "").trim()) return { error: "NEED_ADDRESS", message: "ใส่ที่อยู่บริษัทด้วยนะคะ" };
-  return { tax: { is_company: true, name, tax_id: taxId,
+  return { tax: { is_company: true, name, full_name: fullName || undefined, tax_id: taxId,
                   branch: String(b.branch || "สำนักงานใหญ่").slice(0, 100),
                   address: String(b.address || "").slice(0, 500),
                   // 💸 หัก ณ ที่จ่าย 3% — เฉพาะนิติบุคคล (คิมสั่ง 8 ส.ค.)

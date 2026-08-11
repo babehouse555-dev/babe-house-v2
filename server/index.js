@@ -3523,23 +3523,35 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
   if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
   try {
     const satang = total * 100;
+    // 🎟️ โค้ดส่วนลด (คิมสั่ง 11 ส.ค.) — เดิมหน้านี้เป็นที่เดียวที่ใส่โค้ดไม่ได้
+    //    ที่อื่นใส่ได้หมด (เล่ม Blueprint · คอร์ส · คลาสสด) ลูกค้าที่ได้โค้ดรางวัลแนะนำเพื่อนมาจึงใช้กับเครดิตไม่ได้
+    // ⚠️ นับโควตาโค้ดตรงนี้ = ใส่โค้ดแล้วกดยกเลิกหน้าจ่ายเงินก็นับไปแล้ว (เหมือนคอร์ส/คลาสสด ไม่ได้ทำต่างออกไป)
+    const promo = await redeemPromo(String(req.body?.code || ""), email, satang);
+    if (promo.error) return res.status(400).json({ ok: false, error: promo.error, message: promo.message });
+    const payNow = promo.final;
     const orderId = uid("ord");
     await upsertCustomer(email, "");
     // ใช้ท่อเดียวกับสินค้าอื่นทั้งหมด: blueprint_orders → จ่ายเงิน → markOrderPaid()
     // ได้ครบในทีเดียว ทั้งเติมเครดิต · ออกใบกำกับ · แจ้งเตือนคิม โดยไม่ต้องต่อท่อใหม่
-    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10)`,
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url,discount_code,discount_percent) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12)`,
       [orderId, "editcredits_" + Date.now(), "", normEmail(email), "EditCredits_" + n, currentBillingCycle(),
-       JSON.stringify({ edit_credit_pack: n, email: normEmail(email), tax: ct.tax }), PROVIDER, satang, "/edit"]);
+       JSON.stringify({ edit_credit_pack: n, email: normEmail(email), tax: ct.tax }), PROVIDER, payNow, "/edit",
+       promo.code || null, promo.percent || null]);
+    // โค้ดลด 100% → ยอด 0 บาท สร้าง checkout ไม่ได้ · เติมเครดิตให้เลย (ใช้ provider 'code' จะได้ไม่ถูกนับเป็นยอดขาย)
+    if (payNow <= 0) {
+      await markOrderPaid(orderId, "code", promo.code || "FREE");
+      return res.json({ ok: true, free: true, redirect_url: "/edit?topup=ok", credits_added: n, percent: promo.percent, total: 0 });
+    }
     if (PROVIDER === "stripe") {
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: satang, email,
+      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: payNow, email,
         productName: `Babe House เครดิตตัดต่อ ${n} คลิป`, successPath: `/edit?topup=ok` });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [ck.provider_session_id, orderId]);
       return res.json({ ok: true, redirect_url: ck.checkout_url, external: true });
     }
     await markOrderPaid(orderId, "mock", "mock_paid");   // สนามเด็กเล่นเท่านั้น — เว็บจริงใช้ Stripe เสมอ
-    res.json({ ok: true, redirect_url: "/edit?topup=ok", credits_added: n, price_per_clip: per, total });
+    res.json({ ok: true, redirect_url: "/edit?topup=ok", credits_added: n, price_per_clip: per, total: Math.round(payNow / 100) });
   } catch (e) { res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
 });
 

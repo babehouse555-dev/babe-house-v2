@@ -22,6 +22,23 @@ export default function EditOrder() {
 
   const [credits, setCredits] = useState(0);
   const [tax, setTax] = useState(null);   // 🧾 ใบกำกับในนามบริษัท (null = ไม่ได้ขอ)
+  // 🎟️ โค้ดส่วนลด (คิมสั่ง 11 ส.ค.) — เดิมหน้านี้เป็นที่เดียวที่ใส่โค้ดไม่ได้
+  // ลูกค้าที่ได้โค้ดรางวัลแนะนำเพื่อนมาจึงเอามาใช้กับเครดิตตัดต่อไม่ได้เลย
+  const [code, setCode] = useState("");
+  const [promo, setPromo] = useState(null);
+  const [codeMsg, setCodeMsg] = useState("");
+  // ราคาเปลี่ยน (เปลี่ยนจำนวนคลิป) → ส่วนลดที่เช็กไว้ใช้ไม่ได้แล้ว ต้องกดใช้โค้ดใหม่ กันโชว์ราคาผิด
+  useEffect(() => { setPromo(null); setCodeMsg(""); }, [clips]);
+  async function checkCode() {
+    const c = code.trim();
+    if (!c) { setPromo(null); setCodeMsg(""); return; }
+    if (!price?.total) return;
+    setCodeMsg("กำลังตรวจ...");
+    try {
+      const r = await api("/api/promo/preview", { method: "POST", body: { code: c, amount_satang: price.total * 100 } });
+      setPromo(r); setCodeMsg(r.percent >= 100 ? "🎉 โค้ดนี้ได้เครดิตฟรีเลยค่ะ!" : `✅ ใช้ได้ ลด ${r.percent}%`);
+    } catch (e) { setPromo(null); setCodeMsg(e.message || "โค้ดไม่ถูกต้องค่ะ"); }
+  }
   const load = () => {
     if (!session.token) return;
     api("/api/edit/my", { token: session.token }).then(d => setOrders(d.orders || [])).catch(() => {});
@@ -39,10 +56,11 @@ export default function EditOrder() {
     if (bad) { setMsg(bad); return; }
     setBusy(true); setMsg("");
     try {
-      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips, tax } });
+      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips, tax, code: code.trim() || undefined } });
       // จ่ายผ่าน Stripe → เด้งออกไปหน้าจ่ายเงิน · สนามเด็กเล่น → กลับมาโหลดยอดใหม่
       if (r.external && r.redirect_url) { location.href = r.redirect_url; return; }
       setMsg(`ได้เครดิตตัดต่อ ${clips} คลิปแล้วค่ะ 🎉 เปิดเล่มของคุณ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง`);
+      setCode(""); setPromo(null); setCodeMsg("");
       load();
     } catch (e) { setMsg(e.message || "ไม่สำเร็จ ลองใหม่นะคะ"); }
     finally { setBusy(false); }
@@ -161,8 +179,24 @@ export default function EditOrder() {
         {/* ⛔ ตัดตัวเลือกสไตล์กับช่องโน้ตออกจากหน้านี้ (คิมทัก 3 ส.ค.)
             "เส้นทางการทำงานของลูกค้ามันซับซ้อนเกินไป" — หน้านี้ทำอย่างเดียวคือ "ซื้อเครดิตกี่คลิป"
             เรื่องสไตล์/ฟุตเทจ/โน้ต เป็นของ "คลิปนั้นๆ" ไปถามตอนสั่งงานจริงที่หน้าบรีฟ */}
+        {/* 🎟️ ช่องใส่โค้ดส่วนลด — ใช้ได้ทั้งโค้ดรางวัลแนะนำเพื่อนและโค้ดโปรโมชั่น */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPromo(null); setCodeMsg(""); }}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); checkCode(); } }}
+              placeholder="มีโค้ดส่วนลด? ใส่ตรงนี้"
+              style={{ flex: 1, minWidth: 0, padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13.5, fontFamily: "inherit", textTransform: "uppercase" }} />
+            <button className="btn ghost" onClick={checkCode} style={{ padding: "9px 14px", fontSize: 13.5, whiteSpace: "nowrap" }}>ใช้โค้ด</button>
+          </div>
+          {codeMsg && <div style={{ fontSize: 12.5, marginTop: 6, color: promo ? "#1a7f43" : "#b3261e" }}>{codeMsg}</div>}
+          {promo && <div style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 10, padding: "9px 12px", marginTop: 8, fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>
+            ราคาหลังใช้โค้ด: {promo.final <= 0 ? "ฟรี!" : `฿${(promo.final / 100).toLocaleString()}`}
+          </div>}
+        </div>
         {TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
-        <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…" : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>
+        <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…"
+          : promo ? (promo.final <= 0 ? `รับเครดิต ${clips} คลิป (ฟรี)` : `ซื้อเครดิต ${clips} คลิป · ฿${(promo.final / 100).toLocaleString()}`)
+          : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
         {price?.eta_if_send_now && (

@@ -1029,6 +1029,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
   const [showBrief, setShowBrief] = useState(false);   // สคริปต์เต็ม — พับไว้ก่อน กางเมื่ออยากอ่าน
   // 🎬 ลิงก์คลิปที่ตัดแล้ว ก่อนส่งให้กราฟฟิก — เติมจากงานที่เคยส่งให้ลูกค้าดูแล้วให้อัตโนมัติ
   const [gjClip, setGjClip] = useState(j.draft_url || "");
+  const [openRound, setOpenRound] = useState({});   // รอบแก้เก่าที่กางดูอยู่ (แยกตามรอบ)
   const chip = dueChip(j.due_at);
   // 🐛 แก้ 7 ส.ค. — บรีฟในระบบมี 2 รูปแบบ แต่การ์ดงานอ่านเป็นแบบเดียว
   //    (ก) งานที่ลูกตาลรับบรีฟลูกค้ามาเอง  → {title, brief}
@@ -1173,15 +1174,39 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
       })()}
 
       {/* 🔁 จุดที่ลูกค้าขอแก้ — กางให้เห็นเต็มๆ เลย ไม่ต้องกดหาในสายสนทนา
-          คิมทัก 11 ส.ค. "ทำเป็นแนวตั้งดีกว่า" — คนตัดต้องไล่แก้ทีละจุด ถ้าอ่านตกจุดนึงคืองานตีกลับอีกรอบ */}
-      {open && j.status === "revising" && (() => {
-        const last = [...thread].reverse().find(c => !c.internal && /^📝\s*รอบแก้/.test(c.text || ""));
-        if (!last) return null;
-        const [head, ...rest] = String(last.text).split("\n");
+          คิมทัก 11 ส.ค. "ทำเป็นแนวตั้งดีกว่า" — คนตัดต้องไล่แก้ทีละจุด ถ้าอ่านตกจุดนึงคืองานตีกลับอีกรอบ
+          คิมทัก 12 ส.ค. "อยากให้มีตอนที่แก้ดราฟ 1 ดูควบไปด้วย จะได้เป็นหลักฐาน แล้วก็จะได้ไม่แก้จุดเดิม"
+          → โชว์ทุกรอบเรียงกัน · รอบล่าสุด = ที่ต้องทำตอนนี้ (ส้ม) · รอบก่อนหน้า = แก้ไปแล้ว (เขียว พับไว้) */}
+      {open && (() => {
+        const rounds = thread.filter(c => !c.internal && /^📝\s*รอบแก้/.test(c.text || ""));
+        if (!rounds.length) return null;
+        const lastIdx = rounds.length - 1;
         return (
-          <div style={{ marginTop: 10, background: "#FFF6EC", border: "1.5px solid #F0D2A8", borderRadius: 10, padding: "11px 13px" }}>
-            <div style={{ fontSize: 12.5, color: "#9a3412", fontWeight: 800, marginBottom: 6 }}>{head}</div>
-            <div style={{ fontSize: 14, lineHeight: 1.7 }}><CommentBody text={rest.join("\n")} /></div>
+          <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+            {rounds.map((c, i) => {
+              const [head, ...rest] = String(c.text).split("\n");
+              const isNow = i === lastIdx && j.status === "revising";   // รอบที่ยังต้องลงมือ
+              const when = c.created_at ? new Date(c.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : "";
+              return (
+                <div key={i} style={{ background: isNow ? "#FFF6EC" : "#F4F8F5", borderRadius: 10, padding: "10px 13px",
+                  border: `1.5px solid ${isNow ? "#F0D2A8" : "#d5e6da"}` }}>
+                  <div className="between" style={{ gap: 8, flexWrap: "wrap", marginBottom: rounds.length > 1 && !isNow && !openRound[i] ? 0 : 6 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: isNow ? "#9a3412" : "#1a7f43" }}>
+                      {head}{when ? <span style={{ fontWeight: 500, color: "#7c7268" }}> · {when}</span> : null}
+                    </span>
+                    {isNow
+                      ? <span style={{ fontSize: 11.5, fontWeight: 800, color: "#9a3412" }}>ต้องแก้รอบนี้</span>
+                      : <button onClick={() => setOpenRound(v => ({ ...v, [i]: !v[i] }))}
+                          style={{ background: "none", border: 0, cursor: "pointer", fontFamily: "inherit",
+                                   fontSize: 11.5, fontWeight: 700, color: "#1a7f43", padding: 0 }}>
+                          ✓ แก้ไปแล้ว {openRound[i] ? "▾ ซ่อน" : "▸ ดูจุดที่แก้"}
+                        </button>}
+                  </div>
+                  {(isNow || openRound[i]) &&
+                    <div style={{ fontSize: 14, lineHeight: 1.7, opacity: isNow ? 1 : .8 }}><CommentBody text={rest.join("\n")} /></div>}
+                </div>
+              );
+            })}
           </div>
         );
       })()}

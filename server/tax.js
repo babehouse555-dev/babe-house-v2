@@ -94,12 +94,13 @@ function buildDocument(inv) {
 //   2. vatType: 7 — ไม่เจอฟิลด์นี้ในเอกสาร อาจต้องใช้ vatRate ในแต่ละรายการแทน
 //   3. reference — เอกสารบอกว่าคือ "เลขที่เอกสาร" แต่เราใส่ order_id ไว้
 //      ถ้าอยากให้ FlowAccount ออกเลขเองตามวันที่ อาจต้องไม่ส่งฟิลด์นี้เลย
-// 📄 ประเภทเอกสารที่จะออก — คิมสั่ง 8 ส.ค. "ต้องออกสองใบ ใบเสร็จ กับ กำกับภาษี"
-//    ขายเก็บเงินทันทีแบบเรา ปกติออก "ใบเสร็จรับเงิน/ใบกำกับภาษี" ใบเดียวจบ (= receipts)
-//    ถ้าคิมอยากได้แยก 2 ใบจริงๆ ตั้ง FLOWACCOUNT_DOC_TYPES=tax-invoices,receipts
-// นักบัญชีของคิมยืนยัน 8 ส.ค. ว่าต้องแยก 2 ใบ → ออกทั้งใบกำกับภาษีและใบเสร็จรับเงิน
-const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "tax-invoices,receipts").split(",").map(x => x.trim()).filter(Boolean);
-const DOC_TH = { "tax-invoices": "ใบกำกับภาษี", "receipts": "ใบเสร็จรับเงิน" };
+// 📄 ประเภทเอกสารที่จะออก
+//    นักบัญชีของคิมเคาะ 10 ส.ค.: ออก "ใบเสร็จรับเงิน/ใบกำกับภาษี" ใบเดียวได้ แต่ต้องสร้างที่ เอกสารขาย → ขายเงินสด
+//    ใน API คือ POST /cash-invoices/with-payment (เอกสารเดียวจบ พร้อมบันทึกรับเงินในตัว)
+//    ✅ ใบเดียว = เอกสารลดครึ่ง = อยู่ในโควตา 1,000/เดือน ไม่ต้องอัปแพ็ก ฿20,000/ปี
+//    ถ้าวันหลังบัญชีเปลี่ยนใจอยากได้ 2 ใบ ตั้ง FLOWACCOUNT_DOC_TYPES=tax-invoices,receipts ได้เลย โค้ดรองรับทั้งคู่
+const DOC_TYPES = String(process.env.FLOWACCOUNT_DOC_TYPES || "cash-invoices").split(",").map(x => x.trim()).filter(Boolean);
+const DOC_TH = { "tax-invoices": "ใบกำกับภาษี", "receipts": "ใบเสร็จรับเงิน", "cash-invoices": "ใบเสร็จรับเงิน/ใบกำกับภาษี" };
 async function pushOne(path, doc, token) {
   const body = doc;
   const r = await fetch(`${BASE}/${path}`, { method: "POST",
@@ -118,20 +119,14 @@ async function pushOne(path, doc, token) {
 //    ✅ อ่านสเปกจริงจาก developers.flowaccount.com แล้ว 8 ส.ค. — เอกสารต้นทางส่งใน `documentReference` (อาร์เรย์)
 //       ไม่ใช่ documentId/documentType/partialAmount ลอยๆ ข้างบน (ที่ลองรอบแรกแล้ว 400 เพราะไปเข้าโหมด batch)
 //    ส่วนที่เหลือคือ "ฟิลด์รับชำระ": paymentDate · collected · withheld* · remainingCollected*
-function buildReceiptFrom(inv, taxInvoice) {
-  const doc = buildDocument(inv);
+// 💵 ฟิลด์ "รับชำระเงิน" — ใช้ร่วมกันทั้งใบเสร็จ (upgrade) และใบขายเงินสด
+function paymentFields(inv, doc) {
   const total = inv.amount_satang / 100;
   const wht = Number(inv.wht_satang || 0) / 100;
   return {
-    ...doc,
     creditType: 3,          // 3 = เงินสด (จ่ายแล้ว)
     creditDays: 0,
-    documentReference: [{
-      recordId: Number(taxInvoice.record_id || taxInvoice.id) || 0,
-      referenceDocumentSerial: String(taxInvoice.number || ""),
-      referenceDocumentType: 7,        // 7 = ใบกำกับภาษี (FlowAccount ระบุมา)
-    }],
-    paymentMethod: 1,                  // 1 = เงินสด (ตัวเลือกเดียวที่ API นี้รับ)
+    paymentMethod: 1,       // 1 = เงินสด (ตัวเลือกเดียวที่ API นี้รับ)
     paymentDate: doc.publishedOn,
     collected: Math.round((total - wht) * 100) / 100,   // ยอดรับสุทธิ = ยอดรวม − หัก ณ ที่จ่าย
     paymentDeductionType: 0,
@@ -143,6 +138,23 @@ function buildReceiptFrom(inv, taxInvoice) {
     remainingCollected: 0,
   };
 }
+// 🧾 ใบเสร็จรับเงิน/ใบกำกับภาษี (ขายเงินสด) — เอกสารเดียวจบ ไม่ต้องอ้างอิงใบอื่น
+function buildCashInvoice(inv) {
+  const doc = buildDocument(inv);
+  return { ...doc, ...paymentFields(inv, doc) };
+}
+function buildReceiptFrom(inv, taxInvoice) {
+  const doc = buildDocument(inv);
+  return {
+    ...doc,
+    ...paymentFields(inv, doc),
+    documentReference: [{
+      recordId: Number(taxInvoice.record_id || taxInvoice.id) || 0,
+      referenceDocumentSerial: String(taxInvoice.number || ""),
+      referenceDocumentType: 7,        // 7 = ใบกำกับภาษี (FlowAccount ระบุมา)
+    }],
+  };
+}
 // 🧪/🏢 เอกสารที่ออกใน sandbox ไม่ใช่เอกสารจริง — พอเปลี่ยนไปใช้รหัสของจริงต้องออกใหม่ทั้งหมด
 //     ถ้าไม่แยกโหมด ตัวกันออกซ้ำจะเห็นว่า "ออกไปแล้ว" แล้วข้าม = ลูกค้าจริงไม่เคยได้ใบกำกับเลย
 //     ใบเก่าที่ไม่มีป้ายโหมด = ออกตอนทดสอบทั้งหมด → ถือเป็น sandbox
@@ -150,24 +162,41 @@ const FA_MODE = () => (/\/test\b/.test(BASE) ? "sandbox" : "production");
 const sameMode = (d) => !!d?.id && (d.mode || "sandbox") === FA_MODE();
 async function pushToFlowAccount(inv) {
   const token = await getToken();
-  const doc = buildDocument(inv);
-  // ⚠️ ออกเฉพาะประเภทที่ "ยังไม่เคยสำเร็จ" — กันออกซ้ำตอนกดลองใหม่หลังใบใดใบหนึ่งพัง
   const all = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
-  // เก็บของโหมดเก่าไว้ดูย้อนหลังได้ แต่ไม่เอามานับว่า "ออกแล้ว"
+  // เก็บของโหมดเก่า (sandbox) ไว้ดูย้อนหลังได้ แต่ไม่นับว่า "ออกแล้ว"
   const done = Object.fromEntries(Object.entries(all).filter(([, v]) => sameMode(v)));
-  if (all["tax-invoices"] && !done["tax-invoices"]) done._sandbox_เดิม = all["tax-invoices"];
-  // ต้องออกใบกำกับก่อนเสมอ เพราะใบเสร็จต้องอ้างอิงเลขของใบกำกับ
-  if (!done["tax-invoices"]?.id) {
-    const r = await pushOne("tax-invoices", doc, token);
-    done["tax-invoices"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number, mode: FA_MODE() };
-    await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
+  for (const [k, v] of Object.entries(all)) if (v?.id && !sameMode(v)) done[`_${k}_โหมดเก่า`] = v;
+
+  // 🛑 ใบนี้เคยออกเอกสารจริงไปแล้วด้วยประเภทอื่น (เช่นออกเป็น 2 ใบไว้ก่อนเปลี่ยนมาใช้ใบขายเงินสด)
+  //    → ห้ามออกซ้ำเด็ดขาด ลูกค้าจะได้เอกสารซ้ำและยอดขายในบัญชีจะเบิ้ล
+  const issuedTypes = Object.keys(done).filter(k => !k.startsWith("_") && done[k]?.id);
+  if (issuedTypes.length && !issuedTypes.some(t => DOC_TYPES.includes(t))) {
+    return { doc_id: issuedTypes.map(t => done[t].id).join("|"),
+             doc_number: issuedTypes.map(t => `${DOC_TH[t] || t} ${done[t].number}`).join(" · "),
+             docs: done, skipped: "ออกเอกสารจริงไปแล้วด้วยประเภทเดิม ไม่ออกซ้ำ" };
   }
-  if (DOC_TYPES.includes("receipts") && !done["receipts"]?.id) {
+
+  const save = () => run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
+
+  // ── แบบใบเดียวจบ: ใบเสร็จรับเงิน/ใบกำกับภาษี (ขายเงินสด) ──
+  if (DOC_TYPES.includes("cash-invoices") && !done["cash-invoices"]?.id) {
+    const r = await pushOne("cash-invoices/with-payment", buildCashInvoice(inv), token);
+    done["cash-invoices"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number, mode: FA_MODE() };
+    await save();
+  }
+  // ── แบบแยก 2 ใบ: ใบกำกับภาษี แล้วต่อยอดเป็นใบเสร็จ (เก็บไว้เผื่อบัญชีเปลี่ยนใจ) ──
+  if (DOC_TYPES.includes("tax-invoices") && !done["tax-invoices"]?.id) {
+    const r = await pushOne("tax-invoices", buildDocument(inv), token);
+    done["tax-invoices"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number, mode: FA_MODE() };
+    await save();
+  }
+  if (DOC_TYPES.includes("receipts") && !done["receipts"]?.id && done["tax-invoices"]?.id) {
     const r = await pushOne("upgrade/receipts/with-payment", buildReceiptFrom(inv, done["tax-invoices"]), token);
     done["receipts"] = { id: r.doc_id, record_id: r.record_id, number: r.doc_number, mode: FA_MODE() };
-    await run(`UPDATE tax_invoices SET docs_json=$1 WHERE invoice_id=$2`, [JSON.stringify(done), inv.invoice_id]);
+    await save();
   }
-  const order = ["tax-invoices", "receipts"].filter(t => done[t]?.id);
+
+  const order = ["cash-invoices", "tax-invoices", "receipts"].filter(t => done[t]?.id);
   return { doc_id: order.map(t => done[t].id).join("|"),
            doc_number: order.map(t => `${DOC_TH[t] || t} ${done[t].number}`).join(" · "), docs: done };
 }
@@ -231,8 +260,10 @@ export async function retryPendingInvoices(limit = 50, onlyId = null) {
   //    กรองในโค้ดแทน SQL เพราะต้องเทียบป้ายโหมดในกล่อง docs_json ทีละใบ
   const needsWork = (inv) => {
     const d = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
-    if (!sameMode(d["tax-invoices"])) return true;
-    return DOC_TYPES.includes("receipts") && !sameMode(d["receipts"]);
+    const doneNow = Object.keys(d).filter(k => !k.startsWith("_") && sameMode(d[k]));
+    // เคยออกเอกสารจริงไปแล้วด้วยประเภทอื่น (เช่นออก 2 ใบไว้ก่อนเปลี่ยนมาใช้ใบขายเงินสด) → ห้ามออกซ้ำ
+    if (doneNow.length && !doneNow.some(t => DOC_TYPES.includes(t))) return false;
+    return DOC_TYPES.some(t => !sameMode(d[t]));
   };
   const rows = onlyId
     ? await q(`SELECT * FROM tax_invoices WHERE invoice_id=$1 AND issued_manually=false`, [onlyId])
@@ -314,7 +345,7 @@ export async function flowAccountPing() {
              // 🔎 บอกด้วยว่าโค้ดรุ่นไหนกำลังรันอยู่ — กันทดสอบก่อน deploy เสร็จแล้วสรุปผิด
              //     (เจอเอง 8 ส.ค.: เห็น ping ok เลยนึกว่าโค้ดใหม่ขึ้นแล้ว ที่จริงยังเป็นของเก่า)
              doc_types: DOC_TYPES,
-             build: "receipt-documentReference-v2",   // ← เปลี่ยนทุกครั้งที่แก้รูปเอกสาร ใช้เช็คว่า deploy ขึ้นจริงยัง
+             build: "cash-invoice-v3",   // ← เปลี่ยนทุกครั้งที่แก้รูปเอกสาร ใช้เช็คว่า deploy ขึ้นจริงยัง
              mode: /\/test\b/.test(BASE) ? "sandbox (ของทดสอบ)" : "production (ของจริง)" };
   } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }

@@ -397,10 +397,19 @@ export default function Team() {
           <button style={{ ...ghost, fontSize: 13, marginTop: 8 }} onClick={() => setShowDone(v => !v)}>
             {showDone ? "ซ่อน" : "ดู"}งานที่จบแล้ว ({jobs.length - active.length})
           </button>
-          {showDone && jobs.filter(j => ["done", "canceled"].includes(j.status)).map(j =>
-            <div key={j.order_id} style={{ ...card, marginTop: 10, opacity: .7, fontSize: 14 }}>
-              <b>#{j.order_id.slice(-6)}</b> · {j.status_th} · {j.assignee_name || "ยังไม่ระบุคนทำ"}
-            </div>)}
+          {/* ✅ งานที่จบแล้ว — กดเปิดดูรายละเอียดได้เหมือนงานปกติ (คิมขอ 12 ส.ค.)
+              "เผื่อลูกค้ากลับมาแก้หรือทำไฟล์หาย" — เดิมเป็นบรรทัดตายๆ กดอะไรไม่ได้เลย
+              ต้องเห็นลิงก์ไฟล์ · บรีฟ · รอบแก้ทุกรอบ · สายสนทนา ครบเหมือนตอนงานยังไม่จบ */}
+          {showDone && (() => {
+            const doneJobs = jobs.filter(j => ["done", "canceled"].includes(j.status));
+            if (!doneJobs.length) return <div style={{ ...card, marginTop: 10, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ยังไม่มีงานที่จบค่ะ</div>;
+            return <>
+              <p style={{ fontSize: 12.5, color: "#7c7268", margin: "10px 0 6px", lineHeight: 1.6 }}>
+                กดที่งานเพื่อเปิดดูไฟล์และรอบแก้ย้อนหลัง — ลูกค้าทำไฟล์หายหรือกลับมาแก้ ก็เอาให้ได้จากตรงนี้
+              </p>
+              {doneJobs.map(Row)}
+            </>;
+          })()}
         </>;
       })()}
 
@@ -1030,7 +1039,8 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
   // 🎬 ลิงก์คลิปที่ตัดแล้ว ก่อนส่งให้กราฟฟิก — เติมจากงานที่เคยส่งให้ลูกค้าดูแล้วให้อัตโนมัติ
   const [gjClip, setGjClip] = useState(j.draft_url || "");
   const [openRound, setOpenRound] = useState({});   // รอบแก้เก่าที่กางดูอยู่ (แยกตามรอบ)
-  const chip = dueChip(j.due_at);
+  // งานที่จบ/ยกเลิกแล้วไม่ต้องมีป้ายกำหนดส่ง — ขึ้น "เหลือ 3 วัน" บนงานที่เสร็จไปแล้วทำให้สับสน
+  const chip = ["done", "canceled"].includes(j.status) ? null : dueChip(j.due_at);
   // 🐛 แก้ 7 ส.ค. — บรีฟในระบบมี 2 รูปแบบ แต่การ์ดงานอ่านเป็นแบบเดียว
   //    (ก) งานที่ลูกตาลรับบรีฟลูกค้ามาเอง  → {title, brief}
   //    (ข) งานที่ลูกค้าสั่งจากแผนของตัวเอง → {d, t, h, script, cta}
@@ -1096,7 +1106,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
             </div>)}
 
           {/* (2) ไฟล์ — ปุ่มเรียงแถว */}
-          {(j.footage_url || j.voice_url || j.draft_url || (j.files || []).length || j.ref_links) && (
+          {(j.footage_url || j.voice_url || j.draft_url || j.final_url || (j.files || []).length || j.ref_links) && (
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
               {j.footage_url && <a href={j.footage_url} target="_blank" rel="noreferrer" style={fileBtn}>🎥 ฟุตเทจ</a>}
               {j.voice_url && <a href={j.voice_url} target="_blank" rel="noreferrer" style={fileBtn}>🎙 เสียง</a>}
@@ -1107,6 +1117,10 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
               {String(j.ref_links || "").split(/\s+/).filter(u => /^https?:\/\//.test(u)).map((u, i) => (
                 <a key={i} href={u} target="_blank" rel="noreferrer" style={fileBtn}>🔗 ตัวอย่าง {i + 1}</a>))}
               {j.draft_url && <a href={j.draft_url} target="_blank" rel="noreferrer" style={{ ...fileBtn, borderColor: C.green, color: C.green }}>📼 งานที่ตัดแล้ว</a>}
+              {/* ✅ ไฟล์ตัวจบที่ส่งลูกค้าไปแล้ว — คิมขอ 12 ส.ค. "เผื่อลูกค้ากลับมาแก้หรือทำไฟล์หาย"
+                  โชว์เฉพาะตอนที่ไม่ใช่ลิงก์เดียวกับดราฟ ไม่งั้นจะมี 2 ปุ่มที่กดแล้วไปที่เดียวกัน */}
+              {j.final_url && j.final_url !== j.draft_url &&
+                <a href={j.final_url} target="_blank" rel="noreferrer" style={{ ...fileBtn, borderColor: C.green, color: "#fff", background: C.green }}>✅ ไฟล์ตัวจบ</a>}
             </div>)}
 
           {/* (3) บรีฟ/สคริปต์ — พับเก็บได้ */}

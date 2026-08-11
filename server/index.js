@@ -4078,7 +4078,7 @@ app.get("/api/team/me", async (req, res) => {
     else if (isSenior) { params.push(me.member_id); where = `WHERE (o.assigned_to=$1 OR o.status='senior_review')`; }
     else { params.push(me.member_id); where = `WHERE o.assigned_to=$1`; }  // คนตัด/ฟรีแลนซ์ เห็นเฉพาะของตัวเอง
     const rows = await q(`SELECT o.order_id,o.blueprint_id,o.billing_cycle,o.script_day,o.brief_json,o.clips,
-        o.footage_url,o.voice_url,o.note,o.internal_note,o.status,o.draft_url,o.revisions_used,o.due_at,o.client_revisions,o.our_fix_count,o.client_name,o.source,o.client_due_at,o.deadline_risk,
+        o.footage_url,o.voice_url,o.note,o.internal_note,o.status,o.draft_url,o.final_url,o.revisions_used,o.due_at,o.client_revisions,o.our_fix_count,o.client_name,o.source,o.client_due_at,o.deadline_risk,o.updated_at,
         o.ref_links,o.ref_picks,o.assigned_to,o.senior_by,o.ae_by,o.created_at,
         ${isOwner ? "o.amount_satang, o.price_per_clip, o.email," : ""}
         (SELECT name FROM team_members t WHERE t.member_id=o.assigned_to) assignee_name

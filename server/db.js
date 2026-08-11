@@ -968,6 +968,13 @@ export async function initDb() {
     -- 🔁 รอบแก้: แยกว่าใครผิด — ของเราแก้ฟรีเสมอ ของลูกค้าเปลี่ยนใจนับโควตา
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS client_revisions INTEGER DEFAULT 0;
     ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS our_fix_count INTEGER DEFAULT 0;
+    -- 📨 เวลาที่ "แจ้งทีมทางเมลสำเร็จ" — ว่างอยู่ = ยังไม่มีใครรู้ว่ามีงานนี้ ระบบจะยิงซ้ำให้เอง
+    -- คิมเจอเอง 11 ส.ค.: สั่งงานแล้วเมลไม่เข้า "ไม่รู้เลยว่ามีงานเข้ามา"
+    ALTER TABLE edit_orders ADD COLUMN IF NOT EXISTS ops_notified_at TIMESTAMPTZ;
+    -- งานเก่าที่มีอยู่ก่อนมีช่องนี้ ถือว่าแจ้งไปแล้ว — ไม่งั้นตัวกวาดจะยิงเมล "งานใหม่" ย้อนหลังรัวๆ
+    -- กันไว้ที่ 1 วัน: งานที่เพิ่งเข้ามาวันนี้ยังปล่อยให้ตัวกวาดตามยิงซ้ำได้ตามปกติ
+    UPDATE edit_orders SET ops_notified_at = COALESCE(updated_at, created_at)
+      WHERE ops_notified_at IS NULL AND created_at < now() - interval '1 day';
     -- คอมเมนต์คุยกันในทีม (ตรวจงาน/สั่งแก้) ใช้ตารางเดียวกับที่คุยกับลูกค้า แต่ติดธง internal=1
     -- ⛔ ทุกที่ที่ส่งคอมเมนต์ให้ลูกค้าต้องกรอง internal=0 เสมอ
     ALTER TABLE edit_comments ADD COLUMN IF NOT EXISTS internal INTEGER DEFAULT 0;

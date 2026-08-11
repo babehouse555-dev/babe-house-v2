@@ -3599,11 +3599,14 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
        hasFootage ? new Date().toISOString() : null,
        dueNow]);
     const c = await one(`SELECT COALESCE(edit_credits,0) x FROM customers WHERE lower(email)=lower($1)`, [email]);
+    // 📨 แจ้งทีมก่อนตอบลูกค้า — เดิมยิงหลังตอบแบบไม่รอผล ถ้าเซิร์ฟเวอร์ถูกสับเปลี่ยนตอนดีพลอยพอดี
+    //    งานจะถูกบันทึกแล้วแต่เมลหายไปเฉยๆ (สงสัยว่าเป็นสาเหตุที่คิมไม่ได้เมล 11 ส.ค.)
+    //    ใช้เวลาแค่ ~300ms และถ้าเมลล่มก็ยังมีตัวกวาดตามยิงซ้ำให้อีกชั้น
+    await notifyOpsNewEditJob(id).catch(e => console.error("notify-ops-edit", e.message));
     res.json({ ok: true, order_id: id, script_day: day, free_job: isFree, credits_left: Number(c?.x || 0) });
     // 🤖 มอบหมายให้เองทันที (คิมทัก 7 ส.ค. — งานจากเว็บเคยค้างที่ "ยังไม่มีคนทำ" เพราะไม่มีใครสั่งให้ระบบเลือก
     //    งานที่ลูกตาลกรอกเองมีอยู่แล้ว แต่ทางนี้ตกหล่นไป) · ตอบลูกค้าไปก่อน แล้วค่อยทำเบื้องหลัง
     autoAssignJob(id).catch(e => console.error("auto-assign", e.message));
-    notifyOpsNewEditJob(id).catch(e => console.error("notify-ops-edit", e.message));
   } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }
 });
 
@@ -3616,8 +3619,11 @@ async function notifyOpsNewEditJob(orderId) {
   if (!o) return { ok: false, reason: "ORDER_NOT_FOUND" };
   const br = safeJson(o.brief_json) || {};
   const title = br.title || (o.script_day != null ? `สคริปต์วันที่ ${o.script_day}` : "งานตัดต่อ");
+  // ⚠️ หัวข้อเมลต้องสั้น — ลูกค้าพิมพ์บรีฟทั้งย่อหน้าลงช่องชื่องานได้ (คิมทำเอง 11 ส.ค. ยาว 162 ตัวอักษร)
+  //    หัวข้อยาวขนาดนั้น Gmail ตัดทิ้ง อ่านไม่รู้เรื่อง และเสี่ยงโดนมองว่าเป็นสแปม · ตัวเต็มอยู่ในเนื้อเมลอยู่แล้ว
+  const subj = title.length > 60 ? title.slice(0, 57).trim() + "…" : title;
   const waiting = o.status === "awaiting_files";
-  return sendEmail(OPS_EMAIL, `🎬 ลูกค้าสั่งงานตัดต่อใหม่ — ${title}`, wrap(
+  const sent = await sendEmail(OPS_EMAIL, `🎬 ลูกค้าสั่งงานตัดต่อใหม่ — ${subj}`, wrap(
     `<b>${o.email}</b> สั่งงานเข้ามาแล้วค่ะ<br><br>` +
     `📌 <b>งาน:</b> ${title}<br>` +
     (br.brief ? `📝 <b>บรีฟ:</b> ${String(br.brief).slice(0, 400).replace(/\n/g, "<br>")}<br>` : "") +
@@ -3625,8 +3631,26 @@ async function notifyOpsNewEditJob(orderId) {
     (o.note ? `💬 <b>โน้ตจากลูกค้า:</b> ${String(o.note).slice(0, 300)}<br>` : "") +
     `<br>${waiting ? "⏳ <b>ยังไม่ส่งไฟล์มา</b> — รอลูกค้าแนบฟุตเทจก่อนถึงจะเริ่มจับเวลา" : `⏰ <b>กำหนดส่ง:</b> ${o.due_at ? thDate(o.due_at) : "-"}`}<br><br>` +
     `${btn(appBaseUrl() + "/team", "เปิดหน้างานของทีม")}`
-  )).then(sent => ({ ok: !!sent, to: OPS_EMAIL, title })).catch(e => ({ ok: false, error: e.message, to: OPS_EMAIL }));
+  )).catch(() => false);
+  // ส่งสำเร็จค่อยปั๊มเวลา — ถ้าไม่สำเร็จช่องนี้จะว่างไว้ ให้ตัวกวาดด้านล่างมายิงซ้ำเอง
+  if (sent) await run(`UPDATE edit_orders SET ops_notified_at=now() WHERE order_id=$1`, [orderId]).catch(() => {});
+  return { ok: !!sent, to: OPS_EMAIL, title };
 }
+// 🧹 ตัวกวาด: งานตัดต่อที่ยังไม่มีเมลแจ้งทีมสำเร็จ → ยิงซ้ำให้
+// กันเคสเมลหลุดตอนเซิร์ฟเวอร์รีสตาร์ตกลางคัน หรือ Resend ล่มชั่วคราว
+// เมลแจ้งงานคือทางเดียวที่ทีมรู้ว่ามีงานเข้า ถ้าหลุดแล้วไม่มีใครตาม = งานลูกค้านอนเงียบ
+async function sweepUnnotifiedEditJobs() {
+  try {
+    const rows = await q(`SELECT order_id FROM edit_orders
+      WHERE ops_notified_at IS NULL AND created_at > now() - interval '7 days'
+        AND COALESCE(paid_by,'') <> 'external' AND status NOT IN ('canceled','done')
+      ORDER BY created_at LIMIT 20`);
+    for (const r of rows) { await notifyOpsNewEditJob(r.order_id).catch(() => {}); await new Promise(s => setTimeout(s, 400)); }
+    if (rows.length) console.log(`[edit] ยิงเมลแจ้งงานซ้ำ ${rows.length} งาน`);
+  } catch (e) { console.error("sweepUnnotifiedEditJobs", e.message); }
+}
+setInterval(sweepUnnotifiedEditJobs, 10 * 60 * 1000);   // ทุก 10 นาที
+setTimeout(sweepUnnotifiedEditJobs, 60 * 1000);          // และรอบแรกหลังบูต 1 นาที
 // 🤖 ให้ระบบเลือกคนทำงานชิ้นนี้ + แจ้งเมล (ใช้ร่วมกันทั้งงานจากเว็บและงานที่ทีมกรอกเอง)
 async function autoAssignJob(orderId) {
   const job = await one(`SELECT * FROM edit_orders WHERE order_id=$1 AND assigned_to IS NULL AND status NOT IN ('done','canceled')`, [orderId]);

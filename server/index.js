@@ -2651,6 +2651,8 @@ async function finalizeWorkshopBooking(b) {
   if (!b || b.status === "paid") return;
   await run(`UPDATE workshop_bookings SET status='paid', paid_at=now() WHERE booking_id=$1 AND status<>'paid'`, [b.booking_id]);
   const s = await one(`SELECT s.*, w.name AS ws_name FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id WHERE s.session_id=$1`, [b.session_id]);
+  // ของที่ต้องเตรียมมา/แอปที่ต้องโหลด เก็บที่ตัวคลาส ไม่ใช่ที่รอบ — ดึงมาใส่อีเมลยืนยันด้วย
+  const ws = s ? await one(`SELECT prepare, tools FROM workshops WHERE workshop_id=$1`, [s.workshop_id]).catch(() => null) : null;
   console.log(`[workshop] booked: ${b.email} → ${s?.ws_name} (${b.qty} ที่)`);
   // 🧾 ออกใบกำกับภาษี — ทุกการจ่ายเงินต้องมีใบ (คิมสั่ง) · ห้ามพังการจองไม่ว่าเกิดอะไร
   issueTaxInvoice({ orderId: b.booking_id, kind: "workshop", email: b.email,
@@ -2668,25 +2670,39 @@ async function finalizeWorkshopBooking(b) {
     mapPark: "https://maps.app.goo.gl/kzbrp27cp4FdSrxt8",
     igPost: "https://www.instagram.com/p/DPduCn3ErdD/",
     line: "https://line.me/ti/g/qY8dkD0R33",
-    pickup: "12.30 · 12.40 · 12.50 น.",
     phone: "081-950-9192 (ดิส)",
   };
+  // ⏰ เวลาเรียน + เวลารับส่ง ต้องคิดจาก "รอบที่ลูกค้าจองจริง" เท่านั้น ห้ามพิมพ์ตายตัว
+  //    พลอยทัก 10 ส.ค.: เวลารับส่งไม่ตรงกัน — เพราะเดิมอีเมลฟิกไว้ 13.00-16.30 และรับส่ง 12.30/12.40/12.50
+  //    แต่แต่ละรอบเลิกไม่เท่ากัน (16.00 บ้าง 16.30 บ้าง) ลูกค้าเลยได้ข้อมูลไม่ตรงกับรอบตัวเอง
+  const thTime = (d) => new Date(d).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+  const startMs = s?.starts_at ? new Date(s.starts_at).getTime() : null;
+  const endMs = s?.ends_at ? new Date(s.ends_at).getTime() : null;
+  const hoursTxt = startMs && endMs
+    ? `${((endMs - startMs) / 36e5).toFixed(1).replace(".0", "")} ชม. (${thTime(startMs)} – ${thTime(endMs)} น.)`
+    : startMs ? `เริ่ม ${thTime(startMs)} น.` : "แจ้งอีกครั้งค่ะ";
+  // รถรับส่งออกก่อนเข้าคลาส 30 / 20 / 10 นาที — เลื่อนตามเวลาเริ่มของรอบนั้นเองอัตโนมัติ
+  const pickupTxt = startMs
+    ? [30, 20, 10].map(m => thTime(startMs - m * 60000)).join(" · ") + " น."
+    : "แจ้งในกลุ่มไลน์ค่ะ";
   const box = (t) => `<div style="background:#f7f4f0;border-radius:12px;padding:13px 15px;margin:14px 0;line-height:1.85">${t}</div>`;
   sendEmail(b.email, `✅ ยืนยันการจอง ${s?.ws_name || "workshop"} แล้วค่ะ`, wrap(
     `สวัสดีค่ะ คุณ${b.name} 💗<br><br>ได้รับการจองเรียบร้อยแล้วค่ะ 🎉 นี่คือรายละเอียดคลาสนะคะ<br>` +
     box(`📃 <b>คลาส:</b> ${s?.ws_name || "Workshop"} (รอบสด)<br>` +
         `📆 <b>วันเวิร์คชอป:</b> ${when}<br>` +
-        `⏰ <b>ระยะเวลา:</b> 3.5 ชม. (13.00 – 16.30 น.)<br>` +
+        `⏰ <b>ระยะเวลา:</b> ${hoursTxt}<br>` +
         `🏠 <b>สถานที่:</b> ${s?.location || WS.address}<br>` +
         `👥 <b>จำนวน:</b> ${b.qty} ที่`) +
     (s?.note ? `${s.note}<br><br>` : "") +
+    (ws?.prepare ? `<b>🎒 สิ่งที่ต้องเตรียมมา</b>${box(String(ws.prepare).replace(/\n/g, "<br>"))}` : "") +
+    (ws?.tools ? `<b>⬇️ โหลดมาก่อนเข้าคลาส</b>${box(String(ws.tools).replace(/\n/g, "<br>"))}` : "") +
     `<b>📍 การเลื่อนนัด</b><br>` +
     `หากมีการเลื่อนนัด จำเป็นต้องแจ้งล่วงหน้าอย่างน้อย <b>2 วัน</b> ก่อนถึงวันคลาสนะคะ ไม่เช่นนั้นจะถูกปรับค่าจองคิวเต็มจำนวนค่ะ<br>` +
     `เนื่องจากการยกเลิกนัดถือเป็นการปฏิเสธคิวของผู้ที่ต้องการนัดท่านอื่น ทางบริษัทต้องขออภัยในความไม่สะดวกมา ณ ที่นี้ค่ะ 🙇‍♀️<br><br>` +
     `<b>🚙 การเดินทางและรับส่ง</b><br>` +
     box(`รบกวนกดเข้ากลุ่มนี้ล่วงหน้าเพื่อนัดเจอกับคุณดิส และแจ้งว่าถึงแล้วให้มารับที่ลานจอดนะคะ<br>` +
         `👉 <a href="${WS.line}">${WS.line}</a><br><br>` +
-        `🚙 <b>เวลารับส่ง:</b> ${WS.pickup} (แนะนำให้เผื่อเวลาเดินทางนะคะ)<br>` +
+        `🚙 <b>เวลารับส่ง:</b> ${pickupTxt} (แนะนำให้เผื่อเวลาเดินทางนะคะ)<br>` +
         `🚗 <b>จอดรถได้ที่:</b> <a href="${WS.mapPark}">เปิดแผนที่ลานจอด</a><br>` +
         `🏡 <b>พิกัด Babe House:</b> <a href="${WS.mapHouse}">เปิดแผนที่</a> · หาไม่เจอดูโพสต์นี้ได้เลยค่ะ <a href="${WS.igPost}">ดูโพสต์</a><br><br>` +
         `จอดเรียบร้อยแล้วโทรแจ้งได้ที่ <b>${WS.phone}</b> เดี๋ยวมีรถไปรับค่า<br>` +
@@ -3049,13 +3065,18 @@ app.post("/api/admin/workshop", async (req, res) => {
     const b = req.body || {};
     if (b.action === "delete") { await run(`DELETE FROM workshops WHERE workshop_id=$1`, [String(b.workshop_id)]); return res.json({ ok: true, deleted: b.workshop_id }); }
     const id = String(b.workshop_id || "") || uid("ws");
-    await run(`INSERT INTO workshops (workshop_id, name, tagline, detail, who_for, what_you_get, instructor, price, duration, image_url, active, seq)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    // แก้ทีละช่องได้ — ส่งมาเฉพาะช่องที่อยากแก้ ช่องที่ไม่ส่งจะคงค่าเดิมไว้ (กันเผลอล้างเนื้อหาทิ้ง)
+    const cur = await one(`SELECT * FROM workshops WHERE workshop_id=$1`, [id]);
+    const pick = (k, d) => (b[k] === undefined ? (cur ? cur[k] : d) : b[k]);
+    await run(`INSERT INTO workshops (workshop_id, name, tagline, detail, who_for, what_you_get, instructor, price, duration, image_url, active, seq, prepare, tools)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       ON CONFLICT (workshop_id) DO UPDATE SET name=EXCLUDED.name, tagline=EXCLUDED.tagline, detail=EXCLUDED.detail, who_for=EXCLUDED.who_for,
         what_you_get=EXCLUDED.what_you_get, instructor=EXCLUDED.instructor, price=EXCLUDED.price, duration=EXCLUDED.duration,
-        image_url=EXCLUDED.image_url, active=EXCLUDED.active, seq=EXCLUDED.seq`,
-      [id, String(b.name || ""), String(b.tagline || ""), String(b.detail || ""), String(b.who_for || ""), String(b.what_you_get || ""),
-       String(b.instructor || "ครูพี่คิม"), Number(b.price) || 0, String(b.duration || ""), String(b.image_url || ""), b.active !== false, Number(b.seq) || 1]);
+        image_url=EXCLUDED.image_url, active=EXCLUDED.active, seq=EXCLUDED.seq, prepare=EXCLUDED.prepare, tools=EXCLUDED.tools`,
+      [id, String(pick("name", "")), String(pick("tagline", "") || ""), String(pick("detail", "") || ""), String(pick("who_for", "") || ""),
+       String(pick("what_you_get", "") || ""), String(pick("instructor", "ครูพี่คิม") || "ครูพี่คิม"), Number(pick("price", 0)) || 0,
+       String(pick("duration", "") || ""), String(pick("image_url", "") || ""), pick("active", true) !== false, Number(pick("seq", 1)) || 1,
+       String(pick("prepare", "") || ""), String(pick("tools", "") || "")]);
     res.json({ ok: true, workshop: await one(`SELECT * FROM workshops WHERE workshop_id=$1`, [id]) });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });

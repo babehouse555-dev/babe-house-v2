@@ -81,6 +81,20 @@ export default function WorkshopDetail() {
               <p style={{ fontSize: 14.5, lineHeight: 1.9, margin: 0, whiteSpace: "pre-wrap" }}>{w.what_you_get}</p>
             </div>}
 
+            {/* 🎒 สิ่งที่ต้องเตรียมมา + แอปที่ต้องโหลดล่วงหน้า (พลอยขอ 10 ส.ค. — ลูกค้ามาถึงแล้วเตรียมไม่พร้อมบ่อย) */}
+            {(d.workshop?.prepare || d.workshop?.tools) && (
+              <div className="card" style={{ borderRadius: 16, background: "#FFF8E9", border: "1px solid #F0DCAF" }}>
+                {d.workshop.prepare && <>
+                  <h3 style={{ fontSize: 16, margin: "0 0 10px" }}>🎒 สิ่งที่ต้องเตรียมมา</h3>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.9, whiteSpace: "pre-line" }}>{d.workshop.prepare}</div>
+                </>}
+                {d.workshop.tools && <>
+                  <h3 style={{ fontSize: 16, margin: d.workshop.prepare ? "16px 0 10px" : "0 0 10px" }}>⬇️ โหลดมาก่อนเข้าคลาส</h3>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.9, whiteSpace: "pre-line" }}>{d.workshop.tools}</div>
+                </>}
+              </div>
+            )}
+
             {/* 📍 สถานที่เรียน — ที่อยู่ · แผนที่ · ที่จอดรถ · รถรับส่ง (ดึงจากโน้ตของรอบที่เลือก) */}
             {(() => {
               const sel = (d.sessions || []).find(x => x.session_id === pick) || (d.sessions || [])[0];

@@ -775,6 +775,8 @@ export async function initDb() {
       seq INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT now()
     );
+    ALTER TABLE workshops ADD COLUMN IF NOT EXISTS prepare TEXT;   -- สิ่งที่ลูกค้าต้องเตรียมมาในคลาส (พลอยขอ 10 ส.ค.)
+    ALTER TABLE workshops ADD COLUMN IF NOT EXISTS tools TEXT;     -- เครื่องมือ/แอปที่ต้องโหลดมาก่อน (คอร์ส AI)
     CREATE TABLE IF NOT EXISTS workshop_sessions (
       session_id TEXT PRIMARY KEY,
       workshop_id TEXT NOT NULL,

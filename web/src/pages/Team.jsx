@@ -66,6 +66,32 @@ function jobColor(j) {
   return "yellow";
 }
 const Dot = ({ c }) => <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: c, marginRight: 5, verticalAlign: "middle" }} />;
+
+// 💬 ข้อความในสายสนทนา — เดิมพิมพ์ออกดิบๆ ทำให้ขึ้นบรรทัดที่ลูกค้าเว้นไว้หายหมด
+// คิมทัก 11 ส.ค.: "ทำเป็นแนวตั้งดีกว่าจะอ่านง่ายกว่าแนวนอน"
+// รอบแก้ที่ลูกค้าส่งมาเป็น "1. ... 2. ... 3. ..." พออยู่บรรทัดเดียวคนตัดต้องไล่อ่านหาทีละจุด อ่านตกได้ง่าย
+// → แต่ละจุดขึ้นบรรทัดของตัวเอง + เวลาในคลิป [0:45] ทำเป็นป้ายสีฟ้าให้สะดุดตา (คนตัดใช้เลขนี้กระโดดไปแก้)
+function CommentBody({ text }) {
+  const lines = String(text || "").split("\n");
+  return (
+    <div style={{ display: "grid", gap: 3 }}>
+      {lines.map((raw, i) => {
+        const ln = raw.trimEnd();
+        if (!ln.trim()) return <div key={i} style={{ height: 4 }} />;
+        const m = ln.match(/^(\d+)\.\s*(?:\[([^\]]+)\]\s*)?([\s\S]*)$/);   // "3. [1:00] อย่าให้เหลือ"
+        if (!m) return <div key={i} style={{ whiteSpace: "pre-wrap" }}>{ln}</div>;
+        return (
+          <div key={i} style={{ display: "flex", gap: 7, alignItems: "baseline" }}>
+            <span style={{ color: "#a89f96", fontWeight: 700, minWidth: 16, flexShrink: 0 }}>{m[1]}.</span>
+            {m[2] && <span style={{ flexShrink: 0, background: "#EAF3FD", color: "#0b4da8", fontWeight: 800,
+              borderRadius: 6, padding: "1px 7px", fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>{m[2]}</span>}
+            <span style={{ minWidth: 0, whiteSpace: "pre-wrap" }}>{m[3]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 // แถบ กาง/ย่อ ทั้งหมด — ใช้ซ้ำหลายที่
 const ExpandBar = ({ list, setOpen }) => list.length > 1 ? (
   <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -1141,9 +1167,23 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
             <div style={{ fontSize: 12, color: "#b42318", fontWeight: 700, marginBottom: 3 }}>
               ต้องแก้ตามนี้ — จาก {last.author_name}
             </div>
-            <div style={{ fontSize: 14, lineHeight: 1.6 }}>{last.text.replace(/^❌ ไม่อนุมัติ — /, "")}</div>
+            <div style={{ fontSize: 14, lineHeight: 1.6 }}><CommentBody text={last.text.replace(/^❌ ไม่อนุมัติ — /, "")} /></div>
           </div>
         ) : null;
+      })()}
+
+      {/* 🔁 จุดที่ลูกค้าขอแก้ — กางให้เห็นเต็มๆ เลย ไม่ต้องกดหาในสายสนทนา
+          คิมทัก 11 ส.ค. "ทำเป็นแนวตั้งดีกว่า" — คนตัดต้องไล่แก้ทีละจุด ถ้าอ่านตกจุดนึงคืองานตีกลับอีกรอบ */}
+      {open && j.status === "revising" && (() => {
+        const last = [...thread].reverse().find(c => !c.internal && /^📝\s*รอบแก้/.test(c.text || ""));
+        if (!last) return null;
+        const [head, ...rest] = String(last.text).split("\n");
+        return (
+          <div style={{ marginTop: 10, background: "#FFF6EC", border: "1.5px solid #F0D2A8", borderRadius: 10, padding: "11px 13px" }}>
+            <div style={{ fontSize: 12.5, color: "#9a3412", fontWeight: 800, marginBottom: 6 }}>{head}</div>
+            <div style={{ fontSize: 14, lineHeight: 1.7 }}><CommentBody text={rest.join("\n")} /></div>
+          </div>
+        );
       })()}
 
       {/* AE กระจายงาน */}
@@ -1213,7 +1253,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
           onClick={() => setShowThread(v => !v)}>
           💬 คุยกันในทีม ({thread.length}) {showThread ? "▾" : "▸"}
           {!showThread && thread.length > 0 &&
-            <span style={{ color: "#a89f96" }}> · ล่าสุด: {thread[thread.length - 1].text.slice(0, 40)}…</span>}
+            <span style={{ color: "#a89f96" }}> · ล่าสุด: {thread[thread.length - 1].text.replace(/\s*\n+\s*/g, " · ").slice(0, 40)}…</span>}
         </button>
 
         {showThread && (<>
@@ -1225,7 +1265,7 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
                 <div style={{ fontSize: 11.5, color: c.internal ? "#5a3fc0" : "#B26A00", fontWeight: 700, marginBottom: 2 }}>
                   {c.internal ? `🔒 ${c.author_name || "ทีม"}` : `💬 ลูกค้า`}
                 </div>
-                {c.text}
+                <CommentBody text={c.text} />
               </div>
             ))}
           </div>

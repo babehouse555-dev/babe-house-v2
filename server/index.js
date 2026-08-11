@@ -1586,8 +1586,9 @@ app.get("/api/me/tax-invoices", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try {
     const rows = await q(`SELECT invoice_id, order_id, order_kind, customer_name, is_company, tax_id, branch, address,
-        description, amount_satang, net_satang, vat_satang, status, doc_number, receipt_number, issued_at, created_at
-      FROM tax_invoices WHERE lower(email)=lower($1) ORDER BY COALESCE(issued_at, created_at) DESC`, [email]);
+        description, amount_satang, net_satang, vat_satang, wht_satang, full_name, status, doc_number, receipt_number,
+        doc_date, issued_at, created_at
+      FROM tax_invoices WHERE lower(email)=lower($1) ORDER BY COALESCE(doc_date, issued_at, created_at) DESC`, [email]);
     res.json({ ok: true, invoices: rows, seller: SELLER });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });

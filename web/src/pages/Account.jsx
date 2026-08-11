@@ -472,7 +472,9 @@ export default function Account() {
         {TAX_INVOICE_LIVE && taxInv.length > 0 && (!showFolders || folder === "tax") && (() => {
           const kw = taxQ.trim().toLowerCase();
           const list = !kw ? taxInv : taxInv.filter(v => {
-            const d = new Date(v.issued_at || v.created_at);
+            // 📅 ต้องโชว์ "วันที่บนใบ" (= วันที่ลูกค้าจ่ายเงินจริง) ไม่ใช่วันที่กดออกใบเข้าระบบบัญชี
+            //    ไม่งั้นใบของเดือนมิถุนาจะขึ้นเป็นวันที่วันนี้ ลูกค้างงว่าซื้อตอนไหน (เจอเอง 11 ส.ค.)
+            const d = new Date(v.doc_date || v.issued_at || v.created_at);
             const hay = [
               v.description, v.doc_number, v.customer_name, v.order_kind,
               String(Math.round((v.amount_satang || 0) / 100)),

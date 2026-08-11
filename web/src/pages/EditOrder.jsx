@@ -78,7 +78,8 @@ export default function EditOrder() {
         </div>
         <Link to="/edit/new?free=1" className="btn full"
           style={{ background: "#4B2FA8", textAlign: "center", display: "block", textDecoration: "none" }}>
-          ＋ บรีฟงานนอกแผน 30 วัน
+          {/* ⚠️ ห้ามใช้ ＋ (fullwidth) — เบราว์เซอร์ตกไปใช้ฟอนต์จีน กลายเป็นตัวจีน (คิมเจอ 11 ส.ค.) */}
+          ✏️ บรีฟงานนอกแผน 30 วัน
         </Link>
       </div>
 

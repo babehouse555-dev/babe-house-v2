@@ -420,3 +420,35 @@ export async function tryAttachShapes(type, docId) {
   }
   return { ok: true, doc: `${type}/${docId}`, tried: out };
 }
+
+// ✏️ แก้ชื่อบนเอกสารที่ออกไปแล้ว — ใช้ตอนเปลี่ยนกฎการตั้งชื่อ (นักบัญชีเคาะ 11 ส.ค.)
+//    ส่งเนื้อเอกสารชุดเดิมกลับไปทับด้วย PUT โดยชื่อจะถูกคำนวณใหม่จาก docContactName()
+//    ⚠️ ไม่ลบเอกสาร ไม่สร้างใหม่ → เลขที่เอกสารไม่ขาดช่วง
+export async function fixDocNames({ limit = 5, dry = true } = {}) {
+  if (!flowAccountReady()) return { ok: false, reason: "ยังไม่ได้ตั้งรหัส FlowAccount" };
+  const token = await getToken();
+  const rows = await q(`SELECT * FROM tax_invoices WHERE docs_json IS NOT NULL AND status='issued' ORDER BY created_at`);
+  const out = [];
+  for (const inv of rows) {
+    const docs = (() => { try { return JSON.parse(inv.docs_json || "{}"); } catch { return {}; } })();
+    const want = docContactName(inv);
+    for (const [type, d] of Object.entries(docs)) {
+      if (type.startsWith("_") || !d?.id || d.mode !== "production") continue;
+      // เอกสารที่ชื่อถูกอยู่แล้ว ไม่ต้องแตะ
+      const cur = await fetch(`${BASE}/${type}/${d.id}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json()).catch(() => null);
+      const now = cur?.data?.list?.[0]?.contactName;
+      if (now === want) { out.push({ doc: d.number, skip: "ชื่อถูกอยู่แล้ว" }); continue; }
+      if (dry) { out.push({ doc: d.number, from: now, to: want, dry: true }); continue; }
+      const body = type === "cash-invoices" ? buildCashInvoice(inv) : buildDocument(inv);
+      const r = await fetch(`${BASE}/${type}/${d.id}`, { method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body) });
+      const t = await r.text();
+      out.push({ doc: d.number, from: now, to: want, ok: r.ok, status: r.status, ...(r.ok ? {} : { error: t.slice(0, 200) }) });
+      await new Promise(x => setTimeout(x, 900));
+    }
+    if (out.length >= limit) break;
+  }
+  return { ok: true, dry, changed: out.filter(x => x.ok).length, rows: out };
+}

@@ -6085,7 +6085,7 @@ app.post("/api/admin/flowaccount/test-wht", async (req, res) => {
 app.get("/api/admin/flowaccount/doc", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const type = String(req.query?.type || "tax-invoices");
-  if (!["tax-invoices", "receipts"].includes(type)) return res.status(400).json({ ok: false, error: "BAD_TYPE" });
+  if (!["tax-invoices", "receipts", "cash-invoices"].includes(type)) return res.status(400).json({ ok: false, error: "BAD_TYPE" });
   const id = String(req.query?.id || "").replace(/[^0-9]/g, "");
   if (!id) return res.status(400).json({ ok: false, error: "BAD_ID" });
   try { res.json(await fetchFlowDoc(type, id)); }

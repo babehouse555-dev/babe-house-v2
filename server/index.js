@@ -10,7 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht } from "./tax.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht, tryAttachShapes } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -6092,6 +6092,12 @@ app.get("/api/admin/stripe-peek", async (req, res) => {
       amount: (ses.amount_total || 0) / 100, paid: ses.payment_status,
       created: new Date((ses.created || 0) * 1000).toISOString() });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 300) }); }
+});
+// 🧪 ลองรูปแบบ body ของ API แนบไฟล์ — เอกสารบนเว็บ FlowAccount อ่านสเปกส่วนนี้ไม่ได้ เลยต้องยิงเทียบเอา
+app.post("/api/admin/flowaccount/try-attach", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try { res.json(await tryAttachShapes(String(req.body?.type || "cash-invoices"), String(req.body?.doc_id || ""))); }
+  catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 400) }); }
 });
 app.get("/api/admin/flowaccount/ping", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

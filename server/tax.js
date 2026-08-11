@@ -7,6 +7,7 @@
 //    ถ้ายังไม่ได้ตั้งรหัส FlowAccount หรือ API ล่ม → ใบยังอยู่ครบ ส่งออกให้นักบัญชีได้
 //    เงินของลูกค้าต้องไม่มีทางค้างเพราะระบบบัญชีมีปัญหา
 import { q, one, run } from "./db.js";
+import { paymentEvidencePdf } from "./evidence.js";
 
 // 🌐 ที่อยู่ API — ของจริงกับ sandbox คนละที่
 //    ของจริง : https://openapi.flowaccount.com/v1
@@ -382,4 +383,30 @@ export async function fetchFlowDoc(type, id) {
   const text = await r.text();
   let j = null; try { j = JSON.parse(text); } catch {}
   return { ok: r.ok, status: r.status, body: j || text.slice(0, 800) };
+}
+
+// 🧪 ยิงลองหลายรูปแบบเพื่อหาว่า API แนบไฟล์รับ body หน้าตาไหน (ใช้ครั้งเดียวตอนพัฒนา)
+export async function tryAttachShapes(type, docId) {
+  const token = await getToken();
+  const ev = paymentEvidencePdf({ order_id: "TEST-ATTACH", email: "test@babehouse.net",
+    description: "attach shape probe", net_satang: 100, vat_satang: 7, amount_satang: 107 });
+  const shapes = {
+    A: { fileName: ev.fileName, base64: ev.base64 },
+    B: { fileName: ev.fileName, fileBase64: ev.base64 },
+    C: { name: ev.fileName, base64String: ev.base64 },
+    D: { attachments: [{ fileName: ev.fileName, base64: ev.base64 }] },
+    E: { fileName: ev.fileName, contentType: "application/pdf", base64: ev.base64 },
+  };
+  const out = {};
+  for (const [k, body] of Object.entries(shapes)) {
+    try {
+      const r = await fetch(`${BASE}/${type}/${docId}/attachment/base64`, { method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body) });
+      const t = await r.text();
+      out[k] = { status: r.status, body: t.slice(0, 300) };
+      if (r.ok) break;                       // เจอแบบที่ใช้ได้แล้ว หยุดเลย ไม่แนบซ้ำ
+    } catch (e) { out[k] = { error: String(e.message).slice(0, 200) }; }
+  }
+  return { ok: true, doc: `${type}/${docId}`, tried: out };
 }

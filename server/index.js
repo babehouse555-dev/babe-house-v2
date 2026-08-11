@@ -2401,9 +2401,12 @@ async function maybeIssueCertificate(email, courseId) {
   const total = Number((await one(`SELECT COUNT(*) c FROM academy_course_lines WHERE course_id=$1`, [courseId]))?.c || 0);
   const done = Number((await one(`SELECT COUNT(*) c FROM academy_progress WHERE email=lower($1) AND course_id=$2`, [email, courseId]))?.c || 0);
   if (!(total > 0 && done >= total)) return { cert_id: null, blocked_by: "lessons" };
-  // การบ้านที่ตั้ง required=true ต้องมี submission ที่ผ่านครบทุกชิ้น (คอร์สที่ยังไม่ได้ตั้งการบ้าน = ผ่านอัตโนมัติ)
+  // การบ้านที่ตั้ง required=true ต้อง "ส่งครบทุกชิ้น" (คอร์สที่ยังไม่ได้ตั้งการบ้าน = ผ่านอัตโนมัติ)
+  // 🔁 คิมเปลี่ยนกฎ 11 ส.ค.: "ให้ส่งรอบเดียวพอ แล้วประกาศขึ้นเลย"
+  //    เดิมต้องได้สถานะ passed ก่อน → AI ตรวจแล้วบอกให้ส่งใหม่ ลูกค้าเลยไม่ได้ประกาศสักที
+  //    ตอนนี้ AI ยังให้ฟีดแบ็กเหมือนเดิม แต่ไม่บล็อกประกาศนียบัตรแล้ว
   const pending = Number((await one(`SELECT COUNT(*) c FROM academy_assignments a WHERE a.course_id=$1 AND a.required
-      AND NOT EXISTS (SELECT 1 FROM academy_submissions s WHERE s.assignment_id=a.assignment_id AND lower(s.email)=lower($2) AND s.status='passed')`,
+      AND NOT EXISTS (SELECT 1 FROM academy_submissions s WHERE s.assignment_id=a.assignment_id AND lower(s.email)=lower($2))`,
     [courseId, email]))?.c || 0);
   if (pending > 0) return { cert_id: null, blocked_by: "homework", homework_left: pending };
   // ลำดับที่ใช้: ชื่อที่กรอกตอนซื้อ → ชื่อจากระบบเก่า → ชื่อที่กรอกตอนจอง workshop → ตัดอีเมลมาใช้ (ทางสุดท้าย)

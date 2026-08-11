@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, session } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
+import { OUR_STYLES } from "../editStyles.js";
 
 // 🎬 ให้ทีมช่วยลงมือทำ — ลูกค้ามีสคริปต์อยู่แล้วจากเล่ม แค่ไม่มีเวลาตัด
 // ขอบเขต (คิมเคาะ 2 ส.ค.): ตัดต่ออย่างเดียว · ลูกค้าส่งฟุตเทจ+เสียงเอง · ไม่รับถ่ายในเว็บ
@@ -75,7 +76,28 @@ export default function EditOrder() {
         </div>
       )}
 
+      {/* 🎬 ตัวอย่างงานจริงของทีม — พลอยทัก 11 ส.ค. "ลูกค้าไม่เห็นภาพว่าจะได้ประมาณไหน ก่อนกดซื้อ"
+          ใช้ชุดเดียวกับที่ให้เลือกตอนบรีฟงาน (คิมสั่ง) แก้ที่ editStyles.js ที่เดียวขึ้นทั้ง 2 หน้า */}
       <div className="card" style={{ marginTop: credits > 0 ? 12 : 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>🎬 ตัวอย่างงานที่ทีมเราตัด</div>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 11, lineHeight: 1.6 }}>
+          กดดูได้เลยค่ะ ว่างานที่ได้จะออกมาประมาณไหน — ตอนสั่งงานเลือกได้ว่าอยากได้แนวไหน
+        </div>
+        <div className="st-row">
+          {OUR_STYLES.map(x => (
+            <a key={x.id} href={x.url} target="_blank" rel="noreferrer" className="st"
+               style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+              <span className="st-pick" style={{ cursor: "pointer" }}>
+                <span style={{ fontSize: 17, flexShrink: 0 }}>▶</span>
+                <span className="st-label">{x.label}</span>
+              </span>
+              <span className="st-see">ดูตัวอย่าง →</span>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 12 }}>
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>ซื้อเครดิตตัดต่อกี่คลิปดีคะ?</div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
           1 เครดิต = ตัดให้ 1 คลิป · ยังไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน · ซื้อเยอะราคาต่อคลิปถูกลง

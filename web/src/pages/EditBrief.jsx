@@ -1,18 +1,11 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { api, session } from "../api.js";
+import { OUR_STYLES } from "../editStyles.js";
 
 // 🎨 งานเก่าของทีมให้ลูกค้ากดเลือกว่าชอบสไตล์ไหน
 // ⚠️ ย้ายมาจากหน้าซื้อเครดิต (คิมทัก 3 ส.ค.: "เส้นทางการทำงานของลูกค้ามันซับซ้อนเกินไป")
 //    สไตล์เป็นเรื่องของ "คลิปนี้" ไม่ใช่เรื่องของ "การซื้อเครดิต" — ต้องถามตอนสั่งงานจริง
-const OUR_STYLES = [
-  { id: "amabella", label: "สายบิวตี้ · จังหวะไว", url: "https://www.tiktok.com/@amabella_official/video/7505059615051156754" },
-  { id: "panpuri", label: "พรีเมียม · คุมโทน", url: "https://www.tiktok.com/@panpuriofficial/video/7438944063224646919" },
-  { id: "irvin", label: "ร้านอาหาร · น่ากิน", url: "https://www.tiktok.com/@irvin_restaurant/video/7564034789829774613" },
-  { id: "spicy", label: "สินค้า · สนุกดึงดูด", url: "https://www.tiktok.com/@spicymonsters.sauce/video/7545445063556451591" },
-  { id: "may", label: "รีวิวไลฟ์สไตล์ · เป็นกันเอง", url: "https://www.tiktok.com/@may.primaya/video/7464965432118611218" },
-  { id: "kim", label: "สอน/ให้ความรู้ · ครูพี่คิม", url: "https://www.tiktok.com/@bearbykim/video/7475610078079405330" },
-];
 
 // ═══════ 🎬 หน้ากรอกรายละเอียดก่อนให้ทีมตัด (คิมสั่ง 3 ส.ค. 2569) ═══════
 // "หน้านี้ไปให้เขาใส่รายละเอียดก่อน แล้วหักเครดิตตอนกดปุ่มด้านในดีกว่า

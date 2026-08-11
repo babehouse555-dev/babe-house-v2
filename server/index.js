@@ -4115,10 +4115,19 @@ app.get("/api/team/me", async (req, res) => {
       ${isOwner || isAE ? "" : "WHERE ta.member_id=$1"} ORDER BY s.starts_at`, (isOwner || isAE) ? [] : [me.member_id]);
 
     // 🎨 งานกราฟฟิกที่เกี่ยวกับคนนี้
-    const gjWhere = (isOwner || isAE) ? "" : "WHERE assigned_to=$1 OR requested_by=$1";
-    const graphicJobs = await q(`SELECT g.*, (SELECT name FROM team_members t WHERE t.member_id=g.assigned_to) assignee_name
-      FROM graphic_jobs g ${gjWhere} ORDER BY (status IN ('done','canceled')), due_at NULLS LAST, created_at DESC LIMIT 100`,
-      (isOwner || isAE) ? [] : [me.member_id]).catch(() => []);
+    const gjWhere = (isOwner || isAE) ? "" : "WHERE g.assigned_to=$1 OR g.requested_by=$1";
+    // 🎬 ดึงลิงก์คลิปจาก "งานตัดต่อต้นทาง" ตอนอ่านเสมอ ไม่ใช่ก๊อปตอนสร้าง
+    //    เพราะคนตัดมักอัปคลิปที่ตัดเสร็จ *หลัง* ส่งงานให้กราฟฟิกไปแล้ว — ถ้าก๊อปตอนสร้างจะได้ค่าว่างค้างไว้ตลอด
+    //    (คิมเจอ 11 ส.ค.: งานที่สร้างก่อนมีฟีเจอร์นี้ แฟรี่เลยไม่เห็นคลิปที่โบแนบไว้ในงานตัดต่อ)
+    const graphicJobs = (await q(`SELECT g.*,
+        eo.draft_url AS eo_draft, eo.final_url AS eo_final, eo.footage_url AS eo_footage,
+        (SELECT name FROM team_members t WHERE t.member_id=g.assigned_to) assignee_name
+      FROM graphic_jobs g LEFT JOIN edit_orders eo ON eo.order_id = g.from_order_id
+      ${gjWhere} ORDER BY (g.status IN ('done','canceled')), g.due_at NULLS LAST, g.created_at DESC LIMIT 100`,
+      (isOwner || isAE) ? [] : [me.member_id]).catch(() => []))
+      .map(({ eo_draft, eo_final, eo_footage, ...g }) => ({ ...g,
+        clip_url: g.clip_url || eo_draft || eo_final || null,     // ลิงก์ที่พิมพ์เองมาก่อน แล้วค่อยตกมาที่งานตัดต่อ
+        footage_url: g.footage_url || eo_footage || null }));
     // ปุ่ม "ขอให้แฟรี่ช่วย" โผล่เฉพาะทีมในเฮ้าส์ — ฟรีแลนซ์ต้องทำอาร์ตเวิร์คเองได้ (คิมสั่ง 7 ส.ค.)
     const canAskGraphic = INHOUSE_CODES.includes(String(me.code || "")) || isOwner || isAE;
 
@@ -4623,13 +4632,17 @@ app.post("/api/team/graphic/update", async (req, res) => {
   const isBoss = ["owner", "ae"].includes(me.role);
   // ⚠️ ทุก 403 ต้องมีข้อความไทยเสมอ — ไม่งั้นหน้าเว็บขึ้นแค่ "Request failed: 403" ซึ่งทีมอ่านไม่รู้เรื่อง
   if (!isAssignee && !isRequester && !isBoss) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "งานนี้ไม่ใช่งานของคุณค่ะ" });
-  let status = Object.keys(GJ_STATUS).includes(String(b.status)) ? String(b.status) : gj.status;
+  // แยก "ตั้งใจเปลี่ยนสถานะ" ออกจาก "แค่มาแนบลิงก์เพิ่ม" — ไม่งั้นคนขอมาแปะลิงก์เฉยๆ จะโดนกันไปด้วย
+  const wantStatus = Object.keys(GJ_STATUS).includes(String(b.status)) ? String(b.status) : null;
+  const status = wantStatus || gj.status;
   // คนที่ขอไว้ปิดงานได้อย่างเดียว — เปลี่ยนสถานะแทนกราฟฟิกไม่ได้ (เช่นกดว่า "ส่งงานแล้ว" เองไม่ได้)
-  if (isRequester && !isAssignee && !isBoss && !["done", "canceled"].includes(status))
+  if (isRequester && !isAssignee && !isBoss && wantStatus && !["done", "canceled"].includes(wantStatus))
     return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "งานนี้อยู่ที่กราฟฟิก คุณกดได้แค่รับงานหรือยกเลิกค่ะ" });
   await run(`UPDATE graphic_jobs SET status=$1, work_url=COALESCE($2,work_url), note=COALESCE($3,note),
+     clip_url=COALESCE($5,clip_url),
      done_at=CASE WHEN $1 IN ('done','canceled') THEN now() ELSE done_at END, updated_at=now() WHERE gj_id=$4`,
-    [status, String(b.work_url || "").trim() || null, String(b.note || "").slice(0, 1000) || null, gj.gj_id]);
+    [status, String(b.work_url || "").trim() || null, String(b.note || "").slice(0, 1000) || null, gj.gj_id,
+     String(b.clip_url || "").trim().slice(0, 1000) || null]);   // แนบลิงก์คลิปเพิ่มทีหลังได้ ไม่ต้องสั่งงานใหม่
   // ส่งงานแล้ว → บอกคนที่ขอไว้ (คนตัดต่อ/ลูกตาล) ให้รู้ทันที ไม่ต้องมานั่งถาม
   if (status === "sent" && gj.from_order_id) {
     teamComment(gj.from_order_id, "ระบบ", `🎨 ${me.name} ส่งอาร์ตเวิร์คแล้ว${b.work_url ? ` — ${b.work_url}` : ""}`);

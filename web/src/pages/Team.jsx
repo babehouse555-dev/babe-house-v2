@@ -115,6 +115,8 @@ export default function Team() {
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("jobs");
   const [gjUrl, setGjUrl] = useState({});      // ลิงก์ไฟล์งานที่แฟรี่กำลังพิมพ์ (แยกตามงาน)
+  // ลิงก์คลิปที่คนขอมาแปะเพิ่มทีหลัง ในแท็บงานกราฟฟิก (คนละตัวกับช่องตอนสั่งงานครั้งแรกในการ์ดงานตัดต่อ)
+  const [gjClipFix, setGjClipFix] = useState({});
   const [cp, setCp] = useState(null);         // คอนเทนต์ลูกค้า
   const [cpOpen, setCpOpen] = useState("");   // โปรเจคที่กางอยู่
   const [cpF, setCpF] = useState({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" });
@@ -604,6 +606,17 @@ export default function Team() {
                   🎬 เปิดคลิปที่ตัดคัทชนแล้ว →
                 </a>}
                 {g.footage_url && <p style={{ margin: "7px 0 0", fontSize: 13 }}>🎞️ ฟุตเทจต้นฉบับ: <Linkify text={g.footage_url} /></p>}
+                {/* ไม่มีคลิปให้ดู — กราฟฟิกทำงานไม่ได้ · คนที่ขอต้องแปะให้ได้ตรงนี้ ไม่ต้องสั่งงานใหม่ */}
+                {!g.clip_url && !done && (isFairy
+                  ? <div style={{ marginTop: 9, background: "#FDF3E4", border: "1px solid #f0d9ae", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#8a5a00" }}>
+                      ⏳ ยังไม่มีลิงก์คลิปที่ตัดแล้ว — ทัก{g.requested_by_name ? ` ${g.requested_by_name}` : "คนที่ขอ"}ให้แปะให้ก่อนนะคะ
+                    </div>
+                  : <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
+                      <input style={{ ...input, flex: 1, minWidth: 190 }} placeholder="แปะลิงก์คลิปที่ตัดแล้วให้กราฟฟิก"
+                        value={gjClipFix[g.gj_id] || ""} onChange={e => setGjClipFix(v => ({ ...v, [g.gj_id]: e.target.value }))} />
+                      <button style={btn("#7a4fa3")} disabled={busy === "gj" || !(gjClipFix[g.gj_id] || "").trim()}
+                        onClick={() => post("/api/team/graphic/update", { gj_id: g.gj_id, clip_url: (gjClipFix[g.gj_id] || "").trim() }, "gj")}>แนบคลิป</button>
+                    </div>)}
                 {g.ref_links && <p style={{ margin: "7px 0 0", fontSize: 13.5, whiteSpace: "pre-wrap" }}>🔗 ตัวอย่าง: <Linkify text={g.ref_links} /></p>}
                 {g.work_url && <p style={{ margin: "7px 0 0", fontSize: 13.5 }}>🖼️ ไฟล์งาน: <Linkify text={g.work_url} /></p>}
                 {isFairy && !done && (

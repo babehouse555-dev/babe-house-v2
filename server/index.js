@@ -289,14 +289,24 @@ async function notifyAdminPurchase(orderId, provider, liveMode) {
 // 🧾 ออกใบกำกับภาษีจากออเดอร์ที่จ่ายแล้ว — คิมสั่ง "ทุกการจ่ายเงินต้องออกใบกำกับ"
 // ⛔ ห้ามพังการจ่ายเงินไม่ว่าจะเกิดอะไรขึ้น (เรียกแบบ fire-and-forget + จับ error ครบ)
 const KIND_LABEL = { credits: "แพ็กเครดิตสคริปต์", video: "บริการตรวจคลิป (Video Audit)",
-                     edit: "เครดิตตัดต่อคลิป", academy: "คอร์สออนไลน์ Babe House Academy", workshop: "Workshop" };
+                     edit: "เครดิตตัดต่อคลิป", academy: "คอร์สออนไลน์ Babe House Academy", workshop: "Workshop",
+                     revision: "ค่ารอบแก้งานตัดต่อ (เกินโควตาฟรี)" };
+// 🏷️ ออเดอร์นี้คือสินค้าอะไร — ใช้ตั้งชื่อบนใบกำกับภาษีและแยกหมวดยอดขาย
+// ⚠️ เดิมโค้ดชุดนี้ถูกก๊อปไว้ 3 ที่ พอเพิ่มสินค้าใหม่แล้วลืมแก้ให้ครบ ใบกำกับจะเขียนว่า
+//    "AI Creator Blueprint — รายเดือน" ทั้งที่ลูกค้าซื้ออย่างอื่น (เจอจริง 12 ส.ค.: ค่ารอบแก้ ฿500)
+//    → รวมมาไว้ที่เดียว เพิ่มสินค้าใหม่แก้ตรงนี้จุดเดียวพอ
+const kindOfTier = (tier) => {
+  const t = String(tier || "");
+  return t.startsWith("EditCredits") ? "edit" : t.startsWith("Credits") ? "credits"
+    : t.startsWith("Video") ? "video" : t.startsWith("Revision") ? "revision" : "blueprint";
+};
 async function issueInvoiceForOrder(orderId) {
   const o = await getOrder(orderId); if (!o) return;
   const amount = Number(o.final_amount_satang || 0);
   if (amount <= 0) return;                                  // ฟรี/โค้ด 100% ไม่มียอด ไม่ต้องออกใบ
   const payload = safeJson(o.order_payload_json) || {};
   const tier = String(o.tier || "");
-  const kind = tier.startsWith("EditCredits") ? "edit" : tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+  const kind = kindOfTier(tier);
   const plan = planOf(payload.plan);
   const desc = kind === "edit" ? `เครดิตตัดต่อคลิป ${Number(payload.edit_credit_pack) || 0} คลิป`
     : KIND_LABEL[kind] ||
@@ -643,7 +653,7 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
     const preview = rows.map(o => {
       const payload = safeJson(o.order_payload_json) || {};
       const tier = String(o.tier || "");
-      const kind = tier.startsWith("EditCredits") ? "edit" : tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+      const kind = kindOfTier(tier);
       const amount = Number(o.final_amount_satang || 0);
       const v = splitVat(amount);
       const t = payload.tax || {};
@@ -671,7 +681,7 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
     for (const o of rows) {
       const payload = safeJson(o.order_payload_json) || {};
       const tier = String(o.tier || "");
-      const kind = tier.startsWith("EditCredits") ? "edit" : tier.startsWith("Credits") ? "credits" : tier.startsWith("Video") ? "video" : "blueprint";
+      const kind = kindOfTier(tier);
       const plan = planOf(payload.plan);
       const desc = KIND_LABEL[kind] || (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
       const r = await issueTaxInvoice({ orderId: o.order_id, kind, email: o.email,

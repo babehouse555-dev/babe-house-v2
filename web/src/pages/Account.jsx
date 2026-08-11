@@ -513,7 +513,7 @@ export default function Account() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14.5 }}>{v.description || "สินค้า/บริการ"}</div>
                       <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-                        {new Date(v.issued_at || v.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" })}
+                        {new Date(v.doc_date || v.issued_at || v.created_at).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" })}
                         {" · ฿"}{(Number(v.amount_satang || 0) / 100).toLocaleString()}
                         {v.doc_number ? ` · เลขที่ ${v.doc_number}` : ""}
                         {v.is_company ? " · ในนามบริษัท" : ""}

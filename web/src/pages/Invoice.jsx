@@ -63,7 +63,7 @@ export default function Invoice() {
             <div className="muted">เลขที่</div>
             <div style={{ fontWeight: 700 }}>{inv.doc_number || "รอออกเลขที่"}</div>
             <div className="muted" style={{ marginTop: 6 }}>วันที่</div>
-            <div style={{ fontWeight: 700 }}>{thDate(inv.issued_at || inv.created_at)}</div>
+            <div style={{ fontWeight: 700 }}>{thDate(inv.doc_date || inv.issued_at || inv.created_at)}</div>
           </div>
         </div>
 

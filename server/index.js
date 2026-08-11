@@ -833,7 +833,8 @@ async function redeemPromo(rawCode, email, amountSatang) {
   return { final: Math.max(0, Math.round(amountSatang * (100 - percent) / 100)), percent, code };
 }
 // เช็กโค้ดก่อนกดจ่าย (ไม่นับโควตา) — ให้หน้าเว็บโชว์ราคาหลังหักทันทีเหมือนหน้า Blueprint
-app.post("/api/promo/preview", async (req, res) => {
+// ⚠️ ต้องมีลิมิต — ไม่งั้นสุ่มโค้ดส่วนลดรัวๆ ได้ฟรีไม่จำกัด จนเดาโค้ด 100% เจอ (เจอตอนตรวจก่อนเปิดตัว 11 ส.ค.)
+app.post("/api/promo/preview", rateLimit(30, M10), async (req, res) => {
   const code = String(req.body?.code || "").trim().toUpperCase();
   const amount = Math.max(0, Number(req.body?.amount_satang) || 0);
   if (!code) return res.json({ ok: true, percent: 0, final: amount });
@@ -2293,7 +2294,7 @@ async function finalizeAcademyPurchase(p) {
     docDate: p.paid_at || new Date(), tax: { ...(safeJson(p.tax_json) || {}), fallback_name: p.email },
   }).catch(e => console.error("tax-invoice academy", e.message));
 }
-app.post("/api/academy/buy", async (req, res) => {
+app.post("/api/academy/buy", rateLimit(20, M10), async (req, res) => {
   try {
     const email = await authEmail(req);
     if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนซื้อคอร์สนะคะ" });
@@ -2596,7 +2597,7 @@ app.get("/api/workshops/:id", async (req, res) => {
     })) });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
 });
-app.post("/api/workshops/book", async (req, res) => {
+app.post("/api/workshops/book", rateLimit(20, M10), async (req, res) => {
   try {
     const email = await authEmail(req);
     if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนจองนะคะ" });

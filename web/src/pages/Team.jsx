@@ -157,6 +157,7 @@ export default function Team() {
   const [note, setNote] = useState({});
   const [open, setOpen] = useState({});
   const [showDone, setShowDone] = useState(false);
+  const [doneQ, setDoneQ] = useState("");   // 🔎 คำค้นในกล่อง "งานที่จบแล้ว"
   // แท็บย่อย: ลูกค้าส่งจุดแก้ / รอตรวจ / งานฉัน / ดูรายคน
   // ⚠️ null = "ยังไม่ได้เลือกเอง" → ให้ระบบเปิดแท็บแรกที่มีงานจริงให้ (ดู autoSub ด้านล่าง)
   //    ของเดิมตั้งไว้ที่ "รอฉันตรวจ" ตายตัว ซึ่งของคนตัดมักว่าง เปิดมาเจอ "ไม่มีงานในหมวดนี้ค่ะ"
@@ -403,11 +404,31 @@ export default function Team() {
           {showDone && (() => {
             const doneJobs = jobs.filter(j => ["done", "canceled"].includes(j.status));
             if (!doneJobs.length) return <div style={{ ...card, marginTop: 10, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ยังไม่มีงานที่จบค่ะ</div>;
+            // 🔎 ค้นหางานเก่า — คิมขอ 12 ส.ค. "เผื่อลูกค้าเยอะ"
+            //    ค้นได้ทั้งชื่องาน · ลูกค้า · รหัสงาน · คนตัด · เนื้อบรีฟ · โน้ต — พิมพ์อะไรที่จำได้ก็เจอ
+            const qq = doneQ.trim().toLowerCase();
+            const hay = (j) => {
+              const r = j.brief || {};
+              return [r.title, r.t, r.hook, r.h, r.script, r.brief, j.note, j.client_name, j.customer,
+                      j.order_id, j.assignee_name, j.status_th].filter(Boolean).join(" ").toLowerCase();
+            };
+            const list = qq ? doneJobs.filter(j => hay(j).includes(qq)) : doneJobs;
             return <>
-              <p style={{ fontSize: 12.5, color: "#7c7268", margin: "10px 0 6px", lineHeight: 1.6 }}>
+              <p style={{ fontSize: 12.5, color: "#7c7268", margin: "10px 0 8px", lineHeight: 1.6 }}>
                 กดที่งานเพื่อเปิดดูไฟล์และรอบแก้ย้อนหลัง — ลูกค้าทำไฟล์หายหรือกลับมาแก้ ก็เอาให้ได้จากตรงนี้
               </p>
-              {doneJobs.map(Row)}
+              <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                <input value={doneQ} onChange={e => setDoneQ(e.target.value)}
+                  placeholder="🔎 ค้นหา — ชื่องาน / ลูกค้า / คนตัด / รหัสงาน"
+                  style={{ ...input, flex: "1 1 220px" }} />
+                {qq && <button style={{ ...ghost, fontSize: 13 }} onClick={() => setDoneQ("")}>ล้าง</button>}
+              </div>
+              <div style={{ fontSize: 12.5, color: "#7c7268", marginBottom: 8 }}>
+                {qq ? `เจอ ${list.length} จาก ${doneJobs.length} งาน` : `ทั้งหมด ${doneJobs.length} งาน`}
+              </div>
+              {list.length === 0
+                ? <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 14 }}>ไม่เจองานที่ค้นหาค่ะ ลองพิมพ์คำอื่นดูนะคะ</div>
+                : list.map(Row)}
             </>;
           })()}
         </>;

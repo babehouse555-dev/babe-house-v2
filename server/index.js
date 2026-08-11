@@ -4612,9 +4612,21 @@ app.post("/api/team/graphic/update", async (req, res) => {
   const b = req.body || {};
   const gj = await one(`SELECT * FROM graphic_jobs WHERE gj_id=$1`, [String(b.gj_id || "")]);
   if (!gj) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-  const mine = gj.assigned_to === me.member_id || ["owner", "ae"].includes(me.role);
-  if (!mine) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
-  const status = Object.keys(GJ_STATUS).includes(String(b.status)) ? String(b.status) : gj.status;
+  // 🔑 ใครแตะงานนี้ได้บ้าง
+  //    • กราฟฟิกที่ถืองาน → เปลี่ยนได้ทุกสถานะ (เริ่มทำ / ส่งงาน)
+  //    • คนที่ขอไว้        → กด "รับงานแล้ว" หรือยกเลิกได้เท่านั้น
+  //    • คิม / ลูกตาล      → ได้ทุกอย่าง
+  // ⚠️ บั๊กจริง 11 ส.ค.: เดิมอนุญาตแค่กราฟฟิกกับ owner/ae แต่หน้าเว็บโชว์ปุ่ม "✓ รับงานแล้ว" ให้คนที่ขอ
+  //    โบ (senior) กดแล้วเด้ง 403 — ปุ่มมีให้กดแต่กดไม่ได้จริง
+  const isAssignee = gj.assigned_to === me.member_id;
+  const isRequester = gj.requested_by && gj.requested_by === me.member_id;
+  const isBoss = ["owner", "ae"].includes(me.role);
+  // ⚠️ ทุก 403 ต้องมีข้อความไทยเสมอ — ไม่งั้นหน้าเว็บขึ้นแค่ "Request failed: 403" ซึ่งทีมอ่านไม่รู้เรื่อง
+  if (!isAssignee && !isRequester && !isBoss) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "งานนี้ไม่ใช่งานของคุณค่ะ" });
+  let status = Object.keys(GJ_STATUS).includes(String(b.status)) ? String(b.status) : gj.status;
+  // คนที่ขอไว้ปิดงานได้อย่างเดียว — เปลี่ยนสถานะแทนกราฟฟิกไม่ได้ (เช่นกดว่า "ส่งงานแล้ว" เองไม่ได้)
+  if (isRequester && !isAssignee && !isBoss && !["done", "canceled"].includes(status))
+    return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "งานนี้อยู่ที่กราฟฟิก คุณกดได้แค่รับงานหรือยกเลิกค่ะ" });
   await run(`UPDATE graphic_jobs SET status=$1, work_url=COALESCE($2,work_url), note=COALESCE($3,note),
      done_at=CASE WHEN $1 IN ('done','canceled') THEN now() ELSE done_at END, updated_at=now() WHERE gj_id=$4`,
     [status, String(b.work_url || "").trim() || null, String(b.note || "").slice(0, 1000) || null, gj.gj_id]);

@@ -1,6 +1,19 @@
 // fetch helper + auth/session/referral utils
 const BASE = import.meta.env.VITE_API_BASE || "";
 
+// ข้อความสำรองเวลาหลังบ้านไม่ได้ส่งคำอธิบายมา — ห้ามให้ผู้ใช้เห็น "Request failed: 403" เปล่าๆ
+// (โบเจอเอง 11 ส.ค. กดปุ่มรับงานแล้วขึ้นแค่เลข ไม่รู้ว่าต้องทำยังไงต่อ)
+const httpMsg = (s) => ({
+  401: "เซสชันหมดอายุแล้ว เข้าสู่ระบบใหม่อีกครั้งนะคะ",
+  403: "คุณไม่มีสิทธิ์ทำรายการนี้ค่ะ",
+  404: "ไม่พบข้อมูลที่ต้องการค่ะ",
+  409: "รายการนี้ถูกทำไปแล้วค่ะ",
+  429: "ทำรายการบ่อยเกินไป รอสักครู่แล้วลองใหม่นะคะ",
+  500: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งนะคะ",
+  502: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งนะคะ",
+  503: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งนะคะ",
+}[s] || `ทำรายการไม่สำเร็จ (${s}) ลองใหม่อีกครั้งนะคะ`);
+
 export async function api(path, { method = "GET", body, token, adminKey } = {}) {
   const headers = {};
   if (body) headers["Content-Type"] = "application/json";
@@ -8,7 +21,7 @@ export async function api(path, { method = "GET", body, token, adminKey } = {}) 
   if (adminKey) headers["x-admin-key"] = adminKey;
   const res = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.ok === false) { const e = new Error(data.message || `Request failed: ${res.status}`); e.code = data.error; e.status = res.status; e.data = data; throw e; }
+  if (!res.ok || data.ok === false) { const e = new Error(data.message || httpMsg(res.status)); e.code = data.error; e.status = res.status; e.data = data; throw e; }
   return data;
 }
 

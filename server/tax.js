@@ -356,7 +356,7 @@ export async function flowAccountPing() {
              // 🔎 บอกด้วยว่าโค้ดรุ่นไหนกำลังรันอยู่ — กันทดสอบก่อน deploy เสร็จแล้วสรุปผิด
              //     (เจอเอง 8 ส.ค.: เห็น ping ok เลยนึกว่าโค้ดใหม่ขึ้นแล้ว ที่จริงยังเป็นของเก่า)
              doc_types: DOC_TYPES,
-             build: "cash-invoice-v3",   // ← เปลี่ยนทุกครั้งที่แก้รูปเอกสาร ใช้เช็คว่า deploy ขึ้นจริงยัง
+             build: "fixnames-v4",   // ← เปลี่ยนทุกครั้งที่แก้รูปเอกสาร ใช้เช็คว่า deploy ขึ้นจริงยัง
              mode: /\/test\b/.test(BASE) ? "sandbox (ของทดสอบ)" : "production (ของจริง)" };
   } catch (e) { return { ok: false, base: BASE, scope: SCOPE, error: String(e.message).slice(0, 300) }; }
 }
@@ -440,19 +440,27 @@ export async function fixDocNames({ limit = 5, dry = true } = {}) {
       const now = cur?.data?.list?.[0]?.contactName;
       if (now === want) { out.push({ doc: d.number, skip: "ชื่อถูกอยู่แล้ว" }); continue; }
       if (dry) { out.push({ doc: d.number, from: now, to: want, dry: true }); continue; }
-      let body;
-      if (type === "cash-invoices") body = buildCashInvoice(inv);
-      else {
-        // ใบกำกับ/ใบเสร็จคู่เก่า: ตอน PUT ห้ามส่ง documentStructureType (API ตีกลับว่า Invalid)
-        //   แต่ตอน POST ต้องส่ง — สเปกไม่ตรงกันระหว่างสร้างกับแก้
-        body = buildDocument(inv);
-        delete body.documentStructureType;
-        if (type === "receipts") Object.assign(body, paymentFields(inv, body));
+      const mk = () => {
+        if (type === "cash-invoices") return buildCashInvoice(inv);
+        const b = buildDocument(inv);
+        if (type === "receipts") Object.assign(b, paymentFields(inv, b));
+        return b;
+      };
+      // ⚠️ ตอนสร้าง (POST) API รับ documentStructureType:"0" แต่ตอนแก้ (PUT) ตีกลับว่า Invalid
+      //    สเปกไม่ตรงกัน เลยต้องไล่ลองค่าที่เป็นไปได้ หยุดทันทีที่ผ่าน
+      const variants = type === "cash-invoices" ? [undefined]
+        : [undefined, "1", "2", 1, 2, 0];
+      let r, t;
+      for (const v of variants) {
+        const body = mk();
+        if (v === undefined) delete body.documentStructureType; else body.documentStructureType = v;
+        r = await fetch(`${BASE}/${type}/${d.id}`, { method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body) });
+        t = await r.text();
+        if (r.ok || !/documentStructureType/i.test(t)) break;
+        await new Promise(x => setTimeout(x, 400));
       }
-      const r = await fetch(`${BASE}/${type}/${d.id}`, { method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body) });
-      const t = await r.text();
       out.push({ doc: d.number, from: now, to: want, ok: r.ok, status: r.status, ...(r.ok ? {} : { error: t.slice(0, 200) }) });
       await new Promise(x => setTimeout(x, 900));
     }

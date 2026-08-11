@@ -36,7 +36,7 @@ const mmss = (s) => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(
 // 🔒 หมายเหตุ: นี่คือ "ซ่อนแบรนด์" ไม่ใช่ "ป้องกันคลิป" — คนที่ตั้งใจยังหาไอดีคลิปจาก source ได้
 //    ถ้าต้องการกันจริงต้องย้ายไปโฮสต์วิดีโอที่คิดเงิน (Vimeo/Cloudflare Stream)
 function CleanPlayer({ videoId, lessonKey }) {
-  const boxRef = useRef(null), playerRef = useRef(null);
+  const hostRef = useRef(null), boxRef = useRef(null), playerRef = useRef(null);
   const [ready, setReady] = useState(false), [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0), [dur, setDur] = useState(0), [failed, setFailed] = useState(false);
 
@@ -55,8 +55,14 @@ function CleanPlayer({ videoId, lessonKey }) {
       setTimeout(() => (window.YT && window.YT.Player) ? res(window.YT) : rej(new Error("timeout")), 8000);
     });
     load().then(YT => {
-      if (dead || !boxRef.current) return;
-      playerRef.current = new YT.Player(boxRef.current, {
+      if (dead || !hostRef.current) return;
+      // สร้างโหนดลูกเองทุกครั้งที่เปลี่ยนบท — YT จะกลืนโหนดนี้ไป ไม่แตะโครงสร้างที่ React ดูแล
+      hostRef.current.innerHTML = "";
+      const mount = document.createElement("div");
+      mount.style.width = "100%"; mount.style.height = "100%";
+      hostRef.current.appendChild(mount);
+      boxRef.current = mount;
+      playerRef.current = new YT.Player(mount, {
         videoId, host: "https://www.youtube-nocookie.com",
         playerVars: { controls: 0, rel: 0, modestbranding: 1, disablekb: 1, fs: 0, playsinline: 1, iv_load_policy: 3 },
         events: {
@@ -69,7 +75,13 @@ function CleanPlayer({ videoId, lessonKey }) {
         if (p && p.getCurrentTime) { setCur(p.getCurrentTime() || 0); if (!dur) setDur(p.getDuration() || 0); }
       }, 400);
     }).catch(() => !dead && setFailed(true));
-    return () => { dead = true; if (tick) clearInterval(tick); try { playerRef.current?.destroy(); } catch {} };
+    return () => {
+      dead = true; if (tick) clearInterval(tick);
+      try { playerRef.current?.destroy(); } catch {}
+      playerRef.current = null;
+      // ล้างเองด้วย innerHTML — ปลอดภัยกว่าปล่อยให้ React ไล่ลบลูกที่ YT เปลี่ยนไปแล้ว
+      try { if (hostRef.current) hostRef.current.innerHTML = ""; } catch {}
+    };
   }, [videoId, lessonKey]);   // eslint-disable-line
 
   const toggle = () => { const p = playerRef.current; if (!p) return; playing ? p.pauseVideo() : p.playVideo(); };
@@ -98,7 +110,9 @@ function CleanPlayer({ videoId, lessonKey }) {
   const pct = dur ? (cur / dur) * 100 : 0;
   return (
     <>
-      <div ref={boxRef} style={{ width: "100%", height: "100%", pointerEvents: "none" }} />
+      {/* 🛡️ กล่องนี้ React ถือไว้ แต่ "ข้างในเราสร้างเอง" — YT จะไปแทนที่ลูกที่เราสร้าง ไม่ใช่โหนดของ React
+          ถ้าให้ YT แทนที่โหนดของ React ตรงๆ พอเปลี่ยนบทจะพังทั้งหน้า (removeChild NotFoundError) */}
+      <div ref={hostRef} style={{ width: "100%", height: "100%", pointerEvents: "none" }} />
       {/* ชั้นทับทั้งจอ — คลิกที่ไหนก็เล่น/หยุด และคลิกไม่ทะลุไปโดน UI ของ YouTube */}
       <div ref={wrapRef} onClick={toggle} onDoubleClick={full} onContextMenu={e => e.preventDefault()}
         style={{ position: "absolute", inset: 0, cursor: "pointer" }} />

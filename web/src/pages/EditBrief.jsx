@@ -73,6 +73,18 @@ export default function EditBrief() {
       <Link className="link" to={back}>← กลับไปที่เล่มของฉัน</Link>
       <div className="brand" style={{ marginTop: 12 }}>BABE HOUSE · ให้ทีมตัดคลิป</div>
       <h1 className="page" style={{ marginBottom: 4 }}>{freeJob ? "บรีฟงานตัดต่อ" : `คลิปวันที่ ${day}`}</h1>
+      {/* เครดิตหมด = บอกให้ชัดตั้งแต่ต้น ไม่ให้กรอกเสร็จแล้วค่อยเด้ง error (คิมเจอ 11 ส.ค.) */}
+      {freeJob && credits === 0 && (
+        <div className="card" style={{ background: "#FFF6E6", border: "1px solid #F0D89C", marginTop: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 4 }}>⚠️ ยังไม่มีเครดิตตัดต่อ</div>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
+            กรอกบรีฟไว้ก่อนได้เลยค่ะ แต่ต้องซื้อเครดิตก่อนถึงจะส่งงานให้ทีมได้นะคะ
+          </div>
+          <Link to="/edit" className="btn full" style={{ marginTop: 11, textAlign: "center", display: "block", textDecoration: "none" }}>
+            ซื้อเครดิตตัดต่อ →
+          </Link>
+        </div>
+      )}
       {freeJob && (
         <div className="field" style={{ marginTop: 14 }}>
           <label>งานนี้เกี่ยวกับอะไร <span className="muted">(ตั้งชื่อสั้นๆ ให้ทีมเรียกงานนี้)</span></label>

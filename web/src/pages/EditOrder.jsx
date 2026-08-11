@@ -66,15 +66,21 @@ export default function EditOrder() {
           <div className="muted" style={{ fontSize: 12.5, marginTop: 5, lineHeight: 1.6 }}>
             เข้าเล่มของคุณ → แท็บคอนเทนต์ → แตะวันที่อยากให้ทีมตัด แล้วกด “ให้ทีมตัดคลิปนี้” ได้เลยค่ะ
           </div>
-          {/* 📝 งานนอกแผน 30 วัน — พลอยทัก 11 ส.ค. "ถ้าเขามีโปรเจคแยกล่ะ จะสั่งตรงไหน" */}
-          <Link to="/edit/new?free=1" className="btn full" style={{ marginTop: 13, background: "#4B2FA8", textAlign: "center", display: "block", textDecoration: "none" }}>
-            ＋ บรีฟงานนอกแผน 30 วัน
-          </Link>
-          <div className="muted center" style={{ fontSize: 12, marginTop: 7, lineHeight: 1.6 }}>
-            มีคลิปที่ไม่ได้อยู่ในแผน เช่น งานอีเวนต์ · รีวิวสินค้า · คลิปสปอนเซอร์ — บรีฟตรงนี้ได้เลย ใช้เครดิตใบเดียวกันค่ะ
-          </div>
         </div>
       )}
+
+      {/* 📝 งานนอกแผน 30 วัน — พลอยทัก 11 ส.ค. "ถ้าเขามีโปรเจคแยกล่ะ จะสั่งตรงไหน"
+          ⚠️ ต้องโผล่เสมอ ไม่ใช่เฉพาะตอนมีเครดิต — คิมเปิดมาแล้วเครดิต 0 เลยไม่เห็นปุ่ม (11 ส.ค.) */}
+      <div className="card" style={{ marginTop: 12, background: "#F6F2FE", border: "1.5px solid #C4B2EC" }}>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>📝 มีงานที่ไม่ได้อยู่ในแผน 30 วัน?</div>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 11, lineHeight: 1.65 }}>
+          งานอีเวนต์ · รีวิวสินค้า · คลิปสปอนเซอร์ · คลิปที่ถ่ายไว้แล้วอยากให้ทีมตัด — บรีฟตรงนี้ได้เลย ใช้เครดิตใบเดียวกันค่ะ
+        </div>
+        <Link to="/edit/new?free=1" className="btn full"
+          style={{ background: "#4B2FA8", textAlign: "center", display: "block", textDecoration: "none" }}>
+          ＋ บรีฟงานนอกแผน 30 วัน
+        </Link>
+      </div>
 
       {/* 🎬 ตัวอย่างงานจริงของทีม — พลอยทัก 11 ส.ค. "ลูกค้าไม่เห็นภาพว่าจะได้ประมาณไหน ก่อนกดซื้อ"
           ใช้ชุดเดียวกับที่ให้เลือกตอนบรีฟงาน (คิมสั่ง) แก้ที่ editStyles.js ที่เดียวขึ้นทั้ง 2 หน้า */}

@@ -728,20 +728,44 @@ export default function Team() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input style={{ ...input, flex: 1, minWidth: 180 }} placeholder="ชื่อลูกค้า" value={cpF.client_name}
                   onChange={e => setCpF(v => ({ ...v, client_name: e.target.value }))} />
-                <input style={{ ...input, width: 130 }} inputMode="numeric" placeholder="กี่ชิ้น" value={cpF.want_count}
-                  onChange={e => setCpF(v => ({ ...v, want_count: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
                 <input style={{ ...input, width: 160 }} type="date" value={cpF.due_at}
                   onChange={e => setCpF(v => ({ ...v, due_at: e.target.value }))} />
+              </div>
+              {/* 🤖 เลือกจำนวนคอนเทนต์ที่ให้ AI ร่าง — คิมขอ 12 ส.ค. "ต้องมีปุ่มให้เลือกด้วยว่า ai ทำกี่คอนเทนต์"
+                  เดิมเป็นช่องตัวเลขเปล่าๆ ที่มีเลข 5 ค้างอยู่ ทำให้ข้อความบอก "กี่ชิ้น" ไม่เคยโผล่ให้เห็นเลย
+                  ลูกตาลเปิดมาเห็นแค่เลข 5 ลอยๆ ไม่รู้ว่าคืออะไร และไม่รู้ว่ากดเปลี่ยนได้ */}
+              <div style={{ background: "#F7F4FD", border: "1px solid #e4d8f2", borderRadius: 12, padding: "11px 13px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 2 }}>🤖 ให้ AI ร่างกี่ชิ้น?</div>
+                <div style={{ fontSize: 12, color: "#7c7268", marginBottom: 9 }}>เลือกได้ 1–30 ชิ้น · ยิ่งเยอะยิ่งใช้เวลาร่างนานขึ้น</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {[3, 5, 10, 15, 20, 30].map(n => {
+                    const on = Number(cpF.want_count) === n;
+                    return <button key={n} onClick={() => setCpF(v => ({ ...v, want_count: n }))}
+                      style={{ borderRadius: 999, padding: "8px 15px", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit",
+                        border: `1.5px solid ${on ? "#5a3fc0" : "#ddd2c8"}`, background: on ? "#5a3fc0" : "#fff", color: on ? "#fff" : "#2f2a26" }}>
+                      {n}
+                    </button>;
+                  })}
+                  <input style={{ ...input, width: 96 }} inputMode="numeric" placeholder="อื่นๆ" value={cpF.want_count}
+                    onChange={e => setCpF(v => ({ ...v, want_count: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
+                  <span style={{ fontSize: 13, color: "#7c7268" }}>ชิ้น</span>
+                </div>
               </div>
               <textarea style={{ ...input, minHeight: 100, fontFamily: "inherit" }} placeholder="บรีฟจากลูกค้า — อยากได้คอนเทนต์แบบไหน กลุ่มเป้าหมายใคร จุดขายคืออะไร"
                 value={cpF.brief} onChange={e => setCpF(v => ({ ...v, brief: e.target.value }))} />
               <textarea style={{ ...input, minHeight: 56, fontFamily: "inherit" }} placeholder="ลิงก์ตัวอย่าง/เรฟที่ลูกค้าส่งมา (วางได้หลายลิงก์)"
                 value={cpF.ref_links} onChange={e => setCpF(v => ({ ...v, ref_links: e.target.value }))} />
-              <button style={btn()} disabled={busy === "cp" || !cpF.client_name.trim() || !cpF.brief.trim()}
-                onClick={async () => { await post("/api/team/content/create", { ...cpF, want_count: Number(cpF.want_count) || 5 }, "cp");
-                  setCpF({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" }); setTimeout(() => loadCp(cpOpen), 900); }}>
-                ยืนยัน · ให้ AI ร่างคอนเทนต์
-              </button>
+              {(() => {
+                // จำนวนที่จะส่งจริง — บีบให้อยู่ใน 1–30 เท่ากับที่หลังบ้านรับ จะได้ไม่มีเคสกดแล้วได้ไม่ตรงที่เห็น
+                const n = Math.max(1, Math.min(30, Number(cpF.want_count) || 5));
+                return (
+                  <button style={btn()} disabled={busy === "cp" || !cpF.client_name.trim() || !cpF.brief.trim()}
+                    onClick={async () => { await post("/api/team/content/create", { ...cpF, want_count: n }, "cp");
+                      setCpF({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" }); setTimeout(() => loadCp(cpOpen), 900); }}>
+                    {busy === "cp" ? "กำลังส่งให้ AI…" : `ยืนยัน · ให้ AI ร่างคอนเทนต์ ${n} ชิ้น`}
+                  </button>
+                );
+              })()}
             </div>
           </div>}
 

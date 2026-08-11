@@ -4660,14 +4660,15 @@ app.post("/api/team/graphic/update", async (req, res) => {
 // ⚖️ กฎหมายแรงงานไทย (พ.ร.บ.คุ้มครองแรงงาน) กำหนดขั้นต่ำไว้ที่:
 //    ลาป่วย 30 วัน/ปี (ม.32,57) · ลากิจ 3 วัน/ปี (ม.34) · พักร้อน 6 วัน/ปี เมื่อทำครบ 1 ปี (ม.30)
 //    วันหยุดตามประเพณี ไม่น้อยกว่า 13 วัน/ปี รวมวันแรงงาน (ม.29)
-// ⚠️ ที่คิมเคาะ: พักร้อนครบปี 3 วัน — "ต่ำกว่าขั้นต่ำตามกฎหมาย 6 วัน" แจ้งคิมแล้ว
+// ✅ คิมปรับ 12 ส.ค. 2569: พักร้อน 3 → 6 วัน = ตรงตามขั้นต่ำที่กฎหมายกำหนดแล้ว
 //    ตั้งเป็นตัวเลขแก้ได้ตรงนี้จุดเดียว ปรับได้ทันทีถ้าคิมตัดสินใจใหม่
 const LEAVE_RULES = {
   sick:     { label: "ลาป่วย",   days: 30, legal_min: 30, need_proof: true,
               note: "ต้องมีหลักฐานยืนยันว่าป่วยจริง (ใบรับรองแพทย์) · ยืดหยุ่นได้ตามลักษณะงาน" },
-  personal: { label: "ลากิจ",    days: 5,  legal_min: 3,  need_proof: false, note: "ลาธุระจำเป็น" },
-  vacation: { label: "พักร้อน",  days: 3,  legal_min: 6,  need_proof: false, days_before_1y: 2,
-              note: "ยังไม่ครบ 1 ปีได้ 2 วัน · ครบ 1 ปีได้ 3 วัน · สะสมข้ามปีไม่ได้" },
+  // คิมเคาะ 12 ส.ค. 2569: ลากิจ 5 → 3 วัน (ตรงตามขั้นต่ำกฎหมาย ม.34 พอดี)
+  personal: { label: "ลากิจ",    days: 3,  legal_min: 3,  need_proof: false, note: "ลาธุระจำเป็น" },
+  vacation: { label: "พักร้อน",  days: 6,  legal_min: 6,  need_proof: false, days_before_1y: 3,
+              note: "ยังไม่ครบ 1 ปีได้ 3 วัน · ครบ 1 ปีได้ 6 วัน · สะสมข้ามปีไม่ได้" },
 };
 const yearOf = (d) => new Date(d).getFullYear();
 // โควตาของคนนี้ปีนี้ — พักร้อนขึ้นกับว่าทำงานครบ 1 ปีหรือยัง
@@ -4697,7 +4698,11 @@ async function leaveSummary(memberId, year = new Date().getFullYear()) {
     kinds: Object.entries(LEAVE_RULES).map(([k, r]) => ({
       kind: k, label: r.label, quota: quota[k], used: um[k] || 0,
       left: Math.max(0, quota[k] - (um[k] || 0)), need_proof: r.need_proof, note: r.note,
-      below_legal: quota[k] < r.legal_min, legal_min: r.legal_min,
+      // ⚖️ ธงเตือน "ต่ำกว่ากฎหมาย" — พักร้อนของคนที่ยังทำไม่ครบ 1 ปี ไม่นับว่าต่ำกว่ากฎหมาย
+      //    เพราะสิทธิ์พักร้อนตามกฎหมาย (ม.30) เกิดเมื่อทำงานครบ 1 ปีแล้วเท่านั้น
+      //    ก่อนครบปีที่บริษัทให้ 3 วัน คือให้เกินกฎหมาย ไม่ใช่ให้ขาด — ถ้าไม่กันไว้จะขึ้นเตือนผิดกับคนใหม่ทุกคน
+      below_legal: quota[k] < r.legal_min && !(k === "vacation" && quota[k] === r.days_before_1y),
+      legal_min: r.legal_min,
     })),
   };
 }

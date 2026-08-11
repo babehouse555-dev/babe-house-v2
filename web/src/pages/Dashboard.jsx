@@ -6,6 +6,7 @@ import { ToolsAndServices, ReviewCard, FeedbackCard, AddScript, MonthReview } fr
 import { ScriptEditor } from "./ScriptEditor.jsx";
 import { useI18n } from "../i18n.jsx";
 import { EDIT_LIVE } from "../config.js";
+import { askConfirm } from "../confirm.jsx";
 
 const G_COLORS = { Awareness: "#2E86DE", Conversion: "#1a7f43", Branding: "#b8860b" };
 const Num = ({ n }) => <span style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--blue)", color: "#fff", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0 }}>{n}</span>;
@@ -147,7 +148,7 @@ export default function Dashboard() {
     try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [...next], day: d, action: has ? "remove" : "upload" } }); } catch {}
   }
   async function clearAllMarathon() {
-    if (!window.confirm(t("db_clear_confirm"))) return;
+    if (!(await askConfirm({ title: t("db_clear_confirm"), ok: "ล้างเลย", danger: true }))) return;
     setUploaded(new Set());
     if (demo) return;
     try { await api("/api/marathon/progress", { method: "POST", body: { user_id: userId, instagram_account: bp.instagram_account, billing_cycle: cycle, blueprint_id: bpId, uploaded_days: [] } }); } catch {}

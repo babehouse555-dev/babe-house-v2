@@ -5,6 +5,7 @@ import { useI18n } from "../i18n.jsx";
 import MyLearning, { SectionHead } from "./MyLearning.jsx";
 import { TAX_INVOICE_LIVE, PREVIEW } from "../config.js";
 import { PlanCards } from "../PlanCards.jsx";
+import { askConfirm } from "../confirm.jsx";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
@@ -83,7 +84,7 @@ export default function Account() {
     }
   }
   async function pickFreeCourse(id, name) {
-    if (!window.confirm(`เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?\n\nเลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ`)) return;
+    if (!(await askConfirm({ title: `เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?`, detail: "เลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ", ok: "ใช่ เลือกคอร์สนี้" }))) return;
     setPickBusy(id);
     try {
       await api("/api/me/free-course", { method: "POST", token: session.token, body: { course_id: id } });

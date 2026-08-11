@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { askConfirm } from "../confirm.jsx";
 
 // 🗂️ ห้องทำงานของคิม — ทุกโปรเจคอยู่ที่เดียว กดเข้าโฟลเดอร์เห็นรายละเอียด
 // โจทย์จากคิม: "ไอเดียมันไม่ได้เรียง แล้วแต่ว่าไอเดียไหนจะมาตอนไหน" → ต้องโยนไอเดียลงถูกโปรเจคได้ทุกเมื่อ
@@ -67,10 +68,10 @@ export default function Projects() {
     finally { setBusy(false); }
   };
   const delComment = async (id) => {
-    if (!confirm("ลบคอมเมนต์นี้?")) return;
+    if (!(await askConfirm({ title: "ลบคอมเมนต์นี้?", ok: "ลบเลย", danger: true }))) return;
     await api("/api/admin/projects/comment/delete", { method: "POST", body: { id }, adminKey: key }); await load();
   };
-  const del = async (id) => { if (!confirm("ลบรายการนี้?")) return; await api("/api/admin/projects/item/delete", { method: "POST", body: { id }, adminKey: key }); await load(); };
+  const del = async (id) => { if (!(await askConfirm({ title: "ลบรายการนี้?", ok: "ลบเลย", danger: true }))) return; await api("/api/admin/projects/item/delete", { method: "POST", body: { id }, adminKey: key }); await load(); };
 
   if (!authed) return (
     <div className="wrap narrow page-pad" style={{ maxWidth: 420 }}>

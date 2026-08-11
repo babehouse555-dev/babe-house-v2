@@ -6,6 +6,7 @@ import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
 import { ACADEMY_LIVE, EDIT_LIVE, PREVIEW } from "./config.js";
 import { initPixel, track as fbTrack } from "./pixel.js";
+import { ConfirmHost } from "./confirm.jsx";
 
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
 if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
@@ -171,6 +172,8 @@ initPixel();   // 📣 Meta Pixel — เริ่มนับตั้งแต
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
   <BrowserRouter>
+    {/* กล่องยืนยันของเราเอง — ต้องมีตัวเดียวทั้งเว็บ (ดูเหตุผลใน confirm.jsx) */}
+    <ConfirmHost />
     <ScrollToTop />
     <Shell>
     <Routes>

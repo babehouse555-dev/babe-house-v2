@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "../api.js";
+import { askConfirm } from "../confirm.jsx";
 
 // แผงหลังบ้านของ "คอร์สเรียน + workshop" — แยกไฟล์ไว้ให้ Admin.jsx ไม่บวม
 // ทุกแผงในไฟล์นี้ยังไม่ผูกกับหน้าลูกค้า จนกว่าจะถึงเฟสเปิดตัว
@@ -104,7 +105,7 @@ export function AcademyManage({ adminKey }) {
     catch (e) { alert(e.message); } finally { setBusy(false); }
   }
   async function delAsg(id) {
-    if (!window.confirm("ลบการบ้านชิ้นนี้? งานที่นักเรียนส่งไปแล้วจะยังอยู่ แต่จะไม่ถูกใช้เป็นเงื่อนไขออกใบประกาศอีก")) return;
+    if (!(await askConfirm({ title: "ลบการบ้านชิ้นนี้?", detail: "งานที่นักเรียนส่งไปแล้วจะยังอยู่ แต่จะไม่ถูกใช้เป็นเงื่อนไขออกใบประกาศอีก", ok: "ลบเลย", danger: true }))) return;
     await api("/api/admin/academy/assignment", { method: "POST", adminKey, body: { action: "delete", assignment_id: id } }); load(cid);
   }
   async function saveShw() {
@@ -113,7 +114,7 @@ export function AcademyManage({ adminKey }) {
     try { await api("/api/admin/academy/showcase", { method: "POST", adminKey, body: { ...shw, course_id: cid } }); await load(cid); }
     catch (e) { alert(e.message); } finally { setBusy(false); }
   }
-  async function delShw(id) { if (!window.confirm("ลบรีวิวนี้?")) return; await api("/api/admin/academy/showcase", { method: "POST", adminKey, body: { action: "delete", showcase_id: id } }); load(cid); }
+  async function delShw(id) { if (!(await askConfirm({ title: "ลบรีวิวนี้?", ok: "ลบเลย", danger: true }))) return; await api("/api/admin/academy/showcase", { method: "POST", adminKey, body: { action: "delete", showcase_id: id } }); load(cid); }
 
   return (
     <div className="card">
@@ -342,7 +343,7 @@ export function WorkshopManage({ adminKey }) {
     } catch (e) { alert(e.message); } finally { setBusy(false); }
   }
   async function delSess(id) {
-    if (!window.confirm("ลบรอบนี้?")) return;
+    if (!(await askConfirm({ title: "ลบรอบนี้?", ok: "ลบเลย", danger: true }))) return;
     try { await api("/api/admin/workshop/session", { method: "POST", adminKey, body: { action: "delete", session_id: id } }); load(); }
     catch (e) { alert(e.message); }
   }

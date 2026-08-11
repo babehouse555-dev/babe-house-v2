@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api, baht } from "../api.js";
 import { SalesOverview, AcademyManage, HomeworkReview, WorkshopManage, SecurityPanel, ActivationPending, Attribution } from "./AdminAcademy.jsx";
+import { askConfirm } from "../confirm.jsx";
 
 const fmtTok = (n) => { n = Number(n || 0); return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n); };
 
@@ -55,7 +56,7 @@ export default function Admin() {
   async function loadPresence(k = key) { try { setPresence(await api("/api/admin/presence", { adminKey: k })); } catch {} }
   useEffect(() => { if (!authed) return; const t = setInterval(() => loadPresence(), 20000); return () => clearInterval(t); }, [authed]);
   async function regen(user_id, billing_cycle) {
-    if (!window.confirm("รีเจนเล่มนี้ใหม่ด้วย prompt ล่าสุด? (ใช้เวลา ~1-2 นาที)")) return;
+    if (!(await askConfirm({ title: "รีเจนเล่มนี้ใหม่ด้วย prompt ล่าสุด?", detail: "ใช้เวลาประมาณ 1-2 นาที", ok: "รีเจนเลย" }))) return;
     try { await api("/api/admin/regenerate", { method: "POST", adminKey: key, body: { user_id, billing_cycle } }); alert("เริ่มรีเจนแล้ว — รอ ~1-2 นาที แล้วกดรีเฟรชหน้าเช็คอีกที"); }
     catch (e) { alert(e.message); }
   }
@@ -72,10 +73,10 @@ export default function Admin() {
   async function aiInsight() { setInsight("loading"); try { const d = await api("/api/admin/ai-insight", { adminKey: key }); setInsight(d.insight); } catch { setInsight(null); } }
   async function addCode() { try { await api("/api/admin/codes", { method: "POST", adminKey: key, body: nc }); setNc({ code: "", note: "", discount_percent: "", max_uses: "", credit_grant: "" }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); } catch (e) { alert(e.message); } }
   async function toggleCode(c) { await api("/api/admin/codes/toggle", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
-  async function deleteCode(c) { if (!window.confirm(`ลบโค้ด ${c} ถาวร? (ออเดอร์เก่าไม่กระทบ)`)) return; await api("/api/admin/codes/delete", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
+  async function deleteCode(c) { if (!(await askConfirm({ title: `ลบโค้ด ${c} ถาวร?`, detail: "ออเดอร์เก่าไม่กระทบ", ok: "ลบเลย", danger: true }))) return; await api("/api/admin/codes/delete", { method: "POST", adminKey: key, body: { code: c } }); setCodes((await api("/api/admin/codes", { adminKey: key })).codes); }
   async function dismissQuality(bpId) { await api("/api/admin/quality/dismiss", { method: "POST", adminKey: key, body: { blueprint_id: bpId } }); setQual(await api("/api/admin/quality", { adminKey: key })); }
   async function fixBook(bpId) { try { await api("/api/admin/regen-content", { method: "POST", adminKey: key, body: { blueprint_id: bpId } }); alert("เริ่มซ่อมแล้ว — เจนคอนเทนต์ใหม่ในลิงก์เดิม รอ ~1-2 นาทีแล้วกดรีเฟรชเช็ค"); } catch (e) { alert(e.message); } }
-  async function fixAll() { if (!window.confirm("ซ่อมทุกเล่มที่สคริปต์ไม่ครบ/วันว่าง/error? (เจนคอนเทนต์ใหม่ในลิงก์เดิม ทีละเล่ม)")) return; try { const d = await api("/api/admin/fix-flagged", { method: "POST", adminKey: key }); alert(`เริ่มซ่อม ${d.count} เล่มแล้ว — รอสักครู่แล้วรีเฟรชค่ะ`); } catch (e) { alert(e.message); } }
+  async function fixAll() { if (!(await askConfirm({ title: "ซ่อมทุกเล่มที่สคริปต์ไม่ครบ/วันว่าง/error?", detail: "เจนคอนเทนต์ใหม่ในลิงก์เดิม ทีละเล่ม", ok: "ซ่อมเลย" }))) return; try { const d = await api("/api/admin/fix-flagged", { method: "POST", adminKey: key }); alert(`เริ่มซ่อม ${d.count} เล่มแล้ว — รอสักครู่แล้วรีเฟรชค่ะ`); } catch (e) { alert(e.message); } }
   async function editEmail() { const o = prompt("อีเมลเดิม (ที่พิมพ์ผิด):"); if (!o) return; const n = prompt("อีเมลใหม่ (ที่ถูกต้อง):"); if (!n) return; try { const d = await api("/api/admin/edit-email", { method: "POST", adminKey: key, body: { old_email: o, new_email: n } }); alert(`ย้ายเรียบร้อย ${d.moved_books} เล่ม\n${d.old} → ${d.new}`); } catch (e) { alert(e.message); } }
   async function csv() {
     try {

@@ -22,6 +22,11 @@ export default function EditJob() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [rounds, setRounds] = useState(null);   // 🔁 รอบแก้ — รวบทุกจุดแล้วส่งทีเดียว
+  // ⚠️ ห้ามใช้ window.confirm กับปุ่มสำคัญ — คิมกดส่งรอบแก้ไม่ได้ 11 ส.ค.
+  //    เบราว์เซอร์ซ่อนกล่องยืนยันได้ (Chrome มีช่อง "ไม่ต้องแสดงอีก" · เบราว์เซอร์ในไลน์/IG บล็อกเลย)
+  //    พอกล่องไม่ขึ้น confirm() คืน false ทันที = กดปุ่มแล้วเงียบ ไม่มีอะไรเกิดขึ้น หาสาเหตุไม่เจอด้วย
+  //    → ถามยืนยันในหน้าเว็บเองแทน ทำงานเหมือนกันทุกเบราว์เซอร์
+  const [confirmWhat, setConfirmWhat] = useState(null);   // null | "submit" | "cancel"
 
   const load = () => {
     api(`/api/edit/order/${id}`, { token: session.token }).then(setD).catch(() => setD({ err: true }));
@@ -44,15 +49,7 @@ export default function EditJob() {
   }
   // ส่งทั้งรอบให้ทีมทีเดียว — ถ้าเป็นรอบที่ต้องจ่าย จะเด้งไปหน้าจ่ายเงินก่อน
   async function roundSubmit() {
-    // ⚠️ ถามยืนยันก่อนเสมอ — คิมเจอเอง 7 ส.ค. "จะลองกดเพิ่มคอมเมนต์ แต่ดันไปกดส่งเลย"
-    //    ส่งแล้วตัดโควตาฟรีทันที ลูกค้าพลาดครั้งเดียวเสียสิทธิ์ ต้องมีด่านถามก่อน
-    const used = (rounds.history || []).length;
-    const left = Math.max(0, (rounds.free_revisions || 0) - used - 1);
-    if (!window.confirm(
-      `ส่งรอบแก้ให้ทีม ${notes.length} จุด\n\n` +
-      `ส่งแล้วจะเพิ่มจุดไม่ได้จนกว่าจะได้คลิปใหม่\n` +
-      `หลังส่งรอบนี้จะเหลือสิทธิ์แก้ฟรีอีก ${left} รอบ\n\n` +
-      `ยืนยันส่งเลยไหมคะ?`)) return;
+    setConfirmWhat(null);
     setBusy(true); setMsg("");
     try {
       await api("/api/edit/rounds/submit", { method: "POST", token: session.token, body: { order_id: id } });
@@ -64,7 +61,7 @@ export default function EditJob() {
   }
   // ↩️ ยกเลิกรอบที่เพิ่งส่ง (ถ้าทีมยังไม่เริ่มดู) — คืนสิทธิ์ให้ครบ
   async function roundCancel() {
-    if (!window.confirm("ยกเลิกรอบแก้ที่เพิ่งส่งไหมคะ?\n\nจุดที่พิมพ์ไว้จะยังอยู่ครบ เพิ่ม/แก้ได้ต่อ แล้วค่อยกดส่งใหม่")) return;
+    setConfirmWhat(null);
     setBusy(true); setMsg("");
     try { const r = await api("/api/edit/rounds/cancel", { method: "POST", token: session.token, body: { order_id: id } });
       setMsg(r.message || "ยกเลิกแล้วค่ะ"); load(); }
@@ -213,9 +210,30 @@ export default function EditJob() {
             </div>
 
             {notes.length > 0 && <>
-              <button className="btn full" disabled={busy} onClick={mustPay ? payRound : roundSubmit} style={{ marginTop: 12 }}>
-                {mustPay ? `จ่าย ${cur.charge_satang / 100} บาท แล้วส่งให้ทีม` : `ส่งให้ทีม (${notes.length} จุด)`}
-              </button>
+              {/* ถามยืนยันในหน้าเว็บเอง ไม่พึ่งกล่องของเบราว์เซอร์ (ดูเหตุผลที่ setConfirmWhat) */}
+              {confirmWhat === "submit" ? (
+                <div style={{ marginTop: 12, background: "#FFF8EC", border: "1.5px solid #f0d9ae", borderRadius: 12, padding: "13px 14px" }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 5 }}>ยืนยันส่งรอบแก้ {notes.length} จุด?</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.75, color: "#7a6a4f" }}>
+                    ส่งแล้วจะเพิ่มจุดไม่ได้จนกว่าจะได้คลิปใหม่นะคะ<br />
+                    หลังส่งรอบนี้จะเหลือสิทธิ์แก้ฟรีอีก{" "}
+                    <b>{Math.max(0, (rounds.free_revisions || 0) - (rounds.history || []).length - 1)}</b> รอบ
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                    <button className="btn" disabled={busy} onClick={roundSubmit} style={{ flex: "1 1 140px", whiteSpace: "nowrap" }}>
+                      {busy ? "กำลังส่ง…" : "ยืนยันส่งเลย"}
+                    </button>
+                    <button className="btn ghost" disabled={busy} onClick={() => setConfirmWhat(null)} style={{ flex: "1 1 110px", whiteSpace: "nowrap" }}>
+                      ยังไม่ส่ง
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button className="btn full" disabled={busy}
+                  onClick={mustPay ? payRound : () => { setMsg(""); setConfirmWhat("submit"); }} style={{ marginTop: 12 }}>
+                  {mustPay ? `จ่าย ${cur.charge_satang / 100} บาท แล้วส่งให้ทีม` : `ส่งให้ทีม (${notes.length} จุด)`}
+                </button>
+              )}
               <div className="muted" style={{ fontSize: 12, marginTop: 7, lineHeight: 1.6 }}>
                 ส่งแล้วเพิ่มจุดไม่ได้จนกว่าจะได้คลิปใหม่นะคะ · แก้ฟรี {rounds.free_revisions} รอบ
                 {" "}· รอบถัดไปคิด {rounds.extra_baht} บาทต่อรอบ
@@ -240,9 +258,19 @@ export default function EditJob() {
               กดผิดใช่ไหมคะ? ยกเลิกได้ภายใน {rounds.undo.minutes_left} นาที ตราบใดที่ทีมยังไม่เริ่มดู
               — จุดที่พิมพ์ไว้ยังอยู่ครบ และได้สิทธิ์แก้ฟรีคืนค่ะ
             </div>
-            <button className="btn ghost" disabled={busy} onClick={roundCancel} style={{ padding: "9px 18px" }}>
-              ↩️ ยกเลิกรอบที่เพิ่งส่ง
-            </button>
+            {confirmWhat === "cancel" ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>ยกเลิกรอบที่เพิ่งส่งใช่ไหมคะ?</span>
+                <button className="btn" disabled={busy} onClick={roundCancel} style={{ padding: "9px 18px" }}>
+                  {busy ? "กำลังยกเลิก…" : "ใช่ ยกเลิกเลย"}
+                </button>
+                <button className="btn ghost" disabled={busy} onClick={() => setConfirmWhat(null)} style={{ padding: "9px 16px" }}>ไม่ยกเลิก</button>
+              </div>
+            ) : (
+              <button className="btn ghost" disabled={busy} onClick={() => { setMsg(""); setConfirmWhat("cancel"); }} style={{ padding: "9px 18px" }}>
+                ↩️ ยกเลิกรอบที่เพิ่งส่ง
+              </button>
+            )}
           </div>
         )}
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}

@@ -354,6 +354,17 @@ async function grantCreditsIfCreditOrder(orderId) {
   const col = isEdit ? "edit_credits" : "credits";
   await run(`UPDATE customers SET ${col}=COALESCE(${col},0)+$1 WHERE lower(email)=lower($2)`, [n, email]);
   console.log(`[${isEdit ? "edit-credits" : "credits"}] +${n} → ${email}`);
+  // ✉️ แจ้งลูกค้า + แจ้งทีม — เดิมซื้อเครดิตแล้วเงียบทั้งสองฝั่ง (คิมทัก 11 ส.ค.)
+  const what = isEdit ? `เครดิตตัดต่อ ${n} คลิป` : `เครดิตสคริปต์ ${n} ชิ้น`;
+  const where = isEdit ? "/edit" : "/account";
+  sendEmail(email, `✅ เติม${what}ให้แล้วค่ะ`, wrap(
+    `สวัสดีค่ะ 💗<br><br>ได้รับการชำระเงินเรียบร้อย เติม <b>${what}</b> เข้าบัญชีให้แล้วนะคะ ใช้ได้เลยค่ะ<br><br>` +
+    `${btn(appBaseUrl() + where, "ไปใช้เครดิต")}<br><br>ครูพี่คิม · Babe House`
+  )).catch(() => {});
+  sendEmail(OPS_EMAIL, `💳 ขายเครดิตได้ — ${what}`, wrap(
+    `<b>${email}</b><br>ซื้อ: ${what}<br>ยอด: <b>${(Number(o.final_amount_satang || 0) / 100).toLocaleString()} บาท</b><br><br>` +
+    `ระบบเติมเครดิตให้อัตโนมัติแล้ว` + (isEdit ? `<br><br>⚠️ ลูกค้ามีเครดิตตัดต่อแล้ว รอเขาสั่งงานเข้ามา` : "")
+  )).catch(() => {});
 }
 // 🔁 จ่ายค่ารอบแก้เกินโควตาสำเร็จ → ปลดล็อกให้ลูกค้ากดส่งรอบนั้นได้
 async function unlockRevisionRound(orderId) {
@@ -2293,6 +2304,17 @@ async function finalizeAcademyPurchase(p) {
     amountSatang: Number(p.amount_satang || 0), description: `คอร์สออนไลน์ — ${p.course_name || ""}`.trim(),
     docDate: p.paid_at || new Date(), tax: { ...(safeJson(p.tax_json) || {}), fallback_name: p.email },
   }).catch(e => console.error("tax-invoice academy", e.message));
+  // ✉️ แจ้งลูกค้า + แจ้งทีม — เดิมซื้อคอร์สแล้วเงียบสนิททั้งสองฝั่ง (คิมทัก 11 ส.ค. "กลัวลูกค้าซื้อเข้ามาแล้วไม่มีคนเห็น")
+  sendEmail(p.email, `🎓 เปิดคอร์ส ${p.course_name || ""} ให้แล้วค่ะ`, wrap(
+    `สวัสดีค่ะ 💗<br><br>ได้รับการชำระเงินเรียบร้อยแล้ว <b>${p.course_name || "คอร์ส"}</b> เปิดให้เรียนได้ทันทีเลยค่ะ<br><br>` +
+    `เข้าเรียนด้วยอีเมลนี้ได้ตลอด ไม่มีวันหมดอายุ · เรียนจบทุกบทและส่งการบ้านครบ จะได้ประกาศนียบัตรค่ะ<br><br>` +
+    `${btn(appBaseUrl() + "/academy", "เข้าห้องเรียนเลย")}<br><br>ขอให้สนุกกับการเรียนนะคะ 🩵<br>ครูพี่คิม · Babe House`
+  )).catch(() => {});
+  sendEmail(OPS_EMAIL, `🎓 ขายคอร์สได้ — ${p.course_name || ""}`, wrap(
+    `<b>${p.email}</b><br>คอร์ส: ${p.course_name || "-"} (รหัส ${p.course_id})<br>` +
+    `ยอด: <b>${(Number(p.amount_satang || 0) / 100).toLocaleString()} บาท</b><br><br>` +
+    `ระบบเปิดสิทธิ์เรียนให้อัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่มค่ะ`
+  )).catch(() => {});
 }
 app.post("/api/academy/buy", rateLimit(20, M10), async (req, res) => {
   try {
@@ -3549,9 +3571,30 @@ app.post("/api/edit/use-credit", rateLimit(60, M10), async (req, res) => {
     // 🤖 มอบหมายให้เองทันที (คิมทัก 7 ส.ค. — งานจากเว็บเคยค้างที่ "ยังไม่มีคนทำ" เพราะไม่มีใครสั่งให้ระบบเลือก
     //    งานที่ลูกตาลกรอกเองมีอยู่แล้ว แต่ทางนี้ตกหล่นไป) · ตอบลูกค้าไปก่อน แล้วค่อยทำเบื้องหลัง
     autoAssignJob(id).catch(e => console.error("auto-assign", e.message));
+    notifyOpsNewEditJob(id).catch(e => console.error("notify-ops-edit", e.message));
   } catch (e) { res.status(500).json({ ok: false, error: "USE_FAILED", message: e.message }); }
 });
 
+// 📨 ลูกค้าสั่งงานตัดต่อเข้ามา → เข้าเมลทีมทันที
+// คิมทัก 11 ส.ค.: "กลัวลูกค้าซื้อเข้ามาแล้วไม่มีคนเห็น"
+// เดิมเมลออกเฉพาะถึง "คนที่ระบบเลือกให้ตัด" คนเดียว — ถ้าเลือกไม่ได้ (คนเต็ม/ไม่มีใครว่าง)
+// จะไม่มีเมลถึงใครเลย งานนอนอยู่ในระบบเงียบๆ ซึ่งคือเคสที่อันตรายที่สุด
+async function notifyOpsNewEditJob(orderId) {
+  const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [orderId]);
+  if (!o) return;
+  const br = safeJson(o.brief_json) || {};
+  const title = br.title || (o.script_day != null ? `สคริปต์วันที่ ${o.script_day}` : "งานตัดต่อ");
+  const waiting = o.status === "awaiting_files";
+  sendEmail(OPS_EMAIL, `🎬 ลูกค้าสั่งงานตัดต่อใหม่ — ${title}`, wrap(
+    `<b>${o.email}</b> สั่งงานเข้ามาแล้วค่ะ<br><br>` +
+    `📌 <b>งาน:</b> ${title}<br>` +
+    (br.brief ? `📝 <b>บรีฟ:</b> ${String(br.brief).slice(0, 400).replace(/\n/g, "<br>")}<br>` : "") +
+    (o.footage_url ? `🎞️ <b>ฟุตเทจ:</b> <a href="${o.footage_url}">${o.footage_url}</a><br>` : "") +
+    (o.note ? `💬 <b>โน้ตจากลูกค้า:</b> ${String(o.note).slice(0, 300)}<br>` : "") +
+    `<br>${waiting ? "⏳ <b>ยังไม่ส่งไฟล์มา</b> — รอลูกค้าแนบฟุตเทจก่อนถึงจะเริ่มจับเวลา" : `⏰ <b>กำหนดส่ง:</b> ${o.due_at ? thDate(o.due_at) : "-"}`}<br><br>` +
+    `${btn(appBaseUrl() + "/team", "เปิดหน้างานของทีม")}`
+  )).catch(() => {});
+}
 // 🤖 ให้ระบบเลือกคนทำงานชิ้นนี้ + แจ้งเมล (ใช้ร่วมกันทั้งงานจากเว็บและงานที่ทีมกรอกเอง)
 async function autoAssignJob(orderId) {
   const job = await one(`SELECT * FROM edit_orders WHERE order_id=$1 AND assigned_to IS NULL AND status NOT IN ('done','canceled')`, [orderId]);
@@ -3559,6 +3602,12 @@ async function autoAssignJob(orderId) {
   const { member, reason } = await pickAssignee(job);
   if (!member) {
     await teamComment(orderId, "ระบบ", `⚠️ ยังไม่มีคนรับงานนี้ — ${reason}`);
+    // ⚠️ เคสอันตรายที่สุด: งานเข้ามาแล้วไม่มีใครรับ เดิมขึ้นแค่คอมเมนต์ในระบบ ถ้าไม่มีใครเปิดดูก็ไม่มีใครรู้
+    sendEmail(OPS_EMAIL, "🚨 มีงานตัดต่อที่ยังไม่มีคนรับ", wrap(
+      `งาน <b>${orderId}</b> ของลูกค้า <b>${job.email}</b> ระบบหาคนตัดให้ไม่ได้ค่ะ<br><br>` +
+      `เหตุผล: ${reason}<br><br><b>ต้องมอบหมายด้วยมือ</b> ไม่งั้นงานจะค้างโดยไม่มีใครเห็นนะคะ<br><br>` +
+      `${btn(appBaseUrl() + "/team", "เปิดหน้างานของทีม")}`
+    )).catch(() => {});
     return null;
   }
   await run(`UPDATE edit_orders SET assigned_to=$1, assigned_at=now(), assigned_by='system', assign_reason=$3,

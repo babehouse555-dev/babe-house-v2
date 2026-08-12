@@ -83,6 +83,12 @@ async function memberPerks(email) {
     || await activeSubscription(email).catch(() => null);
   const plan = sub?.plan || "monthly";
   return { plan, ...perksOf(plan), subscription_id: sub?.subscription_id || null,
+    // 📺 แพ็กผูกกับ "ช่อง" ไม่ใช่กับอีเมล — ต้องบอกด้วยว่าแพ็กที่โชว์อยู่นี่ของช่องไหน
+    //    คิมเจอ 12 ส.ค.: ซื้อไป 2 ช่อง แต่หน้าเว็บโชว์ใบเดียวไม่บอกช่อง แล้วซื้อช่องอื่นต่อไม่ได้
+    channel: sub?.instagram_account || null,
+    // แพ็กของทุกช่องที่ยังใช้ได้ — หน้าเว็บเอาไปโชว์เป็นรายการ และใช้ตัดสินว่าช่องไหนซื้อเพิ่มได้
+    channels: all.map(s => ({ channel: s.instagram_account, plan: s.plan,
+      months_total: Number(s.months_total), months_left: Math.max(0, Number(s.months_total) - Number(s.months_used)) })),
     months_total: sub ? Number(sub.months_total) : null,
     months_left: sub ? Math.max(0, Number(sub.months_total) - Number(sub.months_used)) : null };
 }

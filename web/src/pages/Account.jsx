@@ -296,6 +296,10 @@ export default function Account() {
                   <div className="serif" style={{ fontSize: 27, fontWeight: 700, marginTop: 2 }}>
                     {perks.plan === "monthly" ? "แผนรายเดือน" : `แพ็ก ${perks.plan === "12m" ? "12" : "6"} เดือน`}
                   </div>
+                  {/* 📺 แพ็กผูกกับช่อง ต้องบอกว่าของช่องไหน (คิมเจอ 12 ส.ค. ซื้อ 2 ช่องแต่ไม่รู้ว่าใบนี้ของช่องไหน) */}
+                  {perks.channel && (
+                    <div style={{ fontSize: 13, marginTop: 4, color: "rgba(255,255,255,.9)" }}>📺 ของช่อง <b>{perks.channel}</b></div>
+                  )}
                 </div>
                 {perks.months_left > 0 && (
                   <div style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 20,
@@ -369,17 +373,13 @@ export default function Account() {
           // → กางออกให้กว้างเท่าหน้าจอตรงบล็อกนี้บล็อกเดียว จะได้เห็น 3 ช่องเทียบกันในตาเดียว (คิมสั่ง 10 ส.ค.)
           <div style={{ width: "min(1040px, calc(100vw - 32px))", marginLeft: "50%",
                         transform: "translateX(-50%)", marginBottom: 22, marginTop: 26 }}>
-            <div className="center" style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
-              {perks.plan === "12m" ? "แพ็กของคุณ" : "อัปเกรดแพ็ก"}
-            </div>
+            <div className="center" style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>ซื้อแพ็กให้ช่องของคุณ</div>
             <p className="center muted" style={{ fontSize: 13.5, margin: "0 auto 22px", maxWidth: 560, lineHeight: 1.7 }}>
-              {perks.plan === "12m"
-                ? "คุณอยู่แพ็กสูงสุดแล้ว ได้สิทธิ์ครบทุกอย่าง 🩵"
-                : "ทุกแพ็กเป็นราคา ต่อ 1 ช่อง · จ่ายครั้งเดียว ถูกลงสูงสุด 50%"}
+              ทุกแพ็กเป็นราคา <b>ต่อ 1 ช่อง</b> · จ่ายครั้งเดียว ถูกลงสูงสุด 50% · มีหลายช่องซื้อแยกช่องได้
             </p>
             {/* 📺 มีหลายช่อง = ต้องเลือกก่อนว่าเอาแพ็กไปใช้กับช่องไหน (สิทธิ์ผูกกับช่องเดียว)
                 คิมทัก 10 ส.ค. "ลูกค้าที่มีหลายช่อง เราจะรู้ได้ยังไงว่าเค้าจะเอาไปใช้กับช่องไหน" */}
-            {(data.channels || []).length > 1 && perks.plan !== "12m" && (() => {
+            {(data.channels || []).length > 0 && (() => {
               const chosen = upCh || (data.channels[0] || {}).channel || "";
               return (
                 <div style={{ maxWidth: 560, margin: "0 auto 22px", background: "#F4F9FF", border: "1.5px solid #cfe3f7",
@@ -392,15 +392,23 @@ export default function Account() {
                       {(data.channels || []).map(ch => <option key={ch.channel} value={ch.channel}>{ch.channel}</option>)}
                     </select>
                   </div>
+                  {/* บอกสถานะ "ของช่องที่เลือกอยู่" ไม่ใช่ของทั้งบัญชี — แพ็กผูกกับช่อง (คิมเจอ 12 ส.ค.) */}
                   <div className="muted" style={{ fontSize: 13, marginTop: 9, lineHeight: 1.7 }}>
-                    คุณมี {(data.channels || []).length} ช่อง — อีก {(data.channels || []).length - 1} ช่องยังใช้แบบรายเดือนตามเดิม
-                    ถ้าอยากได้แพ็กให้ช่องอื่นด้วย ซื้อเพิ่มทีละช่องได้เลยค่ะ
+                    {subs[chosen]
+                      ? <>ช่องนี้มี<b> แพ็ก {subs[chosen].plan === "12m" ? "12" : "6"} เดือน</b> อยู่แล้ว · เหลืออีก <b>{subs[chosen].months_left}</b> เดือน</>
+                      : <>ช่องนี้<b>ยังไม่มีแพ็ก</b> — ใช้แบบรายเดือนอยู่ ซื้อแพ็กให้ช่องนี้ได้เลยค่ะ</>}
+                    {(data.channels || []).length > 1 && <> · แพ็กแยกกันคนละช่อง ซื้อเพิ่มทีละช่องได้</>}
                   </div>
                 </div>
               );
             })()}
-            <PlanCards current={perks.plan} onUpgrade={goUpgrade} busy={upBusy}
-                       errorFor={upErr?.plan} errorMsg={upErr?.msg} />
+            {/* ⚠️ current ต้องเป็นแพ็ก "ของช่องที่เลือก" — ถ้าใช้แพ็กสูงสุดของทั้งบัญชี
+                ช่องที่ยังไม่มีแพ็กจะกดซื้อไม่ได้เลย (คิมเจอ 12 ส.ค. ซื้อ 2 ช่องแล้วซื้อช่องที่ 3 ไม่ได้) */}
+            {(() => {
+              const chosen = upCh || (data.channels?.[0] || {}).channel || "";
+              return <PlanCards current={subs[chosen]?.plan || "monthly"} onUpgrade={goUpgrade} busy={upBusy}
+                                errorFor={upErr?.plan} errorMsg={upErr?.msg} />;
+            })()}
           </div>
         )}
 

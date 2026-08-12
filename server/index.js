@@ -89,6 +89,10 @@ async function memberPerks(email) {
     // แพ็กของทุกช่องที่ยังใช้ได้ — หน้าเว็บเอาไปโชว์เป็นรายการ และใช้ตัดสินว่าช่องไหนซื้อเพิ่มได้
     channels: all.map(s => ({ channel: s.instagram_account, plan: s.plan,
       months_total: Number(s.months_total), months_left: Math.max(0, Number(s.months_total) - Number(s.months_used)) })),
+    // 🔢 คิมเคาะ 12 ส.ค.: ซื้อกี่ช่องได้สิทธิ์เท่านั้นเท่า — จ่าย 2 เท่าต้องได้ 2 เท่า
+    //    ของเดิมผูกกับ "อีเมล" ทำให้ซื้อ 2 ช่อง (฿19,080) ได้สิทธิ์เท่าซื้อช่องเดียว
+    plan_count: all.length,
+    plan_count_12m: all.filter(x => x.plan === "12m").length,
     months_total: sub ? Number(sub.months_total) : null,
     months_left: sub ? Math.max(0, Number(sub.months_total) - Number(sub.months_used)) : null };
 }
@@ -553,10 +557,19 @@ app.get("/api/me/perks", async (req, res) => {
   const c = await one(`SELECT COALESCE(credits,0) credits, COALESCE(edit_credits,0) edit_credits FROM customers WHERE lower(email)=lower($1)`, [email]);
   let free_course = null;
   if (perks.free_course) {
-    const picked = await one(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]);
-    free_course = picked
-      ? { claimed: true, course_id: picked.course_id }
-      : { claimed: false, choices: (await freeCourseChoices()).map(c2 => ({ id: c2.legacy_id, name: String(c2.name || "").trim(), price: Number(c2.price_sale || c2.price) || 0, image: c2.featured_image_url })) };
+    // 🎓 1 คอร์สฟรี ต่อ 1 แพ็ก 12 เดือน (คิมเคาะ 12 ส.ค.) — ซื้อ 2 ช่องได้ 2 คอร์ส
+    //    ต้นทุนส่วนเพิ่ม ฿0 (คอร์สอัดไว้แล้ว) แต่ทำให้ "จ่าย 2 เท่าได้ 2 เท่า" จริง
+    const total = Math.max(1, Number(perks.plan_count_12m) || 1);
+    const got = await q(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]).catch(() => []);
+    const used = got.length, left = Math.max(0, total - used);
+    free_course = { total, used, left, claimed: left <= 0,
+      course_ids: got.map(g => g.course_id),
+      course_id: got[0]?.course_id || null,          // เผื่อหน้าเว็บเก่าที่ยังอ่านช่องนี้
+      choices: left > 0
+        ? (await freeCourseChoices())
+            .filter(c2 => !got.some(g => String(g.course_id) === String(c2.legacy_id)))   // ที่เลือกไปแล้วไม่ต้องโชว์ซ้ำ
+            .map(c2 => ({ id: c2.legacy_id, name: String(c2.name || "").trim(), price: Number(c2.price_sale || c2.price) || 0, image: c2.featured_image_url }))
+        : [] };
   }
   res.json({ ok: true, ...perks, credits: Number(c?.credits || 0), edit_credits: Number(c?.edit_credits || 0), free_course });
 });
@@ -566,12 +579,17 @@ app.post("/api/me/free-course", rateLimit(10, M10), async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const perks = await memberPerks(email);
   if (!perks.free_course) return res.status(403).json({ ok: false, error: "NOT_ELIGIBLE", message: "สิทธิ์คอร์สฟรีมีเฉพาะแพ็ก 12 เดือนค่ะ" });
-  const already = await one(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]);
-  if (already) return res.status(409).json({ ok: false, error: "ALREADY_CLAIMED", message: "คุณเลือกคอร์สฟรีไปแล้วค่ะ", course_id: already.course_id });
+  // เลือกได้เท่าจำนวนแพ็ก 12 เดือนที่ถืออยู่ (ซื้อ 2 ช่อง = 2 คอร์ส)
+  const total = Math.max(1, Number(perks.plan_count_12m) || 1);
+  const got = await q(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]).catch(() => []);
+  if (got.length >= total) return res.status(409).json({ ok: false, error: "ALREADY_CLAIMED",
+    message: `คุณใช้สิทธิ์คอร์สฟรีครบ ${total} คอร์สแล้วค่ะ`, course_id: got[0]?.course_id || null });
   const wanted = String(req.body?.course_id || "").trim();
   // ⚠️ ต้องเช็กกับรายการที่อนุญาตจริง — ไม่งั้นยิง course_id ของ ASaiDemy มาก็ได้ฟรี
   const ok = (await freeCourseChoices()).find(c => String(c.legacy_id) === wanted);
   if (!ok) return res.status(400).json({ ok: false, error: "BAD_COURSE", message: "เลือกคอร์สจากรายการที่มีให้นะคะ" });
+  if (got.some(g => String(g.course_id) === wanted))
+    return res.status(409).json({ ok: false, error: "DUPLICATE", message: "คอร์สนี้คุณได้ไปแล้วค่ะ เลือกคอร์สอื่นนะคะ" });
   await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,'plan_12m','สิทธิ์คอร์สฟรีของแพ็ก 12 เดือน')
     ON CONFLICT (lower(email), course_id) DO NOTHING`, [uid("gr"), email, wanted]);
   res.json({ ok: true, course_id: wanted, name: String(ok.name || "").trim() });

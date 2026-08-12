@@ -107,12 +107,17 @@ export default function Account() {
     }
   }
   async function pickFreeCourse(id, name) {
-    if (!(await askConfirm({ title: `เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?`, detail: "เลือกได้ครั้งเดียว เปลี่ยนทีหลังไม่ได้นะคะ", ok: "ใช่ เลือกคอร์สนี้" }))) return;
+    const left = perks?.free_course?.left ?? 1;
+    if (!(await askConfirm({ title: `เลือก "${name}" เป็นคอร์สฟรีของคุณใช่ไหมคะ?`,
+      detail: left > 1 ? `เลือกแล้วเปลี่ยนไม่ได้นะคะ · หลังจากนี้จะเหลือสิทธิ์อีก ${left - 1} คอร์ส` : "เลือกแล้วเปลี่ยนทีหลังไม่ได้นะคะ",
+      ok: "ใช่ เลือกคอร์สนี้" }))) return;
     setPickBusy(id);
     try {
       await api("/api/me/free-course", { method: "POST", token: session.token, body: { course_id: id } });
       const p = await api("/api/me/perks", { token: session.token }); setPerks(p);
-      alert(`เปิดคอร์ส "${name}" ให้แล้วค่ะ 🎉 เข้าเรียนได้เลยที่โฟลเดอร์คอร์สเรียน`);
+      // ยังมีสิทธิ์เหลือ = คงรายการคอร์สกางไว้ให้เลือกต่อได้เลย ไม่ต้องกดเปิดใหม่
+      setShowCourses((p?.free_course?.left || 0) > 0);
+      alert(`เปิดคอร์ส "${name}" ให้แล้วค่ะ 🎉 เข้าเรียนได้เลยที่โฟลเดอร์คอร์สเรียน${(p?.free_course?.left || 0) > 0 ? ` · เหลือสิทธิ์อีก ${p.free_course.left} คอร์ส` : ""}`);
       loadMonths();
     } catch (e) { alert(e.message || "เลือกไม่สำเร็จ ลองใหม่นะคะ"); }
     finally { setPickBusy(""); }
@@ -335,13 +340,20 @@ export default function Account() {
               {/* 🎓 คอร์สฟรี — กล่องขาวตัดกับพื้นน้ำเงิน ให้เด่นที่สุดในการ์ด (เป็นของมูลค่าถึง 5,990) */}
               {perks.free_course && !perks.free_course.claimed && (
                 <div style={{ marginTop: 15, background: "#fff", borderRadius: 14, padding: "14px 15px", color: "var(--ink)" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>🎓 คอร์สออนไลน์ฟรี 1 คอร์ส</div>
-                  <p className="muted" style={{ fontSize: 13, margin: "3px 0 11px" }}>เลือกได้ครั้งเดียว มูลค่าถึง 5,990฿</p>
+                  {/* 🎓 1 คอร์สฟรี ต่อ 1 แพ็ก 12 เดือน — ซื้อหลายช่องได้หลายคอร์ส (คิมเคาะ 12 ส.ค.) */}
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>
+                    🎓 คอร์สออนไลน์ฟรี {perks.free_course.total || 1} คอร์ส
+                  </div>
+                  <p className="muted" style={{ fontSize: 13, margin: "3px 0 11px" }}>
+                    {(perks.free_course.total || 1) > 1
+                      ? <>คุณมีแพ็ก 12 เดือน {perks.free_course.total} ช่อง = ได้ {perks.free_course.total} คอร์ส · <b>เลือกไปแล้ว {perks.free_course.used} · เหลืออีก {perks.free_course.left}</b> · มูลค่าคอร์สละถึง 5,990฿</>
+                      : <>เลือกได้ครั้งเดียว มูลค่าถึง 5,990฿</>}
+                  </p>
                   {!showCourses
                     ? <button onClick={() => setShowCourses(true)}
                         style={{ display: "block", width: "100%", background: "var(--blue-d)", color: "#fff", border: 0, borderRadius: 11,
                           padding: 13, fontFamily: "inherit", fontSize: 15.5, fontWeight: 800, cursor: "pointer" }}>
-                        เลือกคอร์สของฉัน →
+                        {(perks.free_course.used || 0) > 0 ? `เลือกคอร์สที่ ${perks.free_course.used + 1} →` : "เลือกคอร์สของฉัน →"}
                       </button>
                     : <div style={{ display: "grid", gap: 8 }}>
                         {(perks.free_course.choices || []).map(c => (

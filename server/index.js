@@ -525,12 +525,27 @@ async function grantMonthlyScripts(email, plan, cycle) {
 // ⛔ ตัด Snap & Pop (599) ออก — ราคาต่างจากตัวอื่น 6-10 เท่า ลูกค้าเผลอเลือกแล้วเสียเปรียบ
 const FREE_COURSE_EXCLUDE_INSTRUCTORS = ["asaidemy"];
 const FREE_COURSE_EXCLUDE_NAMES = ["snap & pop"];
+// ⚠️ บั๊กจริง 12 ส.ค. (คิมเจอ): รายการคอร์สฟรีมีคอร์สที่เลิกขายไปแล้วเต็มไปหมด + มีคอร์ส ASaiDemy ที่ห้ามแจก
+//    3 สาเหตุ:
+//      ① เดิมดึงทั้ง is_active='0' และ '1' — ตัว '1' คือคอร์สที่ปิดการขายไปแล้ว
+//      ② ช่อง instructor ในตารางเก็บเป็น "รหัสผู้สอน" ไม่ใช่ชื่อ → เทียบกับคำว่า "asaidemy" เลยไม่เคยตรง
+//      ③ ไม่ได้เช็กราคา คอร์สที่ราคา 0 (ไม่ได้ขายแล้ว) จึงหลุดเข้ามา
+//    → ยึดกติกาเดียวกับ "คอร์สที่ขายอยู่จริงบนหน้าเว็บ" แล้วค่อยตัดที่ห้ามแจกออก
 async function freeCourseChoices() {
-  const rows = await q(`SELECT legacy_id, name, price, price_sale, instructor, featured_image_url FROM academy_courses WHERE is_active='0' OR is_active='1'`).catch(() => []);
+  const rows = await q(`SELECT legacy_id, name, price, price_sale, flag_sale, instructor, featured_image_url
+    FROM academy_courses WHERE is_active='0'`).catch(() => []);
+  const tutors = await q(`SELECT legacy_id, data_json FROM academy_tutors`).catch(() => []);
+  const tutName = {};
+  for (const r of tutors) tutName[String(r.legacy_id)] = String((safeJson(r.data_json) || {}).name || "").toLowerCase().trim();
+  const banned = (txt) => FREE_COURSE_EXCLUDE_INSTRUCTORS.some(x => String(txt || "").includes(x));
   return rows.filter(c => {
-    const ins = String(c.instructor || "").toLowerCase().trim();
+    if (HIDDEN_COURSES.has(String(c.legacy_id))) return false;              // ปิดการขายด้วยมือ
+    const sale = String(c.flag_sale) === "1" && Number(c.price_sale) > 0;
+    const priceNow = sale ? Number(c.price_sale) : Number(c.price);
+    if (!(priceNow > 0)) return false;                                       // ราคา 0 = ไม่ได้ขายแล้ว
     const nm = String(c.name || "").toLowerCase().trim();
-    return !FREE_COURSE_EXCLUDE_INSTRUCTORS.includes(ins) && !FREE_COURSE_EXCLUDE_NAMES.some(x => nm.includes(x));
+    if (banned(tutName[String(c.instructor)]) || banned(nm)) return false;   // ⛔ คอร์สพาร์ทเนอร์ ห้ามแจกฟรี
+    return !FREE_COURSE_EXCLUDE_NAMES.some(x => nm.includes(x));
   });
 }
 // ราคาทั้ง 3 แพ็ก (หน้าเว็บดึงไปโชว์ ไม่ฝังเลขไว้ในหน้าเว็บ)

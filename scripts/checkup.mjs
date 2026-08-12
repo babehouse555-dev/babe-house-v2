@@ -148,6 +148,19 @@ await check("ซื้อแพ็กด้วยโค้ดฟรี 100% ก�
   must(r.json?.ok, "ใช้โค้ดไม่สำเร็จ: " + r.text.slice(0, 120));
   must(/\/account/.test(r.json.redirect_url || ""), `เด้งไป ${r.json.redirect_url} แทนหน้าบัญชี`);
 });
+await check("คอร์สฟรี: ต้องมีเฉพาะคอร์สที่ยังขายอยู่ ไม่มีคอร์สราคา 0 / คอร์สพาร์ทเนอร์", async () => {
+  // คิมเจอ 12 ส.ค.: รายการคอร์สฟรีมีคอร์สที่เลิกขายแล้วเต็มไปหมด + มีคอร์ส ASaiDemy ที่ห้ามแจก
+  const me = await api("/api/me/perks", { token: tok });
+  const choices = me.json?.free_course?.choices || [];
+  if (!choices.length) return;                          // สนามทดสอบไม่มีคอร์ส = ข้าม
+  const cat = await api("/api/academy/catalog");
+  const onSale = new Set((cat.json?.courses || []).map(c => String(c.id)));
+  for (const c of choices) {
+    must(Number(c.price) > 0, `มีคอร์สราคา 0 หลุดมา: ${c.name}`);
+    must(onSale.has(String(c.id)), `มีคอร์สที่ไม่ได้ขายอยู่หลุดมา: ${c.name}`);
+    must(!/asaidemy/i.test(c.name), `คอร์สพาร์ทเนอร์หลุดมาแจกฟรี: ${c.name}`);
+  }
+});
 await check("บังคับให้ออเดอร์แพ็กสร้างเล่ม → ระบบต้องปฏิเสธ (ด่านสุดท้าย)", async () => {
   // คิมถาม 12 ส.ค.: "ถ้าเทสต์รอบที่ 3 จะเจอปัญหาเดิมอีกไหม"
   // ข้อนี้จำลอง "เส้นทางที่แย่ที่สุด" — ยิงตรงเข้าตัวสร้างเล่มด้วยออเดอร์แพ็กที่จ่ายแล้ว

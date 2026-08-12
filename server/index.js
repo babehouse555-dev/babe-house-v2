@@ -96,11 +96,17 @@ async function memberPerks(email) {
     months_total: sub ? Number(sub.months_total) : null,
     months_left: sub ? Math.max(0, Number(sub.months_total) - Number(sub.months_used)) : null };
 }
-const planOf = (k) => {
+const planOf = (k, preview) => {
   // ⛔ ช่วงโปรเปิดตัว ยังไม่เปิดขายแพ็กยาว — ใครยิงมาก็ได้รายเดือนราคาโปรเท่านั้น
-  if (!plansLive()) return { ...PLANS.monthly, satang: PROMO_SATANG, per_month: PROMO_SATANG / 100, off: 0, full_satang: PRICE_SATANG };
+  // 👀 ยกเว้นโหมดพรีวิวของคิม (preview=1) — ให้ทดลองแพ็กยาวจริงได้ก่อนวันเปิดขาย
+  if (!plansLive() && !preview) return { ...PLANS.monthly, satang: PROMO_SATANG, per_month: PROMO_SATANG / 100, off: 0, full_satang: PRICE_SATANG };
   return PLANS[String(k || "monthly")] || PLANS.monthly;
 };
+// 📦 "แพ็กที่ออเดอร์นี้เลือกไว้จริง" — อ่านจากสิ่งที่บันทึกลงออเดอร์แล้ว ไม่ใช่ราคาที่ขายอยู่วันนี้
+// ⚠️ ห้ามใช้ planOf() กับ payload.plan — planOf จะบังคับเป็น "รายเดือน" ทุกครั้งที่ยังไม่ถึง 1 ก.ย.
+//    ผลคือออเดอร์แพ็ก 12 เดือนถูกมองเป็นรายเดือน → เด้งผิดหน้า / คิดฐานส่วนลดผิด / ใบกำกับเขียนผิด
+//    (คลาสบั๊กเดียวกับที่คิมเจอ 2 รอบ 12 ส.ค. — รวบไว้ที่เดียวจะได้ไม่หลุดอีก)
+const planOfPayload = (payload) => PLANS[String(payload?.plan || "")] || planOf(payload?.plan);
 // VAT รวมอยู่ในราคาแล้ว → ถอดออกมาโชว์ในใบกำกับ
 const vatSplit = (satang) => {
   const total = Math.round(Number(satang) || 0);
@@ -323,7 +329,7 @@ async function issueInvoiceForOrder(orderId) {
   const payload = safeJson(o.order_payload_json) || {};
   const tier = String(o.tier || "");
   const kind = kindOfTier(tier);
-  const plan = planOf(payload.plan);
+  const plan = planOfPayload(payload);
   const desc = kind === "edit" ? `เครดิตตัดต่อคลิป ${Number(payload.edit_credit_pack) || 0} คลิป`
     : KIND_LABEL[kind] ||
     (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
@@ -342,7 +348,7 @@ async function activatePlanIfLongOrder(orderId) {
   //    ผลคือ ลูกค้าจ่ายค่าแพ็ก 12 เดือนไปแล้ว แต่ระบบไม่เปิดสิทธิ์ให้เลย เพราะมองว่าเป็นรายเดือน
   //    คิมเจอเอง 12 ส.ค.: "พอกดอัพเกรดไปแล้วตัวแพ็คเกจปัจจุบันก็ไม่เปลี่ยน"
   //    ออเดอร์นี้จ่ายเงินแล้วและราคาถูกคิดจากฝั่งเซิร์ฟเวอร์ตอนสร้าง → เชื่อแพ็กที่บันทึกไว้ในออเดอร์ได้
-  const plan = PLANS[String(payload.plan || "")] || planOf(payload.plan);
+  const plan = planOfPayload(payload);
   if (plan.months <= 1) return;
   const email = normEmail(o.email || ""); if (!email) return;
   const exists = await one(`SELECT 1 FROM subscriptions WHERE order_id=$1`, [orderId]);
@@ -362,11 +368,22 @@ async function activatePlanIfLongOrder(orderId) {
     VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,$9,$10)`,
     [subId, email, o.user_id, o.instagram_account || null, plan.plan, plan.months, o.final_amount_satang || plan.satang, orderId, o.billing_cycle, expires.toISOString()]);
   console.log(`[plan] เปิดแพ็ก ${plan.plan} (${plan.months} เดือน) ให้ ${email} — ยังไม่หักเดือนไหน`);
+  // 🆕 ลูกค้าใหม่ที่เลือกแพ็กตั้งแต่ซื้อครั้งแรก (กรอกฟอร์ม + แนบ Insight เดือนนี้มาแล้ว)
+  //    → เล่มเดือนแรกสร้างเดี๋ยวนี้เลย และนับเป็นสิทธิ์เดือนที่ 1 (เหลือ 11)
+  //    ต่างจากคนที่กด "ซื้อแพ็ก" จากหน้าบัญชี (source='upgrade') ที่ไม่มีรูปเดือนใหม่ → เก็บสิทธิ์ครบทุกเดือน
+  const firstBuy = String(o.source || "") !== "upgrade";
+  if (firstBuy) {
+    const sub = await one(`SELECT * FROM subscriptions WHERE subscription_id=$1`, [subId]);
+    if (sub) await useSubscriptionMonth(sub, o.billing_cycle, orderId).catch(() => {});
+  }
   sendEmail(email, `แพ็ก ${plan.months} เดือนของคุณเปิดใช้แล้วค่ะ 🩵`,
     wrap(`ขอบคุณที่ไว้ใจครูพี่คิมนะคะ 🩵<br><br>
       แพ็ก <b>${plan.months} เดือน</b> ของคุณเปิดใช้เรียบร้อยแล้วค่ะ<br><br>
-      สิทธิ์ <b>${plan.months} เดือนเต็ม</b> เก็บไว้ในบัญชีของคุณแล้ว <b>ยังไม่ถูกใช้ไปเลยสักเดือน</b><br>
-      อยากได้เล่มเดือนไหน ค่อยเข้ามากดสร้างเดือนนั้น — ไม่ต้องจ่ายอีกค่ะ<br><br>
+      ${firstBuy
+        ? `เล่มเดือนแรกกำลังทำให้อยู่ค่ะ (นับเป็นเดือนที่ 1) เหลือสิทธิ์อีก <b>${plan.months - 1} เดือน</b> เก็บไว้ในบัญชี<br>
+           เดือนถัดไปแค่เข้ามากดสร้าง — ไม่ต้องจ่ายอีกค่ะ<br><br>`
+        : `สิทธิ์ <b>${plan.months} เดือนเต็ม</b> เก็บไว้ในบัญชีของคุณแล้ว <b>ยังไม่ถูกใช้ไปเลยสักเดือน</b><br>
+           อยากได้เล่มเดือนไหน ค่อยเข้ามากดสร้างเดือนนั้น — ไม่ต้องจ่ายอีกค่ะ<br><br>`}
       ทำแบบนี้เพราะเล่มแต่ละเดือนจะอ่าน Insight ล่าสุดของคุณ ณ ตอนนั้น
       คุณจะได้เห็นชัดว่าช่องโตขึ้นเดือนต่อเดือนแค่ไหนค่ะ 🩵<br><br>
       ${btn(appBaseUrl() + "/account", "เปิดบัญชีของฉัน")}`)).catch(() => {});
@@ -646,11 +663,14 @@ app.get("/api/admin/subscriptions", async (req, res) => {
 // ลูกค้าเลือกแพ็กที่หน้าจ่ายเงิน — เปลี่ยนได้จนกว่าจะจ่าย
 app.post("/api/order/set-plan", rateLimit(60, M10), async (req, res) => {
   const orderId = String(req.body?.order_id || "");
-  const plan = planOf(req.body?.plan);
+  const isPreview = String(req.body?.preview || "") === "1";
+  const plan = planOf(req.body?.plan, isPreview);
   const o = await getOrder(orderId);
   if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   if (["paid", "mock_paid"].includes(o.payment_status)) return res.status(409).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้จ่ายแล้วค่ะ" });
-  if (!plansLive()) return res.status(409).json({ ok: false, error: "PLANS_NOT_LIVE", message: "ช่วงนี้เป็นโปรเปิดตัวราคาเดียวค่ะ" });
+  // ยังไม่ถึง 1 ก.ย. = เลือกแพ็กไม่ได้ (ยกเว้นโหมดพรีวิวที่คิมใช้ทดสอบ — เหมือน /api/me/upgrade)
+  if (!plansLive() && !isPreview)
+    return res.status(409).json({ ok: false, error: "PLANS_NOT_LIVE", message: "ช่วงนี้เป็นโปรเปิดตัวราคาเดียวค่ะ" });
   // ⛔ แพ็กยาวลด 30-50% อยู่แล้ว ห้ามเอาโค้ด/ส่วนลดแนะนำเพื่อนมาลดซ้อน
   const payload = { ...(safeJson(o.order_payload_json) || {}), plan: plan.plan, plan_chosen: true };
   await run(`UPDATE blueprint_orders SET final_amount_satang=$1, discount_percent=$2, order_payload_json=$3, discount_code=NULL, referred_by=NULL WHERE order_id=$4`,
@@ -744,7 +764,7 @@ app.post("/api/admin/tax-invoices/backfill", async (req, res) => {
       const payload = safeJson(o.order_payload_json) || {};
       const tier = String(o.tier || "");
       const kind = kindOfTier(tier);
-      const plan = planOf(payload.plan);
+      const plan = planOfPayload(payload);
       const desc = KIND_LABEL[kind] || (plan.months > 1 ? `AI Creator Blueprint — แพ็ก ${plan.months} เดือน` : "AI Creator Blueprint — รายเดือน");
       const r = await issueTaxInvoice({ orderId: o.order_id, kind, email: o.email,
         amountSatang: Number(o.final_amount_satang || 0), description: desc,
@@ -951,7 +971,7 @@ async function applyCode(req, res) {
   // ⚠️ ฐานที่เอามาลด ต้องเป็น "ราคาของออเดอร์นั้นจริงๆ" ไม่ใช่ราคารายเดือนเสมอไป
   //    เดิมใช้ monthlySatang() ตายตัว → ถ้าใส่โค้ดกับแพ็ก 12 เดือน (฿9,540) ยอดจะเหลือหลักพัน = ขาดทุนยับ
   //    (เจอตอนคิมสั่งเปิดช่องใส่โค้ดในหน้าอัปแพ็ก 10 ส.ค. — เดิมปิดไว้เลยไม่มีใครเจอบั๊กนี้)
-  const orderPlan = planOf((safeJson(o.order_payload_json) || {}).plan);
+  const orderPlan = planOfPayload(safeJson(o.order_payload_json) || {});
   const codeBase = orderPlan.months > 1 ? orderPlan.satang : monthlySatang();
   const finalAmount = Math.round(codeBase * (100 - percent) / 100);
   await run(`UPDATE blueprint_orders SET discount_code=$1, discount_percent=$2, final_amount_satang=$3 WHERE order_id=$4`, [code, percent, finalAmount, orderId]);
@@ -966,7 +986,7 @@ async function applyCode(req, res) {
     // 🎟️ ออเดอร์ "ซื้อแพ็กหลายเดือน" = ซื้อสิทธิ์เก็บไว้ ไม่ใช่สั่งทำเล่มเดี๋ยวนี้
     //    ต้องกลับหน้าบัญชี ไม่ใช่วิ่งไปหน้า "ครูพี่คิมกำลังอ่านช่องของคุณ" (คิมเจอ 12 ส.ค. ตอนใช้โค้ดฟรีทดสอบ)
     //    เส้นจ่ายด้วย Stripe แก้ไปแล้ว แต่เส้น "โค้ดฟรี 100%" ยังเด้งผิดอยู่
-    const isPlan = String(o.source || "") === "upgrade" || planOf((safeJson(o.order_payload_json) || {}).plan).months > 1;
+    const isPlan = String(o.source || "") === "upgrade" || planOfPayload(safeJson(o.order_payload_json) || {}).months > 1;
     return res.json({ ok: true, free: true, percent,
       redirect_url: isPlan ? "/account?plan=ok" : `/processing?order_id=${encodeURIComponent(orderId)}` });
   }
@@ -1220,8 +1240,11 @@ app.post("/api/start-generation", async (req, res) => {
     //    เสียหาย 3 ต่อ — เปลืองค่า AI จริง · ลูกค้าได้ของที่ไม่ได้อยากได้ · เล่มใช้ข้อมูลเดือนเก่า เดือนผิด
     //    เดิมกันไว้ที่ "ทางเดินแต่ละเส้น" (Stripe / โค้ดฟรี) ซึ่งพลาดได้เรื่อยๆ ถ้ามีเส้นใหม่
     //    → ย้ายมากันที่ตัวสร้างเล่มเลย เส้นไหนก็ตามที่พามาถึงตรงนี้ จะถูกปฏิเสธหมด
-    const plOrder = safeJson(o.order_payload_json) || {};
-    const isPlanOrder = String(o.source || "") === "upgrade" || (PLANS[String(plOrder.plan || "")]?.months || 1) > 1;
+    //    ⚠️ "ซื้อแพ็กเก็บสิทธิ์" = ออเดอร์ที่กดจากหน้าบัญชี (source='upgrade') เท่านั้น — ไม่มีฟอร์ม ไม่มีรูป Insight ใหม่
+    //    ส่วนลูกค้าใหม่ที่กรอกฟอร์ม+แนบรูปแล้วเลือกแพ็ก 12 เดือนตั้งแต่ครั้งแรก ต้องได้เล่มเดือนแรกทันที
+    //    (ไม่งั้นจ่าย ฿9,540 เสร็จ สิ่งแรกที่เห็นคือหน้าปฏิเสธ — เจอตอนตรวจก่อนเปิดขาย 12 ส.ค.
+    //     เส้นนี้จะเปิดใช้เองวันที่ 1 ก.ย. เลยยังไม่มีลูกค้าคนไหนโดน)
+    const isPlanOrder = String(o.source || "") === "upgrade";
     if (isPlanOrder && !o.blueprint_id) {
       console.log(`[gen] ปฏิเสธสร้างเล่มจากออเดอร์ซื้อแพ็ก ${o.order_id} — แพ็กเก็บเป็นสิทธิ์ ไม่ใช่สั่งทำเล่ม`);
       return res.status(409).json({ ok: false, error: "PLAN_ORDER",

@@ -148,6 +148,30 @@ await check("ซื้อแพ็กด้วยโค้ดฟรี 100% ก�
   must(r.json?.ok, "ใช้โค้ดไม่สำเร็จ: " + r.text.slice(0, 120));
   must(/\/account/.test(r.json.redirect_url || ""), `เด้งไป ${r.json.redirect_url} แทนหน้าบัญชี`);
 });
+await check("เลือกแพ็กที่หน้าจ่ายเงิน (โหมดพรีวิว) → ต้องคิดราคาแพ็กจริง ไม่ใช่ราคารายเดือน", async () => {
+  // 🗓️ ก่อน 1 ก.ย. planOf() จะบังคับทุกอย่างเป็น "รายเดือน 490"
+  //    ถ้าหน้าจ่ายเงินเลือกแพ็ก 12 เดือนแล้วยังได้ 490 = ขายขาดทุน + สิทธิ์ไม่เปิด
+  const o = await api("/api/checkout", { method: "POST", body: { tier: "Premium_490", payload: {
+    user_id: "u_setplan", instagram_account: "@chan_setplan", email: "newbuyer@test.local",
+    meta_purchase: { tier: "Premium_490", billing_cycle: "August_2026" },
+    form_responses: { monthly_goal: "โต 10k", business_type: "ร้านกาแฟ", display_name: "ลูกค้าทดสอบ" } } } });
+  must(o.json?.order_id, "สร้างออเดอร์ไม่สำเร็จ: " + o.text.slice(0, 120));
+  const noPrev = await api("/api/order/set-plan", { method: "POST", body: { order_id: o.json.order_id, plan: "12m" } });
+  must(noPrev.status === 409, `ลูกค้าทั่วไปต้องเลือกแพ็กไม่ได้ก่อน 1 ก.ย. แต่ได้ ${noPrev.status}`);
+  const r = await api("/api/order/set-plan", { method: "POST", body: { order_id: o.json.order_id, plan: "12m", preview: "1" } });
+  must(r.json?.ok, "เลือกแพ็กในโหมดพรีวิวไม่ได้: " + r.text.slice(0, 120));
+  must(r.json.months === 12, `ได้แพ็ก ${r.json.months} เดือน แทนที่จะเป็น 12`);
+  must(r.json.amount_satang === 954000, `ยอด ฿${r.json.amount_satang / 100} ไม่ใช่ ฿9,540`);
+  // ...แล้วลูกค้าใหม่คนนี้ต้องได้เล่มเดือนแรกทันที ไม่ใช่โดนหน้าปฏิเสธหลังจ่าย ฿9,540
+  const p2 = await api("/api/create-payment-session", { method: "POST", body: { order_id: o.json.order_id } });
+  must(/\/processing/.test(p2.json?.redirect_url || ""), `เด้งไป ${p2.json?.redirect_url} แทนหน้าสร้างเล่ม`);
+  const g = await api("/api/start-generation", { method: "POST", body: { order_id: o.json.order_id } });
+  must(g.json?.error !== "PLAN_ORDER", "ลูกค้าใหม่ที่ซื้อแพ็กโดนปฏิเสธไม่ให้สร้างเล่มเดือนแรก");
+  // ...และสิทธิ์ต้องถูกหักไป 1 เดือน เหลือ 11 (ไม่ใช่ได้เล่มฟรีแถม 12 เดือน)
+  const tk = await login("newbuyer@test.local");
+  const pk = await api("/api/me/perks?channel=@chan_setplan", { token: tk });
+  must(pk.json?.months_left === 11, `เหลือ ${pk.json?.months_left} เดือน ควรเหลือ 11 (เล่มเดือนแรกนับเป็นเดือนที่ 1)`);
+});
 await check("คอร์สฟรี: ต้องมีเฉพาะคอร์สที่ยังขายอยู่ ไม่มีคอร์สราคา 0 / คอร์สพาร์ทเนอร์", async () => {
   // คิมเจอ 12 ส.ค.: รายการคอร์สฟรีมีคอร์สที่เลิกขายแล้วเต็มไปหมด + มีคอร์ส ASaiDemy ที่ห้ามแจก
   // 🪤 ใส่ "ของล่อ" 3 แบบเข้าไปก่อน แล้วดูว่ามันหลุดเข้ารายการคอร์สฟรีไหม

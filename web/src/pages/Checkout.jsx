@@ -4,7 +4,7 @@ import { api, baht, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import { PlanCards } from "../PlanCards.jsx";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
-import { TAX_INVOICE_LIVE } from "../config.js";
+import { TAX_INVOICE_LIVE, PREVIEW } from "../config.js";
 
 export default function Checkout() {
   const { t } = useI18n();
@@ -27,7 +27,7 @@ export default function Checkout() {
 
   useEffect(() => {
     track("checkout_view");
-    api("/api/plans").then(d => setPlans(d.plans || [])).catch(() => {});
+    api(`/api/plans${PREVIEW ? "?preview=1" : ""}`).then(d => setPlans(d.plans || [])).catch(() => {});   // พรีวิว = คิมทดลองเลือกแพ็กตอนซื้อครั้งแรกได้ก่อนวันเปิดจริง
     if (!orderId) return;
     api(`/api/orders/${orderId}`).then(d => { setOrder(d.order); if (d.order.final_amount_satang != null) setPrice(d.order.final_amount_satang); }).catch(() => {});
   }, [orderId]);
@@ -38,7 +38,7 @@ export default function Checkout() {
   async function pickPlan(k, force = false) {
     if (!orderId || (!force && k === plan)) return;
     const prev = plan; setPlan(k);
-    try { const d = await api("/api/order/set-plan", { method: "POST", body: { order_id: orderId, plan: k } }); setPrice(d.amount_satang); setCodeMsg(null); }
+    try { const d = await api("/api/order/set-plan", { method: "POST", body: { order_id: orderId, plan: k, preview: PREVIEW ? "1" : undefined } }); setPrice(d.amount_satang); setCodeMsg(null); }
     catch (e) { setPlan(prev); alert(e.message); }
   }
   // ตั้งต้นตามแพ็กที่ลูกค้าเลือกมาจากหน้าแรก ถ้าไม่ได้เลือกมาให้ตั้งที่คุ้มที่สุด

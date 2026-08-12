@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, track, session } from "../api.js";
-import { ACADEMY_LIVE, EDIT_LIVE } from "../config.js";
+import { ACADEMY_LIVE, EDIT_LIVE, PREVIEW } from "../config.js";
 import { useI18n, LangToggle } from "../i18n.jsx";
 import { PlanCards } from "../PlanCards.jsx";
 
@@ -73,7 +73,9 @@ export default function Landing() {
   const FULL = t("price_full"), PROMO = t("price_promo");
   // 🗓️ ถึงเวลาเปิดขายแพ็กหรือยัง (1 ก.ย. 2569) — ให้เซิร์ฟเวอร์ตัดสิน ไม่ใช่เช็คนาฬิกาในเครื่องลูกค้า
   const [plansLive, setPlansLive] = useState(false);
-  useEffect(() => { api("/api/plans").then(d => setPlansLive(!!d.live)).catch(() => {}); }, []);
+  // 👀 โหมดพรีวิว (?preview=on) ส่ง preview=1 ไปด้วย เพื่อให้คิม "เห็นหน้าตาวันที่ 1 ก.ย." ได้ก่อนจริง
+  //    ถ้าไม่ส่ง = ส่วนแพ็กในหน้าแรกจะโผล่ครั้งแรกตอนเที่ยงคืน 1 ก.ย. ต่อหน้าลูกค้า โดยไม่มีใครเคยเห็นมาก่อน
+  useEffect(() => { api(`/api/plans${PREVIEW ? "?preview=1" : ""}`).then(d => setPlansLive(!!d.live || (PREVIEW && (d.plans || []).length > 0))).catch(() => {}); }, []);
   return (
     <div>
       <nav style={{ position: "sticky", top: 0, background: "rgba(255,255,255,.92)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--border)", zIndex: 50 }}>

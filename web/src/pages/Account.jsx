@@ -58,9 +58,27 @@ export default function Account() {
   const [upErr, setUpErr] = useState(null);   // { plan, msg } — ผูกกับปุ่มที่กด
   const [planCount, setPlanCount] = useState(0);  // แพ็กที่ขายได้จริงตอนนี้ (0 = ยังไม่ถึงวันเปิด → ซ่อนทั้งบล็อก)
 
+  // 🎉 เพิ่งจ่ายค่าแพ็กเสร็จแล้วเด้งกลับมา (/account?plan=ok)
+  //    ต้องบอกให้ชัดว่าได้สิทธิ์กี่เดือน และยังไม่ถูกใช้ไปเลย ไม่งั้นลูกค้าจะงงว่าจ่ายแล้วไม่เห็นได้อะไร
+  const justBoughtPlan = typeof window !== "undefined" && new URLSearchParams(location.search).get("plan") === "ok";
+
   useEffect(() => { if (session.token) loadMonths(); }, []);
   // 🎁 สิทธิ์ของฉัน — โหลดครั้งเดียวตอนเข้าหน้า
   useEffect(() => { if (session.token) api("/api/me/perks", { token: session.token }).then(setPerks).catch(() => {}); }, [step]);
+  // เพิ่งซื้อแพ็ก → Stripe อาจยิงยืนยันช้ากว่าที่เราเด้งกลับมา ตามโหลดสิทธิ์ซ้ำจนกว่าจะขึ้นแพ็กใหม่
+  useEffect(() => {
+    if (!justBoughtPlan || !session.token) return;
+    let n = 0;
+    const t = setInterval(async () => {
+      try {
+        const p = await api("/api/me/perks", { token: session.token });
+        setPerks(p);
+        if (p?.plan && p.plan !== "monthly") clearInterval(t);
+      } catch {}
+      if (++n > 10) clearInterval(t);       // ~20 วิ
+    }, 2000);
+    return () => clearInterval(t);
+  }, [justBoughtPlan, step]);
   // ⛔ หัวข้อ "อัปเกรดแพ็ก" + ตัวเลือกช่อง ต้องไม่โผล่ก่อนการ์ดราคา ไม่งั้นลูกค้าเห็นหัวข้อลอยๆ ไม่มีอะไรให้กด
   //    (คิมเจอเอง 10 ส.ค. บนมือถือที่ไม่ได้เปิดโหมดพรีวิว)
   useEffect(() => { api(`/api/plans${PREVIEW ? "?preview=1" : ""}`)
@@ -72,7 +90,12 @@ export default function Account() {
     const guard = setTimeout(() => { setUpBusy(""); setUpErr({ plan, msg: "เชื่อมต่อไม่สำเร็จ ลองกดใหม่อีกครั้งนะคะ" }); }, 20000);
     try {
       const chs = data?.channels || [];
-      const channel = upCh || (chs.length === 1 ? chs[0].channel : "");
+      // ⚠️ บั๊กจริง 12 ส.ค.: ช่องที่ "โชว์อยู่ในเมนู" กับช่องที่ "ส่งไปจริง" เคยไม่ตรงกัน
+      //    เมนูโชว์ช่องแรกไว้ให้เห็น แต่ถ้าลูกค้าไม่ได้แตะเมนู ค่าที่ส่งไปเป็นค่าว่าง
+      //    → หลังบ้านเลยไปหยิบ "ออเดอร์ล่าสุดของอีเมลนี้" ซึ่งอาจเป็นคนละช่องกับที่เห็นบนจอ
+      //    คิมเจอเอง: "เลือกช่อง Babehouse แต่ผลลัพธ์เป็นอีกช่องนึง"
+      //    → ส่งช่องที่ตาเห็นเสมอ (ตรรกะเดียวกับที่ใช้โชว์ในเมนู)
+      const channel = upCh || (chs[0] || {}).channel || "";
       const r = await api("/api/me/upgrade", { method: "POST", token: session.token,
         body: { plan, channel, ...(PREVIEW ? { preview: "1" } : {}) } });
       clearTimeout(guard);
@@ -325,6 +348,18 @@ export default function Account() {
             </div>
           );
         })()}
+
+        {/* 🎉 เพิ่งซื้อแพ็กเสร็จ — บอกให้ชัดว่าได้อะไร และสิทธิ์ยังอยู่ครบ ไม่ได้ถูกใช้ไปแล้ว */}
+        {justBoughtPlan && perks && perks.plan !== "monthly" && (
+          <div className="card" style={{ background: "#E8F5EE", border: "1.5px solid #9ed3b0", marginTop: 14 }}>
+            <div style={{ fontWeight: 800, fontSize: 15.5, color: "#1a7f43" }}>🎉 เปิดแพ็กเรียบร้อยแล้วค่ะ</div>
+            <div style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.8 }}>
+              คุณมีสิทธิ์สร้างเล่มอีก <b>{perks.months_left ?? perks.months_total} เดือน</b> — <b>ยังไม่ถูกใช้ไปเลยสักเดือน</b><br />
+              อยากได้เล่มเดือนไหนค่อยกดสร้างเดือนนั้น ไม่ต้องจ่ายเพิ่มค่ะ
+              <span className="muted"> เล่มแต่ละเดือนจะอ่าน Insight ล่าสุดของคุณ ณ ตอนนั้น จะได้เห็นว่าช่องโตขึ้นแค่ไหน</span>
+            </div>
+          </div>
+        )}
 
         {/* ⬆️ อัปเกรดแพ็ก — คิมสั่ง 10 ส.ค. "ลูกค้าเห็นสถานะของตัวเองแล้วก็อัปเกรดได้เลย เห็นบ่อยๆ จะได้กดง่ายๆ"
             การ์ด 3 ช่องชุดเดียวกับหน้าแรก/หน้าจ่ายเงิน — แพ็กที่ใช้อยู่จะขึ้นป้ายเขียว ไม่มีปุ่มซื้อซ้ำ

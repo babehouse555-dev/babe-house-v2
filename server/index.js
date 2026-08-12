@@ -73,8 +73,14 @@ const PLAN_PERKS = {
 };
 const perksOf = (plan) => PLAN_PERKS[String(plan || "monthly")] || PLAN_PERKS.monthly;
 // สิทธิ์ของ "อีเมลนี้ตอนนี้" — ไม่มีแพ็กยาว = ได้สิทธิ์รายเดือน
+const PLAN_RANK = { monthly: 0, "6m": 1, "12m": 2 };
 async function memberPerks(email) {
-  const sub = await activeSubscription(email).catch(() => null);
+  // ⚠️ ลูกค้าหลายช่องมีได้หลายแพ็กพร้อมกัน — "สิทธิ์ของฉัน" ต้องยึดแพ็กที่สูงสุดที่ถืออยู่
+  //    ของเดิมหยิบตัวที่เปิดก่อนสุด → เพิ่งอัปเป็น 12 เดือนแต่หน้าเว็บยังโชว์แพ็กเก่า (คิมเจอ 12 ส.ค.)
+  const all = await q(`SELECT * FROM subscriptions WHERE lower(email)=lower($1) AND status='active'
+    AND months_used < months_total AND (expires_at IS NULL OR expires_at > now())`, [email]).catch(() => []);
+  const sub = all.sort((a, b) => (PLAN_RANK[b.plan] ?? 0) - (PLAN_RANK[a.plan] ?? 0))[0]
+    || await activeSubscription(email).catch(() => null);
   const plan = sub?.plan || "monthly";
   return { plan, ...perksOf(plan), subscription_id: sub?.subscription_id || null,
     months_total: sub ? Number(sub.months_total) : null,
@@ -319,11 +325,14 @@ async function issueInvoiceForOrder(orderId) {
 }
 
 // ออเดอร์แพ็ก 6/12 เดือน จ่ายแล้ว → เปิดสิทธิ์ให้ (idempotent กัน webhook ยิงซ้ำ)
-// เดือนแรกหักสิทธิ์ทันที เพราะเล่มเดือนนี้ถูกสร้างจากออเดอร์นี้อยู่แล้ว
 async function activatePlanIfLongOrder(orderId) {
   const o = await getOrder(orderId); if (!o) return;
   const payload = safeJson(o.order_payload_json) || {};
-  const plan = planOf(payload.plan);
+  // ⚠️ ห้ามใช้ planOf() ตรงนี้ — planOf จะบังคับเป็น "รายเดือน" ทุกครั้งที่ยังไม่ถึงวันเปิดขายแพ็ก (1 ก.ย.)
+  //    ผลคือ ลูกค้าจ่ายค่าแพ็ก 12 เดือนไปแล้ว แต่ระบบไม่เปิดสิทธิ์ให้เลย เพราะมองว่าเป็นรายเดือน
+  //    คิมเจอเอง 12 ส.ค.: "พอกดอัพเกรดไปแล้วตัวแพ็คเกจปัจจุบันก็ไม่เปลี่ยน"
+  //    ออเดอร์นี้จ่ายเงินแล้วและราคาถูกคิดจากฝั่งเซิร์ฟเวอร์ตอนสร้าง → เชื่อแพ็กที่บันทึกไว้ในออเดอร์ได้
+  const plan = PLANS[String(payload.plan || "")] || planOf(payload.plan);
   if (plan.months <= 1) return;
   const email = normEmail(o.email || ""); if (!email) return;
   const exists = await one(`SELECT 1 FROM subscriptions WHERE order_id=$1`, [orderId]);
@@ -334,17 +343,22 @@ async function activatePlanIfLongOrder(orderId) {
   // เผื่อเวลาเกินไว้ 2 เดือน เผื่อลูกค้าข้ามเดือน จะได้ไม่เสียสิทธิ์
   const expires = new Date();
   expires.setMonth(expires.getMonth() + plan.months + 2);
+  // 🎟️ เก็บไว้เป็นเครดิตครบทุกเดือน — ไม่หักเดือนแรกทิ้งตั้งแต่ตอนซื้อ
+  //    คิมสั่ง 12 ส.ค.: "ควรซื้อเป็นเครดิตไว้สิ ไม่ใช่กดเข้าไปแล้วใช้สิทธิไปเลย 1 เดือน
+  //     เพราะเขาจะได้รู้การเติบโตของแต่ละเดือน"
+  //    เหตุผล: เล่มแต่ละเดือนต้องสร้างจาก Insight ของเดือนนั้นจริงๆ ถึงจะเทียบการเติบโตกันได้
+  //    ถ้าหักเดือนแรกทันทีตอนซื้อ = ได้เล่มซ้ำเดือนเดิมที่เพิ่งซื้อไป แล้วเสียสิทธิ์ไปฟรีๆ 1 เดือน
   await run(`INSERT INTO subscriptions (subscription_id,email,user_id,instagram_account,plan,months_total,months_used,amount_satang,order_id,started_cycle,expires_at)
-    VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10)`,
+    VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,$9,$10)`,
     [subId, email, o.user_id, o.instagram_account || null, plan.plan, plan.months, o.final_amount_satang || plan.satang, orderId, o.billing_cycle, expires.toISOString()]);
-  await run(`INSERT INTO subscription_uses (use_id,subscription_id,billing_cycle,order_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
-    [uid("su"), subId, o.billing_cycle, orderId]).catch(() => {});
-  console.log(`[plan] เปิดแพ็ก ${plan.plan} (${plan.months} เดือน) ให้ ${email}`);
+  console.log(`[plan] เปิดแพ็ก ${plan.plan} (${plan.months} เดือน) ให้ ${email} — ยังไม่หักเดือนไหน`);
   sendEmail(email, `แพ็ก ${plan.months} เดือนของคุณเปิดใช้แล้วค่ะ 🩵`,
     wrap(`ขอบคุณที่ไว้ใจครูพี่คิมนะคะ 🩵<br><br>
       แพ็ก <b>${plan.months} เดือน</b> ของคุณเปิดใช้เรียบร้อยแล้วค่ะ<br><br>
-      ทุกเดือนถัดจากนี้ <b>ไม่ต้องจ่ายอีก</b> — แค่เข้ามากดสร้างเล่มใหม่ได้เลย<br>
-      และยิ่งอยู่กับเรานาน แผนจะยิ่งแม่นขึ้น เพราะระบบเรียนรู้จากคลิปที่คุณลงจริงทุกเดือนค่ะ<br><br>
+      สิทธิ์ <b>${plan.months} เดือนเต็ม</b> เก็บไว้ในบัญชีของคุณแล้ว <b>ยังไม่ถูกใช้ไปเลยสักเดือน</b><br>
+      อยากได้เล่มเดือนไหน ค่อยเข้ามากดสร้างเดือนนั้น — ไม่ต้องจ่ายอีกค่ะ<br><br>
+      ทำแบบนี้เพราะเล่มแต่ละเดือนจะอ่าน Insight ล่าสุดของคุณ ณ ตอนนั้น
+      คุณจะได้เห็นชัดว่าช่องโตขึ้นเดือนต่อเดือนแค่ไหนค่ะ 🩵<br><br>
       ${btn(appBaseUrl() + "/account", "เปิดบัญชีของฉัน")}`)).catch(() => {});
 }
 // ออเดอร์ซื้อเครดิต (tier Credits_N) จ่ายแล้ว → เติมเครดิต (idempotent กัน webhook ยิงซ้ำ)
@@ -925,7 +939,12 @@ app.post("/api/create-payment-session", async (req, res) => {
   try {
     const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
     const isVideo = String(o.tier || "").startsWith("Video");
-    const donePath = isVideo ? `/video-audit?order_id=${encodeURIComponent(o.order_id)}` : `/processing?order_id=${encodeURIComponent(o.order_id)}`;
+    // 🎟️ ออเดอร์ "ซื้อแพ็กหลายเดือน" = ซื้อสิทธิ์เก็บไว้ ไม่ใช่สั่งทำเล่มเดี๋ยวนี้ (คิมสั่ง 12 ส.ค.)
+    //    จ่ายเสร็จต้องกลับไปหน้าบัญชี ไม่ใช่วิ่งไปสร้างเล่มทันที ไม่งั้นสิทธิ์เดือนแรกโดนใช้ทิ้งไปฟรีๆ
+    const isPlan = String(o.source || "") === "upgrade";
+    const donePath = isVideo ? `/video-audit?order_id=${encodeURIComponent(o.order_id)}`
+      : isPlan ? `/account?plan=ok`
+      : `/processing?order_id=${encodeURIComponent(o.order_id)}`;
     if (["paid", "mock_paid"].includes(o.payment_status)) return res.json({ ok: true, redirect_url: donePath });
     // จ่ายเงินจริง: ซื้อได้หลายเล่ม ไม่บล็อกซ้ำ
     let amount = o.final_amount_satang || PRICE_SATANG;
@@ -939,7 +958,7 @@ app.post("/api/create-payment-session", async (req, res) => {
       // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงานค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-      const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount, email: o.email, productName: isVideo ? "Babe House Video Audit (ตรวจคลิป)" : undefined, successPath: isVideo ? donePath : undefined });
+      const s = await createStripeCheckout({ orderId: o.order_id, payload: safeJson(o.order_payload_json), origin, amountSatang: amount, email: o.email, productName: isVideo ? "Babe House Video Audit (ตรวจคลิป)" : undefined, successPath: (isVideo || isPlan) ? donePath : undefined });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [s.provider_session_id, o.order_id]);
       return res.json({ ok: true, redirect_url: s.checkout_url, external: true });
     }

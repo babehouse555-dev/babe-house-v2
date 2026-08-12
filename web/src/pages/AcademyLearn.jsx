@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, session, fileToBase64 } from "../api.js";
+import LoginBox from "../LoginBox.jsx";
 
 // หน้าเรียนคอร์ส — วิดีโอ + ติ๊กจบบท + แถบความคืบหน้า + ส่งการบ้านให้ AI ตรวจ
 // สิทธิ์: ลูกค้าที่ซื้อคอร์สนี้ (ออเดอร์ Close) ผ่าน session OTP · แอดมินพรีวิวได้ทุกคอร์ส
@@ -190,13 +191,15 @@ export default function AcademyLearn() {
   const [hw, setHw] = useState(null);
   const adminKey = localStorage.getItem("babe_admin_key") || "";
 
-  useEffect(() => {
+  // แยกออกมาเป็นฟังก์ชัน เพื่อให้ "ล็อกอินเสร็จในหน้านี้" เรียกโหลดใหม่ได้เลย ไม่ต้องรีเฟรช
+  function loadCourse() {
     if (!courseId) { setErr({ code: "NO_COURSE" }); return; }
     api(`/api/academy/learn/${courseId}`, { token: session.token || undefined, adminKey: adminKey || undefined })
       .then(d => { setData(d); const first = (d.lessons || []).findIndex(l => !l.done); setCur(first >= 0 ? first : 0); })
       .catch(e => setErr(e));
     if (session.token) api(`/api/academy/homework/${courseId}`, { token: session.token }).then(setHw).catch(() => {});
-  }, [courseId]);
+  }
+  useEffect(() => { loadCourse(); }, [courseId]);   // eslint-disable-line
 
   async function reloadHw() { try { setHw(await api(`/api/academy/homework/${courseId}`, { token: session.token })); } catch {} }
 
@@ -220,8 +223,20 @@ export default function AcademyLearn() {
     <div className="wrap narrow page-pad center" style={{ minHeight: "60vh", display: "flex", flexDirection: "column", justifyContent: "center" }}>
       <div style={{ fontSize: 44 }}>🔒</div>
       <h2 style={{ fontSize: 20, margin: "10px 0 6px" }}>{err.code === "NOT_OWNED" ? "คุณยังไม่ได้ซื้อคอร์สนี้ค่ะ" : err.code === "NO_COURSE" ? "ไม่พบคอร์สที่เลือก" : "กรุณาเข้าสู่ระบบก่อนนะคะ"}</h2>
-      <p className="muted" style={{ marginBottom: 18 }}>{err.code === "LOGIN_REQUIRED" || err.status === 401 ? "เข้าสู่ระบบด้วยอีเมลที่ใช้ซื้อคอร์ส แล้วกลับมาเรียนได้เลยค่ะ" : ""}</p>
-      <div><Link className="btn" to="/account">ไปหน้าเข้าสู่ระบบ</Link> <Link className="btn ghost" to="/academy" style={{ marginLeft: 6 }}>ดูคอร์สทั้งหมด</Link></div>
+      {/* 🔐 ลูกค้าที่ซื้อคอร์สแล้วกดลิงก์จากอีเมลมาโดยยังไม่ล็อกอิน — เดิมต้องออกไปหน้าบัญชี
+          ล็อกอินเสร็จก็ต้องเดินกลับมาหาคอร์สนี้เอง · ตอนนี้ล็อกอินตรงนี้แล้วเข้าเรียนต่อได้เลย */}
+      {(err.code === "LOGIN_REQUIRED" || err.status === 401) ? (
+        <div style={{ textAlign: "left", maxWidth: 380, margin: "6px auto 0", width: "100%" }}>
+          <LoginBox title="เข้าสู่ระบบแล้วเข้าเรียนต่อได้เลย"
+            hint={<>ใช้<b>อีเมลที่ใช้ซื้อคอร์ส</b>นะคะ — เข้าเสร็จเปิดบทเรียนต่อได้ทันที ไม่ต้องเดินกลับมาใหม่ค่ะ</>}
+            onDone={() => { setErr(null); loadCourse(); }} />
+          <div className="center" style={{ marginTop: 12 }}>
+            <Link className="btn ghost" to="/academy">ดูคอร์สทั้งหมด</Link>
+          </div>
+        </div>
+      ) : (
+        <div><Link className="btn" to="/account">ไปหน้าเข้าสู่ระบบ</Link> <Link className="btn ghost" to="/academy" style={{ marginLeft: 6 }}>ดูคอร์สทั้งหมด</Link></div>
+      )}
     </div>
   );
   if (!data) return <div className="wrap narrow page-pad center"><p className="muted">กำลังโหลด...</p></div>;

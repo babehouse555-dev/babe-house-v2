@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, session } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
+import LoginBox from "../LoginBox.jsx";
 import { OUR_STYLES } from "../editStyles.js";
 
 // 🎬 ให้ทีมช่วยลงมือทำ — ลูกค้ามีสคริปต์อยู่แล้วจากเล่ม แค่ไม่มีเวลาตัด
@@ -15,6 +16,9 @@ export default function EditOrder() {
   const [sp] = useSearchParams();
   const [clips, setClips] = useState(Number(sp.get("clips")) || 1);
   const [price, setPrice] = useState(null);
+  // 🔐 ยังไม่ล็อกอิน = ซื้อเครดิตไม่ได้ — เดิมขึ้นแค่ "เข้าสู่ระบบก่อนนะคะ" แล้วจบ ไม่มีทางไปล็อกอินต่อ
+  const [authed, setAuthed] = useState(!!session.token);
+  const [showLogin, setShowLogin] = useState(false);
   const [orders, setOrders] = useState([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -70,7 +74,7 @@ export default function EditOrder() {
   // 🎟️ ซื้อเครดิตตัดต่อ — ไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน ไปเลือกในตาราง 30 วันทีหลัง
   // (คิมเคาะ 2 ส.ค.: เดิมบังคับเลือกจำนวนคลิปพร้อมบรีฟวันเดียว ลูกค้างงว่าอีก 29 คลิปคืออะไร)
   async function order() {
-    if (!session.token) { setMsg("เข้าสู่ระบบก่อนนะคะ"); return; }
+    if (!session.token) { setShowLogin(true); setMsg("เข้าสู่ระบบก่อนนะคะ — ล็อกอินตรงนี้ได้เลยค่ะ"); return; }
     const bad = validateTax(tax);
     if (bad) { setMsg(bad); return; }
     setBusy(true); setMsg("");
@@ -215,9 +219,18 @@ export default function EditOrder() {
           </div>}
         </div>
         {TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
-        <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…"
-          : promo ? (promo.final <= 0 ? `รับเครดิต ${clips} คลิป (ฟรี)` : `ซื้อเครดิต ${clips} คลิป · ฿${(promo.final / 100).toLocaleString()}`)
-          : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>
+        {!authed && showLogin
+          ? <LoginBox title="เข้าสู่ระบบก่อนซื้อเครดิตนะคะ"
+              hint={<>ใช้อีเมลเดิมที่เคยซื้อกับเรา — <b>เครดิตจะไปเข้าบัญชีนี้ค่ะ</b></>}
+              onDone={async () => {
+                setAuthed(true); setShowLogin(false); setMsg("");
+                api(`/api/edit/price?clips=${clips}`, { token: session.token }).then(setPrice).catch(() => {});
+                api("/api/edit/credits", { token: session.token }).then(d => setCredits(Number(d.credits || 0))).catch(() => {});
+              }} />
+          : <button className="btn full" onClick={order} disabled={busy}>{busy ? "กำลังส่ง…"
+              : !authed ? "🔐 เข้าสู่ระบบ แล้วซื้อเครดิต"
+              : promo ? (promo.final <= 0 ? `รับเครดิต ${clips} คลิป (ฟรี)` : `ซื้อเครดิต ${clips} คลิป · ฿${(promo.final / 100).toLocaleString()}`)
+              : `ซื้อเครดิต ${clips} คลิป · ${money(price?.total)}`}</button>}
         {msg && <div className="msg" style={{ marginTop: 10 }}>{msg}</div>}
 
         {price?.eta_if_send_now && (

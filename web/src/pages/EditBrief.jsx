@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { api, session } from "../api.js";
+import LoginBox from "../LoginBox.jsx";
 import { OUR_STYLES } from "../editStyles.js";
 
 // 🎨 งานเก่าของทีมให้ลูกค้ากดเลือกว่าชอบสไตล์ไหน
@@ -34,6 +35,8 @@ export default function EditBrief() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [price, setPrice] = useState(null);      // ราคาเครดิต 1 คลิป (ลดสมาชิกแล้ว)
+  const [authed, setAuthed] = useState(!!session.token);   // ล็อกอินอยู่ไหม
+  const [showLogin, setShowLogin] = useState(false);
 
   // 💾 กันบรีฟหาย: ตอนไปจ่ายเงินซื้อเครดิต ลูกค้าออกจากเว็บเราไป Stripe
   //    ถ้าไม่เก็บไว้ กลับมาต้องพิมพ์ใหม่ทั้งหมด (คิมทัก 12 ส.ค.)
@@ -109,6 +112,17 @@ export default function EditBrief() {
     }
   }
 
+  // ✅ ล็อกอินเสร็จในหน้านี้ → ดึงเครดิตกับราคามาใหม่ ไม่ต้องรีเฟรช บรีฟไม่หาย
+  async function afterLogin() {
+    setAuthed(true); setShowLogin(false); setErr("");
+    const [c, pr] = await Promise.all([
+      api(`/api/edit/credits`, { token: session.token }).catch(() => null),
+      api(`/api/edit/price?clips=1`, { token: session.token }).catch(() => null),
+    ]);
+    setCredits(c?.credits ?? 0);
+    if (pr) setPrice(pr);
+  }
+
   const back = freeJob ? "/edit"
     : `/dashboard?user_id=${encodeURIComponent(sp.get("user_id") || "")}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId)}`;
 
@@ -121,7 +135,16 @@ export default function EditBrief() {
       <h1 className="page" style={{ marginBottom: 4 }}>{freeJob ? "บรีฟงานตัดต่อ" : `คลิปวันที่ ${day}`}</h1>
       {/* ⚠️ เครดิตหมด — บอกตั้งแต่ต้น ทุกโหมด (เดิมโชว์เฉพาะงานนอกแผน คนที่มาจากเล่มเลยไม่รู้ตัว
           กรอกจนเสร็จแล้วค่อยเด้ง error ตอนกดส่ง) · ไม่ต้องออกจากหน้านี้ไปซื้อแล้ว ปุ่มล่างซื้อให้เลย */}
-      {credits === 0 && (
+      {/* 🔐 ยังไม่ล็อกอิน — บอกตั้งแต่ต้น ไม่ใช่ปล่อยกรอกจนจบแล้วเด้ง "เข้าสู่ระบบก่อนนะคะ" (คิมเจอ 13 ส.ค.) */}
+      {!authed && (
+        <div className="card" style={{ background: "#FFF6E6", border: "1px solid #F0D89C", marginTop: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 4 }}>⚠️ ยังไม่ได้เข้าสู่ระบบ</div>
+          <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
+            <b>กรอกบรีฟให้เสร็จก่อนได้เลยค่ะ</b> — ปุ่มด้านล่างจะให้เข้าสู่ระบบตรงนั้น <b>ไม่ต้องออกจากหน้านี้ ของที่กรอกไว้ไม่หาย</b>
+          </div>
+        </div>
+      )}
+      {authed && credits === 0 && (
         <div className="card" style={{ background: "#FFF6E6", border: "1px solid #F0D89C", marginTop: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 4 }}>⚠️ ยังไม่มีเครดิตตัดต่อ</div>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
@@ -202,7 +225,16 @@ export default function EditBrief() {
         {err && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{err}</div>}
 
         {/* 🔀 ปุ่มเดียว เปลี่ยนตามสถานะ — เดิมกดแล้วเด้ง error ว่าไม่มีเครดิต แล้วต้องออกไปซื้อที่หน้าอื่น */}
-        {credits === 0 ? <>
+        {!authed ? <>
+          {showLogin
+            ? <LoginBox onDone={afterLogin} />
+            : <button className="btn full" onClick={() => setShowLogin(true)} style={{ fontSize: 15.5 }}>
+                🔐 เข้าสู่ระบบ แล้วส่งงาน
+              </button>}
+          <p className="muted center" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.7 }}>
+            เข้าสู่ระบบเสร็จอยู่หน้านี้ต่อได้เลย <b>บรีฟที่กรอกไว้ยังอยู่ครบ</b>
+          </p>
+        </> : credits === 0 ? <>
           <button className="btn full" onClick={buyThenReturn} disabled={busy} style={{ fontSize: 15.5 }}>
             {busy ? "กำลังพาไปจ่ายเงิน…" : `💳 ซื้อเครดิต 1 คลิป${price?.total ? ` · ฿${Number(price.total).toLocaleString()}` : ""} แล้วส่งงาน`}
           </button>

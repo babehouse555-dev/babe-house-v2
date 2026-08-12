@@ -267,6 +267,19 @@ await check("ซื้อเครดิตตัดต่อพร้อมโ�
   const after = (await api("/api/edit/credits", { token: tok })).json?.credits || 0;
   must(after === before + 1, `เครดิตควรเพิ่ม 1 (${before}→${after})`);
 });
+await check("ยังไม่ล็อกอิน → ต้องล็อกอินจบในหน้าเดิมแล้วส่งงานต่อได้ (ไม่ตันกลางทาง)", async () => {
+  // คิมเจอบนมือถือ 13 ส.ค.: กรอกบรีฟจนเสร็จ กดส่ง ได้แค่ "เข้าสู่ระบบก่อนนะคะ"
+  // หน้านั้นไม่มีทางไปล็อกอินเลย ต้องออกไปหน้าอื่น = บรีฟหายหมด
+  const EM2 = "nologin@test.local";
+  const blocked = await api("/api/edit/use-credit", { method: "POST", body: { script_day: null, job_title: "x" } });
+  must(blocked.status === 401, `ยังไม่ล็อกอินแต่ส่งงานได้ (${blocked.status})`);
+  const t2 = await login(EM2);                       // ← กล่องล็อกอินในหน้าใช้ 2 เส้นนี้
+  must(t2, "ล็อกอินในหน้าไม่สำเร็จ");
+  await api("/api/edit/credits/buy", { method: "POST", token: t2, body: { credits: 1 } });
+  const job = await api("/api/edit/use-credit", { method: "POST", token: t2,
+    body: { script_day: null, job_title: "คลิปทดสอบ", footage_url: "https://drive.google.com/z" } });
+  must(job.json?.order_id, "ล็อกอินแล้วยังส่งงานไม่ได้: " + job.text.slice(0, 140));
+});
 await check("ซื้อเครดิตจากหน้าบรีฟ → ต้องพากลับมาที่บรีฟเดิม ไม่ใช่โยนไปหน้าแรก", async () => {
   // คิมทัก 12 ส.ค.: กรอกบรีฟจนเสร็จ จะกดส่งแต่ไม่มีเครดิต ต้องออกไปซื้อที่หน้าอื่น = บรีฟหายหมด
   const backTo = "/edit/new?free=1&topup=ok";

@@ -150,9 +150,22 @@ await check("ซื้อแพ็กด้วยโค้ดฟรี 100% ก�
 });
 await check("คอร์สฟรี: ต้องมีเฉพาะคอร์สที่ยังขายอยู่ ไม่มีคอร์สราคา 0 / คอร์สพาร์ทเนอร์", async () => {
   // คิมเจอ 12 ส.ค.: รายการคอร์สฟรีมีคอร์สที่เลิกขายแล้วเต็มไปหมด + มีคอร์ส ASaiDemy ที่ห้ามแจก
+  // 🪤 ใส่ "ของล่อ" 3 แบบเข้าไปก่อน แล้วดูว่ามันหลุดเข้ารายการคอร์สฟรีไหม
+  //    (ถ้าไม่มีของล่อ ข้อสอบข้อนี้จะผ่านตลอดแม้โค้ดพัง — เคยเป็นแบบนั้นจริง)
+  await api("/api/admin/academy-import", { method: "POST", admin: true, body: { table: "academy_tutors",
+    rows: [{ legacy_id: "t_partner", data_json: JSON.stringify({ name: "ASaiDemy" }) }] } });
+  await api("/api/admin/academy-import", { method: "POST", admin: true, body: { table: "academy_courses", rows: [
+    { legacy_id: "9001", name: "คอร์สที่ปิดขายไปแล้ว", price: "2000", is_active: "1" },                    // เลิกขาย
+    { legacy_id: "9002", name: "คอร์สราคาศูนย์", price: "0", is_active: "0" },                              // ราคา 0
+    { legacy_id: "9003", name: "คอร์สของพาร์ทเนอร์", price: "3000", is_active: "0", instructor: "t_partner" }, // ห้ามแจก
+  ] } });
   const me = await api("/api/me/perks", { token: tok });
   const choices = me.json?.free_course?.choices || [];
-  if (!choices.length) return;                          // สนามทดสอบไม่มีคอร์ส = ข้าม
+  must(choices.length, "ไม่มีคอร์สให้เลือกเลย — ตรวจไม่ได้");
+  const ids = choices.map(c => String(c.id));
+  must(!ids.includes("9001"), "คอร์สที่ปิดขายไปแล้วหลุดเข้ารายการคอร์สฟรี");
+  must(!ids.includes("9002"), "คอร์สราคา 0 หลุดเข้ารายการคอร์สฟรี");
+  must(!ids.includes("9003"), "คอร์สของพาร์ทเนอร์หลุดเข้ารายการคอร์สฟรี (ต้องจ่ายส่วนแบ่งจริง)");
   const cat = await api("/api/academy/catalog");
   const onSale = new Set((cat.json?.courses || []).map(c => String(c.id)));
   for (const c of choices) {

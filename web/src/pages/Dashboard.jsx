@@ -440,7 +440,7 @@ export default function Dashboard() {
                   🎬 เครดิตตัดต่อคงเหลือ <span style={{ color: "var(--blue)" }}>{editCredits} คลิป</span>
                   {editDays.size > 0 && <span className="muted" style={{ fontWeight: 500 }}> · สั่งทีมตัดแล้ว {editDays.size} วัน{editDone.size > 0 ? ` · ส่งงานแล้ว ${editDone.size}` : ""}</span>}
                 </span>
-                <Link className="link" to="/edit" style={{ fontSize: 13, fontWeight: 700 }}>ซื้อเครดิตเพิ่ม →</Link>
+                <Link className="link" to="/edit#buy" style={{ fontSize: 13, fontWeight: 700 }}>ซื้อเครดิตเพิ่ม →</Link>
               </div>
               {editCredits > 0 && <div className="muted" style={{ fontSize: 12.5, marginTop: 5, lineHeight: 1.6 }}>
                 แตะวันไหนก็ได้ในตาราง แล้วกด “ให้ทีมตัดวันนี้” ได้เลยค่ะ

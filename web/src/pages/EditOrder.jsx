@@ -48,6 +48,25 @@ export default function EditOrder() {
   useEffect(() => { api(`/api/edit/price?clips=${clips}`, { token: session.token }).then(setPrice).catch(() => {}); }, [clips, session.token]);
   useEffect(load, []);   // eslint-disable-line
 
+  // 🎯 มาจากลิงก์ /edit#buy → เลื่อนลงไปที่กล่องซื้อเครดิตให้เลย
+  // ⚠️ หน้านี้ของขึ้นทีละส่วน (ราคา · เครดิตคงเหลือ · รายการงาน) ความสูงหน้าเลยขยับอยู่หลายวินาที
+  //    ถ้าสั่งเลื่อนครั้งเดียวตอนไหนก็ตาม มีโอกาสพลาดสูงมาก (ลองแล้วไม่ขยับเลย)
+  //    → ตามเลื่อนซ้ำจนกว่ากล่องจะเข้ามาอยู่ในจอจริง แล้วค่อยหยุด
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#buy") return;
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById("buy");
+      if (el) {
+        const top = el.getBoundingClientRect().top;
+        if (top > -20 && top < window.innerHeight * 0.6) { clearInterval(t); return; }   // เข้าที่แล้ว
+        el.scrollIntoView({ behavior: tries === 0 ? "smooth" : "instant", block: "start" });
+      }
+      if (++tries > 12) clearInterval(t);   // ~3 วินาที เผื่อเน็ตช้า แล้วเลิกตาม
+    }, 250);
+    return () => clearInterval(t);
+  }, []);
+
   // 🎟️ ซื้อเครดิตตัดต่อ — ไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน ไปเลือกในตาราง 30 วันทีหลัง
   // (คิมเคาะ 2 ส.ค.: เดิมบังคับเลือกจำนวนคลิปพร้อมบรีฟวันเดียว ลูกค้างงว่าอีก 29 คลิปคืออะไร)
   async function order() {
@@ -122,7 +141,9 @@ export default function EditOrder() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 12 }}>
+      {/* 🎯 จุดหมายของปุ่ม "ซื้อเครดิตตัดต่อ →" จากหน้าบรีฟ — ต้องพาลงมาถึงตรงนี้เลย
+          คิมเจอเอง 12 ส.ค.: กดแล้วเด้งไปบนสุดของหน้า /edit ต้องเลื่อนหาเองอีกยาว */}
+      <div id="buy" className="card" style={{ marginTop: 12, scrollMarginTop: 90 }}>
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>ซื้อเครดิตตัดต่อกี่คลิปดีคะ?</div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
           1 เครดิต = ตัดให้ 1 คลิป · ยังไม่ต้องเลือกตอนนี้ว่าจะให้ตัดวันไหน · ซื้อเยอะราคาต่อคลิปถูกลง

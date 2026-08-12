@@ -80,7 +80,8 @@ export default function EditBrief() {
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
             กรอกบรีฟไว้ก่อนได้เลยค่ะ แต่ต้องซื้อเครดิตก่อนถึงจะส่งงานให้ทีมได้นะคะ
           </div>
-          <Link to="/edit" className="btn full" style={{ marginTop: 11, textAlign: "center", display: "block", textDecoration: "none" }}>
+          {/* #buy = พาไปที่กล่องซื้อเครดิตในหน้า /edit โดยตรง ไม่ใช่บนสุดของหน้า (คิมเจอ 12 ส.ค.) */}
+          <Link to="/edit#buy" className="btn full" style={{ marginTop: 11, textAlign: "center", display: "block", textDecoration: "none" }}>
             ซื้อเครดิตตัดต่อ →
           </Link>
         </div>

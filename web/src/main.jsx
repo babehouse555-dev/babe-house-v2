@@ -11,8 +11,13 @@ import { ConfirmHost } from "./confirm.jsx";
 // เปลี่ยนหน้า → เลื่อนขึ้นบนสุดเสมอ (react-router ไม่ทำให้เอง ทำให้บางหน้าเปิดมาค้างกลางหน้า)
 if (typeof history !== "undefined" && "scrollRestoration" in history) history.scrollRestoration = "manual"; // ปิด browser auto-restore (กัน reload/สลับแท็บแล้วค้างกลางหน้า)
 function ScrollToTop() {
-  const { pathname } = useLocation();
-  useLayoutEffect(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; }, [pathname]); // ก่อนวาดจอ ไม่ให้เห็นกระพริบกลางหน้า
+  const { pathname, hash } = useLocation();
+  // ⚠️ ถ้าลิงก์ระบุจุดหมายมาด้วย (#buy) ห้ามดีดขึ้นบนสุด ไม่งั้นจะทับการเลื่อนไปยังจุดนั้น
+  //    คิมเจอ 12 ส.ค.: กด "ซื้อเครดิตตัดต่อ" แล้วเด้งไปหัวหน้าเว็บแทนที่จะไปกล่องซื้อเครดิต
+  useLayoutEffect(() => {
+    if (hash) return;
+    window.scrollTo(0, 0); document.documentElement.scrollTop = 0;
+  }, [pathname, hash]); // ก่อนวาดจอ ไม่ให้เห็นกระพริบกลางหน้า
   // 📣 บอก Meta ว่าลูกค้าเดินถึงขั้นไหนแล้ว (SPA เปลี่ยนหน้าไม่ได้โหลดใหม่ ต้องยิงเอง)
   useEffect(() => {
     if (pathname === "/form") fbTrack("ViewContent", { content_name: "แบบฟอร์มสร้างเล่ม" });

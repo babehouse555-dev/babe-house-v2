@@ -166,6 +166,15 @@ await check("คอร์สฟรี: ต้องมีเฉพาะคอ�
   must(!ids.includes("9001"), "คอร์สที่ปิดขายไปแล้วหลุดเข้ารายการคอร์สฟรี");
   must(!ids.includes("9002"), "คอร์สราคา 0 หลุดเข้ารายการคอร์สฟรี");
   must(!ids.includes("9003"), "คอร์สของพาร์ทเนอร์หลุดเข้ารายการคอร์สฟรี (ต้องจ่ายส่วนแบ่งจริง)");
+
+  // 🎓 คอร์สที่ลูกค้ามีอยู่แล้ว ต้องไม่โผล่ให้เลือกซ้ำ (คิมเจอ 12 ส.ค.: มีคอร์สอยู่แล้วแต่กดเลือกเป็นคอร์สฟรีได้)
+  const mine = choices[0];
+  await api("/api/admin/academy/grant", { method: "POST", admin: true, body: { email: EM, course_id: mine.id } });
+  const after = await api("/api/me/perks", { token: tok });
+  const ids2 = (after.json?.free_course?.choices || []).map(c => String(c.id));
+  must(!ids2.includes(String(mine.id)), `คอร์สที่มีอยู่แล้วยังโผล่ให้เลือกซ้ำ: ${mine.name}`);
+  const tryPick = await api("/api/me/free-course", { method: "POST", token: tok, body: { course_id: mine.id } });
+  must(!tryPick.json?.ok, "เลือกคอร์สที่มีอยู่แล้วได้ = เสียสิทธิ์ฟรีเปล่าๆ");
   const cat = await api("/api/academy/catalog");
   const onSale = new Set((cat.json?.courses || []).map(c => String(c.id)));
   for (const c of choices) {

@@ -577,12 +577,16 @@ app.get("/api/me/perks", async (req, res) => {
     const total = Math.max(1, Number(perks.plan_count_12m) || 1);
     const got = await q(`SELECT course_id FROM academy_grants WHERE lower(email)=lower($1) AND granted_by='plan_12m'`, [email]).catch(() => []);
     const used = got.length, left = Math.max(0, total - used);
+    const ownedIds = (await academyOwnedCourseIds(email).catch(() => [])).map(String);
     free_course = { total, used, left, claimed: left <= 0,
       course_ids: got.map(g => g.course_id),
       course_id: got[0]?.course_id || null,          // เผื่อหน้าเว็บเก่าที่ยังอ่านช่องนี้
       choices: left > 0
         ? (await freeCourseChoices())
             .filter(c2 => !got.some(g => String(g.course_id) === String(c2.legacy_id)))   // ที่เลือกไปแล้วไม่ต้องโชว์ซ้ำ
+            // ⛔ คอร์สที่ลูกค้ามีอยู่แล้ว ห้ามโชว์ — กดไปก็เสียสิทธิ์ฟรีโดยไม่ได้อะไรเพิ่ม
+            //    คิมเจอเอง 12 ส.ค.: มีคอร์ส "ตัดต่อ Advance" อยู่แล้ว แต่ยังกดเลือกเป็นคอร์สฟรีได้
+            .filter(c2 => !ownedIds.includes(String(c2.legacy_id)))
             .map(c2 => ({ id: c2.legacy_id, name: String(c2.name || "").trim(), price: Number(c2.price_sale || c2.price) || 0, image: c2.featured_image_url }))
         : [] };
   }
@@ -605,6 +609,11 @@ app.post("/api/me/free-course", rateLimit(10, M10), async (req, res) => {
   if (!ok) return res.status(400).json({ ok: false, error: "BAD_COURSE", message: "เลือกคอร์สจากรายการที่มีให้นะคะ" });
   if (got.some(g => String(g.course_id) === wanted))
     return res.status(409).json({ ok: false, error: "DUPLICATE", message: "คอร์สนี้คุณได้ไปแล้วค่ะ เลือกคอร์สอื่นนะคะ" });
+  // ⛔ มีคอร์สนี้อยู่แล้ว (เคยซื้อ/เคยได้รับ) → เลือกไปก็เสียสิทธิ์เปล่า
+  const ownedNow = (await academyOwnedCourseIds(email).catch(() => [])).map(String);
+  if (ownedNow.includes(wanted))
+    return res.status(409).json({ ok: false, error: "ALREADY_OWNED",
+      message: "คุณมีคอร์สนี้อยู่แล้วค่ะ เลือกคอร์สอื่นเพื่อไม่ให้เสียสิทธิ์ฟรีนะคะ" });
   await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,'plan_12m','สิทธิ์คอร์สฟรีของแพ็ก 12 เดือน')
     ON CONFLICT (lower(email), course_id) DO NOTHING`, [uid("gr"), email, wanted]);
   res.json({ ok: true, course_id: wanted, name: String(ok.name || "").trim() });

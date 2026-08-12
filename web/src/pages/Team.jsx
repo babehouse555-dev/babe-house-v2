@@ -262,6 +262,44 @@ export default function Team() {
         </div>
       </div>
 
+      {/* 📊 สรุปงานของฉันรายเดือน — คิมสั่ง 12 ส.ค. "ต้องมีสรุปปลายเดือนว่าเค้าทำงานไปทั้งหมดกี่คลิป"
+          นับจากวันที่ "ส่งงานถึงลูกค้า" งานที่ยังทำอยู่ยังไม่นับ · เทียบกับเดือนที่แล้วให้เห็นว่าตัวเองขึ้นหรือลง */}
+      {d.my_month && (() => {
+        const m = d.my_month.this, p = d.my_month.prev;
+        const diff = m.clips - p.clips;
+        const Cell = ({ n, l, tone }) => (
+          <div style={{ minWidth: 74 }}>
+            <div style={{ fontSize: 21, fontWeight: 800, color: tone || "#2f2a26", lineHeight: 1.2 }}>{n}</div>
+            <div style={{ fontSize: 12, color: "#7c7268", marginTop: 2 }}>{l}</div>
+          </div>
+        );
+        return (
+          <div style={{ ...card, marginTop: 12, background: "linear-gradient(135deg,#F6F2FE,#FBF9FF)", border: "1px solid #e4d8f2" }}>
+            <div className="between" style={{ gap: 10, flexWrap: "wrap", marginBottom: 11 }}>
+              <span style={{ fontWeight: 800, fontSize: 15 }}>📊 สรุปงานของฉัน · {m.label}</span>
+              {p.clips > 0 && (
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: diff >= 0 ? "#1a7f43" : "#B26A00" }}>
+                  {diff >= 0 ? "▲" : "▼"} {Math.abs(diff)} งาน จาก{p.label} ({p.clips})
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+              <Cell n={m.clips} l="งานที่ส่งแล้ว" tone="#5a3fc0" />
+              {m.clip_units !== m.clips && <Cell n={m.clip_units} l="รวมจำนวนคลิป" />}
+              {m.graphics > 0 && <Cell n={m.graphics} l="งานกราฟฟิก" />}
+              {m.on_time_pct !== null && <Cell n={`${m.on_time_pct}%`} l="ส่งตรงเวลา" tone={m.on_time_pct >= 90 ? "#1a7f43" : m.on_time_pct >= 70 ? "#B26A00" : "#b42318"} />}
+              {m.client_revs > 0 && <Cell n={m.client_revs} l="รอบแก้จากลูกค้า" />}
+              {m.our_fixes > 0 && <Cell n={m.our_fixes} l="แก้เพราะเราพลาด" tone={m.our_fixes > 2 ? "#B26A00" : null} />}
+            </div>
+            {m.clips === 0 && (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.6 }}>
+                เดือนนี้ยังไม่มีงานที่ส่งถึงลูกค้าค่ะ — งานที่กำลังทำอยู่จะมานับตรงนี้ตอนส่งงานเสร็จ
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* แท็บ */}
       <div style={{ display: "flex", gap: 8, margin: "16px 0", flexWrap: "wrap" }}>
         {TABS.map(([k, label, n]) => (

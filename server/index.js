@@ -4164,7 +4164,41 @@ app.get("/api/team/me", async (req, res) => {
     const members = (isOwner || isAE)
       ? await q(`SELECT member_id,name,role,position,side FROM team_members WHERE active ORDER BY role, name`) : [];
 
-    res.json({ ok: true, me, jobs, teach: teach.map(t => ({ ...t,
+    // 📊 สรุปงานของคนนี้ "เดือนนี้ + เดือนที่แล้ว" — คิมสั่ง 12 ส.ค. 2569
+    //    "หน้าทำงานของทีมแต่ละคนต้องมีสรุปปลายเดือนด้วยว่าเค้าทำงานไปทั้งหมดกี่คลิป"
+    //    นับจาก "วันที่ส่งงานถึงลูกค้า" (delivered_at) ไม่ใช่วันที่รับงาน — งานที่ยังทำอยู่ยังไม่นับ
+    //    ⛔ ไม่โชว์ยอดเงินของลูกค้าให้ทีมเห็น (กฎเดิมของระบบ) โชว์แค่จำนวนงานกับคุณภาพ
+    const monthStat = async (from, to) => {
+      const r = await one(`SELECT
+          COUNT(*)::int AS clips,
+          COALESCE(SUM(clips),0)::int AS clip_units,
+          COUNT(*) FILTER (WHERE due_at IS NOT NULL AND COALESCE(delivered_at, updated_at) <= due_at)::int AS on_time,
+          COALESCE(SUM(client_revisions),0)::int AS client_revs,
+          COALESCE(SUM(our_fix_count),0)::int AS our_fixes,
+          COALESCE(SUM(reject_count),0)::int AS rejects
+        FROM edit_orders
+        WHERE assigned_to=$1
+          AND status IN ('draft_sent','revising','done')
+          AND COALESCE(delivered_at, updated_at) >= $2
+          AND COALESCE(delivered_at, updated_at) < $3`, [me.member_id, from, to])
+        .catch(() => null);
+      const gj = await one(`SELECT COUNT(*)::int n FROM graphic_jobs
+        WHERE assigned_to=$1 AND status='done' AND done_at >= $2 AND done_at < $3`, [me.member_id, from, to]).catch(() => ({ n: 0 }));
+      const done = Number(r?.clips || 0);
+      return { clips: done, clip_units: Number(r?.clip_units || 0), graphics: Number(gj?.n || 0),
+        on_time: Number(r?.on_time || 0),
+        on_time_pct: done ? Math.round(Number(r.on_time) / done * 100) : null,
+        client_revs: Number(r?.client_revs || 0), our_fixes: Number(r?.our_fixes || 0), rejects: Number(r?.rejects || 0) };
+    };
+    const now = new Date();
+    const mStart = (back) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1)).toISOString();
+    const thMonth = (d) => new Date(d).toLocaleDateString("th-TH", { month: "long", year: "numeric", timeZone: "Asia/Bangkok" });
+    const my_month = {
+      this: { label: thMonth(mStart(0)), ...(await monthStat(mStart(0), mStart(-1))) },
+      prev: { label: thMonth(mStart(1)), ...(await monthStat(mStart(1), mStart(0))) },
+    };
+
+    res.json({ ok: true, me, jobs, my_month, teach: teach.map(t => ({ ...t,
         booked: Number(t.booked || 0), revenue_baht: Number(t.revenue_satang || 0) / 100,
         share_baht: Math.round(Number(t.revenue_satang || 0) / 100 * (Number(t.share_percent || 10) / 100)),
         starts_th: thDate(t.starts_at) })),
@@ -5372,7 +5406,10 @@ app.post("/api/admin/edit-order/update", async (req, res) => {
   const o = await one(`SELECT * FROM edit_orders WHERE order_id=$1`, [id]);
   if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
   const st = EDIT_STATUS[req.body?.status] ? req.body.status : o.status;
-  await run(`UPDATE edit_orders SET status=$1, draft_url=COALESCE($2,draft_url), assignee=COALESCE($3,assignee), updated_at=now() WHERE order_id=$4`,
+  // 📊 ปั๊มเวลาส่งถึงลูกค้าไว้ด้วย — ใช้นับ "สรุปงานรายเดือน" ของทีม ถ้าไม่ปั๊มงานจะไม่ถูกนับ
+  await run(`UPDATE edit_orders SET status=$1, draft_url=COALESCE($2,draft_url), assignee=COALESCE($3,assignee),
+     delivered_at=CASE WHEN $1 IN ('draft_sent','done') THEN COALESCE(delivered_at, now()) ELSE delivered_at END,
+     updated_at=now() WHERE order_id=$4`,
     [st, req.body?.draft_url || null, req.body?.assignee || null, id]);
   res.json({ ok: true });
 });

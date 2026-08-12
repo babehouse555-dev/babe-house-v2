@@ -3665,6 +3665,11 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
   // 🧾 ข้อมูลใบกำกับต้องเก็บ "ก่อน" จ่ายเงิน เพราะใบออกอัตโนมัติทันทีที่เงินเข้า แก้ทีหลังไม่ได้
   const ct = cleanTax(req.body?.tax);
   if (ct.error) return res.status(400).json({ ok: false, error: ct.error, message: ct.message });
+  // 🔙 ซื้อเครดิตจาก "หน้าบรีฟงาน" ต้องพากลับมาที่บรีฟเดิม ไม่ใช่โยนไปหน้าแรก
+  //    (คิมทัก 12 ส.ค.: "กรอกเสร็จแล้วจะส่งงาน แต่ไม่มีเครดิต ต้องกลับไปหน้าแรกก่อน งง")
+  // ⛔ รับเฉพาะเส้นทางในเว็บเราที่ขึ้นต้นด้วย /edit เท่านั้น กันคนยัดลิงก์นอกเว็บมาหลอกลูกค้า
+  const rawBack = String(req.body?.return_to || "");
+  const backTo = /^\/edit(\/|\?|$)/.test(rawBack) ? rawBack.slice(0, 400) : "/edit?topup=ok";
   try {
     const satang = total * 100;
     // 🎟️ โค้ดส่วนลด (คิมสั่ง 11 ส.ค.) — เดิมหน้านี้เป็นที่เดียวที่ใส่โค้ดไม่ได้
@@ -3684,18 +3689,18 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
     // โค้ดลด 100% → ยอด 0 บาท สร้าง checkout ไม่ได้ · เติมเครดิตให้เลย (ใช้ provider 'code' จะได้ไม่ถูกนับเป็นยอดขาย)
     if (payNow <= 0) {
       await markOrderPaid(orderId, "code", promo.code || "FREE");
-      return res.json({ ok: true, free: true, redirect_url: "/edit?topup=ok", credits_added: n, percent: promo.percent, total: 0 });
+      return res.json({ ok: true, free: true, redirect_url: backTo, credits_added: n, percent: promo.percent, total: 0 });
     }
     if (PROVIDER === "stripe") {
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
       const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: payNow, email,
-        productName: `Babe House เครดิตตัดต่อ ${n} คลิป`, successPath: `/edit?topup=ok` });
+        productName: `Babe House เครดิตตัดต่อ ${n} คลิป`, successPath: backTo });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [ck.provider_session_id, orderId]);
       return res.json({ ok: true, redirect_url: ck.checkout_url, external: true });
     }
     await markOrderPaid(orderId, "mock", "mock_paid");   // สนามเด็กเล่นเท่านั้น — เว็บจริงใช้ Stripe เสมอ
-    res.json({ ok: true, redirect_url: "/edit?topup=ok", credits_added: n, price_per_clip: per, total: Math.round(payNow / 100) });
+    res.json({ ok: true, redirect_url: backTo, credits_added: n, price_per_clip: per, total: Math.round(payNow / 100) });
   } catch (e) { res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
 });
 

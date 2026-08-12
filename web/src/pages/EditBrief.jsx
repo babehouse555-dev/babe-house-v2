@@ -15,6 +15,11 @@ import { OUR_STYLES } from "../editStyles.js";
 // ใหม่: กดปุ่ม → มาหน้านี้ ดูสคริปต์ + กรอกฟุตเทจ/โน้ต → กดส่งค่อยหักเครดิต
 // ⛔ ตราบใดที่ยังไม่กดปุ่มล่างสุด เครดิตไม่หายแม้แต่คลิปเดียว (เขียนบอกลูกค้าให้ชัด)
 
+// คีย์เก็บบรีฟชั่วคราว — แยกต่องาน (งานนอกแผน / คลิปวันที่เท่าไหร่ของเล่มไหน) จะได้ไม่ทับกัน
+function freeJobKey(sp) {
+  return sp.get("free") === "1" ? "free" : `${sp.get("blueprint_id") || "-"}_${sp.get("day") || "-"}`;
+}
+
 export default function EditBrief() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
@@ -28,6 +33,11 @@ export default function EditBrief() {
   const [picks, setPicks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [price, setPrice] = useState(null);      // ราคาเครดิต 1 คลิป (ลดสมาชิกแล้ว)
+
+  // 💾 กันบรีฟหาย: ตอนไปจ่ายเงินซื้อเครดิต ลูกค้าออกจากเว็บเราไป Stripe
+  //    ถ้าไม่เก็บไว้ กลับมาต้องพิมพ์ใหม่ทั้งหมด (คิมทัก 12 ส.ค.)
+  const draftKey = `bh_brief_${freeJobKey(sp)}`;
 
   // 🆕 งานนอกแผน 30 วัน — ไม่ผูกกับเล่ม/วันไหน (พลอยขอ 11 ส.ค.)
   const freeJob = sp.get("free") === "1";
@@ -44,6 +54,21 @@ export default function EditBrief() {
     api(`/api/edit/credits?blueprint_id=${encodeURIComponent(bpId)}`, { token: session.token })
       .then(d => setCredits(d.credits ?? 0)).catch(() => {});
   }, [bpId, cycle]);   // eslint-disable-line
+
+  // ราคาเครดิต 1 คลิป — ต้องรู้ก่อน เพื่อบอกลูกค้าว่าจ่ายเท่าไหร่ ตั้งแต่ในหน้าบรีฟ
+  useEffect(() => { api(`/api/edit/price?clips=1`, { token: session.token }).then(setPrice).catch(() => {}); }, []);
+
+  // กลับมาจากหน้าจ่ายเงิน (?topup=ok) → เอาบรีฟที่พิมพ์ไว้กลับมาให้ครบ
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey) || "null");
+      if (!saved) return;
+      if (saved.f) setF(v => ({ ...v, ...saved.f }));
+      if (saved.picks) setPicks(saved.picks);
+      if (saved.jobTitle) setJobTitle(saved.jobTitle);
+      localStorage.removeItem(draftKey);
+    } catch {}
+  }, []);   // eslint-disable-line
 
   const cal = ((bp?.calendar) || []).find(c => Number(c.d) === day) || {};
   const script = ((bp?.scripts) || []).find(x => Number(x.d) === day) || null;
@@ -63,6 +88,27 @@ export default function EditBrief() {
     }
   }
 
+  // 💳 ซื้อเครดิตโดยไม่ทิ้งบรีฟ — เก็บที่พิมพ์ไว้ แล้วบอกระบบให้พากลับมาหน้านี้หลังจ่ายเสร็จ
+  async function buyThenReturn() {
+    setBusy(true); setErr("");
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({ f, picks, jobTitle }));
+      const back = location.pathname + location.search + (location.search.includes("topup=") ? "" : (location.search ? "&" : "?") + "topup=ok");
+      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token,
+        body: { credits: 1, return_to: back } });
+      if (r.external && r.redirect_url) { location.href = r.redirect_url; return; }
+      // จ่ายเสร็จในเว็บเลย (โค้ดฟรี / สนามทดสอบ) → เครดิตเข้าแล้ว ส่งงานต่อได้ทันที
+      localStorage.removeItem(draftKey);
+      const c = await api(`/api/edit/credits`, { token: session.token }).catch(() => null);
+      setCredits(c?.credits ?? 1);
+      setBusy(false);
+    } catch (e) {
+      localStorage.removeItem(draftKey);
+      setErr(e.message || "ซื้อเครดิตไม่สำเร็จ ลองใหม่นะคะ");
+      setBusy(false);
+    }
+  }
+
   const back = freeJob ? "/edit"
     : `/dashboard?user_id=${encodeURIComponent(sp.get("user_id") || "")}&billing_cycle=${encodeURIComponent(cycle)}&blueprint_id=${encodeURIComponent(bpId)}`;
 
@@ -73,17 +119,15 @@ export default function EditBrief() {
       <Link className="link" to={back}>← กลับไปที่เล่มของฉัน</Link>
       <div className="brand" style={{ marginTop: 12 }}>BABE HOUSE · ให้ทีมตัดคลิป</div>
       <h1 className="page" style={{ marginBottom: 4 }}>{freeJob ? "บรีฟงานตัดต่อ" : `คลิปวันที่ ${day}`}</h1>
-      {/* เครดิตหมด = บอกให้ชัดตั้งแต่ต้น ไม่ให้กรอกเสร็จแล้วค่อยเด้ง error (คิมเจอ 11 ส.ค.) */}
-      {freeJob && credits === 0 && (
+      {/* ⚠️ เครดิตหมด — บอกตั้งแต่ต้น ทุกโหมด (เดิมโชว์เฉพาะงานนอกแผน คนที่มาจากเล่มเลยไม่รู้ตัว
+          กรอกจนเสร็จแล้วค่อยเด้ง error ตอนกดส่ง) · ไม่ต้องออกจากหน้านี้ไปซื้อแล้ว ปุ่มล่างซื้อให้เลย */}
+      {credits === 0 && (
         <div className="card" style={{ background: "#FFF6E6", border: "1px solid #F0D89C", marginTop: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 4 }}>⚠️ ยังไม่มีเครดิตตัดต่อ</div>
           <div className="muted" style={{ fontSize: 13, lineHeight: 1.7 }}>
-            กรอกบรีฟไว้ก่อนได้เลยค่ะ แต่ต้องซื้อเครดิตก่อนถึงจะส่งงานให้ทีมได้นะคะ
+            <b>กรอกบรีฟให้เสร็จก่อนได้เลยค่ะ</b> — ปุ่มด้านล่างจะพาไปจ่ายเงินซื้อเครดิตให้เอง
+            แล้ว<b>พากลับมาหน้านี้พร้อมของที่กรอกไว้ครบ</b> ไม่ต้องพิมพ์ใหม่นะคะ
           </div>
-          {/* #buy = พาไปที่กล่องซื้อเครดิตในหน้า /edit โดยตรง ไม่ใช่บนสุดของหน้า (คิมเจอ 12 ส.ค.) */}
-          <Link to="/edit#buy" className="btn full" style={{ marginTop: 11, textAlign: "center", display: "block", textDecoration: "none" }}>
-            ซื้อเครดิตตัดต่อ →
-          </Link>
         </div>
       )}
       {freeJob && (
@@ -97,8 +141,8 @@ export default function EditBrief() {
 
       {/* ✅ บอกให้ชัดตั้งแต่แรกว่ายังไม่หักอะไร ลูกค้าจะได้กล้ากรอก */}
       <div className="msg" style={{ background: "#eef7f0", color: "#1a7f43", lineHeight: 1.7, marginBottom: 16 }}>
-        ✅ <b>ยังไม่หักเครดิตนะคะ</b> — จะหัก 1 คลิปตอนกดปุ่ม "ส่งงานให้ทีม" ด้านล่างเท่านั้น
-        {credits != null && <div style={{ fontSize: 13, marginTop: 3 }}>ตอนนี้คุณมี <b>{credits} คลิป</b></div>}
+        ✅ <b>ยังไม่หักเครดิตนะคะ</b> — จะหัก 1 คลิปตอนกดปุ่มด้านล่างเท่านั้น
+        {credits != null && <div style={{ fontSize: 13, marginTop: 3 }}>ตอนนี้คุณมีเครดิต <b>{credits} คลิป</b></div>}
       </div>
 
       {/* สคริปต์ที่ทีมจะใช้ตัด — ลูกค้าไม่ต้องเขียนบรีฟเอง */}
@@ -157,12 +201,30 @@ export default function EditBrief() {
 
         {err && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{err}</div>}
 
-        <button className="btn full" onClick={submit} disabled={busy} style={{ fontSize: 15.5 }}>
-          {busy ? "กำลังส่ง…" : "🎬 ส่งงานให้ทีม · ใช้เครดิต 1 คลิป"}
-        </button>
-        <p className="muted center" style={{ fontSize: 12.5, marginTop: 10 }}>
-          กดแล้วจะหักเครดิต 1 คลิป{credits != null ? ` (เหลือ ${Math.max(0, credits - 1)} คลิป)` : ""} · ยกเลิกทีหลังไม่ได้นะคะ
-        </p>
+        {/* 🔀 ปุ่มเดียว เปลี่ยนตามสถานะ — เดิมกดแล้วเด้ง error ว่าไม่มีเครดิต แล้วต้องออกไปซื้อที่หน้าอื่น */}
+        {credits === 0 ? <>
+          <button className="btn full" onClick={buyThenReturn} disabled={busy} style={{ fontSize: 15.5 }}>
+            {busy ? "กำลังพาไปจ่ายเงิน…" : `💳 ซื้อเครดิต 1 คลิป${price?.total ? ` · ฿${Number(price.total).toLocaleString()}` : ""} แล้วส่งงาน`}
+          </button>
+          <p className="muted center" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.7 }}>
+            จ่ายเสร็จระบบพากลับมาหน้านี้ <b>บรีฟที่กรอกไว้ยังอยู่ครบ</b> แล้วค่อยกดส่งงานอีกที
+            {price?.member_off_pct > 0 && <><br />🩵 ราคานี้ลดสมาชิก {price.member_off_pct}% ให้แล้วค่ะ</>}
+            {/* 💡 คลิปเดียวเป็นราคาแพงที่สุดเสมอ — บอกตรงๆ ว่าซื้อเป็นชุดถูกกว่าเท่าไหร่ */}
+            {(() => {
+              const t5 = (price?.tiers || []).find(x => Number(x.min) === 5);
+              const save = t5 && price?.price_per_clip ? price.price_per_clip - t5.price : 0;
+              return save > 0 ? <><br />💡 ซื้อ 5 คลิปพร้อมกัน เหลือคลิปละ ฿{Number(t5.price).toLocaleString()} (ถูกลงคลิปละ ฿{Number(save).toLocaleString()})</> : null;
+            })()}
+            <br /><Link className="link" to="/edit#buy">เลือกจำนวนเองที่หน้าซื้อเครดิต →</Link>
+          </p>
+        </> : <>
+          <button className="btn full" onClick={submit} disabled={busy} style={{ fontSize: 15.5 }}>
+            {busy ? "กำลังส่ง…" : "🎬 ส่งงานให้ทีม · ใช้เครดิต 1 คลิป"}
+          </button>
+          <p className="muted center" style={{ fontSize: 12.5, marginTop: 10 }}>
+            กดแล้วจะหักเครดิต 1 คลิป{credits != null ? ` (เหลือ ${Math.max(0, credits - 1)} คลิป)` : ""} · ยกเลิกทีหลังไม่ได้นะคะ
+          </p>
+        </>}
       </div>
     </div>
   );

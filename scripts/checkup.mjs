@@ -267,6 +267,19 @@ await check("ซื้อเครดิตตัดต่อพร้อมโ�
   const after = (await api("/api/edit/credits", { token: tok })).json?.credits || 0;
   must(after === before + 1, `เครดิตควรเพิ่ม 1 (${before}→${after})`);
 });
+await check("ซื้อเครดิตจากหน้าบรีฟ → ต้องพากลับมาที่บรีฟเดิม ไม่ใช่โยนไปหน้าแรก", async () => {
+  // คิมทัก 12 ส.ค.: กรอกบรีฟจนเสร็จ จะกดส่งแต่ไม่มีเครดิต ต้องออกไปซื้อที่หน้าอื่น = บรีฟหายหมด
+  const backTo = "/edit/new?free=1&topup=ok";
+  const r = await api("/api/edit/credits/buy", { method: "POST", token: tok, body: { credits: 1, return_to: backTo } });
+  must(r.json?.ok, "ซื้อเครดิตไม่สำเร็จ: " + r.text.slice(0, 120));
+  must(r.json.redirect_url === backTo, `พาไป ${r.json.redirect_url} แทนที่จะกลับหน้าบรีฟ`);
+});
+await check("ลิงก์กลับที่ไม่ใช่ของเว็บเรา ต้องไม่ถูกใช้ (กันหลอกลูกค้าออกนอกเว็บ)", async () => {
+  for (const bad of ["https://evil.example/steal", "//evil.example", "/account?x=1"]) {
+    const r = await api("/api/edit/credits/buy", { method: "POST", token: tok, body: { credits: 1, return_to: bad } });
+    must(r.json?.redirect_url === "/edit?topup=ok", `ยอมพาไป ${r.json?.redirect_url} จาก return_to = ${bad}`);
+  }
+});
 await check("จองคลาสรอบที่ผ่านไปแล้ว → ต้องจองไม่ได้", async () => {
   const ws = await api("/api/workshops");
   const s = (ws.json?.workshops || []).flatMap(w => w.sessions || [])[0];

@@ -58,7 +58,11 @@ export default function Processing() {
         if (s.status === "ready" && s.blueprint_id) { goDash(s.user_id, s.billing_cycle, s.blueprint_id); return; }
         setState({ phase: "working" });
         if (!polling.current) { polling.current = true; setTimeout(poll, 4000); }
-      } catch (e) { setState({ phase: "error", msg: e.message }); }
+      } catch (e) {
+        // 🎟️ ออเดอร์ซื้อแพ็ก = เก็บสิทธิ์ไว้ ไม่ได้สั่งทำเล่ม → พาไปหน้าบัญชีเลย ไม่ต้องขึ้นหน้า error ให้ตกใจ
+        if (/PLAN_ORDER/i.test(e.code || "") || e?.data?.redirect_url) { window.location.replace(e.data?.redirect_url || "/account?plan=ok"); return; }
+        setState({ phase: "error", msg: e.message });
+      }
     }
     run();
     return () => { alive = false; };

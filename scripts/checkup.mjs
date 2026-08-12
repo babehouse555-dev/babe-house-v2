@@ -148,6 +148,20 @@ await check("ซื้อแพ็กด้วยโค้ดฟรี 100% ก�
   must(r.json?.ok, "ใช้โค้ดไม่สำเร็จ: " + r.text.slice(0, 120));
   must(/\/account/.test(r.json.redirect_url || ""), `เด้งไป ${r.json.redirect_url} แทนหน้าบัญชี`);
 });
+await check("บังคับให้ออเดอร์แพ็กสร้างเล่ม → ระบบต้องปฏิเสธ (ด่านสุดท้าย)", async () => {
+  // คิมถาม 12 ส.ค.: "ถ้าเทสต์รอบที่ 3 จะเจอปัญหาเดิมอีกไหม"
+  // ข้อนี้จำลอง "เส้นทางที่แย่ที่สุด" — ยิงตรงเข้าตัวสร้างเล่มด้วยออเดอร์แพ็กที่จ่ายแล้ว
+  // ถึงจะมีเส้นทางใหม่ที่เราไม่รู้จักในอนาคต ก็ต้องมาตายตรงนี้ ไม่มีทางสร้างเล่มได้
+  await buyBook(EM, "@chan_guard");
+  const up = await api("/api/me/upgrade", { method: "POST", token: tok, body: { plan: "12m", channel: "@chan_guard", preview: "1" } });
+  must(up.json?.ok, "สร้างออเดอร์แพ็กไม่สำเร็จ: " + up.text.slice(0, 120));
+  await api("/api/create-payment-session", { method: "POST", body: { order_id: up.json.order_id } });
+  const g = await api("/api/start-generation", { method: "POST", body: { order_id: up.json.order_id } });
+  must(!g.json?.ok, "❗ ระบบยอมสร้างเล่มจากออเดอร์ซื้อแพ็ก (เปลืองค่า AI + ลูกค้าได้ของผิด)");
+  must(g.json?.error === "PLAN_ORDER", `ควรถูกปฏิเสธด้วย PLAN_ORDER แต่ได้ ${g.json?.error}`);
+  const o = await api(`/api/orders/${up.json.order_id}`);
+  must(!o.json?.order?.blueprint_id, "มีเล่มถูกสร้างขึ้นจริงจากออเดอร์แพ็ก");
+});
 await check("ได้สิทธิ์ 12 เดือนเต็ม ยังไม่ถูกหักสักเดือน", async () => {
   await new Promise(r => setTimeout(r, 600));
   const me = await api("/api/me/perks", { token: tok });

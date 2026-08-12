@@ -1191,6 +1191,19 @@ app.post("/api/start-generation", async (req, res) => {
   try {
     const o = await getOrder(String(req.body?.order_id || "")); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
     if (!["paid", "mock_paid"].includes(o.payment_status)) return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED", message: "ต้องชำระเงินก่อน" });
+    // ⛔ ด่านสุดท้าย: ออเดอร์ "ซื้อแพ็กหลายเดือน" ห้ามสร้างเล่มเด็ดขาด ไม่ว่าจะเข้ามาทางไหน
+    //    คิมเจอเอง 2 รอบ (11–12 ส.ค.): กดซื้อแพ็กแล้วระบบสร้างเล่มให้ทันที
+    //    เสียหาย 3 ต่อ — เปลืองค่า AI จริง · ลูกค้าได้ของที่ไม่ได้อยากได้ · เล่มใช้ข้อมูลเดือนเก่า เดือนผิด
+    //    เดิมกันไว้ที่ "ทางเดินแต่ละเส้น" (Stripe / โค้ดฟรี) ซึ่งพลาดได้เรื่อยๆ ถ้ามีเส้นใหม่
+    //    → ย้ายมากันที่ตัวสร้างเล่มเลย เส้นไหนก็ตามที่พามาถึงตรงนี้ จะถูกปฏิเสธหมด
+    const plOrder = safeJson(o.order_payload_json) || {};
+    const isPlanOrder = String(o.source || "") === "upgrade" || (PLANS[String(plOrder.plan || "")]?.months || 1) > 1;
+    if (isPlanOrder && !o.blueprint_id) {
+      console.log(`[gen] ปฏิเสธสร้างเล่มจากออเดอร์ซื้อแพ็ก ${o.order_id} — แพ็กเก็บเป็นสิทธิ์ ไม่ใช่สั่งทำเล่ม`);
+      return res.status(409).json({ ok: false, error: "PLAN_ORDER",
+        message: "ออเดอร์นี้เป็นการซื้อแพ็กเก็บสิทธิ์ไว้ค่ะ ไม่ได้สั่งทำเล่ม — เข้าหน้าบัญชีของฉันแล้วกดสร้างเล่มเดือนที่ต้องการได้เลย",
+        redirect_url: "/account?plan=ok" });
+    }
     if (o.blueprint_id) return res.json({ ok: true, status: "ready", order_id: o.order_id, blueprint_id: o.blueprint_id, user_id: o.user_id, billing_cycle: o.billing_cycle });
     const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL WHERE order_id=$1 AND blueprint_id IS NULL AND (generation_status IS NULL OR generation_status IN ('pending','error'))`, [o.order_id]);
     if (claim.rowCount !== 1) return res.json({ ok: true, status: o.generation_status || "generating", order_id: o.order_id });

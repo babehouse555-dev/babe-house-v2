@@ -11,7 +11,11 @@ import { useState, useEffect } from "react";
 
 // ตรวจก่อนส่ง — คืนข้อความ error ถ้ายังกรอกไม่ครบ, คืน null ถ้าผ่าน
 export function validateTax(tax) {
-  if (!tax) return null;                               // ไม่ได้ขอในนามบริษัท = ผ่าน
+  if (!tax) return null;                               // ไม่ได้กรอกอะไรเลย = ผ่าน
+  // ⚠️ บั๊กจริง 12 ส.ค. (คิมเจอบนมือถือ): ลูกค้าทั่วไปกรอกแค่ "ชื่อ-นามสกุล" แล้วกดจ่ายไม่ผ่าน
+  //    เพราะกล่องนี้ส่ง { full_name } ออกมาเป็นข้อมูลที่ "ไม่ว่าง" ตัวตรวจเลยไล่บังคับกรอกชื่อบริษัทต่อ
+  //    → เช็คข้อมูลบริษัทเฉพาะตอนที่ติ๊กว่าออกในนามบริษัทจริงๆ เท่านั้น
+  if (!tax.is_company) return null;
   if (!String(tax.name || "").trim()) return "ใส่ชื่อบริษัทด้วยนะคะ";
   if (String(tax.tax_id || "").replace(/\D/g, "").length !== 13) return "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ";
   if (!String(tax.address || "").trim()) return "ใส่ที่อยู่บริษัทตามที่จดทะเบียนด้วยนะคะ";
@@ -47,7 +51,8 @@ export default function TaxInvoiceBox({ onChange, totalSatang = 0 }) {
   const baht = (n) => (n / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
-    <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+    // marginTop กันชนกับของที่อยู่เหนือมัน (ช่องโค้ดส่วนลด) — บนมือถือเดิมชิดกันจนดูเหมือนซ้อนทับ (คิมเจอ 12 ส.ค.)
+    <div style={{ background: "var(--soft)", borderRadius: 12, padding: "12px 14px", marginTop: 14, marginBottom: 14 }}>
       {/* 🧾 ชื่อบนใบกำกับภาษี — นักบัญชีขอ 11 ส.ค. ว่าต้องเป็นชื่อจริง ไม่ใช่ชื่อเล่น
           ถ้าไม่กรอก ใบจะระบุว่า "ลูกค้าไม่ประสงค์รับใบกำกับภาษี" ตามที่นักบัญชีกำหนด */}
       <div className="field" style={{ marginBottom: 12 }}>

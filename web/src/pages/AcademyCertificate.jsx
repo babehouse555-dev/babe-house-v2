@@ -1,13 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api.js";
 
 // ประกาศนียบัตร — ทำตามดีไซน์จริงที่คิมใช้อยู่ (Canva: แถบฟ้าซ้าย + ชื่อในกรอบมนขวา + ลายเซ็นครูพี่คิม)
 // สาธารณะด้วย cert_id (เดาไม่ได้) เพื่อให้ลูกค้าแชร์/พิมพ์ได้ · ไม่มีข้อมูลอ่อนไหวนอกจากชื่อ+คอร์ส
 const BLUE = "#2E86DE";
+const CERT_W = 900;   // ความกว้างใบจริงบนคอม — มือถือย่อลงจากตัวเลขนี้
 
 export default function AcademyCertificate() {
   const { id } = useParams();
+  // 📱 บนมือถือเดิมพับเป็นแนวตั้ง (แถบฟ้าอยู่บน ชื่ออยู่ล่าง) หน้าตาไม่เหมือนใบจริงเลย
+  //    คิมสั่ง 12 ส.ค.: "ทำเป็นแนวนอนเหมือนในคอมไปเลย"
+  //    → คงเลย์เอาต์ 2 คอลัมน์ไว้เสมอ แล้วย่อทั้งใบให้พอดีจอแทน (สัดส่วนเป๊ะเหมือนบนคอม)
+  const fitRef = useRef(null), certRef = useRef(null);
+  const [fit, setFit] = useState({ scale: 1, h: null });
+  useEffect(() => {
+    const calc = () => {
+      const w = fitRef.current?.clientWidth || 0;
+      const el = certRef.current;
+      if (!w || !el) return;
+      const s = Math.min(1, w / CERT_W);
+      setFit({ scale: s, h: s < 1 ? Math.ceil(el.offsetHeight * s) : null });
+    };
+    calc();
+    const t = setTimeout(calc, 400);            // เผื่อฟอนต์/ลายเซ็นโหลดช้าแล้วความสูงเปลี่ยน
+    window.addEventListener("resize", calc);
+    return () => { clearTimeout(t); window.removeEventListener("resize", calc); };
+  });
   const [cert, setCert] = useState(null);
   const [sigOk, setSigOk] = useState(true);   // มีไฟล์ลายเซ็นไหม (ไม่มี → ใช้ตัวหนังสือเขียนหวัดแทน)
   const [err, setErr] = useState(false);
@@ -23,7 +42,9 @@ export default function AcademyCertificate() {
 
   return (
     <div style={{ minHeight: "100vh", padding: "26px 14px 40px", background: "var(--soft)" }}>
-      <div id="cert" style={{ maxWidth: 900, margin: "0 auto", background: "#fff", borderRadius: 14, overflow: "hidden",
+      <div ref={fitRef} style={{ maxWidth: CERT_W, margin: "0 auto", height: fit.h || undefined }}>
+      <div ref={certRef} id="cert" style={{ width: CERT_W, maxWidth: CERT_W, background: "#fff", borderRadius: 14, overflow: "hidden",
+        transform: fit.scale < 1 ? `scale(${fit.scale})` : undefined, transformOrigin: "top left",
         display: "grid", gridTemplateColumns: "38% 62%", boxShadow: "0 18px 50px rgba(46,134,222,.16)" }} className="cert-grid">
 
         {/* ── แถบฟ้าด้านซ้าย ── */}
@@ -83,6 +104,7 @@ export default function AcademyCertificate() {
           </div>
         </div>
       </div>
+      </div>
 
       <div className="center no-print" style={{ marginTop: 22 }}>
         <button className="btn" onClick={() => window.print()}>🖨️ พิมพ์ / บันทึกเป็น PDF</button>
@@ -92,7 +114,7 @@ export default function AcademyCertificate() {
       </div>
 
       <style>{`
-        @media (max-width: 640px){ .cert-grid{ grid-template-columns: 1fr !important; } }
+        /* ⛔ ห้ามพับเป็นแนวตั้งบนมือถือ — คิมสั่งให้เหมือนบนคอม (ใช้วิธีย่อทั้งใบแทน ดู CERT_W) */
         @media print {
           body * { visibility: hidden; }
           #cert, #cert * { visibility: visible; }

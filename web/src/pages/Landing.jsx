@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { api, track } from "../api.js";
-import { ACADEMY_LIVE } from "../config.js";
+import { api, track, session } from "../api.js";
+import { ACADEMY_LIVE, EDIT_LIVE } from "../config.js";
 import { useI18n, LangToggle } from "../i18n.jsx";
 import { PlanCards } from "../PlanCards.jsx";
 
@@ -86,7 +86,13 @@ export default function Landing() {
                 ตอนนี้ให้ขึ้นบรรทัดที่สองแทนการซ่อน */}
             {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>คอร์สเรียน</Link>}
             {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>คลาสสด</Link>}
-            <Link to="/account" className="link" style={{ fontSize: 14, whiteSpace: "nowrap" }}>{t("nav_login")}</Link>
+            {/* ⚠️ หน้าแรกมีแถบเมนูของตัวเอง แยกจากหน้าอื่น — เพิ่มเมนูใหม่ต้องเติมที่นี่ด้วย ไม่งั้นหายเฉพาะหน้าแรก
+                คิมเจอ 12 ส.ค.: "พอกดตรงหน้าโปรเปิดตัว ตัดต่อ กับ บัญชีของฉัน คือหายไปเลย" */}
+            {EDIT_LIVE && <Link to="/edit" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>จ้างทีมตัดต่อ</Link>}
+            {/* เข้าสู่ระบบอยู่แล้วต้องขึ้นว่า "บัญชีของฉัน" เหมือนหน้าอื่น ไม่ใช่ชวนล็อกอินซ้ำ */}
+            <Link to="/account" className="link" style={{ fontSize: 14, whiteSpace: "nowrap" }}>
+              {session.token ? t("nav_account") : t("nav_login")}
+            </Link>
             <LangToggle />
           </div>
         </div>

@@ -95,12 +95,41 @@ function CleanPlayer({ videoId, lessonKey }) {
   //    boxRef.current เลยกลายเป็นโหนดที่หลุดจากหน้าเว็บ parentElement = null → กดแล้วเงียบ
   //    → จับกรอบไว้ตั้งแต่ตอน mount จาก overlay ที่ไม่โดนแทนที่
   const wrapRef = useRef(null);
+  // 📱 iPhone ขยายเต็มจอไม่ได้เลย — iOS Safari ไม่รองรับ requestFullscreen กับ <div>
+  //    (รองรับเฉพาะ <video> ของตัวเอง แต่คลิปเราอยู่ใน iframe ของ YouTube เลยสั่งไม่ได้)
+  //    คิมแจ้ง 12 ส.ค. "ขยายจอใหญ่ไม่ได้ ทุกคอร์สเลย" — บนคอมใช้ได้ปกติ บนมือถือกดแล้วเงียบ
+  //    → ถ้าสั่งเต็มจอจริงไม่ได้ ให้ขยายเองด้วย CSS ให้เต็มหน้าจอแทน (ผลลัพธ์เหมือนกันในสายตาคนดู)
+  const [faux, setFaux] = useState(false);
   const full = () => {
     const el = wrapRef.current?.parentElement;
     if (!el) return;
     if (document.fullscreenElement) { document.exitFullscreen?.().catch(() => {}); return; }
-    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el)?.catch?.(() => {});
+    if (faux) { setFaux(false); return; }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) { setFaux(true); return; }                       // iPhone มาทางนี้
+    try {
+      const r = req.call(el);
+      if (r?.catch) r.catch(() => setFaux(true));              // สั่งได้แต่เบราว์เซอร์ปฏิเสธ → ถอยมาขยายเอง
+    } catch { setFaux(true); }
   };
+  // ขยายกรอบคลิปให้เต็มหน้าจอด้วย CSS + กัน Esc/ปิดค้าง
+  useEffect(() => {
+    const el = wrapRef.current?.parentElement;
+    if (!el) return;
+    if (!faux) return;
+    const keep = el.getAttribute("style") || "";
+    el.setAttribute("style",
+      "position:fixed;inset:0;z-index:9998;background:#000;border-radius:0;overflow:hidden;" +
+      "aspect-ratio:auto;width:100vw;height:100dvh;display:flex;align-items:center;justify-content:center");
+    const onKey = (e) => { if (e.key === "Escape") setFaux(false); };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      el.setAttribute("style", keep);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [faux]);
 
   // โหลด API ไม่ได้ (เน็ตบล็อก/adblock) → ถอยไปใช้ iframe ปกติ ดีกว่าจอดำ
   if (failed) return <iframe src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1`}

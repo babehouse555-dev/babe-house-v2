@@ -3054,6 +3054,21 @@ app.get("/api/admin/deleted-books", async (req, res) => {
     ORDER BY b.deleted_at DESC LIMIT 50`, email ? [email] : []);
   res.json({ ok: true, count: rows.length, books: rows });
 });
+// 🗑️ ลบเล่มจากหลังบ้าน — ไว้เก็บกวาดเล่มที่ค้างจนลูกค้าลบเองไม่ได้
+//    เล่มที่ค้างสถานะ "กำลังสร้าง" จะไม่มีปุ่มถังขยะในหน้าบัญชี (ปุ่มมีเฉพาะเล่มที่เสร็จแล้ว)
+//    คิมเจอ 12 ส.ค.: เล่มค้างจากบั๊กตอนซื้อแพ็ก ลบเองไม่ได้ต้องให้แอดมินลบให้
+//    ⚠️ ลบแบบกู้คืนได้ (soft delete) เหมือนฝั่งลูกค้า — ผิดตัวก็กู้ด้วย /api/admin/restore-book ได้
+app.post("/api/admin/delete-book", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  if (!bpId) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const b = await one(`SELECT blueprint_id, billing_cycle, deleted_at FROM blueprints WHERE blueprint_id=$1`, [bpId]);
+  if (!b) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (b.deleted_at) return res.json({ ok: true, already_deleted: true, blueprint_id: bpId });
+  await run(`UPDATE blueprints SET deleted_at=now() WHERE blueprint_id=$1`, [bpId]);
+  console.log(`[admin] ลบเล่ม ${bpId} (${b.billing_cycle}) — กู้คืนได้ ${RESTORE_DAYS} วัน`);
+  res.json({ ok: true, deleted: bpId, billing_cycle: b.billing_cycle, restorable_days: RESTORE_DAYS });
+});
 app.post("/api/admin/restore-book", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const bpId = String(req.body?.blueprint_id || "").trim();

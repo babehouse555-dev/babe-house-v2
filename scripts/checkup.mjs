@@ -123,6 +123,17 @@ await check("มี 2 ช่อง → ต้องได้ช่องที�
   must(r.json.channel === "@chan_a", `เลือก @chan_a แต่ระบบให้ ${r.json.channel}`);
   globalThis.__up = r.json.order_id;
 });
+await check("ออเดอร์แพ็กต้องใช้รอบเดือนนี้ ไม่ใช่เดือนของเล่มเก่า", async () => {
+  // บั๊กจริง 12 ส.ค.: เล่มเก่าเป็น June ออเดอร์แพ็กเลยได้รอบ June ทั้งที่ซื้อเดือนสิงหา
+  await buyBook(EM, "@chan_old", "March_2026");            // เล่มเก่าคนละเดือนกับวันนี้
+  const r = await api("/api/me/upgrade", { method: "POST", token: tok, body: { plan: "6m", channel: "@chan_old", preview: "1" } });
+  must(r.json?.ok, "สร้างออเดอร์แพ็กไม่สำเร็จ: " + r.text.slice(0, 120));
+  const o = await api(`/api/orders/${r.json.order_id}`);
+  const MO = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const now = new Date();
+  const want = `${MO[now.getMonth()]}_${now.getFullYear()}`;
+  must(o.json?.order?.billing_cycle === want, `รอบเดือนควรเป็น ${want} แต่ได้ ${o.json?.order?.billing_cycle}`);
+});
 await check("จ่ายค่าแพ็กแล้วต้องกลับหน้าบัญชี ไม่วิ่งไปสร้างเล่ม", async () => {
   const p = await api("/api/create-payment-session", { method: "POST", body: { order_id: globalThis.__up } });
   must(/\/account/.test(p.json?.redirect_url || ""), `ไปที่ ${p.json?.redirect_url} แทนหน้าบัญชี`);

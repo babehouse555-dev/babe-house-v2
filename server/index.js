@@ -851,7 +851,10 @@ app.post("/api/me/upgrade", rateLimit(20, M10), async (req, res) => {
     const old = safeJson(last.order_payload_json) || {};
     if (!old.form_responses) return res.status(409).json({ ok: false, error: "NO_PROFILE", message: "ข้อมูลเดิมไม่ครบ กรุณากรอกฟอร์มค่ะ" });
 
-    const cycle = String(req.body?.billing_cycle || "").trim() || last.billing_cycle;
+    // 📅 รอบเดือนต้องเป็น "เดือนนี้" ไม่ใช่เดือนของเล่มเก่าที่เอาข้อมูลมาใช้
+    //    บั๊กจริง 12 ส.ค.: เล่มล่าสุดของช่องเป็น June_2026 → ออเดอร์แพ็กเลยได้รอบ June ทั้งที่ซื้อเดือนสิงหา
+    //    (คิมเจอ: "มีเล่มใหม่ขึ้นมา ที่สำคัญเดือนผิด เดือนนี้สิงหา")
+    const cycle = String(req.body?.billing_cycle || "").trim() || currentBillingCycle();
     const orderId = uid("ord");
     const payload = { ...old, plan: plan.plan, plan_chosen: true,
       meta_purchase: { tier: "Premium_490", billing_cycle: cycle } };

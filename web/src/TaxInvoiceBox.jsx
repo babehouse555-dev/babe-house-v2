@@ -10,28 +10,10 @@ import { useState, useEffect } from "react";
 // ⚠️ ต้องเก็บข้อมูลก่อนจ่ายเงินเสมอ เพราะใบกำกับออกอัตโนมัติทันทีที่เงินเข้า แก้ทีหลังไม่ได้
 
 // ตรวจก่อนส่ง — คืนข้อความ error ถ้ายังกรอกไม่ครบ, คืน null ถ้าผ่าน
-export function validateTax(tax) {
-  if (!tax) return null;                               // ไม่ได้กรอกอะไรเลย = ผ่าน
-  // ⚠️ บั๊กจริง 12 ส.ค. (คิมเจอบนมือถือ): ลูกค้าทั่วไปกรอกแค่ "ชื่อ-นามสกุล" แล้วกดจ่ายไม่ผ่าน
-  //    เพราะกล่องนี้ส่ง { full_name } ออกมาเป็นข้อมูลที่ "ไม่ว่าง" ตัวตรวจเลยไล่บังคับกรอกชื่อบริษัทต่อ
-  //    → เช็คข้อมูลบริษัทเฉพาะตอนที่ติ๊กว่าออกในนามบริษัทจริงๆ เท่านั้น
-  if (!tax.is_company) return null;
-  if (!String(tax.name || "").trim()) return "ใส่ชื่อบริษัทด้วยนะคะ";
-  if (String(tax.tax_id || "").replace(/\D/g, "").length !== 13) return "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ";
-  if (!String(tax.address || "").trim()) return "ใส่ที่อยู่บริษัทตามที่จดทะเบียนด้วยนะคะ";
-  return null;
-}
-
-// 💸 ภาษีหัก ณ ที่จ่าย 3% (คิมสั่ง 8 ส.ค. — ลูกค้าบริษัทบางเจ้าหัก)
-// บริการของเราเป็น "ค่าจ้างทำของ/บริการ" → นิติบุคคลที่จ่ายเงินมีหน้าที่หัก 3% นำส่งสรรพากร
-// ⚠️ หักจาก "ยอดก่อน VAT" เท่านั้น ไม่ใช่ยอดรวม (ตามใบจริงของคิม: 20,000 → หัก 600 ไม่ใช่ 642)
-// ⚠️ บุคคลธรรมดาหักไม่ได้ → ช่องนี้โผล่เฉพาะตอนติ๊กว่าออกในนามบริษัท
-export const WHT_PCT = 3;
-export function whtAmount(totalSatang, wantWht) {
-  if (!wantWht) return 0;
-  const net = Math.round(Number(totalSatang || 0) / 1.07);   // ราคาเรารวม VAT แล้ว ถอดออกก่อน
-  return Math.round(net * WHT_PCT / 100);
-}
+// 🔁 ตรรกะตรวจข้อมูลย้ายไปอยู่ validate.js แล้ว (ไฟล์ธรรมดา สคริปต์ตรวจอัตโนมัติเรียกทดสอบได้)
+//    ที่นี่แค่ส่งต่อ เพื่อให้หน้าที่ import จากไฟล์นี้อยู่แล้วใช้ได้เหมือนเดิม ไม่ต้องไล่แก้ทุกหน้า
+export { validateTax, whtAmount, WHT_PCT } from "./validate.js";
+import { whtAmount } from "./validate.js";
 
 export default function TaxInvoiceBox({ onChange, totalSatang = 0 }) {
   const [want, setWant] = useState(false);

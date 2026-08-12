@@ -4150,7 +4150,9 @@ async function seedTeamIfEmpty() {
     ["พี่ก้อง", "gong", "senior", "ตัดต่อ", "production", 4],
     ["กัน", "gun", "editor", "Content (ตัดต่อวันละ 1 คลิป)", "both", 1],
     ["เบนเซ่", "benz", "teacher", "คอนเทนต์ Academy", "academy", 0],
-    ["แฟรี่", "fairy", "teacher", "กราฟฟิก", "academy", 0],
+    // 🎨 แฟรี่ = พนักงานประจำสายกราฟฟิก (จ-ศ งานบริษัท กินเงินเดือน)
+    //    slots 0 = ระบบไม่จ่ายงานตัดต่อให้เอง จนกว่าเธอจะกดเปิดวันหยุดเอง (คลิปละ ฿800 รวมกราฟิก)
+    ["แฟรี่", "fairy", "graphic", "กราฟฟิก", "production", 0],
   ];
   for (const [name, code, role, position, side, slots] of T) {
     await run(`INSERT INTO team_members (member_id,name,code,role,position,side,default_slots) VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -4343,7 +4345,11 @@ const ymd = (d) => { try { return new Date(d).toLocaleDateString("en-CA", { time
 async function teamWorkload(days = AVAIL_DAYS) {
   const members = await q(`SELECT member_id, name, role, position, COALESCE(default_slots,0) default_slots,
       COALESCE(assign_tier,3) assign_tier FROM team_members
-    WHERE active AND role IN ('editor','senior','ae') ORDER BY name`);
+    WHERE active AND role IN ('editor','senior','ae','graphic') ORDER BY name`);
+  // 🎨 ทำไมมี 'graphic' ด้วย (คิมสั่ง 12 ส.ค.): แฟรี่เป็นพนักงานประจำสายกราฟฟิก จ-ศ ทำงานบริษัทกินเงินเดือน
+  //    แต่ "วันหยุด" อยากรับงานตัดต่อเสริมเป็นค่าขนมได้ (คลิปละ ฿800 รวมกราฟิกในคลิปแล้ว)
+  //    ปลอดภัยเพราะ default_slots ของแฟรี่ = 0 → ความจุเป็น 0 เสมอ จนกว่าเธอจะกดเปิดวันนั้นเอง
+  //    (opt-in ล้วน · assign_tier 3 = ต่อคิวท้ายสุด) ระบบจึงไม่มีทางยัดงานให้ในวันทำงานปกติ
   const load = await q(`SELECT assigned_to, COUNT(*) jobs, COALESCE(SUM(clips),1) clips
     FROM edit_orders WHERE assigned_to IS NOT NULL AND status NOT IN ('done','canceled','draft_sent')
     GROUP BY assigned_to`);

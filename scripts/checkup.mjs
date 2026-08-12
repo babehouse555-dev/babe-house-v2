@@ -313,10 +313,33 @@ await check("คนที่ขอกราฟฟิก ต้องกด 'ร�
   const u = await api("/api/team/graphic/update", { method: "POST", admin: true, body: { gj_id: g.json.gj_id, status: "done" } });
   must(u.json?.ok, "คนที่ขอกดปิดงานไม่ได้ (403)");
 });
+await check("กราฟฟิกประจำ (แฟรี่) ต้องไม่โดนยัดงานตัดต่อวันทำงาน — เปิดวันเองถึงจะรับได้", async () => {
+  // คิมอธิบาย 12 ส.ค.: จ-ศ แฟรี่ทำกราฟฟิกบริษัทกินเงินเดือน
+  // งานตัดต่อคลิปละ ฿800 คือ "งานเสริมวันหยุด" ที่เธอต้องกดเปิดวันเอง ระบบห้ามจ่ายให้เอง
+  const wl = await api("/api/team/workload", { admin: true });
+  const rows = wl.json?.people || [];
+  const f = rows.find(m => m.role === "graphic");
+  must(f, "ระบบมองไม่เห็นกราฟฟิกในคิวงานตัดต่อเลย — เปิดวันหยุดยังไงก็ไม่ได้งาน");
+  must(Number(f.capacity) === 0, `แฟรี่ว่างรับงานตัดต่อ ${f.capacity} คลิปทั้งที่ยังไม่ได้เปิดวันไหนเลย`);
+  must(f.auto_available === false, "ระบบตั้งให้แฟรี่ว่างอัตโนมัติ จ-ศ ซึ่งเป็นวันงานประจำของเธอ");
+  // เปิดวันเอง 1 วัน → ต้องรับได้ 1 คลิป
+  const d3 = new Date(); d3.setDate(d3.getDate() + 3);          // ต้องอยู่ในช่วง 14 วันที่ระบบมอง
+  const day = d3.toISOString().slice(0, 10);
+  await api("/api/team/availability", { method: "POST", admin: true, body: { member_id: f.member_id, day, slots: 1 } });
+  const wl2 = await api("/api/team/workload", { admin: true });
+  const f2 = (wl2.json?.people || []).find(m => m.role === "graphic");
+  must(Number(f2?.capacity) === 1, `เปิดวันเองแล้วยังรับได้ ${f2?.capacity} คลิป ควรเป็น 1`);
+});
 await check("ต้องแปะลิงก์คลิปก่อนถึงจะส่งให้กราฟฟิกได้", async () => {
-  const b = await buyBook(EM, "@chan_c");
-  const r = await api("/api/team/graphic/request", { method: "POST", admin: true, body: { order_id: jobId } });
-  must(!r.json?.ok || r.json?.already, "ส่งให้กราฟฟิกได้ทั้งที่ไม่มีลิงก์คลิป");
+  // ⚠️ ต้องใช้ "งานใหม่ที่ยังไม่เคยส่งดราฟให้ลูกค้า" — ถ้าใช้งานเดิมที่มี draft_url อยู่แล้ว
+  //    ระบบจะดึงลิงก์นั้นมาใช้ให้เอง (ถูกต้องแล้ว) เทสต์จะผ่านทั้งที่ไม่ได้ทดสอบอะไรเลย
+  await api("/api/edit/credits/buy", { method: "POST", token: tok, body: { credits: 1 } });
+  const j = await api("/api/edit/use-credit", { method: "POST", token: tok,
+    body: { script_day: null, job_title: "คลิปทดสอบลิงก์", note: "-", footage_url: "https://drive.google.com/y" } });
+  must(j.json?.order_id, "สั่งงานใหม่ไม่สำเร็จ: " + j.text.slice(0, 120));
+  const r = await api("/api/team/graphic/request", { method: "POST", admin: true, body: { order_id: j.json.order_id } });
+  must(!r.json?.ok, "ส่งให้กราฟฟิกได้ทั้งที่ยังไม่มีลิงก์คลิปให้ดู");
+  must(r.json?.error === "NEED_CLIP", "ปฏิเสธด้วยเหตุผลอื่น: " + r.text.slice(0, 140));
 });
 
 // ═════════════ 7) ความปลอดภัย ═════════════

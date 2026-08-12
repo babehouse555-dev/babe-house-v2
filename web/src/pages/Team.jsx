@@ -267,6 +267,9 @@ export default function Team() {
       {d.my_month && (() => {
         const m = d.my_month.this, p = d.my_month.prev;
         const diff = (m.clip_units || m.clips) - (p.clip_units || p.clips);
+        // 🎨 พนักงานประจำสายกราฟฟิก (แฟรี่): งานกราฟฟิก จ-ศ = งานบริษัท กินเงินเดือน ไม่ใช่งานคลิปละ ฿800
+        //    ที่นับเงินตรงนี้คือ "คลิปตัดต่อที่รับเสริมวันหยุด" เท่านั้น (คิมสั่ง 12 ส.ค.)
+        const salaried = d.me?.role === "graphic";
         const Cell = ({ n, l, tone }) => (
           <div style={{ minWidth: 74 }}>
             <div style={{ fontSize: 21, fontWeight: 800, color: tone || "#2f2a26", lineHeight: 1.2 }}>{n}</div>
@@ -286,13 +289,19 @@ export default function Team() {
             <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
               <Cell n={m.clip_units || m.clips} l="คลิปที่ส่งแล้ว" tone="#5a3fc0" />
               {/* 💵 ยอดที่ได้เดือนนี้ — เรตเดียวเท่ากันทุกคน (คิมเคาะ 12 ส.ค.) */}
-              <Cell n={`฿${(m.pay || 0).toLocaleString()}`} l={`ยอดเดือนนี้ (คลิปละ ฿${(m.rate || 0).toLocaleString()})`} tone="#1a7f43" />
-              {m.graphics > 0 && <Cell n={m.graphics} l="งานกราฟฟิก" />}
+              <Cell n={`฿${(m.pay || 0).toLocaleString()}`} l={salaried ? `ค่าขนมงานตัดต่อ (คลิปละ ฿${(m.rate || 0).toLocaleString()})` : `ยอดเดือนนี้ (คลิปละ ฿${(m.rate || 0).toLocaleString()})`} tone="#1a7f43" />
+              {m.graphics > 0 && <Cell n={m.graphics} l={salaried ? "งานกราฟฟิก (งานประจำ)" : "งานกราฟฟิก"} />}
               {m.on_time_pct !== null && <Cell n={`${m.on_time_pct}%`} l="ส่งตรงเวลา" tone={m.on_time_pct >= 90 ? "#1a7f43" : m.on_time_pct >= 70 ? "#B26A00" : "#b42318"} />}
               {m.client_revs > 0 && <Cell n={m.client_revs} l="รอบแก้จากลูกค้า" />}
               {m.our_fixes > 0 && <Cell n={m.our_fixes} l="แก้เพราะเราพลาด" tone={m.our_fixes > 2 ? "#B26A00" : null} />}
             </div>
-            {m.clips === 0 && (
+            {salaried ? (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.6 }}>
+                🎨 <b>งานกราฟฟิก จ-ศ = งานประจำของบริษัท</b> อยู่ในเงินเดือนอยู่แล้ว ไม่ได้นับเป็นคลิปละ ฿{(m.rate || 0).toLocaleString()} ค่ะ
+                <br />💰 ยอดตรงนี้คือ <b>งานตัดต่อที่รับเสริมในวันหยุด</b> เท่านั้น — คลิปละ ฿{(m.rate || 0).toLocaleString()} <b>รวมงานกราฟิกในคลิปนั้นแล้ว</b>
+                {m.clips === 0 && <><br />เดือนนี้ยังไม่ได้รับงานตัดต่อเสริมค่ะ อยากรับ กด <b>+</b> ที่วันหยุดในปฏิทิน "ลงวันว่างของฉัน" ได้เลย</>}
+              </div>
+            ) : m.clips === 0 && (
               <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.6 }}>
                 เดือนนี้ยังไม่มีคลิปที่ส่งถึงลูกค้าค่ะ — งานที่กำลังทำอยู่จะมานับตรงนี้ตอนส่งงานเสร็จ
                 <br />คิดคลิปละ ฿{(m.rate || 0).toLocaleString()} เท่ากันทุกคน (รวมกราฟิกในคลิปแล้ว)
@@ -508,15 +517,23 @@ export default function Team() {
         return <>
           {/* ลงวันว่างของตัวเอง — ทุกคนทำได้ รวมฟรีแลนซ์ */}
           <div style={card}>
-            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📗 ลงวันว่างของฉัน</h3>
+            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>
+              {d.me?.role === "graphic" ? "📗 อยากรับงานตัดต่อเสริมวันไหน" : "📗 ลงวันว่างของฉัน"}
+            </h3>
             <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
-              {defSlots > 0
+              {/* 🎨 พนักงานประจำสายกราฟฟิก — ปฏิทินนี้ "ไม่เกี่ยวกับงานประจำ" เลย ต้องบอกให้ชัด (คิมสั่ง 12 ส.ค.) */}
+              {d.me?.role === "graphic"
+                ? <>งานกราฟฟิก <b>จ-ศ เป็นงานประจำของบริษัท</b> อยู่ในเงินเดือนแล้ว <b>ไม่ต้องลงในปฏิทินนี้</b>ค่ะ<br />
+                    ปฏิทินนี้ใช้เฉพาะตอนอยาก<b>รับงานตัดต่อเสริมในวันหยุด</b> — แตะ <b>+</b> ที่วันไหน แปลว่ายินดีรับงานวันนั้น
+                    ได้ <b>คลิปละ ฿800</b> (ตัดต่อ + กราฟิกในคลิปนั้น รวมแล้ว)<br />
+                    ไม่แตะไว้ = ระบบไม่ส่งงานตัดต่อมาให้เลยค่ะ</>
+                : defSlots > 0
                 ? <>คิมตั้งให้คุณรับงาน <b>{defSlots} คลิป/วัน (จ-ศ)</b> อยู่แล้ว — <b>ไม่ต้องกดอะไรเลยก็ได้ค่ะ</b><br />
                     วันไหนรับได้มากกว่า/น้อยกว่า หรือวันไหน<b>ลา</b> ค่อยแตะแก้เฉพาะวันนั้นนะคะ</>
                 : <>แตะวันที่ว่างเพื่อ<b>เพิ่มจำนวนคลิปที่รับไหววันนั้น</b> — ระบบจะส่งงานมาให้ไม่เกินที่คุณลงไว้ ไม่ลงไว้ = ระบบจะไม่ยัดงานให้ค่ะ</>}
             </p>
             {/* ⚡ พนักงานประจำกดปุ่มเดียวจบ ไม่ต้องแตะทีละวัน (คิมเคาะ: โบ/พี่ก้องฟิกวันละ 4) */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ display: d.me?.role === "graphic" ? "none" : "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
               <span style={{ fontSize: 13, color: "#7c7268" }}>เติม จ-ศ ให้อัตโนมัติ:</span>
               {[2, 3, 4, 5].map(n => (
                 <button key={n} disabled={busy === "cal"}

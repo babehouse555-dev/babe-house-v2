@@ -127,6 +127,16 @@ await check("จ่ายค่าแพ็กแล้วต้องกลั�
   const p = await api("/api/create-payment-session", { method: "POST", body: { order_id: globalThis.__up } });
   must(/\/account/.test(p.json?.redirect_url || ""), `ไปที่ ${p.json?.redirect_url} แทนหน้าบัญชี`);
 });
+await check("ซื้อแพ็กด้วยโค้ดฟรี 100% ก็ต้องกลับหน้าบัญชี ไม่ใช่ไปสร้างเล่ม", async () => {
+  // เส้นนี้คิมใช้ทดสอบบ่อย (KIMFREE) — เคยเด้งไปหน้า "ครูพี่คิมกำลังอ่านช่องของคุณ" ผิด (12 ส.ค.)
+  await api("/api/admin/codes", { method: "POST", admin: true, body: { code: "FREEALL", discount_percent: 100, max_uses: 99 } });
+  await buyBook(EM, "@chan_free");
+  const up = await api("/api/me/upgrade", { method: "POST", token: tok, body: { plan: "6m", channel: "@chan_free", preview: "1" } });
+  must(up.json?.ok, "สร้างออเดอร์แพ็กไม่สำเร็จ: " + up.text.slice(0, 120));
+  const r = await api("/api/apply-code", { method: "POST", body: { order_id: up.json.order_id, code: "FREEALL" } });
+  must(r.json?.ok, "ใช้โค้ดไม่สำเร็จ: " + r.text.slice(0, 120));
+  must(/\/account/.test(r.json.redirect_url || ""), `เด้งไป ${r.json.redirect_url} แทนหน้าบัญชี`);
+});
 await check("ได้สิทธิ์ 12 เดือนเต็ม ยังไม่ถูกหักสักเดือน", async () => {
   await new Promise(r => setTimeout(r, 600));
   const me = await api("/api/me/perks", { token: tok });

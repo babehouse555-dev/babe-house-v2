@@ -910,7 +910,15 @@ async function applyCode(req, res) {
     await run(`UPDATE customers SET credits=COALESCE(credits,0)+$1 WHERE lower(email)=lower($2)`, [Number(row.credit_grant), o.email]).catch(() => {});
     console.log(`[credits] โค้ด ${code} +${row.credit_grant} → ${o.email}`);
   }
-  if (isFree || finalAmount <= 0) { await markOrderPaid(orderId, "code", code); return res.json({ ok: true, free: true, percent, redirect_url: `/processing?order_id=${encodeURIComponent(orderId)}` }); }
+  if (isFree || finalAmount <= 0) {
+    await markOrderPaid(orderId, "code", code);
+    // 🎟️ ออเดอร์ "ซื้อแพ็กหลายเดือน" = ซื้อสิทธิ์เก็บไว้ ไม่ใช่สั่งทำเล่มเดี๋ยวนี้
+    //    ต้องกลับหน้าบัญชี ไม่ใช่วิ่งไปหน้า "ครูพี่คิมกำลังอ่านช่องของคุณ" (คิมเจอ 12 ส.ค. ตอนใช้โค้ดฟรีทดสอบ)
+    //    เส้นจ่ายด้วย Stripe แก้ไปแล้ว แต่เส้น "โค้ดฟรี 100%" ยังเด้งผิดอยู่
+    const isPlan = String(o.source || "") === "upgrade" || planOf((safeJson(o.order_payload_json) || {}).plan).months > 1;
+    return res.json({ ok: true, free: true, percent,
+      redirect_url: isPlan ? "/account?plan=ok" : `/processing?order_id=${encodeURIComponent(orderId)}` });
+  }
   res.json({ ok: true, free: false, percent, original_satang: codeBase, final_satang: finalAmount });
 }
 app.post("/api/apply-code", applyCode);

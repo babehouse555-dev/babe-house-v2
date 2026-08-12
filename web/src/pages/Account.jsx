@@ -290,26 +290,42 @@ export default function Account() {
               background: "linear-gradient(158deg,#3E93E4 0%,#2E86DE 55%,#1B6FC4 100%)",
               boxShadow: "0 10px 26px rgba(27,111,196,.32)" }}>
 
-              <div className="between" style={{ alignItems: "flex-start", gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: 11.5, letterSpacing: ".14em", textTransform: "uppercase", color: DIM, fontWeight: 700 }}>Babe House Member</div>
-                  <div className="serif" style={{ fontSize: 27, fontWeight: 700, marginTop: 2 }}>
-                    {perks.plan === "monthly" ? "แผนรายเดือน" : `แพ็ก ${perks.plan === "12m" ? "12" : "6"} เดือน`}
-                  </div>
-                  {/* 📺 แพ็กผูกกับช่อง ต้องบอกว่าของช่องไหน (คิมเจอ 12 ส.ค. ซื้อ 2 ช่องแต่ไม่รู้ว่าใบนี้ของช่องไหน) */}
-                  {perks.channel && (
-                    <div style={{ fontSize: 13, marginTop: 4, color: "rgba(255,255,255,.9)" }}>📺 ของช่อง <b>{perks.channel}</b></div>
-                  )}
+              <div style={{ fontSize: 11.5, letterSpacing: ".14em", textTransform: "uppercase", color: DIM, fontWeight: 700 }}>Babe House Member</div>
+
+              {/* 📺 แพ็กผูกกับ "ช่อง" — มีกี่ช่องต้องขึ้นครบทุกช่อง
+                  คิมเจอ 12 ส.ค.: ซื้อไป 2 ช่อง แต่การ์ดโชว์ช่องเดียว อีกช่องหายไปเลย */}
+              {(perks.channels || []).length > 0 ? (
+                <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                  {perks.channels.map(c => (
+                    <div key={c.channel || "-"} className="between"
+                      style={{ gap: 10, alignItems: "center", flexWrap: "wrap",
+                               background: "rgba(255,255,255,.13)", border: "1px solid rgba(255,255,255,.24)",
+                               borderRadius: 13, padding: "11px 13px" }}>
+                      {/* flex 1 1 100% = ป้ายจำนวนเดือนลงบรรทัดใหม่เสมอ ทุกใบหน้าตาเหมือนกัน
+                          ไม่งั้นชื่อแพ็กสั้น/ยาวไม่เท่ากัน บางใบป้ายอยู่ข้าง บางใบอยู่ล่าง ดูไม่เป็นระเบียบ */}
+                      <div style={{ flex: "1 1 100%", minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: "rgba(255,255,255,.92)" }}>📺 {c.channel || "ช่องของคุณ"}</div>
+                        <div className="serif" style={{ fontSize: 20, fontWeight: 700, marginTop: 1 }}>
+                          แพ็ก {c.plan === "12m" ? "12" : "6"} เดือน
+                        </div>
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.32)", borderRadius: 20,
+                        padding: "5px 12px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        เหลือ {c.months_left} จาก {c.months_total} เดือน
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {perks.months_left > 0 && (
-                  <div style={{ background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.3)", borderRadius: 20,
-                    padding: "5px 12px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    เหลือ {perks.months_left} เดือน
-                  </div>
-                )}
-              </div>
+              ) : (
+                <div className="serif" style={{ fontSize: 27, fontWeight: 700, marginTop: 2 }}>แผนรายเดือน</div>
+              )}
 
               <div style={{ marginTop: 16, borderTop: rule }}>
+                {(perks.channels || []).length > 1 && (
+                  <div style={{ fontSize: 12, color: DIM, padding: "9px 0 2px", lineHeight: 1.6 }}>
+                    สิทธิ์ด้านล่างนี้ใช้ได้กับทั้งบัญชี (ไม่แยกช่อง)
+                  </div>
+                )}
                 <Row k="✍️ สคริปต์เพิ่มคงเหลือ" v={perks.credits} unit="คลิป" />
                 <Row k="🔁 แก้เล่มใหม่" v={perks.improve} unit="ครั้ง/เดือน" />
                 {perks.edit_off > 0 && <Row k="🎬 ส่วนลดค่าตัดต่อ" v={`${perks.edit_off}%`} />}

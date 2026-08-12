@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
 import { EDIT_LIVE } from "../config.js";
-import { ACADEMY_LIVE } from "../config.js";
+import { ACADEMY_LIVE, WORKSHOP_LIVE } from "../config.js";
 import { workshopForCourse, shouldSuggestWorkshop } from "../workshopMap.js";
 
 // 🏠 "ของทั้งหมดที่ฉันซื้อ" — คอร์ส · ประกาศนียบัตร · workshop
@@ -46,7 +46,7 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
     Promise.allSettled([
       ACADEMY_LIVE ? api("/api/academy/my-courses", { token: t }) : Promise.reject(),
       ACADEMY_LIVE ? api("/api/academy/my-certificates", { token: t }) : Promise.reject(),
-      ACADEMY_LIVE ? api("/api/workshops/my", { token: t }) : Promise.reject(),
+      WORKSHOP_LIVE ? api("/api/workshops/my", { token: t }) : Promise.reject(),
       api("/api/edit/my", { token: t }),           // 🎬 งานตัดต่อ — เปิดให้ทุกคนที่มีเล่ม ไม่ผูกกับสวิตช์ Academy
     ]).then(([a, b, c, e]) => {
       if (a.status === "fulfilled") setCourses(a.value.courses || []);
@@ -101,7 +101,7 @@ export default function MyLearning({ channelCount = 0, bookCount = 0, only = nul
                   {/* 🎟️ ซื้อคอร์สแล้วแต่ยังเรียนไม่จบ → ชวนมาลงมือทำในคลาสสดเรื่องเดียวกัน
                       (คิมยืนยัน 2 ส.ค.: คนที่ขี้เกียจเรียนออนไลน์แล้วมาเข้าคลาสสด "ได้ผลจริง")
                       ⛔ ไม่ขึ้นกับคนที่เรียนจบแล้ว — เขาทำเองได้แล้ว ไม่ต้องยัดขาย */}
-                  {ACADEMY_LIVE && shouldSuggestWorkshop(c.id, pct) && (() => {
+                  {WORKSHOP_LIVE && shouldSuggestWorkshop(c.id, pct) && (() => {
                     const w = workshopForCourse(c.id);
                     return (
                       <div style={{ width: "100%", background: "#F2F7F3", border: "1px solid #cfe3d6", borderRadius: 12, padding: "11px 14px", marginTop: 2 }}>

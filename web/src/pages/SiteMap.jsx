@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api.js";
-import { ACADEMY_LIVE } from "../config.js";
+import { ACADEMY_LIVE, WORKSHOP_LIVE } from "../config.js";
 
 // 🗺️ แผนผังเว็บทั้งหมด — คิมขอ 2 ส.ค.: "อยากเห็นภาพรวมเว็บทั้งหมด ตอนนี้มันกระจัดกระจายไปหมด
 // ทุกอย่างแยกคนละหน้า ฉันไม่เห็นอะไรเลย แล้วมันทำให้ฉันงง"
@@ -39,8 +39,8 @@ const GROUPS = [
     name: "Workshop — คลาสสด", emoji: "🎟️", color: "#F3D6B6",
     flow: "เมนู 'คลาสสด' → เลือกคลาส → เลือกรอบวันที่ → จ่ายเงิน → ได้อีเมลยืนยัน",
     pages: [
-      ["/workshop", "หน้ารวมคลาสสด", "10 คลาสพร้อมรีวิว — ⚠️ ยังไม่มีรอบวันเรียน คิมต้องใส่วันที่ก่อน", ACADEMY_LIVE ? LIVE : HIDDEN],
-      ["/workshop/1", "หน้าจองคลาส", "เลือกรอบ · นับที่นั่งเรียลไทม์ · ใส่โค้ดส่วนลด · จ่ายเงิน", ACADEMY_LIVE ? LIVE : HIDDEN],
+      ["/workshop", "หน้ารวมคลาสสด", "6 คลาส มีรอบเปิดจองครบทุกคลาส", WORKSHOP_LIVE ? LIVE : HIDDEN],
+      ["/workshop/1", "หน้าจองคลาส", "เลือกรอบ · นับที่นั่งเรียลไทม์ · ใส่โค้ดส่วนลด · จ่ายเงิน", WORKSHOP_LIVE ? LIVE : HIDDEN],
     ],
   },
   {

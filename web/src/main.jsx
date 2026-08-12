@@ -42,7 +42,7 @@ function TopBar() {
           <a href="/#offer" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>{tb("nav_promo")}</a>
           {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
           {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
-          {ACADEMY_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
+          {WORKSHOP_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
           {/* 🎬 พลอยขอ 11 ส.ค. — ให้จ้างทีมตัดต่อได้จากเมนูเลย ไม่ต้องเข้าผ่านหน้าเล่มอย่างเดียว */}
           {EDIT_LIVE && <Link to="/edit" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>จ้างทีมตัดต่อ</Link>}
           <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>

@@ -3132,6 +3132,34 @@ app.get("/api/admin/academy/orders-diag", async (req, res) => {
       emails_only_open: Number(onlyOpen?.c || 0), open_by_year: openByYear, close_by_year: closeByYear, sample_open: sample });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
+// 📈 ยอดขายรายเดือนของคอร์สเดียว — ไว้เทียบ "เดือนแรกที่เปิดขาย" ของสินค้าแต่ละตัว
+//    (คิมถาม 13 ส.ค. "เดือนแรกที่ขายคอร์สตัดต่อ advance ได้ยอดเท่าไหร่ เทียบ Blueprint กี่%")
+// ⚠️ ยอดต่อคอร์สต้องอ่านจาก "รายการในออเดอร์" (academy_order_lines) ไม่ใช่ยอดรวมของออเดอร์
+//    เพราะ 1 ออเดอร์ซื้อได้หลายคอร์ส ถ้าใช้ total จะนับยอดคอร์สอื่นมารวมด้วย
+app.get("/api/admin/academy/course-months", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const cid = String(req.query.course_id || "").trim();
+  if (!cid) return res.status(400).json({ ok: false, error: "NO_COURSE_ID" });
+  try {
+    const course = await one(`SELECT legacy_id, name, price, price_sale, flag_sale, is_active, legacy_created FROM academy_courses WHERE legacy_id=$1`, [cid]);
+    // ราคาที่เก็บจริง = ราคาลด ถ้าติดธงลด ไม่งั้นใช้ราคาเต็ม
+    const paid = `CASE WHEN COALESCE(l.flag_sale,'0') IN ('1','true','t') AND COALESCE(NULLIF(l.price_sale,''),'0')::numeric > 0
+                    THEN NULLIF(l.price_sale,'')::numeric ELSE COALESCE(NULLIF(l.price,''),'0')::numeric END`;
+    const months = await q(
+      `SELECT to_char(o.legacy_created::timestamp, 'YYYY-MM') AS ym,
+              COUNT(*)::int AS orders,
+              COALESCE(SUM(${paid}), 0)::numeric AS revenue
+         FROM academy_order_lines l
+         JOIN academy_orders o ON o.legacy_id = l.order_id
+        WHERE l.course_id = $1 AND o.status = 'Close'
+          AND COALESCE(o.legacy_created,'') <> ''
+        GROUP BY 1 ORDER BY 1`, [cid]);
+    const rows = months.map(m => ({ month: m.ym, orders: Number(m.orders), revenue: Math.round(Number(m.revenue)) }));
+    const total = rows.reduce((t, r) => t + r.revenue, 0);
+    res.json({ ok: true, course: course || null, months: rows,
+      first_month: rows[0] || null, total_orders: rows.reduce((t, r) => t + r.orders, 0), total_revenue: total });
+  } catch (e) { console.error("course-months", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.get("/api/admin/academy/coverage", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const hidden = [...HIDDEN_COURSES];

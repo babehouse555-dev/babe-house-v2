@@ -3411,6 +3411,11 @@ const thDate = (d) => new Date(d).toLocaleDateString("th-TH", { timeZone: "Asia/
 // ตั้งที่ 1,400 = ตัดต่อ 900 + กราฟิก 500 (กรณีจ้างฟรีแลนซ์ทั้งหมด — เลวร้ายที่สุด)
 // ถ้ากราฟิกทำในบ้าน ต้นทุนจริงจะเหลือ ~900 → กำไรจริงสูงกว่าที่โชว์
 const EDIT_COST_PER_CLIP = Number(process.env.EDIT_COST_PER_CLIP) || 1400;
+// 💵 เรตฟรีแลนซ์ของ Babe House — เรตเดียวเท่ากันทุกคน (คิมเคาะ 12 ส.ค. 2569 · ดิสเสนอ)
+//    ฿800 ต่อ 1 คลิป โดย "รวมกราฟิกในคลิปนั้นแล้ว" ไม่แยกจ่าย
+//    ⚠️ ต่ำกว่าต้นทุนที่ระบบตั้งไว้ (1,400) → กำไรทุกแพ็กดีขึ้น จุดบางสุดยังเหลือ 54%
+//    ⚖️ ถ้าเป็นพนักงานประจำมาทำเพิ่มในวันหยุด กฎหมายถือเป็นทำงานวันหยุด ต้องคิดคนละแบบ — ถามดิทก่อนใช้
+const FREELANCE_RATE_PER_CLIP = Number(process.env.FREELANCE_RATE_PER_CLIP) || 800;
 // 💰 บันไดราคา 6 ระดับ (คิมเคาะ 5 ส.ค. 2569 หลังคำนวณต้นทุนจริง)
 //
 // หลักที่ใช้ตั้ง: ทุกระดับต้อง "อยู่ได้แม้จ้างฟรีแลนซ์ทำทั้งหมด" (ตัดต่อ 900 + กราฟิก 500 = 1,400/คลิป)
@@ -4185,7 +4190,10 @@ app.get("/api/team/me", async (req, res) => {
       const gj = await one(`SELECT COUNT(*)::int n FROM graphic_jobs
         WHERE assigned_to=$1 AND status='done' AND done_at >= $2 AND done_at < $3`, [me.member_id, from, to]).catch(() => ({ n: 0 }));
       const done = Number(r?.clips || 0);
-      return { clips: done, clip_units: Number(r?.clip_units || 0), graphics: Number(gj?.n || 0),
+      const units = Number(r?.clip_units || 0);
+      return { clips: done, clip_units: units, graphics: Number(gj?.n || 0),
+        // 💵 ยอดที่ได้เดือนนี้ = จำนวนคลิปที่ส่งแล้ว × เรตกลาง (เรตเดียวเท่ากันทุกคน)
+        rate: FREELANCE_RATE_PER_CLIP, pay: units * FREELANCE_RATE_PER_CLIP,
         on_time: Number(r?.on_time || 0),
         on_time_pct: done ? Math.round(Number(r.on_time) / done * 100) : null,
         client_revs: Number(r?.client_revs || 0), our_fixes: Number(r?.our_fixes || 0), rejects: Number(r?.rejects || 0) };

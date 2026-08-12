@@ -266,7 +266,7 @@ export default function Team() {
           นับจากวันที่ "ส่งงานถึงลูกค้า" งานที่ยังทำอยู่ยังไม่นับ · เทียบกับเดือนที่แล้วให้เห็นว่าตัวเองขึ้นหรือลง */}
       {d.my_month && (() => {
         const m = d.my_month.this, p = d.my_month.prev;
-        const diff = m.clips - p.clips;
+        const diff = (m.clip_units || m.clips) - (p.clip_units || p.clips);
         const Cell = ({ n, l, tone }) => (
           <div style={{ minWidth: 74 }}>
             <div style={{ fontSize: 21, fontWeight: 800, color: tone || "#2f2a26", lineHeight: 1.2 }}>{n}</div>
@@ -279,13 +279,14 @@ export default function Team() {
               <span style={{ fontWeight: 800, fontSize: 15 }}>📊 สรุปงานของฉัน · {m.label}</span>
               {p.clips > 0 && (
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: diff >= 0 ? "#1a7f43" : "#B26A00" }}>
-                  {diff >= 0 ? "▲" : "▼"} {Math.abs(diff)} งาน จาก{p.label} ({p.clips})
+                  {diff >= 0 ? "▲" : "▼"} {Math.abs(diff)} คลิป จาก{p.label} ({p.clip_units || p.clips} คลิป · ฿{(p.pay || 0).toLocaleString()})
                 </span>
               )}
             </div>
             <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-              <Cell n={m.clips} l="งานที่ส่งแล้ว" tone="#5a3fc0" />
-              {m.clip_units !== m.clips && <Cell n={m.clip_units} l="รวมจำนวนคลิป" />}
+              <Cell n={m.clip_units || m.clips} l="คลิปที่ส่งแล้ว" tone="#5a3fc0" />
+              {/* 💵 ยอดที่ได้เดือนนี้ — เรตเดียวเท่ากันทุกคน (คิมเคาะ 12 ส.ค.) */}
+              <Cell n={`฿${(m.pay || 0).toLocaleString()}`} l={`ยอดเดือนนี้ (คลิปละ ฿${(m.rate || 0).toLocaleString()})`} tone="#1a7f43" />
               {m.graphics > 0 && <Cell n={m.graphics} l="งานกราฟฟิก" />}
               {m.on_time_pct !== null && <Cell n={`${m.on_time_pct}%`} l="ส่งตรงเวลา" tone={m.on_time_pct >= 90 ? "#1a7f43" : m.on_time_pct >= 70 ? "#B26A00" : "#b42318"} />}
               {m.client_revs > 0 && <Cell n={m.client_revs} l="รอบแก้จากลูกค้า" />}
@@ -293,7 +294,8 @@ export default function Team() {
             </div>
             {m.clips === 0 && (
               <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.6 }}>
-                เดือนนี้ยังไม่มีงานที่ส่งถึงลูกค้าค่ะ — งานที่กำลังทำอยู่จะมานับตรงนี้ตอนส่งงานเสร็จ
+                เดือนนี้ยังไม่มีคลิปที่ส่งถึงลูกค้าค่ะ — งานที่กำลังทำอยู่จะมานับตรงนี้ตอนส่งงานเสร็จ
+                <br />คิดคลิปละ ฿{(m.rate || 0).toLocaleString()} เท่ากันทุกคน (รวมกราฟิกในคลิปแล้ว)
               </div>
             )}
           </div>

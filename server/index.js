@@ -3307,6 +3307,26 @@ app.post("/api/admin/restore-book", async (req, res) => {
 // 🔎 ส่องออเดอร์ที่ไม่ใช่ Close — คิมสงสัย 3 ส.ค.: "ลูกค้าจ่ายผ่านแอดมิน/LINE MyShop แนบสลิปก็มี
 // ในเว็บมีคนสมัครเฉยๆ ไม่ซื้อคอร์สด้วยเหรอ" → ต้องแยกให้ออกว่า Open = ตะกร้าค้าง หรือ = จ่ายแล้วแต่ไม่ได้กดปิดออเดอร์
 // ⛔ อ่านอย่างเดียว ไม่แก้ข้อมูลใดๆ
+// 📅 ข้อมูลเว็บเก่าที่เรามี "ถึงวันไหน" — ไว้ตอบว่าต้องขอไฟล์เพิ่มช่วงไหนถึงจะครบ
+//    (คิมถาม 13 ส.ค. ก่อนส่งไลน์ขอไฟล์คนทำเว็บ — ขอผิดช่วง = ได้ข้อมูลไม่ครบ ต้องไปขอใหม่)
+app.get("/api/admin/academy/data-cutoff", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const days = await q(`SELECT substring(legacy_created from 1 for 10) d, COUNT(*) c
+      FROM academy_orders WHERE COALESCE(legacy_created,'') <> ''
+        AND substring(legacy_created from 1 for 10) >= '2026-06-01'
+      GROUP BY 1 ORDER BY 1 DESC LIMIT 45`);
+    const users = await q(`SELECT substring(legacy_created from 1 for 10) d, COUNT(*) c
+      FROM academy_users WHERE COALESCE(legacy_created,'') <> ''
+        AND substring(legacy_created from 1 for 10) >= '2026-06-01'
+      GROUP BY 1 ORDER BY 1 DESC LIMIT 45`);
+    const maxes = await one(`SELECT
+      (SELECT MAX(substring(legacy_created from 1 for 10)) FROM academy_orders) AS last_order,
+      (SELECT MAX(substring(legacy_created from 1 for 10)) FROM academy_users) AS last_user,
+      (SELECT MAX(imported_at)::text FROM academy_orders) AS last_import`);
+    res.json({ ok: true, ...maxes, orders_by_day: days, users_by_day: users });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.get("/api/admin/academy/orders-diag", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   try {

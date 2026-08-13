@@ -36,7 +36,7 @@ export default function Account() {
       api("/api/me/tax-invoices", { token: session.token }).then(d => setTaxInv(d.invoices || [])).catch(() => {});
     } catch (e) { setCoMsg({ ok: false, t: e.message }); }
     finally { setCoBusy(false); }
-  }       // ค้นหาใบกำกับ — คิมทัก 5 ส.ค. "คนซื้อเยอะ หาไม่เจออีก"
+  }
   // 🔘 ปุ่มเลื่อนโฟลเดอร์ — คิมขอ 7 ส.ค. "ขอแค่มีปุ่มที่ทำให้รู้ว่าเลื่อนได้"
   //    ปุ่มโผล่เฉพาะด้านที่ยังเลื่อนต่อได้จริง จะได้ไม่มีปุ่มกดแล้วไม่เกิดอะไร
   const fldRef = useRef(null);
@@ -270,6 +270,9 @@ export default function Account() {
                 // ซึ่งตอนนี้ยังไม่มีใครมี (แพ็กเปิดขาย 1 ก.ย.) → ลูกค้ารายเดือนก็ควรเห็นสิทธิ์ตัวเอง
                 n: memberN,
                 dot: !!(perks?.free_course && !perks.free_course.claimed) },
+              // 🗑️ คิมสั่ง 13 ส.ค. "เล่มที่ลบไปแล้ว แยกไปอยู่โฟลเดอร์ถังขยะเลย ไม่ต้องมารวมกับคนอื่น"
+              //    เดิมกล่อง "เล่มที่ลบไป" โผล่ค้างทุกโฟลเดอร์ ทั้งที่เป็นของที่ลบทิ้งแล้ว
+              { key: "trash", icon: "🗑️", label: "ถังขยะ", pastel: "#E2DED9", deep: "#C9C3BC", n: deleted.length },
             ].filter(f => f.n > 0).map(f => {
               const on = f.key === folder;
               return (
@@ -533,7 +536,7 @@ export default function Account() {
           only={showFolders ? folder : null}
           onCounts={setCounts}
         />
-        {deleted.length > 0 && (
+        {deleted.length > 0 && (!showFolders || folder === "trash") && (
           <div className="card" style={{ background: "#FDF7EE", border: "1px solid #EFDFC4" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>🗑️ เล่มที่ลบไป — กู้คืนได้</div>
             <div className="muted" style={{ fontSize: 12.5, margin: "3px 0 10px" }}>เล่มที่ลบยังเก็บไว้ให้ 30 วัน กดกู้กลับมาได้เลยค่ะ</div>

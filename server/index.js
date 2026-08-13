@@ -2738,6 +2738,50 @@ app.get("/api/academy/my-certificates", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED" }); }
 });
 
+// 🎟️🎓 ประกาศนียบัตรของ "คลาสสด" — ออกให้อัตโนมัติเมื่อคลาสเรียนจบไปแล้ว
+//    (คิมสั่ง 13 ส.ค. "คลาส workshop ที่เรียนผ่านไปแล้ว ต้องได้ประกาศนียบัตรด้วย")
+//
+// ⚠️ เก็บไว้ตารางเดียวกับประกาศของคอร์สออนไลน์ (academy_certificates) โดยใช้ course_id = 'ws_<id>'
+//    เพื่อให้ใช้หน้าโหลดใบเดิม · โฟลเดอร์ "ประกาศนียบัตร" เดิม · เมลแจ้งเดิม ได้ทั้งหมดโดยไม่ต้องสร้างระบบซ้อน
+//
+// เกณฑ์: จ่ายเงินแล้ว + คลาสจบไปแล้ว (ends_at หรือ starts_at+4 ชม.)
+//    ⚠️ ไม่ได้เช็ก attended เพราะช่องนั้นต้องมีคนติ๊กเอง ซึ่งจริงๆ ไม่มีใครติ๊ก
+//       ถ้าอยากเข้มขึ้น (คนไม่มาต้องไม่ได้ใบ) เพิ่มเงื่อนไข b.attended ได้ที่บรรทัด WHERE ด้านล่าง
+async function issueWorkshopCertificates() {
+  try {
+    const rows = await q(`SELECT b.booking_id, b.email, b.name, b.workshop_id, w.name AS ws_name, s.starts_at
+      FROM workshop_bookings b
+      JOIN workshop_sessions s ON s.session_id = b.session_id
+      JOIN workshops w ON w.workshop_id = b.workshop_id
+      WHERE b.status IN ('paid','mock_paid') AND b.email IS NOT NULL
+        AND COALESCE(s.ends_at, s.starts_at + interval '4 hours') < now()
+        AND NOT EXISTS (SELECT 1 FROM academy_certificates c
+                         WHERE lower(c.email) = lower(b.email) AND c.course_id = 'ws_' || b.workshop_id)
+      ORDER BY s.starts_at LIMIT 50`);
+    for (const b of rows) {
+      const email = normEmail(b.email);
+      // ชื่อบนใบ: ชื่อที่กรอกตอนจอง → ชื่อจากคอร์สที่เคยซื้อ → ชื่อในระบบเก่า → ตัดอีเมลมาใช้
+      const own = await one(`SELECT student_name FROM academy_purchases WHERE lower(email)=lower($1) AND COALESCE(student_name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [email]);
+      const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
+      const student = String(b.name || "").trim() || own?.student_name || (u && (u.name || u.username)) || email.split("@")[0];
+      const certId = uid("cert");
+      try {
+        await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`,
+          [certId, email, "ws_" + b.workshop_id, b.ws_name || "คลาสสด Babe House", student]);
+      } catch { continue; }   // ชนกันพอดี = มีใบแล้ว ข้ามไป
+      console.log(`[workshop] 🎓 ออกประกาศนียบัตรคลาสสด: ${email} → ${b.ws_name}`);
+      sendCertificateEmail(email, student, b.ws_name || "คลาสสด Babe House", certId).catch(e => console.error("ws cert email", e.message));
+    }
+    return rows.length;
+  } catch (e) { console.error("issueWorkshopCertificates", e.message); return 0; }
+}
+// แอดมินกดออกให้เดี๋ยวนี้ได้ (เช่น จัดคลาสเสร็จแล้วอยากส่งใบให้ทันที ไม่ต้องรอรอบวันถัดไป)
+app.post("/api/admin/workshop/issue-certificates", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const n = await issueWorkshopCertificates();
+  res.json({ ok: true, checked: n, message: n ? `ออกประกาศนียบัตรให้ ${n} คนแล้วค่ะ` : "ยังไม่มีคลาสที่เรียนจบแล้วและยังไม่ได้ใบค่ะ" });
+});
+
 // ===== 🎟️ WORKSHOP (คลาสสด) — ลูกค้าดูตาราง เห็นที่นั่งเรียลไทม์ จองและจ่ายเองได้ =====
 // เดิมจองผ่านไลน์กับแอดมิน ทำให้เราไม่มีข้อมูลลูกค้า workshop เลย · ระบบนี้เก็บให้อัตโนมัติ
 // ที่นั่งที่ถูกกันไว้ = จ่ายแล้ว + กำลังจ่ายที่ยังไม่หมดเวลา (กันคนกดจองพร้อมกันแล้วเกินโควตา)
@@ -7012,10 +7056,13 @@ connectDbWithRetry().then(async () => {
   setTimeout(retryStuckGenerations, 45000); // กู้เล่มที่ค้างหลังสตาร์ท/deploy (เช่น generation โดนตัดกลางคัน)
   // ตอนสตาร์ท: คอนเทนต์/refine ที่ค้าง 'generating' = orphan จาก process เก่าแน่นอน → มาร์คให้ "เก่า" เพื่อให้ retryStuckContent กู้ทันที
   setTimeout(() => { run(`UPDATE blueprints SET content_started_at = now() - interval '10 minutes' WHERE (content_status='generating' OR analysis_status='generating') AND (content_started_at IS NULL OR content_started_at > now() - interval '8 minutes')`).then(() => retryStuckContent()).catch(() => {}); }, 50000);
-  setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
+  setInterval(() => { runMonthlyReminders(); runHomeworkReminders(); issueWorkshopCertificates(); }, 24 * 3600 * 1000); // วันละครั้ง (เตือนต่อแผนจะส่งจริงเฉพาะปลายเดือน วันที่ >=25)
   setInterval(runAbandonedFollowups, 6 * 3600 * 1000); // ทุก 6 ชม. ตามคนกรอกฟอร์มแล้วไม่จ่าย
   setInterval(runActivationReminders, 6 * 3600 * 1000);
   setTimeout(runWorkshopRunwayCheck, 70000);            // เตือนคิมถ้าเวิร์กช็อปใกล้ไม่มีรอบให้จอง
+  // 🎓 ตามเก็บประกาศนียบัตรคลาสสดที่เรียนจบไปแล้วแต่ยังไม่ได้ใบ — ทำตอนสตาร์ทด้วย
+  //    ไม่งั้นคลาสที่ผ่านไปแล้วต้องรอถึงรอบวันถัดไปกว่าจะได้ใบ
+  setTimeout(issueWorkshopCertificates, 80000);
   setInterval(runWorkshopRunwayCheck, 6 * 3600 * 1000);  // เช็คทุก 6 ชม. แต่ส่งเมลวันละครั้งพอ // ทุก 6 ชม. เตือนคนได้บทวิเคราะห์แล้วยังไม่กดสร้างแผน 30 วัน (เกิน 24 ชม.)
   setInterval(retryStuckGenerations, 3 * 60 * 1000); // ทุก 3 นาที กู้เล่มที่ค้าง error/generating
   setInterval(retryStuckContent, 3 * 60 * 1000); // ทุก 3 นาที กู้คอนเทนต์ 30 วันที่ค้าง + ปลดล็อก refine ที่ค้าง

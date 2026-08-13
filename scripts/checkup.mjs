@@ -405,6 +405,17 @@ await check("เปลี่ยนรหัสล็อกอินแล้ว 
   must(up.json?.ok, "พิมพ์ตัวใหญ่แล้วเข้าไม่ได้");
   await save(bow.code);
 });
+await check("ลำดับจ่ายงานต้องไม่หาย — หัวหน้าประจำมาก่อนฟรีแลนซ์เสมอ", async () => {
+  // 13 ส.ค. เปลี่ยนรหัสล็อกอินทั้งทีม แล้วลำดับจ่ายงานหายเงียบ ทุกคนตกไปด่าน 3 หมด
+  // เพราะเงื่อนไขเดิมเขียนรหัสไว้ตายตัว → ย้ายมาคิดจากคุณสมบัติของคน
+  const wl = await api("/api/team/workload", { admin: true });
+  const p = wl.json?.people || [];
+  const tier = (code) => p.find(m => String(m.code || "").toLowerCase() === code)?.assign_tier;
+  const senior = p.filter(m => m.role === "senior");
+  must(senior.length, "ไม่มีหัวหน้าตัดต่อในสนามทดสอบ");
+  for (const m of senior) must(Number(m.assign_tier) === 1, `${m.name} (หัวหน้า) อยู่ด่าน ${m.assign_tier} ควรเป็นด่าน 1`);
+  must(new Set(p.map(m => m.assign_tier)).size > 1, "ทุกคนอยู่ด่านเดียวกันหมด = ลำดับจ่ายงานหาย");
+});
 await check("ไม่เปิดวันไว้ = ระบบต้องไม่ยัดงานให้ (ทุกคนเป็น opt-in)", async () => {
   // คิมสั่ง 13 ส.ค.: "อยากให้ทุกคนทำงานเสริมได้ แต่เขาต้องติ๊กว่าว่างนะ"
   // เปิดสิทธิ์ให้ AE/ฟรีแลนซ์รับงานได้แล้ว — ตาข่ายที่กันไว้คือ "โควตา 0 = ไม่มีวันได้งาน"

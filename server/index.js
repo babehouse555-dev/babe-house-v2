@@ -4452,17 +4452,24 @@ async function seedTeamIfEmpty() {
 // 🎯 ลำดับการจ่ายงาน (คิมเคาะ 7 ส.ค.) — ตั้งให้ทีมเดิมที่มีอยู่แล้วด้วย ไม่ใช่แค่ตอน seed
 // "โบ กับ พี่ก้อง ต้องลงให้เต็มก่อน จากนั้นเป็นกัน ขั้นสอง แล้วค่อยไปฟรีแลนซ์"
 async function setAssignTiers() {
-  await run(`UPDATE team_members SET assign_tier=1 WHERE code IN ('bow','gong')`).catch(() => {});
-  await run(`UPDATE team_members SET assign_tier=2 WHERE code = 'gun'`).catch(() => {});
-  // ฟรีแลนซ์ + คนอื่นๆ = ด่านสุดท้าย
-  await run(`UPDATE team_members SET assign_tier=3 WHERE assign_tier IS NULL OR code NOT IN ('bow','gong','gun')`).catch(() => {});
+  // 🏠 พนักงานประจำในเฮ้าส์ = คนที่คิมตั้งโควตารับงานประจำวันไว้ (ฟรีแลนซ์โควตา 0 ต้องกดเปิดเอง)
+  //    ตั้งครั้งเดียวจากของเดิม แล้วหลังจากนี้แก้ได้ในหน้า "สมาชิกทีม" — ไม่ผูกกับรหัสล็อกอินอีกแล้ว
+  await run(`UPDATE team_members SET inhouse=true WHERE inhouse IS NOT TRUE AND (COALESCE(default_slots,0) > 0 OR role IN ('owner','ae'))`).catch(() => {});
+  // 🎯 ลำดับจ่ายงาน — คิดจาก "คุณสมบัติของคน" ไม่ใช่รหัสล็อกอิน
+  //    ⚠️ ของเดิมเขียนรหัสไว้ตายตัว (bow/gong/gun) พอคิมเปลี่ยนรหัสทั้งทีม 13 ส.ค.
+  //       เงื่อนไขไม่ตรงสักข้อ ทุกคนเลยตกไปด่าน 3 หมด = ลำดับที่คิมตั้งไว้หายเงียบ
+  //       (บั๊กคลาสเดียวกับสิทธิ์ขอกราฟฟิก — พลาดซ้ำที่เดิม เลยย้ายมาคิดจากคุณสมบัติทั้งหมด)
+  //    ด่าน 1 = หัวหน้าตัดต่อประจำ (โบ/ก้อง) ลงให้เต็มก่อน
+  //    ด่าน 2 = พนักงานประจำคนอื่นที่มีโควตารายวัน (กัน)
+  //    ด่าน 3 = ฟรีแลนซ์ + คนที่ต้องติ๊กวันเอง (นิน/bense/fairy/ลูกตาล) — ด่านสุดท้าย
+  await run(`UPDATE team_members SET assign_tier = CASE
+      WHEN role='senior' AND COALESCE(inhouse,false) THEN 1
+      WHEN COALESCE(inhouse,false) AND COALESCE(default_slots,0) > 0 THEN 2
+      ELSE 3 END`).catch(() => {});
   // 🚫 AE (ลูกตาล) ตัดต่อไม่เป็น — คิมสั่ง 7 ส.ค. "ให้เป็นคนตรวจอย่างเดียว"
   //    ตั้งโควตา 0 ด้วย เพื่อให้หน้าตารางงานไม่ขึ้นว่า "ว่างรับได้ 20 คลิป" ซึ่งไม่จริง
   // AE โควตาประจำวัน = 0 เสมอ — ไม่ใช่ห้ามรับงาน แต่เป็น "ต้องติ๊กว่าว่างเองก่อน" (คิมสั่ง 13 ส.ค.)
   await run(`UPDATE team_members SET default_slots=0 WHERE role='ae'`).catch(() => {});
-  // 🏠 พนักงานประจำในเฮ้าส์ = คนที่คิมตั้งโควตารับงานประจำวันไว้ (ฟรีแลนซ์โควตา 0 ต้องกดเปิดเอง)
-  //    ตั้งครั้งเดียวจากของเดิม แล้วหลังจากนี้แก้ได้ในหน้า "สมาชิกทีม" — ไม่ผูกกับรหัสล็อกอินอีกแล้ว
-  await run(`UPDATE team_members SET inhouse=true WHERE inhouse IS NOT TRUE AND (COALESCE(default_slots,0) > 0 OR role IN ('owner','ae'))`).catch(() => {});
   // 🏷️ ตำแหน่งลูกตาลขึ้นผิดเป็น "AE / Motion" — คิมแจ้ง 7 ส.ค. ให้เป็น AE อย่างเดียว
   //    seed ใช้แค่ตอนตารางว่าง ทีมที่มีอยู่แล้วจึงต้องแก้ตรงนี้ด้วย ไม่งั้นของจริงไม่เปลี่ยน
   await run(`UPDATE team_members SET position='AE (Account Executive)' WHERE code='lookthan'`).catch(() => {});

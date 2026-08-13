@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import "./styles.css";
 import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
-import { ACADEMY_LIVE, EDIT_LIVE, PREVIEW } from "./config.js";
+import { ACADEMY_LIVE, WORKSHOP_LIVE, EDIT_LIVE, PREVIEW } from "./config.js";
 import { initPixel, track as fbTrack } from "./pixel.js";
 import { ConfirmHost } from "./confirm.jsx";
 

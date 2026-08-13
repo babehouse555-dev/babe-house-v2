@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, session } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
+import LoginBox from "../LoginBox.jsx";
 
 // หน้ารายละเอียดคอร์ส — อ่านก่อน ตัดสินใจก่อน แล้วค่อยซื้อ (ตาม feedback คิม: ไม่เอาปุ่มซื้อโดดใส่หน้าแรก)
 const BLUE = "var(--blue)";
@@ -25,6 +26,7 @@ export default function AcademyCourse() {
   const [err, setErr] = useState(false);
   const [mine, setMine] = useState(null);
   const [buying, setBuying] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [code, setCode] = useState("");
   const [promo, setPromo] = useState(null);   // {percent, final} หลังกดใช้โค้ด
   const [codeMsg, setCodeMsg] = useState("");
@@ -47,7 +49,10 @@ export default function AcademyCourse() {
   }
 
   async function buy() {
-    if (!session.token) { window.location.href = "/account"; return; }
+    // 🔐 ยังไม่ล็อกอิน → เปิดกล่องล็อกอินตรงนี้เลย ไม่พาออกไปหน้าบัญชี
+    //    เดิมโยนไป /account ลูกค้าล็อกอินเสร็จต้องเดินกลับมาหาคอร์สนี้เอง = หลุดกลางทางเยอะ
+    //    (เจอตอนตรวจก่อนเปิดขายคอร์ส 13 ส.ค. 69 — เส้นนี้คือเส้นซื้อหลักของสินค้าที่เพิ่งเปิด)
+    if (!session.token) { setShowLogin(true); return; }
     const bad = validateTax(tax);          // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
     if (bad) { alert(bad); return; }
     // 🎓 ชื่อบนเกียรติบัตร — ต้องถามตอนนี้ เพราะใบออกอัตโนมัติตอนเรียนจบ แก้ทีหลังไม่ได้
@@ -203,7 +208,11 @@ export default function AcademyCourse() {
             {!owned && session.token && TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
             {owned
               ? <Link className="btn full" to={`/academy/learn?course=${c.id}`} style={{ textAlign: "center" }}>เข้าเรียน →</Link>
-              : <button className="btn full" disabled={buying} onClick={buy}>{buying ? "กำลังไปหน้าชำระเงิน..." : session.token ? (promo?.final <= 0 ? "เริ่มเรียนเลย (ฟรี)" : "สมัครเรียนคอร์สนี้") : "เข้าสู่ระบบเพื่อสมัครเรียน"}</button>}
+              : showLogin && !session.token
+                ? <LoginBox title="เข้าสู่ระบบก่อนสมัครเรียนนะคะ"
+                    hint={<>ใช้อีเมลที่เคยซื้อกับเราได้เลย — <b>เข้าเสร็จอยู่หน้าคอร์สนี้ต่อ ไม่ต้องเดินกลับมาใหม่ค่ะ</b></>}
+                    onDone={() => setShowLogin(false)} />
+                : <button className="btn full" disabled={buying} onClick={buy}>{buying ? "กำลังไปหน้าชำระเงิน..." : session.token ? (promo?.final <= 0 ? "เริ่มเรียนเลย (ฟรี)" : "สมัครเรียนคอร์สนี้") : "🔐 เข้าสู่ระบบ แล้วสมัครเรียน"}</button>}
             <ul style={{ listStyle: "none", margin: "14px 0 0", padding: 0, fontSize: 13.5, lineHeight: 2 }}>
               <li>✓ เรียนได้ทันทีหลังชำระเงิน</li>
               <li>✓ {d.lessons.length} บทเรียน · ดูซ้ำได้ตลอด</li>

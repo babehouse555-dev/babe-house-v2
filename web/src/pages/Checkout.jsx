@@ -102,7 +102,17 @@ export default function Checkout() {
 
         {isMock ? <>
           <button className="btn full" onClick={pay} disabled={busy} style={{ marginBottom: 10 }}>{t("co_pay_mock")}</button>
-        </> : <button className="btn full" onClick={pay} disabled={busy}>{t("co_pay")}</button>}
+        </> : <>
+          {/* ⏱️ เตือนเรื่อง QR หมดอายุ — ต้นเหตุที่ลูกค้าจ่ายไม่ผ่านแล้วคิดว่าจ่ายแล้ว (เจอจริง 13 ส.ค. 69)
+              ลูกค้าเปิดหน้าจ่าย 15:33 ไปสแกน 17:03 → QR หมดอายุ เงินไม่เข้า แล้วทักมาว่าจ่ายแล้วไม่ได้ของ
+              ทีมต้องไล่หาใน Stripe ทั้งวัน · เตือนตรงนี้ราคาถูกกว่ามาก */}
+          <div style={{ background: "#FFF8EC", border: "1px solid #f0d9ae", borderRadius: 12,
+            padding: "11px 13px", marginBottom: 12, fontSize: 13, lineHeight: 1.7, color: "#8a6d3b" }}>
+            ⏱️ <b>สแกนจ่ายให้เสร็จภายใน 15 นาทีนะคะ</b> — QR พร้อมเพย์มีอายุจำกัด
+            ถ้าทิ้งไว้นานแล้วค่อยสแกน <b>เงินจะไม่เข้าระบบ</b> ต้องกลับมากดจ่ายใหม่ค่ะ
+          </div>
+          <button className="btn full" onClick={pay} disabled={busy}>{t("co_pay")}</button>
+        </>}
 
         {/* ⏳ เตือนเรื่อง QR หมดอายุ — ต้นเหตุที่ลูกค้าจ่ายไม่ผ่านมากที่สุด (เจอ 77 คนใน 14 วัน)
             เคสจริง 6 ส.ค.: ลูกค้าสแกน QR ที่หมดอายุแล้ว เงินออกจากบัญชีแต่ไม่ถึงเรา

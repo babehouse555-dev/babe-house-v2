@@ -477,6 +477,22 @@ app.post("/api/checkout", async (req, res) => {
     const parsed = CheckoutSchema.parse(req.body);
     const payload = normalizePayload(parsed.payload);
     // จ่ายเงินจริง: ซื้อได้หลายเล่ม (เช่น อยากได้บทวิเคราะห์เพิ่ม) — ไม่บล็อกซ้ำที่ checkout แล้ว (โค้ดฟรีกันซ้ำที่ apply-code)
+    //
+    // 🔁 แต่ถ้ามี "ใบที่ยังไม่จ่าย" ของช่องเดียวกันค้างอยู่ไม่เกิน 2 ชม. → พากลับไปจ่ายใบเดิม
+    //    เจอเคสจริง 13 ส.ค. 69: ลูกค้าเปิดหน้าจ่ายเงินตอน 15:33 แล้วไปจ่าย 17:03
+    //    QR พร้อมเพย์หมดอายุไปแล้ว จ่ายไม่ผ่าน · ลูกค้าสับสนเลยกรอกฟอร์มใหม่
+    //    กลายเป็น 2 ใบค้าง แล้วทักมาว่า "จ่ายแล้วแต่ไม่ได้ของ" — ทีมต้องไล่หาว่าเงินผูกกับใบไหน
+    //    → กันไว้ตั้งแต่ต้น: ใบเดิมยังใช้ได้ ไม่ต้องสร้างใบใหม่ให้สับสน
+    const dupe = await one(`SELECT order_id, checkout_url FROM blueprint_orders
+      WHERE lower(email)=lower($1) AND instagram_account=$2 AND payment_status='pending'
+        AND ${bpOnly()} AND created_at > now() - interval '2 hours'
+      ORDER BY created_at DESC LIMIT 1`, [normEmail(parsed.payload?.email || ""), parsed.payload?.instagram_account || ""]).catch(() => null);
+    if (dupe) {
+      return res.json({ ok: true, order_id: dupe.order_id, reused: true,
+        checkout_url: dupe.checkout_url || `/checkout?order_id=${encodeURIComponent(dupe.order_id)}`,
+        provider: PROVIDER, payment_status: "pending",
+        message: "คุณมีรายการที่ยังไม่ได้ชำระอยู่แล้วค่ะ พาไปจ่ายใบเดิมให้เลยนะคะ (ไม่ต้องกรอกใหม่)" });
+    }
     const orderId = uid("ord");
     await upsertUser({ user_id: payload.user_id, instagram_account: payload.instagram_account, business_type: payload.form_responses.business_type });
     await upsertCustomer(payload.email, payload.instagram_account);

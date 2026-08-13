@@ -101,6 +101,23 @@ group("2️⃣  ซื้อเล่ม Blueprint");
 const EM = "checkup@test.local";
 const tok = await login(EM);
 let book1;
+await check("กรอกฟอร์มซ้ำทั้งที่มีใบค้างจ่าย → ต้องพากลับไปจ่ายใบเดิม ไม่สร้างใบใหม่", async () => {
+  // เคสจริง 13 ส.ค.: QR พร้อมเพย์หมดอายุ ลูกค้าสับสนกรอกฟอร์มใหม่ กลายเป็น 2 ใบค้าง
+  // แล้วแจ้งว่า "จ่ายแล้วไม่ได้ของ" — ทีมต้องไล่หาว่าเงินผูกกับใบไหน
+  const body = { tier: "Premium_490", payload: {
+    user_id: "u_dupe", instagram_account: "@chan_dupe", email: "dupe@test.local",
+    meta_purchase: { tier: "Premium_490", billing_cycle: "August_2026" },
+    form_responses: { monthly_goal: "โต", business_type: "ร้าน", display_name: "ซ้ำ" } } };
+  const a = await api("/api/checkout", { method: "POST", body });
+  must(a.json?.order_id, "สร้างออเดอร์แรกไม่สำเร็จ: " + a.text.slice(0, 120));
+  const b = await api("/api/checkout", { method: "POST", body });
+  must(b.json?.order_id === a.json.order_id, `กรอกซ้ำแล้วได้ใบใหม่ (${b.json?.order_id}) แทนที่จะใช้ใบเดิม`);
+  must(b.json?.reused, "ไม่ได้บอกว่าใช้ใบเดิม");
+  // จ่ายใบนั้นแล้ว กรอกใหม่ต้องได้ใบใหม่ (ซื้อเล่มที่ 2 ได้ตามปกติ)
+  await api("/api/create-payment-session", { method: "POST", body: { order_id: a.json.order_id } });
+  const c = await api("/api/checkout", { method: "POST", body });
+  must(c.json?.order_id !== a.json.order_id, "จ่ายใบเดิมไปแล้ว แต่ยังพากลับไปใบเดิมอีก — ซื้อเล่มที่ 2 ไม่ได้");
+});
 await check("สั่งซื้อ + จ่ายเงิน → ออเดอร์เป็น 'จ่ายแล้ว'", async () => {
   book1 = await buyBook(EM, "@chan_a");
   const o = await api(`/api/orders/${book1.orderId}`);

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, session } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
+import LoginBox from "../LoginBox.jsx";
 
 // รายละเอียดคลาสสด + เลือกรอบ + จองและจ่ายเอง (ที่นั่งเช็กสดตอนกดจอง กันจองเกิน)
 const BLUE = "var(--blue)";
@@ -18,6 +19,10 @@ export default function WorkshopDetail() {
   const [promo, setPromo] = useState(null);
   const [codeMsg, setCodeMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  // 🔐 ยังไม่ล็อกอิน — ต้องล็อกอินได้ตรงนี้ ห้ามพาออกจากหน้า
+  //    หน้านี้ลูกค้ากรอกไปแล้วทั้ง ชื่อผู้เรียน / เบอร์โทร / แพ้อาหาร / หมายเหตุ
+  //    ถ้าเด้งไปหน้าบัญชี ของที่กรอกหายหมด แล้วต้องกลับมาหาคลาสนี้เอง (เจอตอนตรวจก่อนเปิดขาย 13 ส.ค.)
+  const [showLogin, setShowLogin] = useState(false);
   const [tax, setTax] = useState(null);   // 🧾 ใบกำกับในนามบริษัท (null = ไม่ได้ขอ)
 
   useEffect(() => { api(`/api/workshops/${id}`).then(d2 => { setD(d2); setPick(d2.sessions?.[0]?.session_id || null); }).catch(() => setErr(true)); }, [id]);
@@ -35,7 +40,7 @@ export default function WorkshopDetail() {
   }
 
   async function book() {
-    if (!session.token) { window.location.href = "/account"; return; }
+    if (!session.token) { setShowLogin(true); return; }
     if (!pick) return alert("เลือกรอบที่จะเรียนก่อนนะคะ");
     if (!form.name.trim() || !form.phone.trim()) return alert("กรอกชื่อและเบอร์โทรด้วยนะคะ");
     const bad = validateTax(tax);          // 🧾 เก็บก่อนจ่าย ใบออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
@@ -209,9 +214,13 @@ export default function WorkshopDetail() {
                 <span>{promo ? (promo.final <= 0 ? "ฟรี!" : money(promo.final / 100)) : money(totalSatang / 100)}</span>
               </div>
               {!soldOut && session.token && TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
-              <button className="btn full" disabled={busy || soldOut} onClick={book}>
-                {busy ? "กำลังไปหน้าชำระเงิน..." : soldOut ? "รอบนี้เต็มแล้ว" : session.token ? "จองและชำระเงิน" : "เข้าสู่ระบบเพื่อจอง"}
-              </button>
+              {showLogin && !session.token
+                ? <LoginBox title="เข้าสู่ระบบก่อนจองนะคะ"
+                    hint={<>ใช้อีเมลเดิมที่เคยซื้อกับเราได้เลย — <b>เข้าเสร็จอยู่หน้านี้ต่อ ที่กรอกไว้ไม่หายค่ะ</b></>}
+                    onDone={() => setShowLogin(false)} />
+                : <button className="btn full" disabled={busy || soldOut} onClick={book}>
+                    {busy ? "กำลังไปหน้าชำระเงิน..." : soldOut ? "รอบนี้เต็มแล้ว" : session.token ? "จองและชำระเงิน" : "🔐 เข้าสู่ระบบ แล้วจอง"}
+                  </button>}
               <ul style={{ listStyle: "none", margin: "14px 0 0", padding: 0, fontSize: 13, lineHeight: 2 }}>
                 <li>✓ ยืนยันที่นั่งทันทีหลังชำระเงิน</li>
                 <li>✓ ไฟล์สรุปหลังเรียนโหลดได้ในบัญชีของคุณ</li>

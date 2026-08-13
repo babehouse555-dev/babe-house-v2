@@ -12,8 +12,11 @@ import { useState, useEffect } from "react";
 // ตรวจก่อนส่ง — คืนข้อความ error ถ้ายังกรอกไม่ครบ, คืน null ถ้าผ่าน
 // 🔁 ตรรกะตรวจข้อมูลย้ายไปอยู่ validate.js แล้ว (ไฟล์ธรรมดา สคริปต์ตรวจอัตโนมัติเรียกทดสอบได้)
 //    ที่นี่แค่ส่งต่อ เพื่อให้หน้าที่ import จากไฟล์นี้อยู่แล้วใช้ได้เหมือนเดิม ไม่ต้องไล่แก้ทุกหน้า
+// ⚠️ `export { X } from "..."` เป็นการ "ส่งต่อ" เฉยๆ ชื่อนั้นจะไม่มีอยู่ในไฟล์นี้
+//    ถ้าจะใช้เองต้อง import เข้ามาด้วย ไม่งั้นพังตอนลูกค้าเปิดจริง (ReferenceError)
+//    เคยพลาดมาแล้วกับ WHT_PCT — จอกล่องใบกำกับดับตอนลูกค้าติ๊ก "หัก ณ ที่จ่าย"
 export { validateTax, whtAmount, WHT_PCT } from "./validate.js";
-import { whtAmount } from "./validate.js";
+import { whtAmount, WHT_PCT } from "./validate.js";
 
 export default function TaxInvoiceBox({ onChange, totalSatang = 0 }) {
   const [want, setWant] = useState(false);

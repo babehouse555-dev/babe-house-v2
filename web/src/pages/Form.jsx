@@ -296,7 +296,10 @@ export default function Form() {
       if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); return; } // บังคับเบอร์ ≥9 หลัก — ครูพี่คิมต้องติดต่อได้ถ้าเล่มมีปัญหา
     }
     if (step === 3 && hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); return; } // บังคับแนบรูป Insight — ไม่มีรูป บทวิเคราะห์จะมั่ว
-    setStep(s => s + 1); toTop();
+    // 🚧 ห้ามเกินขั้น 4 — บนมือถือคนกดปุ่มซ้ำเวลาเครื่องหน่วง (นึกว่ากดไม่ติด)
+    //    เดิมบวกไปเรื่อยๆ ได้ กลายเป็น "ขั้นที่ 6/4" แล้วหน้าว่างเปล่า ไม่มีปุ่มอะไรให้กดต่อเลย = ตัน
+    //    (เจอตอนทดสอบบนจอมือถือจริง 13 ส.ค. 69)
+    setStep(s => Math.min(4, s + 1)); toTop();
   };
 
   async function submit(e) {

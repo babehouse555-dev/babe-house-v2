@@ -5824,8 +5824,29 @@ async function getStudents(industry) {
 // ถ้าไม่เจอเป๊ะ → เดาอีเมลที่พิมพ์ผิดใกล้เคียงให้ (ลูกค้าพิมพ์ .con แทน .com บ่อยมาก)
 app.get("/api/admin/find-customer", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const email = String(req.query.email || "").trim().toLowerCase();
-  if (!email) return res.status(400).json({ ok: false, error: "ต้องใส่ ?email=" });
+  let email = String(req.query.email || "").trim().toLowerCase();
+  // 🔎 ลูกค้าทักมาด้วย "ชื่อช่อง" บ่อยกว่าอีเมล — หาอีเมลจากชื่อช่องให้ก่อน
+  //    (เทียบแบบไม่สน @ . _ - และตัวพิมพ์ เพราะลูกค้าพิมพ์มาไม่เหมือนกันทุกครั้ง)
+  const channel = String(req.query.channel || "").trim();
+  if (!email && channel) {
+    const norm = channel.toLowerCase().replace(/[@\s._-]/g, "");
+    const hit = await one(
+      `SELECT email, instagram_account FROM blueprint_orders
+        WHERE email IS NOT NULL AND regexp_replace(lower(instagram_account), '[@[:space:]._-]', '', 'g') = $1
+        ORDER BY created_at DESC LIMIT 1`, [norm]).catch(() => null);
+    if (hit?.email) email = String(hit.email).toLowerCase();
+    else {
+      const like = await q(
+        `SELECT DISTINCT ON (lower(email)) email, instagram_account, created_at, payment_status
+           FROM blueprint_orders
+          WHERE email IS NOT NULL AND regexp_replace(lower(instagram_account), '[@[:space:]._-]', '', 'g') LIKE $1
+          ORDER BY lower(email), created_at DESC LIMIT 10`, ["%" + norm + "%"]).catch(() => []);
+      if (like.length === 1) email = String(like[0].email).toLowerCase();
+      else if (!like.length) return res.status(404).json({ ok: false, error: "CHANNEL_NOT_FOUND", channel, message: "ไม่พบช่องนี้ในระบบค่ะ" });
+      else return res.json({ ok: true, channel, matches: like, message: "เจอหลายช่องที่ใกล้เคียง เลือกอีเมลแล้วยิงซ้ำด้วย ?email=" });
+    }
+  }
+  if (!email) return res.status(400).json({ ok: false, error: "ต้องใส่ ?email= หรือ ?channel=" });
   const safe = (p, args = []) => q(p, args).then(r => r.rows ?? r).catch(e => [{ _error: String(e.message || e) }]);
 
   const [orders, requests, academy, workshops, edits, users] = await Promise.all([

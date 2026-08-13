@@ -6911,6 +6911,45 @@ app.get("/api/admin/stripe-peek", async (req, res) => {
       created: new Date((ses.created || 0) * 1000).toISOString() });
   } catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 300) }); }
 });
+// 🔎 ค้นเงินใน Stripe จาก "อีเมลลูกค้า" — ใช้ตอนลูกค้าแจ้งว่าจ่ายแล้วแต่ระบบยังไม่ขึ้น
+//    (เจอเคสจริง 13 ส.ค. 69: ลูกค้าจ่ายพร้อมเพย์แล้วกรอกฟอร์มใหม่ ทำให้มีหลายออเดอร์
+//     ต้องหาว่าเงินไปผูกกับใบไหนถึงจะปลดล็อกถูกใบ)
+//    ⚠️ พร้อมเพย์เป็นการจ่ายแบบ "ไม่ทันที" — session อาจขึ้น unpaid ทั้งที่ payment_intent กำลัง processing
+//       เลยต้องดู payment_intent ด้วย ไม่ใช่ดูแค่ payment_status ของ session
+app.get("/api/admin/stripe-find", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  if (!process.env.STRIPE_SECRET_KEY) return res.status(409).json({ ok: false, error: "NO_KEY" });
+  const email = String(req.query?.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL" });
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const hours = Math.max(1, Math.min(720, Number(req.query?.hours) || 48));
+    const since = Math.floor(Date.now() / 1000) - hours * 3600;
+    // ไล่ทั้ง payment_intent (เห็นสถานะกำลังดำเนินการด้วย) และ session (เห็นว่าผูกกับออเดอร์ไหน)
+    const pis = await stripe.paymentIntents.list({ created: { gte: since }, limit: 100 });
+    const mine = pis.data.filter(p => String(p.receipt_email || "").toLowerCase() === email
+      || String(p.metadata?.email || "").toLowerCase() === email);
+    const out = [];
+    for (const p of mine) {
+      let sess = null;
+      try { const l = await stripe.checkout.sessions.list({ payment_intent: p.id, limit: 1 }); sess = l.data[0] || null; } catch {}
+      out.push({ payment_intent: p.id, status: p.status,            // succeeded | processing | requires_payment_method ...
+        amount: (p.amount || 0) / 100, method: p.payment_method_types?.join(","),
+        created: new Date((p.created || 0) * 1000).toISOString(),
+        session_id: sess?.id || null, session_status: sess?.payment_status || null,
+        order_id: sess?.metadata?.order_id || sess?.client_reference_id || null });
+    }
+    // เผื่อกรณีที่ยิงหา session ตรงๆ ได้ผลดีกว่า (จ่ายไม่สำเร็จจะไม่มี payment_intent)
+    const ses = await stripe.checkout.sessions.list({ created: { gte: since }, limit: 100 });
+    const mySes = ses.data.filter(x => String(x.customer_details?.email || "").toLowerCase() === email)
+      .map(x => ({ session_id: x.id, session_status: x.payment_status, amount: (x.amount_total || 0) / 100,
+        created: new Date((x.created || 0) * 1000).toISOString(),
+        order_id: x.metadata?.order_id || x.client_reference_id || null }));
+    res.json({ ok: true, email, hours, payments: out, sessions: mySes });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e.message).slice(0, 300) }); }
+});
+
 // 🧪 ลองรูปแบบ body ของ API แนบไฟล์ — เอกสารบนเว็บ FlowAccount อ่านสเปกส่วนนี้ไม่ได้ เลยต้องยิงเทียบเอา
 app.post("/api/admin/flowaccount/try-attach", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });

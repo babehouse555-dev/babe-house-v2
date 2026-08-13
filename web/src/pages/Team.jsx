@@ -146,6 +146,11 @@ export default function Team() {
   const [cp, setCp] = useState(null);         // คอนเทนต์ลูกค้า
   const [cpOpen, setCpOpen] = useState("");   // โปรเจคที่กางอยู่
   const [cpF, setCpF] = useState({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" });
+  // 📥 ประตูรับงานประตูเดียว (คิมสั่ง 13 ส.ค.)
+  //    เดิมมี 3 ประตูแยกกัน — ตัดต่อ/คอนเทนต์อยู่คนละแท็บ ส่วนกราฟฟิกขอได้จากในงานตัดต่อเท่านั้น
+  //    ลูกตาลมองว่าเป็นเรื่องเดียวคือ "ลูกค้าสั่งงานมา" ต้องเลือกให้ถูกแท็บก่อนถึงจะกรอกได้ = พลาดง่าย
+  //    → เหลือฟอร์มเดียว ติ๊กว่าเป็นงานอะไร แล้วระบบส่งให้คนที่ถูกต้องเอง
+  const [kind, setKind] = useState("edit");   // edit | content | graphic
   const [ciD, setCiD] = useState({});         // ร่างที่กำลังแก้ (แยกตามชิ้น)
   const loadCp = (id) => api(`/api/team/content?code=${encodeURIComponent(code)}${id ? `&cp_id=${id}` : ""}`).then(setCp).catch(() => {});
   const [lv, setLv] = useState(null);         // ข้อมูลวันลา
@@ -234,7 +239,7 @@ export default function Team() {
     .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
     .concat([["content", "📝 คอนเทนต์ลูกค้า", null]])
     .concat([["leave", "🌴 วันลา", null]])
-    .concat((isOwner || isAE) ? [["intake", "🏢 รับบรีฟลูกค้า", null]] : [])
+    .concat((isOwner || isAE) ? [["intake", "📥 รับบรีฟใหม่", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
     .concat(isOwner ? [["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
 
@@ -776,55 +781,14 @@ export default function Team() {
         const tone = { draft: "#a89f96", generating: "#0b6ea8", review: "#B26A00", ae_check: "#7a4fa3", sent: C.green, error: "#b42318" };
         return <>
           {/* ลูกตาลกรอกบรีฟ */}
-          {cp.is_boss && <div style={card}>
-            <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📝 รับบรีฟคอนเทนต์จากลูกค้า</h3>
-            <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 12px", lineHeight: 1.7 }}>
-              กรอกข้อมูลลูกค้าและบรีฟ กดยืนยันแล้ว <b>AI จะร่างคอนเทนต์ให้ทันที</b> แล้วส่งต่อให้ทีมคอนเทนต์ตรวจแก้ค่ะ
-            </p>
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input style={{ ...input, flex: 1, minWidth: 180 }} placeholder="ชื่อลูกค้า" value={cpF.client_name}
-                  onChange={e => setCpF(v => ({ ...v, client_name: e.target.value }))} />
-                <input style={{ ...input, width: 160 }} type="date" value={cpF.due_at}
-                  onChange={e => setCpF(v => ({ ...v, due_at: e.target.value }))} />
-              </div>
-              {/* 🤖 เลือกจำนวนคอนเทนต์ที่ให้ AI ร่าง — คิมขอ 12 ส.ค. "ต้องมีปุ่มให้เลือกด้วยว่า ai ทำกี่คอนเทนต์"
-                  เดิมเป็นช่องตัวเลขเปล่าๆ ที่มีเลข 5 ค้างอยู่ ทำให้ข้อความบอก "กี่ชิ้น" ไม่เคยโผล่ให้เห็นเลย
-                  ลูกตาลเปิดมาเห็นแค่เลข 5 ลอยๆ ไม่รู้ว่าคืออะไร และไม่รู้ว่ากดเปลี่ยนได้ */}
-              <div style={{ background: "#F7F4FD", border: "1px solid #e4d8f2", borderRadius: 12, padding: "11px 13px" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 2 }}>🤖 ให้ AI ร่างกี่ชิ้น?</div>
-                <div style={{ fontSize: 12, color: "#7c7268", marginBottom: 9 }}>เลือกได้ 1–30 ชิ้น · ยิ่งเยอะยิ่งใช้เวลาร่างนานขึ้น</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  {[3, 5, 10, 15, 20, 30].map(n => {
-                    const on = Number(cpF.want_count) === n;
-                    return <button key={n} onClick={() => setCpF(v => ({ ...v, want_count: n }))}
-                      style={{ borderRadius: 999, padding: "8px 15px", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit",
-                        border: `1.5px solid ${on ? "#5a3fc0" : "#ddd2c8"}`, background: on ? "#5a3fc0" : "#fff", color: on ? "#fff" : "#2f2a26" }}>
-                      {n}
-                    </button>;
-                  })}
-                  <input style={{ ...input, width: 96 }} inputMode="numeric" placeholder="อื่นๆ" value={cpF.want_count}
-                    onChange={e => setCpF(v => ({ ...v, want_count: e.target.value.replace(/[^\d]/g, "").slice(0, 2) }))} />
-                  <span style={{ fontSize: 13, color: "#7c7268" }}>ชิ้น</span>
-                </div>
-              </div>
-              <textarea style={{ ...input, minHeight: 100, fontFamily: "inherit" }} placeholder="บรีฟจากลูกค้า — อยากได้คอนเทนต์แบบไหน กลุ่มเป้าหมายใคร จุดขายคืออะไร"
-                value={cpF.brief} onChange={e => setCpF(v => ({ ...v, brief: e.target.value }))} />
-              <textarea style={{ ...input, minHeight: 56, fontFamily: "inherit" }} placeholder="ลิงก์ตัวอย่าง/เรฟที่ลูกค้าส่งมา (วางได้หลายลิงก์)"
-                value={cpF.ref_links} onChange={e => setCpF(v => ({ ...v, ref_links: e.target.value }))} />
-              {(() => {
-                // จำนวนที่จะส่งจริง — บีบให้อยู่ใน 1–30 เท่ากับที่หลังบ้านรับ จะได้ไม่มีเคสกดแล้วได้ไม่ตรงที่เห็น
-                const n = Math.max(1, Math.min(30, Number(cpF.want_count) || 5));
-                return (
-                  <button style={btn()} disabled={busy === "cp" || !cpF.client_name.trim() || !cpF.brief.trim()}
-                    onClick={async () => { await post("/api/team/content/create", { ...cpF, want_count: n }, "cp");
-                      setCpF({ client_name: "", brief: "", want_count: 5, ref_links: "", due_at: "" }); setTimeout(() => loadCp(cpOpen), 900); }}>
-                    {busy === "cp" ? "กำลังส่งให้ AI…" : `ยืนยัน · ให้ AI ร่างคอนเทนต์ ${n} ชิ้น`}
-                  </button>
-                );
-              })()}
+          {/* 📝 ฟอร์มรับบรีฟย้ายไปรวมที่แท็บ "📥 รับบรีฟใหม่" แล้ว (คิมสั่ง 13 ส.ค.)
+              เดิมมี 3 ประตูรับงานแยกกัน ลูกตาลต้องรู้ก่อนว่างานนี้เป็นประเภทไหนถึงจะกรอกถูกที่
+              ตอนนี้กรอกที่เดียว ติ๊กประเภท แล้วระบบส่งให้คนที่ถูกต้องเอง — ตรงนี้เหลือแค่รายการงาน */}
+          {cp.is_boss && (cp.projects || []).length === 0 && (
+            <div style={{ ...card, textAlign: "center", color: "#7c7268", fontSize: 13.5, lineHeight: 1.8 }}>
+              ยังไม่มีงานคอนเทนต์ค่ะ — สั่งงานใหม่ได้ที่แท็บ <b>📥 รับบรีฟใหม่</b> แล้วติ๊ก <b>📝 คอนเทนต์ (เขียน)</b>
             </div>
-          </div>}
+          )}
 
           {!cp.projects.length && <div style={card}><p className="muted" style={{ margin: 0, fontSize: 14 }}>ยังไม่มีงานคอนเทนต์ค่ะ</p></div>}
 
@@ -1014,44 +978,101 @@ export default function Team() {
         </>;
       })()}
 
-      {tab === "intake" && (
+      {/* ═══ 📥 ประตูรับงานประตูเดียว — ติ๊กประเภท แล้วระบบส่งให้คนที่ถูกต้องเอง (คิมสั่ง 13 ส.ค.) ═══ */}
+      {tab === "intake" && (() => {
+        const KINDS = [
+          { k: "edit",    icon: "🎬", label: "ตัดต่อวิดีโอ", to: "bo / Gong / kan", tone: "#5a3fc0",
+            hint: "ระบบเลือกคนตัดให้เอง ตามคิวว่างและลำดับที่คิมตั้งไว้" },
+          { k: "content", icon: "📝", label: "คอนเทนต์ (เขียน)", to: "kan", tone: "#0b6ea8",
+            hint: "AI ร่างให้ก่อน แล้ว kan ตรวจแก้ ก่อนส่ง AE" },
+          { k: "graphic", icon: "🎨", label: "งานกราฟฟิก", to: "fairy", tone: "#7a4fa3",
+            hint: "ส่งเข้าคิวกราฟฟิกโดยตรง" },
+        ];
+        const cur = KINDS.find(x => x.k === kind);
+        const needEmail = kind === "edit";
+        const okToSend = intake.client_name.trim() && intake.title.trim()
+          && (!needEmail || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(intake.client_email.trim()))
+          && (kind !== "content" || intake.brief.trim());
+        const reset = () => setIntake({ client_name: "", client_email: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
+        async function send() {
+          let r = null;
+          if (kind === "edit") {
+            r = await post("/api/team/intake", { ...intake, clips: Number(intake.clips) || 1 }, "intake");
+            if (r?.ok) setIntakeMsg({ ok: true, t: r.assigned_to ? `รับงานแล้วค่ะ 🎬 ระบบมอบให้ ${r.assigned_to} — ${r.reason}` : `รับงานแล้วค่ะ · ${r.reason}` });
+          } else if (kind === "content") {
+            r = await post("/api/team/content/create", {
+              client_name: intake.client_name, client_contact: intake.client_contact,
+              brief: intake.brief, ref_links: intake.ref_links,
+              want_count: Math.max(1, Math.min(30, Number(intake.clips) || 5)),
+              due_at: intake.client_due }, "intake");
+            if (r?.ok) setIntakeMsg({ ok: true, t: "รับบรีฟแล้วค่ะ 📝 AI กำลังร่างให้ · ดูได้ที่แท็บ “คอนเทนต์ลูกค้า”" });
+          } else {
+            r = await post("/api/team/graphic/request", {
+              title: intake.title, brief: intake.brief, client: intake.client_name,
+              ref_links: intake.ref_links, clip_url: intake.footage_url, due_at: intake.client_due }, "intake");
+            if (r?.ok) setIntakeMsg({ ok: true, t: "ส่งเข้าคิวกราฟฟิกให้ fairy แล้วค่ะ 🎨 ดูได้ที่แท็บ “งานกราฟฟิก”" });
+          }
+          if (r?.ok) reset();
+          else setIntakeMsg({ ok: false, t: r?.message || "บันทึกไม่สำเร็จ ลองใหม่นะคะ" });
+        }
+        return (
         <div style={card}>
-          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>🏢 รับบรีฟลูกค้า</h3>
+          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>📥 รับบรีฟจากลูกค้า</h3>
           <p style={{ fontSize: 13, color: "#7c7268", margin: "0 0 14px", lineHeight: 1.7 }}>
-            กรอกบรีฟที่ลูกค้าให้มา แล้ว<b>ระบบจะเลือกคนตัดให้เอง</b> — ไม่ต้องเลือกคน ไม่ต้องประสาน
+            กรอกที่เดียวจบ — <b>ติ๊กว่าเป็นงานประเภทไหน แล้วระบบส่งให้คนที่ถูกต้องเอง</b> ไม่ต้องเลือกคน ไม่ต้องประสาน
           </p>
+
+          {/* ติ๊กประเภทงาน */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {KINDS.map(x => {
+              const on = x.k === kind;
+              return (
+                <button key={x.k} onClick={() => { setKind(x.k); setIntakeMsg(null); }}
+                  style={{ flex: "1 1 180px", textAlign: "left", cursor: "pointer", padding: "11px 13px", borderRadius: 12,
+                    border: `1.5px solid ${on ? x.tone : "var(--border)"}`, background: on ? "#fff" : "#fafafa",
+                    boxShadow: on ? `0 0 0 3px ${x.tone}22` : "none" }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 800, color: on ? x.tone : "#2f2a26" }}>{x.icon} {x.label}</div>
+                  <div style={{ fontSize: 12, color: "#7c7268", marginTop: 2 }}>→ {x.to}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 12.5, color: cur.tone, background: `${cur.tone}12`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.6 }}>
+            {cur.icon} <b>{cur.label}</b> — {cur.hint}
+          </div>
+
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
             <Field label="ชื่อลูกค้า *"><input style={input} value={intake.client_name} onChange={e => setIntake(v => ({ ...v, client_name: e.target.value }))} placeholder="บริษัท / ชื่อร้าน" /></Field>
-            {/* 📧 อีเมลลูกค้า — คิมเจอเอง 7 ส.ค.: ลูกตาลอนุมัติส่งงานแล้ว แต่ลูกค้าเปิดดูไม่ได้
-                เพราะงานที่รับบรีฟมาไม่มีอีเมลลูกค้า ระบบเลยสร้างอีเมลปลอมให้ (client+xxxx@babehouse.local)
-                = ไม่มีใครได้เมลแจ้ง และเปิดหน้างานไม่ได้เลย · ต้องกรอกอีเมลจริงถึงจะส่งงานถึงมือลูกค้า */}
-            <Field label="อีเมลลูกค้า *"><input style={input} type="email" value={intake.client_email}
+            {/* 📧 อีเมลลูกค้าบังคับเฉพาะงานตัดต่อ — เพราะลูกค้าต้องเปิดหน้างานเองเพื่อดูงาน/ส่งจุดแก้
+                คิมเจอเอง 7 ส.ค.: งานที่ไม่มีอีเมล ระบบสร้างอีเมลปลอมให้ = ลูกค้าเปิดดูไม่ได้เลย
+                คอนเทนต์กับกราฟฟิกส่งกลับผ่านลูกตาล ไม่ได้เปิดหน้าเอง เลยไม่บังคับ */}
+            {needEmail && <Field label="อีเมลลูกค้า *"><input style={input} type="email" value={intake.client_email}
               onChange={e => setIntake(v => ({ ...v, client_email: e.target.value }))}
-              placeholder="ต้องมี — ไม่งั้นลูกค้าเปิดดูงานไม่ได้" /></Field>
-            <Field label="ช่องทางติดต่อ"><input style={input} value={intake.client_contact} onChange={e => setIntake(v => ({ ...v, client_contact: e.target.value }))} placeholder="LINE / เบอร์ — ไว้ให้ระบบตามงาน" /></Field>
-            <Field label="ชื่องาน *"><input style={input} value={intake.title} onChange={e => setIntake(v => ({ ...v, title: e.target.value }))} /></Field>
-            <Field label="กี่คลิป"><input style={input} inputMode="numeric" value={intake.clips} onChange={e => setIntake(v => ({ ...v, clips: e.target.value.replace(/[^\d]/g, "").slice(0, 3) }))} /></Field>
+              placeholder="ต้องมี — ไม่งั้นลูกค้าเปิดดูงานไม่ได้" /></Field>}
+            <Field label="ช่องทางติดต่อ"><input style={input} value={intake.client_contact} onChange={e => setIntake(v => ({ ...v, client_contact: e.target.value }))} placeholder="LINE / เบอร์" /></Field>
+            <Field label="ชื่องาน *"><input style={input} value={intake.title} onChange={e => setIntake(v => ({ ...v, title: e.target.value }))} placeholder="เรียกงานนี้ว่าอะไร" /></Field>
+            {kind !== "graphic" && <Field label={kind === "edit" ? "กี่คลิป" : "กี่ชิ้น (1–30)"}>
+              <input style={input} inputMode="numeric" value={intake.clips}
+                onChange={e => setIntake(v => ({ ...v, clips: e.target.value.replace(/[^\d]/g, "").slice(0, 3) }))} /></Field>}
             <Field label="ลูกค้าขอส่งวันไหน"><input style={input} type="date" value={intake.client_due} onChange={e => setIntake(v => ({ ...v, client_due: e.target.value }))} /></Field>
-            <Field label="ลิงก์ฟุตเทจ (ถ้ามีแล้ว)"><input style={input} value={intake.footage_url} onChange={e => setIntake(v => ({ ...v, footage_url: e.target.value }))} placeholder="ไม่มีก็เว้นว่าง" /></Field>
+            {kind !== "content" && <Field label={kind === "edit" ? "ลิงก์ฟุตเทจ (ถ้ามีแล้ว)" : "ลิงก์คลิป/ไฟล์ให้กราฟฟิกดู"}>
+              <input style={input} value={intake.footage_url} onChange={e => setIntake(v => ({ ...v, footage_url: e.target.value }))} placeholder="ไม่มีก็เว้นว่าง" /></Field>}
           </div>
-          <div style={{ marginTop: 10 }}>
-            <Field label="บรีฟที่ลูกค้าบอกมา">
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            <Field label={`บรีฟที่ลูกค้าบอกมา${kind === "content" ? " *" : ""}`}>
               <textarea style={{ ...input, minHeight: 88, resize: "vertical" }} value={intake.brief}
                 onChange={e => setIntake(v => ({ ...v, brief: e.target.value }))} placeholder="อยากได้แบบไหน · ห้ามมีอะไร · อ้างอิงคลิปไหน" />
             </Field>
+            <Field label="ลิงก์ตัวอย่าง/เรฟที่ลูกค้าส่งมา">
+              <input style={input} value={intake.ref_links} onChange={e => setIntake(v => ({ ...v, ref_links: e.target.value }))} placeholder="วางได้หลายลิงก์" />
+            </Field>
           </div>
           {intakeMsg && <div style={{ ...card, marginTop: 12, background: intakeMsg.ok ? "#eef7f0" : "#fde8e8", color: intakeMsg.ok ? "#1a7f43" : "#b42318", fontSize: 14 }}>{intakeMsg.t}</div>}
-          <button style={{ ...btn(), marginTop: 14 }} disabled={busy === "intake" || !intake.client_name.trim() || !intake.title.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(intake.client_email.trim())}
-            onClick={async () => {
-              const r = await post("/api/team/intake", { ...intake, clips: Number(intake.clips) || 1 }, "intake");
-              if (r?.ok) { setIntakeMsg({ ok: true, t: r.assigned_to ? `รับงานแล้วค่ะ 🎬 ระบบมอบให้ ${r.assigned_to} — ${r.reason}` : `รับงานแล้วค่ะ · ${r.reason}` });
-                setIntake({ client_name: "", client_email: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" }); }
-              else setIntakeMsg({ ok: false, t: "บันทึกไม่สำเร็จ ลองใหม่นะคะ" });
-            }}>
-            {busy === "intake" ? "กำลังบันทึก…" : "รับงาน + ให้ระบบจัดคนให้"}
+          <button style={{ ...btn(cur.tone), marginTop: 14 }} disabled={busy === "intake" || !okToSend} onClick={send}>
+            {busy === "intake" ? "กำลังบันทึก…" : `${cur.icon} รับงาน + ส่งให้ ${cur.to} อัตโนมัติ`}
           </button>
-        </div>
-      )}
+        </div>);
+      })()}
 
       {/* ═══ 🧠 รายงาน AI ประเมินทีมรายสัปดาห์ (คิมคนเดียว) ═══ */}
       {tab === "review" && isOwner && (

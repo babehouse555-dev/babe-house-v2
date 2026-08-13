@@ -405,6 +405,27 @@ await check("เปลี่ยนรหัสล็อกอินแล้ว 
   must(up.json?.ok, "พิมพ์ตัวใหญ่แล้วเข้าไม่ได้");
   await save(bow.code);
 });
+await check("ประตูรับงานประตูเดียว — ติ๊กประเภทไหน ต้องไปหาคนที่ถูกต้อง", async () => {
+  // คิมสั่ง 13 ส.ค.: เดิมมี 3 ฟอร์มแยกกัน ลูกตาลต้องรู้ก่อนว่างานนี้ประเภทไหนถึงจะกรอกถูกที่
+  // รวมเป็นฟอร์มเดียวแล้ว — ฟอร์มยิงไป 3 เส้นตามที่ติ๊ก ต้องผ่านทั้ง 3 เส้น
+  const stamp = Math.random().toString(36).slice(2, 7);
+  // 🎬 ตัดต่อ → ระบบเลือกคนตัดให้
+  const ed = await api("/api/team/intake", { method: "POST", admin: true,
+    body: { client_name: "ลูกค้าทดสอบ", client_email: `intake${stamp}@test.local`, title: "งานตัดต่อ", clips: 1, brief: "x" } });
+  must(ed.json?.ok, "รับงานตัดต่อไม่สำเร็จ: " + ed.text.slice(0, 140));
+  // 🎨 กราฟฟิก → เข้าคิวกราฟฟิกได้โดยไม่ต้องผูกกับงานตัดต่อ
+  const gr = await api("/api/team/graphic/request", { method: "POST", admin: true,
+    body: { title: "งานกราฟฟิกเดี่ยว", brief: "ทำโลโก้", client: "ลูกค้าทดสอบ" } });
+  must(gr.json?.ok, "ส่งงานกราฟฟิกเดี่ยวไม่ได้: " + gr.text.slice(0, 140));
+  // 📝 คอนเทนต์ → เข้าคิวคนตรวจคอนเทนต์
+  const ct = await api("/api/team/content/create", { method: "POST", admin: true,
+    body: { client_name: "ลูกค้าทดสอบ", brief: "อยากได้คอนเทนต์ขายของ", want_count: 3 } });
+  must(ct.json?.ok, "รับบรีฟคอนเทนต์ไม่สำเร็จ: " + ct.text.slice(0, 140));
+  // อีเมลลูกค้าเป็นของบังคับเฉพาะงานตัดต่อ (ลูกค้าต้องเปิดหน้างานเอง)
+  const noEmail = await api("/api/team/intake", { method: "POST", admin: true,
+    body: { client_name: "ไม่มีเมล", title: "งาน", clips: 1 } });
+  must(!noEmail.json?.ok, "รับงานตัดต่อได้ทั้งที่ไม่มีอีเมลลูกค้า");
+});
 await check("ต้องแปะลิงก์คลิปก่อนถึงจะส่งให้กราฟฟิกได้", async () => {
   // ⚠️ ต้องใช้ "งานใหม่ที่ยังไม่เคยส่งดราฟให้ลูกค้า" — ถ้าใช้งานเดิมที่มี draft_url อยู่แล้ว
   //    ระบบจะดึงลิงก์นั้นมาใช้ให้เอง (ถูกต้องแล้ว) เทสต์จะผ่านทั้งที่ไม่ได้ทดสอบอะไรเลย

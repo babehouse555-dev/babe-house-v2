@@ -1729,6 +1729,57 @@ app.get("/api/me/tax-invoices", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
+// 🧾 ลูกค้าขอ "ออกใหม่ในนามบริษัท" ได้เอง หลังจ่ายเงินไปแล้ว
+//    (คิมสั่ง 13 ส.ค. — พลอยแจ้ง "ลูกค้ากดซื้อไปแล้ว ต้องไปกดเพิ่มตรงไหน")
+// ⚠️ เดิมข้อมูลบริษัทต้องกรอก "ก่อนจ่ายเงิน" เท่านั้น เพราะใบออกอัตโนมัติทันทีที่เงินเข้า
+//    ใครลืมติ๊ก = ต้องทักมาให้ทีมแก้มือทุกราย ซึ่งจะเกิดทุกวันตอนเปิดขายจริง
+// วิธีทำ: ลบเอกสารเดิมใน FlowAccount แล้วออกใหม่ด้วยข้อมูลบริษัท โดยคง "วันที่บนใบ" เดิมไว้
+//    → เลขใบเปลี่ยน แต่เดือนภาษีไม่เปลี่ยน บัญชีไม่รวน
+// 🔒 จำกัดเฉพาะใบของ "เดือนปัจจุบัน" — เดือนที่ปิดงบไปแล้วห้ามแตะ ให้ทักทีมแทน
+app.post("/api/me/tax-invoice/company", rateLimit(20, M10), async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "LOGIN_REQUIRED", message: "เข้าสู่ระบบก่อนนะคะ" });
+  try {
+    const id = String(req.body?.invoice_id || "").trim();
+    const inv = await one(`SELECT * FROM tax_invoices WHERE invoice_id=$1 AND lower(email)=lower($2)`, [id, email]);
+    if (!inv) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่พบใบกำกับใบนี้ในบัญชีของคุณค่ะ" });
+
+    const t = { is_company: true, name: String(req.body?.name || "").trim(),
+      tax_id: String(req.body?.tax_id || "").replace(/\D/g, ""),
+      branch: String(req.body?.branch || "").trim() || "สำนักงานใหญ่",
+      address: String(req.body?.address || "").trim() };
+    if (!t.name) return res.status(400).json({ ok: false, error: "NEED_NAME", message: "ใส่ชื่อบริษัทด้วยนะคะ" });
+    if (t.tax_id.length !== 13) return res.status(400).json({ ok: false, error: "BAD_TAXID", message: "เลขประจำตัวผู้เสียภาษีต้องมี 13 หลักค่ะ" });
+    if (!t.address) return res.status(400).json({ ok: false, error: "NEED_ADDR", message: "ใส่ที่อยู่บริษัทตามที่จดทะเบียนด้วยนะคะ" });
+
+    // เดือนของใบต้องเป็นเดือนปัจจุบัน — เดือนเก่าปิดงบไปแล้ว แก้เองไม่ได้
+    const docDate = new Date(inv.doc_date || inv.issued_at || inv.created_at);
+    const now = new Date();
+    const sameMonth = docDate.getUTCFullYear() === now.getUTCFullYear() && docDate.getUTCMonth() === now.getUTCMonth();
+    if (!sameMonth) return res.status(409).json({ ok: false, error: "TOO_OLD",
+      message: "ใบของเดือนก่อนหน้าแก้เองไม่ได้ค่ะ (ปิดรอบบัญชีไปแล้ว) — ทักทีมงานมาได้เลย เดี๋ยวจัดการให้นะคะ" });
+
+    await run(`UPDATE tax_invoices SET is_company=true, customer_name=$1, tax_id=$2, branch=$3, address=$4 WHERE invoice_id=$5`,
+      [t.name.slice(0, 200), t.tax_id, t.branch.slice(0, 100), t.address.slice(0, 400), id]);
+    // เก็บลงออเดอร์ด้วย เผื่อมีการออกใบซ้ำจากออเดอร์นี้ในอนาคต จะได้ใช้ข้อมูลบริษัทเหมือนกัน
+    if (inv.order_id) {
+      const o = await getOrder(inv.order_id).catch(() => null);
+      if (o) { const pl = safeJson(o.order_payload_json) || {};
+        await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`,
+          [JSON.stringify({ ...pl, tax: { ...(pl.tax || {}), ...t } }), inv.order_id]).catch(() => {}); }
+    }
+    const r = await redoInvoice(id).catch(e => ({ ok: false, error: String(e.message).slice(0, 200) }));
+    const after = await one(`SELECT status, doc_number FROM tax_invoices WHERE invoice_id=$1`, [id]);
+    sendEmail(OPS_EMAIL, `🧾 ลูกค้าขอออกใบกำกับในนามบริษัท — ${t.name}`,
+      wrap(`<b>อีเมล:</b> ${email}<br><b>บริษัท:</b> ${t.name}<br><b>เลขผู้เสียภาษี:</b> ${t.tax_id}<br>` +
+           `<b>ใบเดิม:</b> ${inv.doc_number || "-"}<br><b>ใบใหม่:</b> ${after?.doc_number || "(ยังไม่สำเร็จ)"}<br>` +
+           `<b>สถานะ:</b> ${after?.status}<br><br>ระบบออกใหม่ให้อัตโนมัติแล้ว ถ้าสถานะไม่ใช่ issued รบกวนเช็กที่หลังบ้านค่ะ`)).catch(() => {});
+    if (after?.status !== "issued") return res.status(202).json({ ok: true, pending: true,
+      message: "รับเรื่องแล้วค่ะ 🩵 ระบบกำลังออกใบใหม่ให้ ถ้าไม่ขึ้นภายใน 1 วันทำการ ทักทีมงานได้เลยนะคะ" });
+    res.json({ ok: true, doc_number: after.doc_number,
+      message: `ออกใบใหม่ในนามบริษัทให้แล้วค่ะ 🩵 เลขที่ ${after.doc_number}` });
+  } catch (e) { console.error("tax-company", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 app.get("/api/me/credits", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const c = await one(`SELECT credits FROM customers WHERE lower(email)=lower($1)`, [email]);

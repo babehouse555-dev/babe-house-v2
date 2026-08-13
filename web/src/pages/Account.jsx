@@ -21,7 +21,22 @@ const markOpened = (id) => { try { const a = JSON.parse(localStorage.getItem("ba
 
 export default function Account() {
   const [taxInv, setTaxInv] = useState([]);   // 🧾 ใบกำกับภาษีของลูกค้าคนนี้
-  const [taxQ, setTaxQ] = useState("");       // ค้นหาใบกำกับ — คิมทัก 5 ส.ค. "คนซื้อเยอะ หาไม่เจออีก"
+  const [taxQ, setTaxQ] = useState("");
+  // 🧾 ลูกค้าขอ "ออกใหม่ในนามบริษัท" เองหลังจ่ายไปแล้ว (คิมสั่ง 13 ส.ค. — พลอยแจ้งว่าลูกค้าซื้อไปแล้วหาที่กรอกไม่เจอ)
+  const [coFor, setCoFor] = useState(null);          // invoice_id ที่กำลังกรอก
+  const [coF, setCoF] = useState({ name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
+  const [coMsg, setCoMsg] = useState(null);
+  const [coBusy, setCoBusy] = useState(false);
+  async function submitCompany(invId) {
+    setCoBusy(true); setCoMsg(null);
+    try {
+      const r = await api("/api/me/tax-invoice/company", { method: "POST", token: session.token, body: { invoice_id: invId, ...coF } });
+      setCoMsg({ ok: true, t: r.message });
+      setCoFor(null); setCoF({ name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
+      api("/api/me/tax-invoices", { token: session.token }).then(d => setTaxInv(d.invoices || [])).catch(() => {});
+    } catch (e) { setCoMsg({ ok: false, t: e.message }); }
+    finally { setCoBusy(false); }
+  }       // ค้นหาใบกำกับ — คิมทัก 5 ส.ค. "คนซื้อเยอะ หาไม่เจออีก"
   // 🔘 ปุ่มเลื่อนโฟลเดอร์ — คิมขอ 7 ส.ค. "ขอแค่มีปุ่มที่ทำให้รู้ว่าเลื่อนได้"
   //    ปุ่มโผล่เฉพาะด้านที่ยังเลื่อนต่อได้จริง จะได้ไม่มีปุ่มกดแล้วไม่เกิดอะไร
   const fldRef = useRef(null);
@@ -574,6 +589,7 @@ export default function Account() {
               <span>รวม ฿{(sum / 100).toLocaleString()}</span>
             </div>
 
+            {coMsg && coFor === null && <div className="msg" style={{ background: coMsg.ok ? "#eef7f0" : "#fde8e8", color: coMsg.ok ? "#1a7f43" : "#b42318" }}>{coMsg.t}</div>}
             {list.length === 0 ? (
               <div className="muted center" style={{ fontSize: 13.5, padding: "18px 0" }}>ไม่พบใบที่ค้นหาค่ะ ลองพิมพ์สั้นลงดูนะคะ</div>
             ) : (
@@ -591,9 +607,37 @@ export default function Account() {
                         {v.is_company ? " · ในนามบริษัท" : ""}
                       </div>
                     </div>
-                    {issued
-                      ? <Link className="btn ghost" to={`/invoice/${v.invoice_id}`} style={{ padding: "9px 15px", fontSize: 13.5 }}>ดู / โหลดใบ</Link>
-                      : <span className="muted" style={{ fontSize: 12.5 }}>กำลังออกใบให้ค่ะ</span>}
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                      {issued
+                        ? <Link className="btn ghost" to={`/invoice/${v.invoice_id}`} style={{ padding: "9px 15px", fontSize: 13.5 }}>ดู / โหลดใบ</Link>
+                        : <span className="muted" style={{ fontSize: 12.5 }}>กำลังออกใบให้ค่ะ</span>}
+                      {/* 🏢 ลืมติ๊ก "ในนามบริษัท" ตอนจ่าย → ขอออกใหม่ได้เองตรงนี้ ไม่ต้องทักทีม */}
+                      {issued && !v.is_company && (
+                        <button className="btn ghost" style={{ padding: "9px 15px", fontSize: 13.5 }}
+                          onClick={() => { setCoFor(coFor === v.invoice_id ? null : v.invoice_id); setCoMsg(null); }}>
+                          {coFor === v.invoice_id ? "ยกเลิก" : "🏢 ขอในนามบริษัท"}
+                        </button>
+                      )}
+                    </div>
+                    {coFor === v.invoice_id && (
+                      <div style={{ flexBasis: "100%", display: "grid", gap: 8, marginTop: 4 }}>
+                        <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                          กรอกข้อมูลบริษัทแล้วระบบจะ<b>ออกใบใหม่ให้ทันที</b> โดยยังคง<b>วันที่เดิม</b>ของใบไว้ค่ะ (เลขใบจะเปลี่ยน ใบเดิมถูกยกเลิก)
+                        </div>
+                        <input placeholder="ชื่อบริษัท (เช่น บริษัท เอบีซี จำกัด)" value={coF.name}
+                          onChange={e => setCoF(x => ({ ...x, name: e.target.value }))} />
+                        <input inputMode="numeric" placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" value={coF.tax_id}
+                          onChange={e => setCoF(x => ({ ...x, tax_id: e.target.value.replace(/\D/g, "").slice(0, 13) }))} />
+                        <input placeholder="สำนักงานใหญ่ / สาขาที่ ..." value={coF.branch}
+                          onChange={e => setCoF(x => ({ ...x, branch: e.target.value }))} />
+                        <textarea placeholder="ที่อยู่บริษัทตามที่จดทะเบียน" value={coF.address} style={{ minHeight: 62 }}
+                          onChange={e => setCoF(x => ({ ...x, address: e.target.value }))} />
+                        {coMsg && <div className="msg" style={{ background: coMsg.ok ? "#eef7f0" : "#fde8e8", color: coMsg.ok ? "#1a7f43" : "#b42318", marginBottom: 0 }}>{coMsg.t}</div>}
+                        <button className="btn" disabled={coBusy} onClick={() => submitCompany(v.invoice_id)}>
+                          {coBusy ? "กำลังออกใบใหม่…" : "ออกใบใหม่ในนามบริษัท"}
+                        </button>
+                      </div>
+                    )}
                   </div>;
                 })}
               </div>

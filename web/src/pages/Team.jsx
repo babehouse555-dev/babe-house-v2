@@ -293,23 +293,29 @@ export default function Team() {
             </div>
             <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
               <Cell n={m.clip_units || m.clips} l="คลิปที่ส่งแล้ว" tone="#5a3fc0" />
-              {/* 💵 ยอดที่ได้เดือนนี้ — เรตเดียวเท่ากันทุกคน (คิมเคาะ 12 ส.ค.) */}
-              <Cell n={`฿${(m.pay || 0).toLocaleString()}`} l={salaried ? `ค่าขนมงานตัดต่อ (คลิปละ ฿${(m.rate || 0).toLocaleString()})` : `ยอดเดือนนี้ (คลิปละ ฿${(m.rate || 0).toLocaleString()})`} tone="#1a7f43" />
+              {/* 💵 ยอดตรงนี้คือ "ค่าขนมจากงานที่ทำเพิ่ม" เท่านั้น (คิมสั่ง 13 ส.ค.)
+                  พนักงานประจำ: งาน จ-ศ อยู่ในเงินเดือนแล้ว ไม่นับเงินตรงนี้ นับเฉพาะที่ทำเพิ่มวันหยุด
+                  ฟรีแลนซ์: ทุกคลิปคือค่าขนม */}
+              {m.inhouse && <Cell n={m.extra_clips || 0} l="คลิปที่ทำเพิ่ม (วันหยุด)" tone="#B26A00" />}
+              <Cell n={`฿${(m.pay || 0).toLocaleString()}`}
+                l={m.inhouse ? `ค่าขนมงานที่ทำเพิ่ม (คลิปละ ฿${(m.rate || 0).toLocaleString()})` : `ยอดเดือนนี้ (คลิปละ ฿${(m.rate || 0).toLocaleString()})`}
+                tone="#1a7f43" />
               {m.graphics > 0 && <Cell n={m.graphics} l={salaried ? "งานกราฟฟิก (งานประจำ)" : "งานกราฟฟิก"} />}
               {m.on_time_pct !== null && <Cell n={`${m.on_time_pct}%`} l="ส่งตรงเวลา" tone={m.on_time_pct >= 90 ? "#1a7f43" : m.on_time_pct >= 70 ? "#B26A00" : "#b42318"} />}
               {m.client_revs > 0 && <Cell n={m.client_revs} l="รอบแก้จากลูกค้า" />}
               {m.our_fixes > 0 && <Cell n={m.our_fixes} l="แก้เพราะเราพลาด" tone={m.our_fixes > 2 ? "#B26A00" : null} />}
             </div>
-            {salaried ? (
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.6 }}>
-                🎨 <b>งานกราฟฟิก จ-ศ = งานประจำของบริษัท</b> อยู่ในเงินเดือนอยู่แล้ว ไม่ได้นับเป็นคลิปละ ฿{(m.rate || 0).toLocaleString()} ค่ะ
-                <br />💰 ยอดตรงนี้คือ <b>งานตัดต่อที่รับเสริมในวันหยุด</b> เท่านั้น — คลิปละ ฿{(m.rate || 0).toLocaleString()} <b>รวมงานกราฟิกในคลิปนั้นแล้ว</b>
-                {m.clips === 0 && <><br />เดือนนี้ยังไม่ได้รับงานตัดต่อเสริมค่ะ อยากรับ กด <b>+</b> ที่วันหยุดในปฏิทิน "ลงวันว่างของฉัน" ได้เลย</>}
+            {m.inhouse ? (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.7 }}>
+                🏠 <b>งานวันจันทร์–ศุกร์ = งานประจำ</b> อยู่ในเงินเดือนอยู่แล้ว ไม่ได้คิดคลิปละ ฿{(m.rate || 0).toLocaleString()} ค่ะ
+                <br />💰 <b>ยอดตรงนี้คือค่าขนมจากงานที่ทำเพิ่มเท่านั้น</b> — นับเฉพาะคลิปที่ส่งใน<b>วันหยุด</b> (เสาร์-อาทิตย์ / วันหยุดบริษัท)
+                คลิปละ ฿{(m.rate || 0).toLocaleString()} รวมงานกราฟิกในคลิปนั้นแล้ว
+                {!m.extra_clips && <><br />เดือนนี้ยังไม่มีงานที่ทำเพิ่มค่ะ อยากรับ กด <b>+</b> ที่วันหยุดในปฏิทิน "ลงวันว่างของฉัน" ได้เลย</>}
               </div>
-            ) : m.clips === 0 && (
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.6 }}>
-                เดือนนี้ยังไม่มีคลิปที่ส่งถึงลูกค้าค่ะ — งานที่กำลังทำอยู่จะมานับตรงนี้ตอนส่งงานเสร็จ
-                <br />คิดคลิปละ ฿{(m.rate || 0).toLocaleString()} เท่ากันทุกคน (รวมกราฟิกในคลิปแล้ว)
+            ) : (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 9, lineHeight: 1.7 }}>
+                คิดคลิปละ ฿{(m.rate || 0).toLocaleString()} เท่ากันทุกคน (รวมกราฟิกในคลิปแล้ว)
+                {m.clips === 0 && <><br />เดือนนี้ยังไม่มีคลิปที่ส่งถึงลูกค้าค่ะ — งานที่กำลังทำอยู่จะมานับตรงนี้ตอนส่งงานเสร็จ</>}
               </div>
             )}
           </div>

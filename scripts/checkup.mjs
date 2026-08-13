@@ -405,6 +405,23 @@ await check("เปลี่ยนรหัสล็อกอินแล้ว 
   must(up.json?.ok, "พิมพ์ตัวใหญ่แล้วเข้าไม่ได้");
   await save(bow.code);
 });
+await check("สรุปรายเดือน: พนักงานประจำต้องไม่ได้เงินจากงาน จ-ศ (อยู่ในเงินเดือนแล้ว)", async () => {
+  // คิมสั่ง 13 ส.ค.: "หน้าสรุปงานตรงนี้จะเป็นยอดเฉพาะงานฟรีแลนซ์ที่เขาทำเพิ่มเท่านั้น"
+  // เดิมนับทุกคลิป × ฿800 → พนักงานประจำจะเห็นตัวเลขเหมือนถูกค้างจ่ายทั้งที่กินเงินเดือนอยู่
+  const ms = await api("/api/team/members", { admin: true });
+  const inh = (ms.json?.members || []).find(m => String(m.code).toLowerCase() === "bow");
+  const free = (ms.json?.members || []).find(m => String(m.code).toLowerCase() === "gun");
+  must(inh, "ไม่เจอพนักงานประจำในสนามทดสอบ");
+  const meIn = await api(`/api/team/me?code=${encodeURIComponent(inh.code)}`, {});
+  must(meIn.json?.ok, "ล็อกอินพนักงานประจำไม่ได้");
+  const mm = meIn.json.my_month?.this;
+  must(mm, "ไม่มีสรุปรายเดือน");
+  must(mm.inhouse === true, "ระบบไม่รู้ว่าคนนี้เป็นพนักงานประจำ");
+  // เงินต้องมาจาก extra_clips เท่านั้น ไม่ใช่ clip_units ทั้งหมด
+  must(mm.pay === (mm.extra_clips || 0) * mm.rate,
+    `ยอดเงิน ${mm.pay} ไม่ตรงกับคลิปที่ทำเพิ่ม ${mm.extra_clips} × ${mm.rate}`);
+  must((mm.extra_clips || 0) <= (mm.clip_units || 0), "คลิปที่ทำเพิ่มมากกว่าคลิปทั้งหมด");
+});
 await check("ประตูรับงานประตูเดียว — ติ๊กประเภทไหน ต้องไปหาคนที่ถูกต้อง", async () => {
   // คิมสั่ง 13 ส.ค.: เดิมมี 3 ฟอร์มแยกกัน ลูกตาลต้องรู้ก่อนว่างานนี้ประเภทไหนถึงจะกรอกถูกที่
   // รวมเป็นฟอร์มเดียวแล้ว — ฟอร์มยิงไป 3 เส้นตามที่ติ๊ก ต้องผ่านทั้ง 3 เส้น

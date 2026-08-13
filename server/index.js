@@ -4595,11 +4595,32 @@ app.get("/api/team/me", async (req, res) => {
         .catch(() => null);
       const gj = await one(`SELECT COUNT(*)::int n FROM graphic_jobs
         WHERE assigned_to=$1 AND status='done' AND done_at >= $2 AND done_at < $3`, [me.member_id, from, to]).catch(() => ({ n: 0 }));
+      // 💵 นับ "เฉพาะงานที่ทำเพิ่ม" เท่านั้น (คิมสั่ง 13 ส.ค.)
+      //    "หน้าสรุปงานตรงนี้จะเป็นยอดเฉพาะสำหรับงานฟรีแลนซ์ที่เขาทำเพิ่มเท่านั้น
+      //     ทีมจะได้เอาไว้ดูว่าเขาได้ค่าขนมเพิ่มในเดือนนี้เท่าไหร่"
+      //
+      //  • ฟรีแลนซ์ (inhouse = false เช่น NIN) → ทุกคลิปคือค่าขนม นับหมด
+      //  • พนักงานประจำ (bo/Gong/kan/fairy) → งาน จ-ศ คืองานประจำในเงินเดือน ไม่นับเงิน
+      //    นับเฉพาะคลิปที่ส่งใน "วันหยุด" (เสาร์-อาทิตย์ / วันหยุดบริษัท) = วันที่เขาสมัครใจมาทำเพิ่ม
+      //    ตรงกับกติกาที่คิมเคาะไว้กับ fairy และเหตุผลที่ดิสยืนยันว่าทำได้ (สมัครใจ นอกภาระงานประจำ)
+      //  ⚠️ ใช้ "วันที่ส่งงาน" เป็นตัวตัดสิน เพราะระบบไม่ได้บันทึกว่าลงมือตัดวันไหน
+      //     ถ้าวันหลังอยากแม่นกว่านี้ ต้องเก็บวันที่ลงมือทำเพิ่ม
+      const paidRow = isInhouseMember(me)
+        ? await one(`SELECT COUNT(*)::int AS clips, COALESCE(SUM(clips),0)::int AS clip_units
+            FROM edit_orders
+            WHERE assigned_to=$1 AND status IN ('draft_sent','revising','done')
+              AND COALESCE(delivered_at, updated_at) >= $2 AND COALESCE(delivered_at, updated_at) < $3
+              AND (EXTRACT(DOW FROM (COALESCE(delivered_at, updated_at) AT TIME ZONE 'Asia/Bangkok')) IN (0, 6)
+                   OR to_char(COALESCE(delivered_at, updated_at) AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD')
+                      IN (SELECT day::text FROM company_holidays))`, [me.member_id, from, to]).catch(() => null)
+        : r;
       const done = Number(r?.clips || 0);
       const units = Number(r?.clip_units || 0);
+      const extraUnits = Number(paidRow?.clip_units || 0);
       return { clips: done, clip_units: units, graphics: Number(gj?.n || 0),
-        // 💵 ยอดที่ได้เดือนนี้ = จำนวนคลิปที่ส่งแล้ว × เรตกลาง (เรตเดียวเท่ากันทุกคน)
-        rate: FREELANCE_RATE_PER_CLIP, pay: units * FREELANCE_RATE_PER_CLIP,
+        inhouse: !!isInhouseMember(me),
+        extra_clips: extraUnits,                                   // คลิปที่ทำเพิ่มนอกงานประจำ
+        rate: FREELANCE_RATE_PER_CLIP, pay: extraUnits * FREELANCE_RATE_PER_CLIP,
         on_time: Number(r?.on_time || 0),
         on_time_pct: done ? Math.round(Number(r.on_time) / done * 100) : null,
         client_revs: Number(r?.client_revs || 0), our_fixes: Number(r?.our_fixes || 0), rejects: Number(r?.rejects || 0) };

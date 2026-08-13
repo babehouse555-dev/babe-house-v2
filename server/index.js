@@ -2591,6 +2591,32 @@ async function sendCertificateEmail(email, studentName, courseName, certId) {
   ));
 }
 
+// 🧑‍🎓 ชื่อที่จะพิมพ์ลงประกาศนียบัตร — เลือก "ชื่อที่ครบที่สุด" ที่เรามีของอีเมลนี้
+//
+// ⚠️ ทำไมต้องเลือก ไม่ใช่หยิบอันแรกที่เจอ (คิมเจอเอง 13 ส.ค. "นามสกุลหาย"):
+//    ลูกค้าคนเดียวกันกรอกชื่อไว้หลายที่ บางที่กรอกครบ "กัญจน์ชญา อาจหาญ" บางที่กรอกแค่ "กัญจน์ชญา"
+//    ถ้าหยิบตามลำดับที่ตั้งไว้ตายตัว มีสิทธิ์ได้อันที่กรอกไม่ครบ แล้วใบประกาศจะไม่มีนามสกุล
+// → กติกา: ชื่อที่มี "ชื่อ + นามสกุล" (อย่างน้อย 2 คำ) ชนะเสมอ · ถ้ามีหลายอัน เอาอันยาวสุด
+//    ไม่มีอันไหนครบเลย ค่อยใช้อันแรกที่มี
+function pickFullestName(...candidates) {
+  const list = candidates.map(v => String(v || "").trim().replace(/\s+/g, " ")).filter(Boolean);
+  if (!list.length) return "";
+  const full = list.filter(v => v.split(" ").length >= 2);
+  if (full.length) return full.sort((a, b) => b.length - a.length)[0];
+  return list[0];
+}
+// รวบรวมชื่อทุกแหล่งที่เรามีของอีเมลนี้ แล้วเลือกอันที่ครบที่สุด
+async function bestStudentName(email, preferred) {
+  const em = normEmail(email);
+  const [own, u, wb, tx] = await Promise.all([
+    one(`SELECT student_name FROM academy_purchases WHERE lower(email)=lower($1) AND COALESCE(student_name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [em]).catch(() => null),
+    one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [em]).catch(() => null),
+    one(`SELECT name FROM workshop_bookings WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [em]).catch(() => null),
+    one(`SELECT full_name FROM tax_invoices WHERE lower(email)=lower($1) AND COALESCE(full_name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [em]).catch(() => null),
+  ]);
+  return pickFullestName(preferred, own?.student_name, tx?.full_name, u?.name, u?.username, wb?.name) || em.split("@")[0];
+}
+
 // ===== 🎓 ประกาศนียบัตร — ออกอัตโนมัติเมื่อ "เรียนครบทุกบท + ผ่านการบ้านที่บังคับครบ" =====
 // เดิมแอดมินต้องแจกมือในแชทไลน์แล้วตามไม่ได้ว่าใครได้แล้วบ้าง ตอนนี้ระบบออกให้เองและลูกค้าโหลดซ้ำได้ตลอดในบัญชี
 async function maybeIssueCertificate(email, courseId) {
@@ -2608,10 +2634,7 @@ async function maybeIssueCertificate(email, courseId) {
     [courseId, email]))?.c || 0);
   if (pending > 0) return { cert_id: null, blocked_by: "homework", homework_left: pending };
   // ลำดับที่ใช้: ชื่อที่กรอกตอนซื้อ → ชื่อจากระบบเก่า → ชื่อที่กรอกตอนจอง workshop → ตัดอีเมลมาใช้ (ทางสุดท้าย)
-  const own = await one(`SELECT student_name FROM academy_purchases WHERE lower(email)=lower($1) AND COALESCE(student_name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [email]);
-  const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
-  const wb = await one(`SELECT name FROM workshop_bookings WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [email]);
-  const student = own?.student_name || (u && (u.name || u.username)) || wb?.name || email.split("@")[0];
+  const student = await bestStudentName(email);
   const cName = (await one(`SELECT name FROM academy_courses WHERE legacy_id=$1`, [courseId]))?.name || "";
   const certId = uid("cert");
   await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`, [certId, email, courseId, cName, student]);
@@ -2761,9 +2784,7 @@ async function issueWorkshopCertificates() {
     for (const b of rows) {
       const email = normEmail(b.email);
       // ชื่อบนใบ: ชื่อที่กรอกตอนจอง → ชื่อจากคอร์สที่เคยซื้อ → ชื่อในระบบเก่า → ตัดอีเมลมาใช้
-      const own = await one(`SELECT student_name FROM academy_purchases WHERE lower(email)=lower($1) AND COALESCE(student_name,'')<>'' ORDER BY created_at DESC LIMIT 1`, [email]);
-      const u = await one(`SELECT name, username FROM academy_users WHERE lower(email)=lower($1) AND COALESCE(name,'')<>'' LIMIT 1`, [email]);
-      const student = String(b.name || "").trim() || own?.student_name || (u && (u.name || u.username)) || email.split("@")[0];
+      const student = await bestStudentName(email, b.name);
       const certId = uid("cert");
       try {
         await run(`INSERT INTO academy_certificates (cert_id, email, course_id, course_name, student_name) VALUES ($1, lower($2), $3, $4, $5)`,
@@ -2776,6 +2797,26 @@ async function issueWorkshopCertificates() {
   } catch (e) { console.error("issueWorkshopCertificates", e.message); return 0; }
 }
 // แอดมินกดออกให้เดี๋ยวนี้ได้ (เช่น จัดคลาสเสร็จแล้วอยากส่งใบให้ทันที ไม่ต้องรอรอบวันถัดไป)
+// 🔧 ซ่อมชื่อบนใบที่ออกไปแล้ว — ใบเก่าที่ได้ชื่อไม่ครบ (เช่นมีแต่ชื่อ ไม่มีนามสกุล)
+//    ให้คิดใหม่จาก "ชื่อที่ครบที่สุด" ที่เรามีตอนนี้ · แก้เฉพาะใบที่ได้ชื่อครบกว่าเดิมจริงๆ
+app.post("/api/admin/certificates/fix-names", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const dry = req.body?.dry === true;
+  try {
+    const rows = await q(`SELECT cert_id, email, student_name, course_name FROM academy_certificates ORDER BY issued_at DESC LIMIT 500`);
+    const changed = [];
+    for (const c of rows) {
+      const better = await bestStudentName(c.email, c.student_name);
+      const now = String(c.student_name || "").trim();
+      // เปลี่ยนเฉพาะตอนที่ "ครบกว่าเดิมจริง" — ชื่อเดิมมีคำเดียว แต่ชื่อใหม่มีชื่อ+นามสกุล
+      if (better && better !== now && better.split(" ").length > now.split(" ").filter(Boolean).length) {
+        changed.push({ cert_id: c.cert_id, course: c.course_name, from: now, to: better });
+        if (!dry) await run(`UPDATE academy_certificates SET student_name=$1 WHERE cert_id=$2`, [better, c.cert_id]);
+      }
+    }
+    res.json({ ok: true, dry, checked: rows.length, fixed: changed.length, changed });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.post("/api/admin/workshop/issue-certificates", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const n = await issueWorkshopCertificates();

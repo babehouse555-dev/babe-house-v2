@@ -7090,6 +7090,22 @@ async function buildDailyHealth() {
   const sold = await one(`SELECT COUNT(*) n, COALESCE(SUM(final_amount_satang),0)/100 baht FROM blueprint_orders
     WHERE payment_status='paid' AND COALESCE(provider,'') <> 'code' AND created_at > ${since}`);
   const made = await one(`SELECT COUNT(*) n FROM blueprints WHERE deleted_at IS NULL AND created_at > ${since}`);
+  // 🎓🎟️ คอร์สกับคลาสสดเก็บคนละตาราง — ไม่ใส่ตรงนี้ รายงานจะขึ้น "ขาย 0" ทั้งที่ขายได้
+  //    (เปิดขายให้ลูกค้าเห็นแล้ว 13 ส.ค. — ก่อนหน้านี้ยังไม่มีใครซื้อได้เลยไม่มีใครสังเกต)
+  const soldCourse = await one(`SELECT COUNT(*) n, COALESCE(SUM(amount_satang),0)/100 baht FROM academy_purchases
+    WHERE COALESCE(amount_satang,0) > 0 AND created_at > ${since}`).catch(() => null);
+  const soldWs = await one(`SELECT COUNT(*) n, COALESCE(SUM(b.amount_satang),0)/100 baht, COALESCE(SUM(b.qty),0) seats
+    FROM workshop_bookings b WHERE b.status IN ('paid','mock_paid') AND b.created_at > ${since}`).catch(() => null);
+  // 🎟️ คลาสที่จะเรียนใน 3 วันข้างหน้า — ต้องเตรียมของ/ที่นั่งทัน
+  // 🧾 โควตาใบกำกับ FlowAccount — แพ็กปัจจุบัน 1,000 เอกสาร/เดือน และ 1 ออเดอร์ = 2 เอกสาร
+  //    เต็มเมื่อไหร่ = ลูกค้าจ่ายเงินแล้วไม่ได้ใบ (ผิดกฎหมาย) ต้องเตือนก่อนถึง ไม่ใช่รู้ตอนเต็ม
+  const invMonth = await one(`SELECT COUNT(*) n FROM tax_invoices
+    WHERE to_char(COALESCE(doc_date, issued_at, created_at) AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM')
+        = to_char(now() AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM')`).catch(() => null);
+  const wsSoon = await q(`SELECT w.name, s.starts_at, s.seats,
+      (SELECT COALESCE(SUM(qty),0) FROM workshop_bookings b WHERE b.session_id=s.session_id AND b.status IN ('paid','mock_paid')) booked
+    FROM workshop_sessions s JOIN workshops w ON w.workshop_id=s.workshop_id
+    WHERE s.starts_at > now() AND s.starts_at < now() + interval '3 days' ORDER BY s.starts_at`).catch(() => []);
   // ลูกค้าที่ได้บทวิเคราะห์แล้ว แต่ยังไม่กดปุ่ม "สร้างแผน 30 วัน" (ไม่ใช่ระบบพัง — แต่เขายังไม่ได้ของที่จ่ายไป)
   const waiting = await q(`SELECT r.instagram_account, r.email, b.billing_cycle, b.created_at
     FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
@@ -7098,7 +7114,8 @@ async function buildDailyHealth() {
   const broken = await findBrokenBooks(14);
   const flagged = await q(`SELECT r.instagram_account, b.quality_flags_json FROM blueprints b JOIN blueprint_requests r ON b.request_id=r.request_id
     WHERE b.deleted_at IS NULL AND b.created_at > ${since} AND COALESCE(b.quality_flags_json,'[]') <> '[]'`);
-  return { sold, made: Number(made?.n || 0), waiting, broken, flagged };
+  return { sold, made: Number(made?.n || 0), waiting, broken, flagged,
+    soldCourse, soldWs, wsSoon, invUsed: Number(invMonth?.n || 0) };
 }
 async function runDailyHealthReport() {
   try {
@@ -7114,7 +7131,21 @@ async function runDailyHealthReport() {
     const body =
       `<p style="font-size:15px">สรุป 24 ชม.ที่ผ่านมาค่ะ 🩵</p>` +
       `<table style="font-size:15px;line-height:2"><tr><td>ขายได้&nbsp;&nbsp;</td><td><b>${h.sold?.n || 0} เล่ม · ฿${Number(h.sold?.baht || 0).toLocaleString()}</b></td></tr>` +
-      `<tr><td>เล่มที่สร้าง&nbsp;&nbsp;</td><td><b>${h.made} เล่ม</b></td></tr></table>` +
+      `<tr><td>เล่มที่สร้าง&nbsp;&nbsp;</td><td><b>${h.made} เล่ม</b></td></tr>` +
+      (Number(h.soldCourse?.n) ? `<tr><td>คอร์สเรียน&nbsp;&nbsp;</td><td><b>${h.soldCourse.n} คอร์ส · ฿${Number(h.soldCourse.baht || 0).toLocaleString()}</b></td></tr>` : "") +
+      (Number(h.soldWs?.n) ? `<tr><td>คลาสสด&nbsp;&nbsp;</td><td><b>${h.soldWs.n} การจอง · ${h.soldWs.seats} ที่ · ฿${Number(h.soldWs.baht || 0).toLocaleString()}</b></td></tr>` : "") +
+      `</table>` +
+      // 🎟️ คลาสที่จะถึงใน 3 วัน — เตือนให้เตรียมที่นั่ง/ของ ไม่ให้ลืม
+      // 🧾 เตือนเมื่อใช้โควตาใบกำกับไปแล้วเกิน 70% ของเดือน
+      ((h.invUsed * 2) > 700
+        ? `<p style="background:#FFF6E6;border:1px solid #F0D89C;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.8">` +
+          `🧾 <b>โควตาใบกำกับภาษีเดือนนี้ใช้ไป ${h.invUsed * 2}/1,000 เอกสาร</b> (${h.invUsed} ใบ × 2)<br>` +
+          `ขายได้อีกราว <b>${Math.max(0, Math.floor((1000 - h.invUsed * 2) / 2))} ออเดอร์</b> ก่อนเต็ม — เต็มแล้วลูกค้าจ่ายเงินแต่ไม่ได้ใบนะคะ` +
+          `</p>` : "") +
+      ((h.wsSoon || []).length
+        ? `<p style="font-size:15px;margin-top:14px"><b>🎟️ คลาสที่จะถึงใน 3 วัน</b></p><ul style="font-size:14px;line-height:1.9">` +
+          h.wsSoon.map(w => `<li>${w.name} — ${thDate(w.starts_at)} · จองแล้ว <b>${w.booked}</b>/${w.seats} ที่</li>`).join("") + `</ul>`
+        : "") +
       (h.broken.length
         ? `<p style="color:#b00"><b>⚠️ เล่มที่ระบบกำลังซ่อม ${h.broken.length} เล่ม</b></p><ul>${h.broken.slice(0, 10).map(b => li(`${b.instagram_account || "?"} — ${b.reason}`)).join("")}</ul>` +
           `<p style="font-size:13px;color:#666">ระบบซ่อมเองอัตโนมัติ ถ้าซ่อม 2 ครั้งไม่ผ่านจะมีเมลแยกแจ้งคิมค่ะ</p>`

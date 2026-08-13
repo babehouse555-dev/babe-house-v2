@@ -6920,7 +6920,8 @@ app.get("/api/admin/stripe-find", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   if (!process.env.STRIPE_SECRET_KEY) return res.status(409).json({ ok: false, error: "NO_KEY" });
   const email = String(req.query?.email || "").trim().toLowerCase();
-  if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL" });
+  const anyOne = String(req.query?.any || "") === "1";   // ?any=1 = ดูทุกคนในช่วงเวลานั้น (ไว้หาเงินที่จับคู่ไม่ได้)
+  if (!email && !anyOne) return res.status(400).json({ ok: false, error: "NO_EMAIL" });
   try {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -6928,7 +6929,7 @@ app.get("/api/admin/stripe-find", async (req, res) => {
     const since = Math.floor(Date.now() / 1000) - hours * 3600;
     // ไล่ทั้ง payment_intent (เห็นสถานะกำลังดำเนินการด้วย) และ session (เห็นว่าผูกกับออเดอร์ไหน)
     const pis = await stripe.paymentIntents.list({ created: { gte: since }, limit: 100 });
-    const mine = pis.data.filter(p => String(p.receipt_email || "").toLowerCase() === email
+    const mine = anyOne ? pis.data : pis.data.filter(p => String(p.receipt_email || "").toLowerCase() === email
       || String(p.metadata?.email || "").toLowerCase() === email);
     const out = [];
     for (const p of mine) {
@@ -6942,8 +6943,9 @@ app.get("/api/admin/stripe-find", async (req, res) => {
     }
     // เผื่อกรณีที่ยิงหา session ตรงๆ ได้ผลดีกว่า (จ่ายไม่สำเร็จจะไม่มี payment_intent)
     const ses = await stripe.checkout.sessions.list({ created: { gte: since }, limit: 100 });
-    const mySes = ses.data.filter(x => String(x.customer_details?.email || "").toLowerCase() === email)
+    const mySes = (anyOne ? ses.data : ses.data.filter(x => String(x.customer_details?.email || "").toLowerCase() === email))
       .map(x => ({ session_id: x.id, session_status: x.payment_status, amount: (x.amount_total || 0) / 100,
+        email: x.customer_details?.email || null,
         created: new Date((x.created || 0) * 1000).toISOString(),
         order_id: x.metadata?.order_id || x.client_reference_id || null }));
     res.json({ ok: true, email, hours, payments: out, sessions: mySes });

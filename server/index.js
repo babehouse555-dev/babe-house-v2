@@ -1729,6 +1729,38 @@ app.get("/api/me/tax-invoices", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
+// 🧾🛡️ ยามใบกำกับภาษี — ลองออกใบที่ยังไม่สำเร็จซ้ำเอง แล้วเตือนคิมถ้ายังไม่ขึ้นสักที
+//
+// ⚠️ เดิมไม่มีตัวนี้เลย: ถ้าออกใบไม่สำเร็จ (FlowAccount ล่ม · โทเคนหมดอายุ · โควตาเต็ม · เน็ตหลุด)
+//    ใบจะค้างสถานะ failed/manual อยู่เฉยๆ ตลอดไป และ "ไม่มีใครรู้"
+//    กว่าจะรู้คือลูกค้าทวงถาม — ซึ่งเป็นความเสี่ยงที่รับไม่ได้ เพราะเก็บเงินแล้วต้องออกใบตามกฎหมาย
+//    (คิมถาม FlowAccount เรื่องโควตา 13 ส.ค. เลยไปเจอว่าเราไม่มีตาข่ายรองรับเลยไม่ว่าจะพังด้วยเหตุใด)
+const invAlerted = new Set();
+async function watchTaxInvoices() {
+  if (!flowAccountReady()) return;
+  try {
+    const stuck = await q(`SELECT invoice_id, email, description, amount_satang, created_at, status, error
+      FROM tax_invoices WHERE status IN ('pending','failed') AND issued_manually = false
+        AND created_at > now() - interval '30 days' ORDER BY created_at LIMIT 20`).catch(() => []);
+    if (!stuck.length) return;
+    await retryPendingInvoices(20).catch(e => console.error("[tax-watch] retry", e.message));
+    // ยังไม่ขึ้นอีกหลังผ่านไป 2 ชม. = ไม่ใช่สะดุดชั่วคราวแล้ว ต้องบอกคน
+    const still = await q(`SELECT invoice_id, email, description, amount_satang, error
+      FROM tax_invoices WHERE status IN ('pending','failed') AND issued_manually = false
+        AND created_at < now() - interval '2 hours' AND created_at > now() - interval '30 days'`).catch(() => []);
+    const fresh = still.filter(x => !invAlerted.has(x.invoice_id));
+    if (!fresh.length) return;
+    fresh.forEach(x => invAlerted.add(x.invoice_id));
+    await sendEmail(OPS_EMAIL, `🧾 ออกใบกำกับภาษีไม่สำเร็จ ${fresh.length} ใบ — ต้องดูด่วน`,
+      wrap(`<p style="font-size:15px">ลูกค้าจ่ายเงินแล้วแต่<b>ยังออกใบกำกับให้ไม่ได้</b>ค่ะ ระบบลองใหม่ให้แล้วแต่ยังไม่ผ่าน</p>` +
+        `<ul style="font-size:14px;line-height:1.9">` +
+        fresh.map(x => `<li>${x.email || "-"} · ฿${Math.round(Number(x.amount_satang || 0) / 100).toLocaleString()} — ${x.description || ""}<br>` +
+          `<span style="color:#b00;font-size:12.5px">${String(x.error || "ไม่ทราบสาเหตุ").slice(0, 160)}</span></li>`).join("") +
+        `</ul><p style="font-size:13.5px">เข้าหลังบ้าน → ใบกำกับภาษี → กด "ลองออกใหม่" ได้ค่ะ ถ้ายังไม่ได้ให้ออกมือใน FlowAccount แล้วติ๊กว่าออกแล้ว</p>`));
+    console.log(`[tax-watch] เตือนใบค้าง ${fresh.length} ใบ`);
+  } catch (e) { console.error("watchTaxInvoices", e.message); }
+}
+
 // 🧾 ลูกค้าขอ "ออกใหม่ในนามบริษัท" ได้เอง หลังจ่ายเงินไปแล้ว
 //    (คิมสั่ง 13 ส.ค. — พลอยแจ้ง "ลูกค้ากดซื้อไปแล้ว ต้องไปกดเพิ่มตรงไหน")
 // ⚠️ เดิมข้อมูลบริษัทต้องกรอก "ก่อนจ่ายเงิน" เท่านั้น เพราะใบออกอัตโนมัติทันทีที่เงินเข้า
@@ -7136,11 +7168,14 @@ async function runDailyHealthReport() {
       (Number(h.soldWs?.n) ? `<tr><td>คลาสสด&nbsp;&nbsp;</td><td><b>${h.soldWs.n} การจอง · ${h.soldWs.seats} ที่ · ฿${Number(h.soldWs.baht || 0).toLocaleString()}</b></td></tr>` : "") +
       `</table>` +
       // 🎟️ คลาสที่จะถึงใน 3 วัน — เตือนให้เตรียมที่นั่ง/ของ ไม่ให้ลืม
-      // 🧾 เตือนเมื่อใช้โควตาใบกำกับไปแล้วเกิน 70% ของเดือน
-      ((h.invUsed * 2) > 700
-        ? `<p style="background:#FFF6E6;border:1px solid #F0D89C;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.8">` +
-          `🧾 <b>โควตาใบกำกับภาษีเดือนนี้ใช้ไป ${h.invUsed * 2}/1,000 เอกสาร</b> (${h.invUsed} ใบ × 2)<br>` +
-          `ขายได้อีกราว <b>${Math.max(0, Math.floor((1000 - h.invUsed * 2) / 2))} ออเดอร์</b> ก่อนเต็ม — เต็มแล้วลูกค้าจ่ายเงินแต่ไม่ได้ใบนะคะ` +
+      // 🧾 ตัวเลขใบกำกับของเดือน — ไว้ให้คิมรู้ปริมาณของตัวเอง
+      //    ⚠️ FlowAccount ยืนยัน 13 ส.ค. 69 ว่า "ยังไม่บล็อกถ้าเกิน 1,000" แพ็กราคาเป็นแผนอนาคต
+      //       และจะแจ้งล่วงหน้าถ้าจะเริ่มบล็อก → ตรงนี้จึงเป็นแค่ตัวเลขบอกสถานะ ไม่ใช่คำเตือนว่าจะพัง
+      //       (ตัวที่กันของจริงคือ watchTaxInvoices — ออกใบไม่สำเร็จเมื่อไหร่ ไม่ว่าเหตุใด จะเมลบอกทันที)
+      (h.invUsed > 350
+        ? `<p style="font-size:13.5px;color:#7c7268;line-height:1.8">` +
+          `🧾 ใบกำกับเดือนนี้ <b>${h.invUsed} ใบ</b> (${h.invUsed * 2} เอกสาร) — แพ็กปัจจุบันระบุ 1,000 เอกสาร ` +
+          `แต่ FlowAccount ยืนยันว่ายังไม่บล็อกถ้าเกิน และจะแจ้งล่วงหน้าถ้าจะเริ่มบล็อกค่ะ` +
           `</p>` : "") +
       ((h.wsSoon || []).length
         ? `<p style="font-size:15px;margin-top:14px"><b>🎟️ คลาสที่จะถึงใน 3 วัน</b></p><ul style="font-size:14px;line-height:1.9">` +
@@ -7256,6 +7291,8 @@ connectDbWithRetry().then(async () => {
   setInterval(() => run(`DELETE FROM academy_video_access WHERE created_at < now() - interval '60 days'`).catch(() => {}), 24 * 3600 * 1000); // ล็อกการเข้าดูคลิปเก็บ 60 วันพอ (ใช้จับพฤติกรรมระยะสั้น) ไม่ให้ตารางบวม
   setTimeout(runQualityWatch, 120000); // watchdog: ตรวจเล่มพัง → ซ่อมเองก่อน แล้วค่อยเมลแจ้งคิมถ้าซ่อมไม่ขึ้น
   setInterval(runQualityWatch, 10 * 60 * 1000); // ทุก 10 นาที
+  setInterval(watchTaxInvoices, 30 * 60 * 1000);  // ทุก 30 นาที — ลองออกใบที่ค้างซ้ำ + เตือนถ้ายังไม่ขึ้น
+  setTimeout(watchTaxInvoices, 90000);            // เช็กตอนสตาร์ทด้วย เผื่อค้างมาจากก่อน deploy
   setInterval(runDailyHealthReport, 30 * 60 * 1000); // เช็กทุก 30 นาที → ส่งรายงานสุขภาพวันละครั้ง (~9 โมงเช้า)
   setTimeout(emailWeeklyBackupIfDue, 90000); // เช็กหลังสตาร์ท (ส่งถ้าครบ 7 วัน)
   setInterval(emailWeeklyBackupIfDue, 12 * 3600 * 1000); // เช็กทุก 12 ชม. → ส่ง backup เข้าเมลแอดมินสัปดาห์ละครั้ง

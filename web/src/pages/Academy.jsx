@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, session } from "../api.js";
+import { ACADEMY_LIVE } from "../config.js";
 
 // หน้าแคตตาล็อกคอร์ส Academy (เฟส 2 — พรีวิวภายใน ยังไม่ลิงก์จากเมนูไหน ลูกค้าไม่เจอ)
 // ข้อมูลจริงจาก academy_* (นำเข้าจากเว็บเก่า) · ไม่มีลิงก์วิดีโอหลุดออกมา
@@ -140,9 +141,13 @@ export default function Academy() {
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <div style={{ background: "#fff7cf", color: "#7a5b00", textAlign: "center", fontSize: 13, padding: "8px 12px", fontWeight: 700 }}>
-        🚧 พรีวิวภายใน (เฟส 2) — หน้านี้ยังไม่เปิดให้ลูกค้าเห็น · ข้อมูลจริงจากเว็บเก่า {data.count} คอร์ส
-      </div>
+      {/* 🚧 แถบ "ยังไม่เปิด" — ผูกกับสวิตช์ ไม่ใช่เขียนตายตัว
+          ไม่งั้นวันเปิดจริงลูกค้าจะเห็นแถบบอกว่า "หน้านี้ยังไม่เปิดให้ลูกค้าเห็น" ทั้งที่เปิดแล้ว */}
+      {!ACADEMY_LIVE && (
+        <div style={{ background: "#fff7cf", color: "#7a5b00", textAlign: "center", fontSize: 13, padding: "8px 12px", fontWeight: 700 }}>
+          🚧 พรีวิวภายใน (เฟส 2) — หน้านี้ยังไม่เปิดให้ลูกค้าเห็น · ข้อมูลจริงจากเว็บเก่า {data.count} คอร์ส
+        </div>
+      )}
 
       <div className="wrap" style={{ paddingTop: 30, paddingBottom: 60 }}>
         <h1 className="serif" style={{ fontSize: "clamp(24px,4vw,32px)", fontWeight: 800, textAlign: "center", margin: "6px 0 4px" }}>คอร์สเรียน Babe House Academy</h1>

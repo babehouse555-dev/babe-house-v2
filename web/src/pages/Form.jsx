@@ -302,13 +302,13 @@ export default function Form() {
   async function submit(e) {
     e.preventDefault();
     if (step !== 4) { goNext(); return; } // กด Enter ก่อนถึงขั้นสุดท้าย = ไปขั้นถัดไป ไม่ใช่ส่งฟอร์ม
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email2")); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); setStep(1); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock เบอร์โทร
-    if (hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); setStep(3); window.scrollTo({ top: 0, behavior: "smooth" }); return; } // double-lock: มีช่องต้องมีรูป Insight เสมอ
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email2")); setStep(1); toTop(); return; }
+    if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); toTop(); return; }
+    if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); setStep(1); toTop(); return; } // double-lock เบอร์โทร
+    if (hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); setStep(3); toTop(); return; } // double-lock: มีช่องต้องมีรูป Insight เสมอ
     // ยังมีข้อความตัวอย่างของเราค้างอยู่ → หยุดไว้ก่อน ไม่งั้นได้เล่มของ Babe House ไม่ใช่ของเขา
     const exK = exampleLeftIn();
-    if (exK) { setErr(t("fm_v_example")); setStep(exK === "instagram_account" ? 1 : 2); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (exK) { setErr(t("fm_v_example")); setStep(exK === "instagram_account" ? 1 : 2); toTop(); return; }
     if (!consent) { setErr(t("fm_v_consent")); return; }
     setBusy(true); setErr("");
     try {
@@ -522,6 +522,9 @@ export default function Form() {
             <input type="checkbox" style={{ width: 18, height: 18, marginTop: 3 }} checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span>{t("fm_consent")} <Link to="/privacy" target="_blank" className="link">{t("fm_privacy_policy")}</Link></span>
           </label>
+          {/* ⚠️ ข้อความเตือนต้องอยู่ "ติดปุ่ม" ด้วย — เดิมมีแต่ข้างบนสุดของหน้า ห่างจากปุ่มเป็นร้อยบรรทัด
+              บนมือถือลูกค้ากดแล้วไม่เห็นอะไรเลย นึกว่าปุ่มเสีย (ลูกค้าแจ้งเข้ามาจริง 13 ส.ค. 69) */}
+          {err && <div className="msg err" style={{ marginBottom: 12 }}>{err}</div>}
           <button className="btn full" type="submit" disabled={busy}>{busy ? t("fm_going_summary") : t("fm_submit")}</button>
           <p className="center muted" style={{ fontSize: 13, marginTop: 10 }}>{t("fm_price_line")} <span style={{ textDecoration: "line-through" }}>{t("price_full")}</span> {t("fm_price_line2")} <b style={{ color: "var(--blue)" }}>{t("price_promo")}</b> {t("fm_price_line3")}</p>
         </div>}

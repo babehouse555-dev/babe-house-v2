@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, fileToBase64 } from "../api.js";
 
 // 🎬 หน้างานเดี่ยว — ส่งไฟล์ · ดูสถานะ · คอมเมนต์งาน · กดรับงาน
 // คิมขอ 2 ส.ค.: "มีช่องให้เค้าคอมเมนต์งาน แล้วมันก็เด้งระบบหลังบ้านทีม"
@@ -19,6 +19,9 @@ export default function EditJob() {
   const [voice, setVoice] = useState("");
   const [cmt, setCmt] = useState("");
   const [at, setAt] = useState("");
+  // 🖼️ แนบรูป + ลิงก์ในจุดแก้ (ทีมขอ 13 ส.ค. "บอกด้วยคำอย่างเดียวบางทีสื่อไม่ตรง")
+  const [noteImg, setNoteImg] = useState(null);      // { data, name }
+  const [noteLink, setNoteLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [rounds, setRounds] = useState(null);   // 🔁 รอบแก้ — รวบทุกจุดแล้วส่งทีเดียว
@@ -36,11 +39,21 @@ export default function EditJob() {
 
   // เพิ่ม/ลบจุดที่อยากแก้ในรอบที่กำลังเขียน (ยังไม่ส่งให้ทีม)
   async function noteAdd() {
-    if (!cmt.trim()) return;
+    if (!cmt.trim() && !noteImg && !noteLink.trim()) return;
     setBusy(true);
-    try { await api("/api/edit/rounds/note", { method: "POST", token: session.token, body: { order_id: id, text: cmt.trim(), at: at.trim() } });
-      setCmt(""); setAt(""); setMsg(""); load(); }
+    try {
+      await api("/api/edit/rounds/note", { method: "POST", token: session.token,
+        body: { order_id: id, text: cmt.trim(), at: at.trim(), image: noteImg?.data, link: noteLink.trim() || undefined } });
+      setCmt(""); setAt(""); setNoteImg(null); setNoteLink(""); setMsg(""); load();
+    }
     catch (e) { setMsg(e.message || "เพิ่มไม่สำเร็จ"); } finally { setBusy(false); }
+  }
+  // ย่อรูปก่อนส่งเหมือนที่อื่นในเว็บ — ลูกค้าถ่ายจอมือถือมาไฟล์ใหญ่มาก
+  async function pickNoteImg(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type || "")) { setMsg("แนบได้เฉพาะรูปภาพนะคะ"); return; }
+    try { setNoteImg({ data: await fileToBase64(file), name: file.name }); setMsg(""); }
+    catch { setMsg("อ่านรูปไม่สำเร็จ ลองใหม่นะคะ"); }
   }
   async function noteRemove(i) {
     setBusy(true);
@@ -193,6 +206,16 @@ export default function EditJob() {
                 <div key={i} className="between" style={{ gap: 9, background: "#fff", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
                   <span style={{ fontSize: 13.5, lineHeight: 1.6, minWidth: 0 }}>
                     {x.at && <b style={{ color: "var(--blue)" }}>{x.at} </b>}{x.text}
+                    {/* รูป/ลิงก์ที่แนบมากับจุดนี้ */}
+                    {x.file_id && (
+                      <a href={`/api/edit/note-file/${x.file_id}?order_id=${encodeURIComponent(id)}`} target="_blank" rel="noreferrer"
+                         style={{ display: "block", marginTop: 6 }}>
+                        <img src={`/api/edit/note-file/${x.file_id}?order_id=${encodeURIComponent(id)}`} alt="รูปประกอบ"
+                             style={{ maxWidth: 150, maxHeight: 110, borderRadius: 8, border: "1px solid var(--border)" }} />
+                      </a>
+                    )}
+                    {x.link && <a href={x.link} target="_blank" rel="noreferrer" className="link"
+                                  style={{ display: "block", marginTop: 4, fontSize: 12.5, wordBreak: "break-all" }}>🔗 {x.link}</a>}
                   </span>
                   <button onClick={() => noteRemove(i)} disabled={busy} title="ลบจุดนี้"
                     style={{ background: "none", border: 0, cursor: "pointer", fontSize: 15, color: "var(--muted)", padding: "0 2px" }}>🗑</button>
@@ -206,8 +229,25 @@ export default function EditJob() {
               <input value={cmt} onChange={e => setCmt(e.target.value)} placeholder="อยากให้แก้ตรงไหนคะ"
                 onKeyDown={e => { if (e.key === "Enter") noteAdd(); }}
                 style={{ flex: "1 1 160px", padding: "10px 13px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 14 }} />
-              <button className="btn ghost" disabled={busy || !cmt.trim()} onClick={noteAdd} style={{ padding: "10px 16px" }}>+ เพิ่ม</button>
+              <button className="btn ghost" disabled={busy || (!cmt.trim() && !noteImg && !noteLink.trim())} onClick={noteAdd} style={{ padding: "10px 16px" }}>+ เพิ่ม</button>
             </div>
+            {/* 🖼️ แนบรูป + ลิงก์ตัวอย่าง — พิมพ์อย่างเดียวบางทีสื่อไม่ตรง (ทีมขอ 13 ส.ค.) */}
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center", marginTop: 7 }}>
+              <label className="btn ghost" style={{ padding: "9px 14px", fontSize: 13.5, cursor: "pointer", margin: 0 }}>
+                🖼️ แนบรูป
+                <input type="file" accept="image/*" style={{ display: "none" }}
+                  onChange={e => { pickNoteImg(e.target.files?.[0]); e.target.value = ""; }} />
+              </label>
+              <input value={noteLink} onChange={e => setNoteLink(e.target.value)} placeholder="🔗 ลิงก์ตัวอย่างที่อยากได้ (ถ้ามี)"
+                style={{ flex: "1 1 190px", padding: "9px 12px", borderRadius: 11, border: "1px solid var(--border)", fontSize: 13.5 }} />
+            </div>
+            {noteImg && (
+              <div className="row" style={{ gap: 8, alignItems: "center", marginTop: 7, fontSize: 13, color: "#1a7f43" }}>
+                <img src={noteImg.data} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} />
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>แนบรูปแล้ว · จะไปพร้อมจุดนี้</span>
+                <button onClick={() => setNoteImg(null)} style={{ background: "none", border: 0, cursor: "pointer", color: "var(--muted)", fontSize: 15 }}>✕</button>
+              </div>
+            )}
 
             {notes.length > 0 && <>
               {/* ถามยืนยันในหน้าเว็บเอง ไม่พึ่งกล่องของเบราว์เซอร์ (ดูเหตุผลที่ setConfirmWhat) */}

@@ -4087,6 +4087,18 @@ async function myEditOrder(req) {
   return { o, email };
 }
 
+// 🖼️ ลูกค้าเปิดดูรูปที่ตัวเองแนบไว้ในจุดแก้ — เส้นของทีมเป็น team-only เข้าไม่ได้
+//    ต้องเป็นเจ้าของออเดอร์นั้นเท่านั้น (กันคนเดารหัสไฟล์แล้วเปิดของคนอื่น)
+app.get("/api/edit/note-file/:id", async (req, res) => {
+  const { o, err } = await myEditOrder(req);
+  if (err) return res.status(err[0]).send("unauthorized");
+  const f = await one(`SELECT name, mime, data_b64, order_id FROM brief_files WHERE file_id=$1`, [String(req.params.id || "")]);
+  if (!f || f.order_id !== o.order_id) return res.status(404).send("not found");
+  res.setHeader("Content-Type", f.mime || "application/octet-stream");
+  res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`);
+  res.send(Buffer.from(f.data_b64, "base64"));
+});
+
 // ดูรอบปัจจุบัน + ประวัติรอบที่ส่งไปแล้ว
 app.get("/api/edit/rounds", async (req, res) => {
   const { o, err } = await myEditOrder(req);
@@ -4127,9 +4139,24 @@ app.post("/api/edit/rounds/note", rateLimit(120, M10), async (req, res) => {
   if (Number.isFinite(del)) { notes.splice(del, 1); }
   else {
     const text = String(req.body?.text || "").trim().slice(0, 500);
-    if (!text) return res.status(400).json({ ok: false, error: "EMPTY", message: "พิมพ์สิ่งที่อยากให้แก้ด้วยนะคะ" });
+    // 🖼️ แนบรูป + ลิงก์อ้างอิงได้ (ทีมขอ 13 ส.ค. — "บอกด้วยคำอย่างเดียวบางทีสื่อไม่ตรง")
+    //    รูปเก็บที่ brief_files ตารางเดียวกับไฟล์บรีฟ ใช้เส้นดาวน์โหลดเดิม ไม่ต้องทำระบบไฟล์ใหม่
+    const img = String(req.body?.image || "");
+    const link = String(req.body?.link || "").trim().slice(0, 500);
+    if (link && !/^https?:\/\//.test(link)) return res.status(400).json({ ok: false, error: "BAD_LINK", message: "ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https:// ค่ะ" });
+    if (!text && !img && !link) return res.status(400).json({ ok: false, error: "EMPTY", message: "พิมพ์สิ่งที่อยากให้แก้ หรือแนบรูป/ลิงก์ด้วยนะคะ" });
     if (notes.length >= 30) return res.status(400).json({ ok: false, error: "TOO_MANY", message: "รอบนี้เพิ่มได้สูงสุด 30 จุดค่ะ" });
-    notes.push({ at: String(req.body?.at || "").trim().slice(0, 12), text });
+    let fileId = null;
+    if (img) {
+      const m = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(img);
+      if (!m) return res.status(400).json({ ok: false, error: "BAD_IMAGE", message: "แนบได้เฉพาะรูปภาพนะคะ" });
+      const buf = Buffer.from(m[2], "base64");
+      if (buf.length > 6 * 1024 * 1024) return res.status(400).json({ ok: false, error: "TOO_BIG", message: "รูปใหญ่เกินไปค่ะ (เกิน 6MB)" });
+      fileId = uid("bf");
+      await run(`INSERT INTO brief_files (file_id,order_id,name,mime,size_bytes,data_b64,uploaded_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [fileId, o.order_id, `จุดแก้-${notes.length + 1}.jpg`, m[1], buf.length, m[2], "ลูกค้า"]);
+    }
+    notes.push({ at: String(req.body?.at || "").trim().slice(0, 12), text, ...(fileId ? { file_id: fileId } : {}), ...(link ? { link } : {}) });
   }
   await run(`UPDATE edit_rounds SET notes_json=$1 WHERE round_id=$2`, [JSON.stringify(notes), r.round_id]);
   res.json({ ok: true, notes });
@@ -4153,14 +4180,21 @@ app.post("/api/edit/rounds/submit", rateLimit(30, M10), async (req, res) => {
      client_revisions=COALESCE(client_revisions,0)+1, due_at=$2, updated_at=now() WHERE order_id=$1`,
     [o.order_id, redue.toISOString()]);
   // เขียนลงห้องแชทให้เห็นเป็นก้อนเดียว อ่านย้อนง่าย
-  const body = notes.map((x, i) => `${i + 1}. ${x.at ? `[${x.at}] ` : ""}${x.text}`).join("\n");
+  // 🖼️ แนบรูป/ลิงก์ที่ลูกค้าใส่มาไปด้วย — ทีมจะได้เห็นของจริง ไม่ต้องเดาจากคำอธิบาย
+  const noteLine = (x, i, imgUrl) => `${i + 1}. ${x.at ? `[${x.at}] ` : ""}${x.text || "(แนบรูป/ลิงก์)"}`
+    + (x.file_id ? `\n   🖼️ รูปประกอบ: ${imgUrl(x.file_id)}` : "")
+    + (x.link ? `\n   🔗 ตัวอย่างที่อยากได้: ${x.link}` : "");
+  const teamImgUrl = (fid) => `${appBaseUrl()}/api/team/brief-file/${fid}`;
+  const body = notes.map((x, i) => noteLine(x, i, teamImgUrl)).join("\n");
   await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'client',$3,$4,0)`,
     [uid("ec"), o.order_id, o.client_name || "ลูกค้า", `📝 รอบแก้ที่ ${r.round_no} (${notes.length} จุด)\n${body}`]);
   await run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,is_auto) VALUES ($1,$2,'team','ระบบ Babe House',$3,1)`,
     [uid("ec"), o.order_id, `รับรอบแก้ที่ ${r.round_no} แล้วค่ะ 🩵 ทีมจะแก้ให้ครบทุกจุดในรอบเดียว — คาดว่าส่งให้ดูใหม่ได้ประมาณ ${thDate(redue)} ค่ะ`]);
   sendEmail(OPS_EMAIL, `🔁 ลูกค้าส่งรอบแก้ที่ ${r.round_no} — ${o.client_name || o.email}`, wrap(
     `งาน <b>${o.order_id}</b> · ${notes.length} จุด${r.charge_satang ? ` · <b>เก็บเงินแล้ว ${r.charge_satang / 100} บาท</b>` : ""}<br><br>` +
-    notes.map((x, i) => `${i + 1}. ${x.at ? `<b>[${x.at}]</b> ` : ""}${x.text}`).join("<br>") +
+    notes.map((x, i) => `${i + 1}. ${x.at ? `<b>[${x.at}]</b> ` : ""}${x.text || "(แนบรูป/ลิงก์)"}`
+      + (x.file_id ? `<br>&nbsp;&nbsp;&nbsp;🖼️ <a href="${teamImgUrl(x.file_id)}">รูปประกอบ</a>` : "")
+      + (x.link ? `<br>&nbsp;&nbsp;&nbsp;🔗 <a href="${x.link}">ตัวอย่างที่อยากได้</a>` : "")).join("<br>") +
     `<br><br>${btn(`${appBaseUrl()}/team`, "เปิดหน้าทีม")}`)).catch(() => {});
   res.json({ ok: true, round_no: r.round_no, notes: notes.length, due_th: thDate(redue) });
 });
@@ -4430,7 +4464,11 @@ app.get("/api/team/me", async (req, res) => {
       ${isOwner || isAE ? "" : "WHERE ta.member_id=$1"} ORDER BY s.starts_at`, (isOwner || isAE) ? [] : [me.member_id]);
 
     // 🎨 งานกราฟฟิกที่เกี่ยวกับคนนี้
-    const gjWhere = (isOwner || isAE) ? "" : "WHERE g.assigned_to=$1 OR g.requested_by=$1";
+    // ใครเห็นงานกราฟฟิกชิ้นไหน: คนทำ · คนขอ · และ "คนที่ถือคลิปนั้นอยู่"
+    // ⚠️ ข้อสุดท้ายเพิ่ม 13 ส.ค. — ไม่งั้นถ้า AE เป็นคนขอกราฟฟิกแทน คนตัดจะไม่เห็นอาร์ตเวิร์คในงานตัวเองเลย
+    //    (คิมสั่งว่างานกราฟฟิกต้องไปโผล่ในหน้างานตัดต่อชิ้นนั้นๆ)
+    const gjWhere = (isOwner || isAE) ? ""
+      : "WHERE g.assigned_to=$1 OR g.requested_by=$1 OR EXISTS (SELECT 1 FROM edit_orders e WHERE e.order_id=g.from_order_id AND e.assigned_to=$1)";
     // 🎬 ดึงลิงก์คลิปจาก "งานตัดต่อต้นทาง" ตอนอ่านเสมอ ไม่ใช่ก๊อปตอนสร้าง
     //    เพราะคนตัดมักอัปคลิปที่ตัดเสร็จ *หลัง* ส่งงานให้กราฟฟิกไปแล้ว — ถ้าก๊อปตอนสร้างจะได้ค่าว่างค้างไว้ตลอด
     //    (คิมเจอ 11 ส.ค.: งานที่สร้างก่อนมีฟีเจอร์นี้ แฟรี่เลยไม่เห็นคลิปที่โบแนบไว้ในงานตัดต่อ)
@@ -5510,6 +5548,42 @@ app.post("/api/team/submit-work", async (req, res) => {
     teamLog(id, me.name, "submit", o.status, next, req.body?.note || null);
     await teamComment(id, me.name, `📤 ส่งงานให้ตรวจแล้ว${req.body?.note ? ` — ${req.body.note}` : ""}`);
     res.json({ ok: true, status: next, message: next === "ae_review" ? "ส่งให้ AE ตรวจแล้วค่ะ" : "ส่งให้หัวหน้าตรวจแล้วค่ะ" });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 🔗 แก้ลิงก์งานที่ส่งให้ลูกค้าผิด (ทีมถาม 13 ส.ค. "ถ้า editor ส่งลิงก์ที่งานให้ลูกค้าผิด ต้องทำไง?")
+//
+// ⚠️ เดิมทำไม่ได้เลย — พอสถานะเป็น 'ส่งลูกค้าแล้ว' ลิงก์จะล็อก ต้องรบกวนคิมไปแก้ที่หลังบ้านให้
+//    ซึ่งอันตรายมาก เพราะถ้าแปะลิงก์ผิดเป็นงานของลูกค้าคนอื่น = ลูกค้าเห็นงานคนอื่น ต้องแก้ได้ทันที
+// ใครแก้ได้: คนที่ถูกมอบหมายงานนี้ · หัวหน้า · AE · คิม
+// ทุกครั้งที่แก้จะบันทึกไว้ว่าใครแก้ จากลิงก์ไหนเป็นลิงก์ไหน (ตรวจย้อนหลังได้)
+app.post("/api/team/fix-draft-url", async (req, res) => {
+  const me = await teamWho(req);
+  if (!me) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.order_id || "");
+  const url = String(req.body?.draft_url || "").trim();
+  const why = String(req.body?.note || "").trim().slice(0, 200);
+  if (!id || !/^https?:\/\//.test(url)) return res.status(400).json({ ok: false, error: "BAD_URL", message: "ใส่ลิงก์ที่ถูกต้องด้วยนะคะ (ขึ้นต้นด้วย https://)" });
+  try {
+    const o = await one(`SELECT order_id, status, draft_url, assigned_to, email, client_name FROM edit_orders WHERE order_id=$1`, [id]);
+    if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const mine = o.assigned_to === me.member_id;
+    if (!mine && !["owner", "ae", "senior"].includes(me.role))
+      return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "งานนี้ไม่ใช่ของคุณค่ะ — ให้หัวหน้าหรือ AE แก้ให้ได้" });
+    if (o.draft_url === url) return res.json({ ok: true, same: true, message: "ลิงก์เดิมอยู่แล้วค่ะ" });
+    await run(`UPDATE edit_orders SET draft_url=$1, updated_at=now() WHERE order_id=$2`, [url, id]);
+    teamLog(id, me.name, "fix_url", o.status, o.status, `${o.draft_url || "-"} → ${url}${why ? ` (${why})` : ""}`);
+    await teamComment(id, me.name, `🔗 แก้ลิงก์งานที่ส่งให้ลูกค้า${why ? ` — ${why}` : ""}\nลิงก์เดิม: ${o.draft_url || "(ไม่มี)"}\nลิงก์ใหม่: ${url}`);
+    // ⚠️ ถ้าส่งถึงลูกค้าไปแล้ว ต้องแจ้งทีมด้วย เพราะลูกค้าอาจกดดูลิงก์ผิดไปแล้ว
+    if (o.status === "draft_sent") {
+      sendEmail(OPS_EMAIL, `🔗 แก้ลิงก์งานที่ส่งให้ลูกค้าไปแล้ว — ${o.client_name || o.email || id}`,
+        wrap(`<b>${me.name}</b> แก้ลิงก์งานที่<b>ส่งถึงลูกค้าไปแล้ว</b>ค่ะ<br><br>` +
+             `<b>ลูกค้า:</b> ${o.client_name || "-"} (${o.email || "-"})<br>` +
+             `<b>ลิงก์เดิม:</b> ${o.draft_url || "(ไม่มี)"}<br><b>ลิงก์ใหม่:</b> ${url}<br>` +
+             `${why ? `<b>เหตุผล:</b> ${why}<br>` : ""}<br>` +
+             `⚠️ ถ้าลิงก์เดิมเป็นงานของลูกค้าคนอื่น รบกวนเช็กว่าลูกค้ากดดูไปหรือยัง และปิดสิทธิ์ลิงก์เดิมด้วยนะคะ`)).catch(() => {});
+    }
+    res.json({ ok: true, draft_url: url, message: "แก้ลิงก์ให้แล้วค่ะ — ลูกค้าจะเห็นลิงก์ใหม่ทันที" });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 

@@ -1140,6 +1140,10 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
   const [showBrief, setShowBrief] = useState(false);   // สคริปต์เต็ม — พับไว้ก่อน กางเมื่ออยากอ่าน
   // 🎬 ลิงก์คลิปที่ตัดแล้ว ก่อนส่งให้กราฟฟิก — เติมจากงานที่เคยส่งให้ลูกค้าดูแล้วให้อัตโนมัติ
   const [gjClip, setGjClip] = useState(j.draft_url || "");
+  // 🔗 กล่องแก้ลิงก์งานที่ส่งให้ลูกค้าผิด (ทีมถาม 13 ส.ค. "ถ้าส่งลิงก์ผิดต้องทำไง")
+  const [fixUrl, setFixUrl] = useState("");
+  const [fixWhy, setFixWhy] = useState("");
+  const [fixOpen, setFixOpen] = useState(false);
   const [openRound, setOpenRound] = useState({});   // รอบแก้เก่าที่กางดูอยู่ (แยกตามรอบ)
   // งานที่จบ/ยกเลิกแล้วไม่ต้องมีป้ายกำหนดส่ง — ขึ้น "เหลือ 3 วัน" บนงานที่เสร็จไปแล้วทำให้สับสน
   const chip = ["done", "canceled"].includes(j.status) ? null : dueChip(j.due_at);
@@ -1208,6 +1212,27 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
             </div>)}
 
           {/* (2) ไฟล์ — ปุ่มเรียงแถว */}
+          {fixOpen && (
+            <div style={{ marginTop: 10, background: "#FFF8EC", border: "1px solid #EFDFC4", borderRadius: 12, padding: "11px 12px" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "#8a6d3b", marginBottom: 3 }}>🔗 แก้ลิงก์งานที่ส่งให้ลูกค้า</div>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 8, lineHeight: 1.65 }}>
+                {j.status === "draft_sent"
+                  ? <>⚠️ งานนี้<b>ส่งถึงลูกค้าไปแล้ว</b> — แก้ปุ๊บลูกค้าเห็นลิงก์ใหม่ทันที และระบบจะเมลแจ้งทีมไว้เป็นหลักฐานค่ะ</>
+                  : <>แก้ลิงก์ได้เลย ระบบบันทึกไว้ว่าใครแก้ จากลิงก์ไหนเป็นลิงก์ไหนค่ะ</>}
+              </div>
+              <input style={{ ...input, marginBottom: 7 }} placeholder="ลิงก์ที่ถูกต้อง (https://...)"
+                value={fixUrl} onChange={e => setFixUrl(e.target.value)} />
+              <input style={{ ...input, marginBottom: 8 }} placeholder="เกิดอะไรขึ้น (ไม่บังคับ) เช่น แปะลิงก์ผิดงาน"
+                value={fixWhy} onChange={e => setFixWhy(e.target.value)} />
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button style={{ ...btn("#8a6d3b") }} disabled={busy === "fix" || !/^https?:\/\//.test(fixUrl.trim())}
+                  onClick={async () => { await post("/api/team/fix-draft-url", { order_id: j.order_id, draft_url: fixUrl.trim(), note: fixWhy.trim() }, "fix"); setFixOpen(false); setFixWhy(""); }}>
+                  บันทึกลิงก์ใหม่
+                </button>
+                <button style={{ ...btn("#fff"), color: "#7c7268", border: "1px solid var(--border)" }} onClick={() => setFixOpen(false)}>ยกเลิก</button>
+              </div>
+            </div>
+          )}
           {(j.footage_url || j.voice_url || j.draft_url || j.final_url || (j.files || []).length || j.ref_links) && (
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
               {j.footage_url && <a href={j.footage_url} target="_blank" rel="noreferrer" style={fileBtn}>🎥 ฟุตเทจ</a>}
@@ -1219,6 +1244,8 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
               {String(j.ref_links || "").split(/\s+/).filter(u => /^https?:\/\//.test(u)).map((u, i) => (
                 <a key={i} href={u} target="_blank" rel="noreferrer" style={fileBtn}>🔗 ตัวอย่าง {i + 1}</a>))}
               {j.draft_url && <a href={j.draft_url} target="_blank" rel="noreferrer" style={{ ...fileBtn, borderColor: C.green, color: C.green }}>📼 งานที่ตัดแล้ว</a>}
+              {j.draft_url && <button style={{ ...fileBtn, borderColor: "#e0d3c2", color: "#8a6d3b", cursor: "pointer" }}
+                onClick={() => { setFixOpen(v => !v); setFixUrl(j.draft_url || ""); }}>🔗 แก้ลิงก์</button>}
               {/* ✅ ไฟล์ตัวจบที่ส่งลูกค้าไปแล้ว — คิมขอ 12 ส.ค. "เผื่อลูกค้ากลับมาแก้หรือทำไฟล์หาย"
                   โชว์เฉพาะตอนที่ไม่ใช่ลิงก์เดียวกับดราฟ ไม่งั้นจะมี 2 ปุ่มที่กดแล้วไปที่เดียวกัน */}
               {j.final_url && j.final_url !== j.draft_url &&
@@ -1249,12 +1276,34 @@ function Job({ j, me, d, isOwner, isAE, open, toggle, draftUrl, setDraftUrl, not
                แต่มันไม่ใช่ทุกงาน คนตัดต่อจะต้องเป็นคนกดว่าอยากให้แฟรี่ช่วยงานนี้"
               ฟรีแลนซ์ไม่มีปุ่มนี้ — ต้องทำอาร์ตเวิร์คเองได้ในคนเดียว (เช็คที่หลังบ้านอีกชั้น) */}
           {d.can_ask_graphic && (() => {
-            const g = (d.graphic_jobs || []).find(x => x.from_order_id === j.order_id && !["done", "canceled"].includes(x.status));
-            if (g) return (
-              <p style={{ margin: "9px 0 0", fontSize: 13.5, color: "#7a4fa3" }}>
-                🎨 ขอกราฟฟิกไว้แล้ว · <b>{d.graphic_statuses?.[g.status] || g.status}</b>
-                {g.work_url && <> · <Linkify text={g.work_url} /></>}
-              </p>);
+            // 🎨 คิมสั่ง 13 ส.ค. (ฟีดแบ็กทีมรอบแรก): "งานกราฟฟิกที่แฟรี่ทำ ต้องมาอยู่ในหน้างานตัดต่อเลย
+            //    ตอนนี้เด้งอยู่หน้าแยกดูยาก" → ยกสถานะ+อาร์ตเวิร์คมาไว้ในงานชิ้นนี้เต็มๆ
+            // ⚠️ ต้องรวม done/canceled ด้วย — ของเดิมกรองทิ้ง พอแฟรี่ทำเสร็จปุ๊บ
+            //    บรรทัดนี้หายเลย แล้วเด้งฟอร์ม "ขอให้กราฟฟิกช่วย" กลับมาแทน
+            //    = คนตัดหาลิงก์อาร์ตเวิร์คไม่เจอ แถมเสี่ยงกดขอซ้ำอีกรอบ
+            const all = (d.graphic_jobs || []).filter(x => x.from_order_id === j.order_id);
+            const g = all.find(x => !["done", "canceled"].includes(x.status)) || all[0];
+            if (g) {
+              const finished = ["sent", "done"].includes(g.status);
+              return (
+                <div style={{ marginTop: 10, background: finished ? "#F1F7F2" : "#FAF7FD",
+                  border: `1px solid ${finished ? "#cfe3d6" : "#e4d8f2"}`, borderRadius: 12, padding: "11px 12px" }}>
+                  <div className="between" style={{ gap: 8, flexWrap: "wrap", marginBottom: g.work_url ? 8 : 0 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: finished ? "#1a7f43" : "#7a4fa3" }}>
+                      🎨 งานกราฟฟิก · {d.graphic_statuses?.[g.status] || g.status}
+                    </span>
+                    {g.assignee_name && <span className="muted" style={{ fontSize: 12.5 }}>{g.assignee_name}</span>}
+                  </div>
+                  {g.work_url
+                    ? <div style={{ fontSize: 13.5, lineHeight: 1.7 }}>
+                        <b>อาร์ตเวิร์คที่ได้:</b> <Linkify text={g.work_url} />
+                      </div>
+                    : <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                        {finished ? "ยังไม่ได้แนบลิงก์อาร์ตเวิร์ค" : "กราฟฟิกกำลังทำอยู่ · ลิงก์อาร์ตเวิร์คจะขึ้นตรงนี้เมื่อส่งงาน"}
+                      </div>}
+                  {g.clip_url && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>คลิปที่ส่งให้ดู: <Linkify text={g.clip_url} /></div>}
+                </div>);
+            }
             // 🎬 ต้องแปะลิงก์คลิปที่ตัดคัทชนแล้วก่อนถึงจะส่งให้กราฟฟิกได้ (คิมสั่ง 11 ส.ค.)
             const cv = gjClip;
             return (

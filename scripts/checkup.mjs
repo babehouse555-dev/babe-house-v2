@@ -356,6 +356,37 @@ await check("กราฟฟิกประจำ (แฟรี่) ต้อง
   const f2 = (wl2.json?.people || []).find(m => m.role === "graphic");
   must(Number(f2?.capacity) === 1, `เปิดวันเองแล้วยังรับได้ ${f2?.capacity} คลิป ควรเป็น 1`);
 });
+await check("ส่งลิงก์งานให้ลูกค้าผิด ต้องแก้เองได้ ไม่ต้องรบกวนคิม", async () => {
+  // ทีมถาม 13 ส.ค.: "ถ้า editor ส่งลิงก์ที่งานให้ลูกค้าผิด ต้องทำไง?" — เดิมทำไม่ได้เลย ลิงก์ล็อกหลังส่ง
+  const bad = "https://youtu.be/ลิงก์ผิด", good = "https://youtu.be/ลิงก์ถูก";
+  await api("/api/admin/edit-order/update", { method: "POST", admin: true,
+    body: { order_id: jobId, status: "draft_sent", draft_url: bad } });
+  const r = await api("/api/team/fix-draft-url", { method: "POST", admin: true,
+    body: { order_id: jobId, draft_url: good, note: "แปะผิดงาน" } });
+  must(r.json?.ok, "แก้ลิงก์ไม่สำเร็จ: " + r.text.slice(0, 140));
+  const list = await api("/api/admin/edit-orders", { admin: true });
+  const job = (list.json?.orders || []).find(o => o.order_id === jobId);
+  must(job?.draft_url === good, `ลิงก์ยังเป็น ${job?.draft_url}`);
+  // ลิงก์มั่วต้องไม่ผ่าน
+  const junk = await api("/api/team/fix-draft-url", { method: "POST", admin: true, body: { order_id: jobId, draft_url: "ไม่ใช่ลิงก์" } });
+  must(!junk.json?.ok, "รับลิงก์ที่ไม่ใช่ URL");
+});
+await check("ลูกค้าแนบรูป + ลิงก์ในจุดแก้ได้ และเปิดดูได้เฉพาะเจ้าของ", async () => {
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const r = await api("/api/edit/rounds/note", { method: "POST", token: tok,
+    body: { order_id: jobId, text: "ตรงนี้สีเพี้ยน", at: "0:20", image: png, link: "https://youtu.be/ตัวอย่าง" } });
+  must(r.json?.ok, "แนบไม่สำเร็จ: " + r.text.slice(0, 140));
+  const last = (r.json.notes || []).slice(-1)[0];
+  must(last?.file_id, "ไม่ได้เก็บรูปไว้");
+  must(last?.link, "ไม่ได้เก็บลิงก์ไว้");
+  // ลิงก์มั่วต้องไม่ผ่าน
+  const badLink = await api("/api/edit/rounds/note", { method: "POST", token: tok, body: { order_id: jobId, text: "x", link: "javascript:alert(1)" } });
+  must(!badLink.json?.ok, "รับลิงก์ที่ไม่ใช่ http(s)");
+  // คนอื่นเปิดรูปนี้ไม่ได้
+  const other = await login("stranger@test.local");
+  const peek = await api(`/api/edit/note-file/${last.file_id}?order_id=${encodeURIComponent(jobId)}`, { token: other });
+  must(peek.status !== 200, `คนอื่นเปิดรูปของลูกค้าได้ (${peek.status})`);
+});
 await check("ต้องแปะลิงก์คลิปก่อนถึงจะส่งให้กราฟฟิกได้", async () => {
   // ⚠️ ต้องใช้ "งานใหม่ที่ยังไม่เคยส่งดราฟให้ลูกค้า" — ถ้าใช้งานเดิมที่มี draft_url อยู่แล้ว
   //    ระบบจะดึงลิงก์นั้นมาใช้ให้เอง (ถูกต้องแล้ว) เทสต์จะผ่านทั้งที่ไม่ได้ทดสอบอะไรเลย

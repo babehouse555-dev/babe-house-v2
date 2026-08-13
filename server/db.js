@@ -909,6 +909,10 @@ export async function initDb() {
     -- 3 = ฟรีแลนซ์ + AE รับเป็นด่านสุดท้าย
     ALTER TABLE team_members ADD COLUMN IF NOT EXISTS assign_tier INTEGER DEFAULT 3;
     ALTER TABLE team_members ADD COLUMN IF NOT EXISTS started_at DATE;   -- วันเริ่มงาน — ใช้ตัดสินว่าครบ 1 ปีหรือยัง (พักร้อน 2 vs 3 วัน)
+    -- 🏠 พนักงานในเฮ้าส์ไหม — ใช้ตัดสินสิทธิ์ "ขอให้กราฟฟิกช่วย" (ฟรีแลนซ์ขอไม่ได้ ต้องทำอาร์ตเวิร์คเองในคนเดียว)
+    -- ⚠️ เดิมผูกกับ "รหัสล็อกอิน" ตายตัว (bow/gong/gun) → พอคิมเปลี่ยนรหัส สิทธิ์หายทันทีโดยไม่มีใครรู้
+    --    ย้ายมาเก็บเป็นคุณสมบัติของคนแทน จะเปลี่ยนรหัสกี่รอบก็ไม่พัง (คิมเปลี่ยนรหัสทั้งทีม 13 ส.ค. 69)
+    ALTER TABLE team_members ADD COLUMN IF NOT EXISTS inhouse BOOLEAN DEFAULT false;
     -- บันทึกทุกครั้งที่งานเปลี่ยนมือ/เปลี่ยนสถานะ — ไว้ย้อนดูว่าใครทำอะไรเมื่อไหร่ (กันงานหาย/เถียงกัน)
     CREATE TABLE IF NOT EXISTS edit_events (
       event_id TEXT PRIMARY KEY,

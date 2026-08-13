@@ -4405,6 +4405,9 @@ async function setAssignTiers() {
   // 🚫 AE (ลูกตาล) ตัดต่อไม่เป็น — คิมสั่ง 7 ส.ค. "ให้เป็นคนตรวจอย่างเดียว"
   //    ตั้งโควตา 0 ด้วย เพื่อให้หน้าตารางงานไม่ขึ้นว่า "ว่างรับได้ 20 คลิป" ซึ่งไม่จริง
   await run(`UPDATE team_members SET default_slots=0 WHERE role='ae'`).catch(() => {});
+  // 🏠 พนักงานประจำในเฮ้าส์ = คนที่คิมตั้งโควตารับงานประจำวันไว้ (ฟรีแลนซ์โควตา 0 ต้องกดเปิดเอง)
+  //    ตั้งครั้งเดียวจากของเดิม แล้วหลังจากนี้แก้ได้ในหน้า "สมาชิกทีม" — ไม่ผูกกับรหัสล็อกอินอีกแล้ว
+  await run(`UPDATE team_members SET inhouse=true WHERE inhouse IS NOT TRUE AND (COALESCE(default_slots,0) > 0 OR role IN ('owner','ae'))`).catch(() => {});
   // 🏷️ ตำแหน่งลูกตาลขึ้นผิดเป็น "AE / Motion" — คิมแจ้ง 7 ส.ค. ให้เป็น AE อย่างเดียว
   //    seed ใช้แค่ตอนตารางว่าง ทีมที่มีอยู่แล้วจึงต้องแก้ตรงนี้ด้วย ไม่งั้นของจริงไม่เปลี่ยน
   await run(`UPDATE team_members SET position='AE (Account Executive)' WHERE code='lookthan'`).catch(() => {});
@@ -4417,7 +4420,7 @@ async function setAssignTiers() {
 async function teamWho(req) {
   const code = String(req.headers["x-team-code"] || req.query.code || "").trim();
   if (code) {
-    const m = await one(`SELECT * FROM team_members WHERE code=$1 AND active`, [code]);
+    const m = await one(`SELECT * FROM team_members WHERE lower(code)=lower($1) AND active`, [code]);
     if (m) return m;
   }
   if (isAdmin(req)) return { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" };
@@ -4438,7 +4441,7 @@ app.post("/api/team/login", rateLimit(20, M10), async (req, res) => {
   try {
     await seedTeamIfEmpty();
     await setAssignTiers();
-    const m = await one(`SELECT member_id,name,role,position,side,default_slots FROM team_members WHERE code=$1 AND active`, [code]);
+    const m = await one(`SELECT member_id,name,role,position,side,default_slots FROM team_members WHERE lower(code)=lower($1) AND active`, [code]);
     if (!m) {
       if (isAdmin({ headers: {}, query: { admin_key: code } })) return res.json({ ok: true, me: { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" } });
       return res.status(401).json({ ok: false, error: "BAD_CODE", message: "รหัสไม่ถูกต้องค่ะ" });
@@ -4514,7 +4517,7 @@ app.get("/api/team/me", async (req, res) => {
         clip_url: g.clip_url || eo_draft || eo_final || null,     // ลิงก์ที่พิมพ์เองมาก่อน แล้วค่อยตกมาที่งานตัดต่อ
         footage_url: g.footage_url || eo_footage || null }));
     // ปุ่ม "ขอให้แฟรี่ช่วย" โผล่เฉพาะทีมในเฮ้าส์ — ฟรีแลนซ์ต้องทำอาร์ตเวิร์คเองได้ (คิมสั่ง 7 ส.ค.)
-    const canAskGraphic = INHOUSE_CODES.includes(String(me.code || "")) || isOwner || isAE;
+    const canAskGraphic = isInhouseMember(me) || isOwner || isAE;
 
     // คนที่มอบหมายงานได้ (สำหรับ AE/owner) — เอาไว้ทำเมนูเลือกคน
     const members = (isOwner || isAE)
@@ -4975,7 +4978,11 @@ app.get("/api/team/external", async (req, res) => {
 // "แฟรี่เป็นตำแหน่งกราฟฟิก ยังไม่มีระบบการทำงานที่ชัดเจนในเว็บ"
 // งานเข้าแฟรี่ 2 ทาง: ลูกตาลส่งบรีฟกราฟฟิกตรงๆ · คนตัดต่อในเฮ้าส์กดขอให้ช่วยทำอาร์ตเวิร์ค
 // ⚠️ เฉพาะ "ในเฮ้าส์" (โบ/พี่ก้อง/กัน) เท่านั้นที่ขอได้ — ฟรีแลนซ์ต้องทำอาร์ตเวิร์คเองได้ในคนเดียว
+// 🏠 เดิมเป็นรายชื่อ "รหัสล็อกอิน" ตายตัว — พอเปลี่ยนรหัสสิทธิ์หายเงียบๆ
+//    ตอนนี้อ่านจากคอลัมน์ inhouse ของคนคนนั้นแทน (เปลี่ยนรหัสกี่รอบก็ไม่พัง)
+//    เก็บค่าเดิมไว้เป็นตัวสำรอง เผื่อฐานข้อมูลเก่าที่ยังไม่ได้ตั้ง inhouse
 const INHOUSE_CODES = ["bow", "gong", "gun"];
+const isInhouseMember = (m) => m?.inhouse === true || INHOUSE_CODES.includes(String(m?.code || "").toLowerCase());
 const GJ_STATUS = { open: "รอเริ่ม", doing: "กำลังทำ", sent: "ส่งงานแล้ว", done: "เสร็จแล้ว", canceled: "ยกเลิก" };
 
 async function graphicMember() {
@@ -4990,7 +4997,7 @@ app.post("/api/team/graphic/request", async (req, res) => {
   const b = req.body || {};
   const orderId = String(b.order_id || "").trim() || null;
   // ✋ ฟรีแลนซ์ขอไม่ได้ (คิมสั่ง) — owner/ae ขอแทนใครก็ได้
-  const isInhouse = INHOUSE_CODES.includes(String(me.code || "")) || ["owner", "ae"].includes(me.role);
+  const isInhouse = isInhouseMember(me) || ["owner", "ae"].includes(me.role);
   if (!isInhouse) return res.status(403).json({ ok: false, error: "NOT_ALLOWED",
     message: "งานที่ส่งให้ฟรีแลนซ์ ให้ทำอาร์ตเวิร์คในงานเองได้เลยค่ะ ไม่ต้องส่งต่อให้กราฟฟิก" });
 
@@ -5305,8 +5312,8 @@ app.post("/api/team/brief-file/delete", async (req, res) => {
 const CP_STATUS = { draft: "ร่าง", generating: "AI กำลังคิด", review: "รอกันตรวจ", ae_check: "รอ AE ตรวจ", sent: "ส่งลูกค้าแล้ว", error: "AI ทำไม่สำเร็จ" };
 // คนตรวจคอนเทนต์ = กัน (ตำแหน่ง Content) — หาแบบไม่ฮาร์ดโค้ดชื่อ เผื่อเปลี่ยนคนทีหลัง
 async function contentReviewer() {
-  return one(`SELECT member_id, name, email FROM team_members WHERE code='gun' AND active`)
-      || one(`SELECT member_id, name, email FROM team_members WHERE position ILIKE '%content%' AND active ORDER BY name LIMIT 1`);
+  return one(`SELECT member_id, name, email FROM team_members WHERE position ILIKE '%content%' AND active ORDER BY name LIMIT 1`)
+      || one(`SELECT member_id, name, email FROM team_members WHERE lower(code)='gun' AND active`);
 }
 
 // ลูกตาลสร้างโปรเจค + กดยืนยัน → AI ร่างให้เลย
@@ -5716,9 +5723,10 @@ app.post("/api/team/members/save", async (req, res) => {
   if (!name || !code) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีชื่อและรหัส" });
   try {
     if (b.member_id) {
-      await run(`UPDATE team_members SET name=$1, code=$2, role=$3, email=$4, position=$5, side=$6, active=$7, default_slots=$9 WHERE member_id=$8`,
+      await run(`UPDATE team_members SET name=$1, code=$2, role=$3, email=$4, position=$5, side=$6, active=$7, default_slots=$9,
+           inhouse=COALESCE($10, inhouse) WHERE member_id=$8`,
         [name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production"), b.active !== false, String(b.member_id),
-         Math.max(0, Math.min(20, Number(b.default_slots) || 0))]);
+         Math.max(0, Math.min(20, Number(b.default_slots) || 0)), typeof b.inhouse === "boolean" ? b.inhouse : null]);
     } else {
       await run(`INSERT INTO team_members (member_id,name,code,role,email,position,side,default_slots) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [uid("tm"), name, code, String(b.role || "editor"), b.email || null, b.position || null, String(b.side || "production"),

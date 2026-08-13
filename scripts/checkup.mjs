@@ -387,6 +387,24 @@ await check("ลูกค้าแนบรูป + ลิงก์ในจุ�
   const peek = await api(`/api/edit/note-file/${last.file_id}?order_id=${encodeURIComponent(jobId)}`, { token: other });
   must(peek.status !== 200, `คนอื่นเปิดรูปของลูกค้าได้ (${peek.status})`);
 });
+await check("เปลี่ยนรหัสล็อกอินแล้ว สิทธิ์ในทีมต้องไม่หาย", async () => {
+  // คิมเปลี่ยนรหัสทั้งทีม 13 ส.ค. — เดิมสิทธิ์ "ขอให้กราฟฟิกช่วย" ผูกกับรหัสตายตัว (bow/gong/gun)
+  // เปลี่ยนรหัสปุ๊บสิทธิ์หายเงียบๆ โดยไม่มีใครรู้ → ย้ายไปอิงคุณสมบัติของคนแทน
+  const ms = await api("/api/team/members", { admin: true });
+  const bow = (ms.json?.members || []).find(m => String(m.code).toLowerCase() === "bow");
+  must(bow, "ไม่เจอคนในเฮ้าส์ในสนามทดสอบ");
+  const save = (code) => api("/api/team/members/save", { method: "POST", admin: true,
+    body: { member_id: bow.member_id, name: bow.name, code, role: bow.role, email: bow.email,
+            position: bow.position, side: bow.side, active: true, default_slots: bow.default_slots } });
+  await save("bo-changed-123");
+  const me = await api("/api/team/me?code=bo-changed-123", {});
+  must(me.json?.ok, "ล็อกอินด้วยรหัสใหม่ไม่ได้: " + me.text.slice(0, 120));
+  must(me.json.can_ask_graphic === true, "เปลี่ยนรหัสแล้วสิทธิ์ขอกราฟฟิกหาย");
+  // พิมพ์ตัวใหญ่ก็ต้องเข้าได้ (ทีมขี้ลืม — คิมสั่งให้เอาง่ายไว้ก่อน)
+  const up = await api("/api/team/me?code=BO-CHANGED-123", {});
+  must(up.json?.ok, "พิมพ์ตัวใหญ่แล้วเข้าไม่ได้");
+  await save(bow.code);
+});
 await check("ต้องแปะลิงก์คลิปก่อนถึงจะส่งให้กราฟฟิกได้", async () => {
   // ⚠️ ต้องใช้ "งานใหม่ที่ยังไม่เคยส่งดราฟให้ลูกค้า" — ถ้าใช้งานเดิมที่มี draft_url อยู่แล้ว
   //    ระบบจะดึงลิงก์นั้นมาใช้ให้เอง (ถูกต้องแล้ว) เทสต์จะผ่านทั้งที่ไม่ได้ทดสอบอะไรเลย

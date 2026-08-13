@@ -2212,6 +2212,38 @@ app.get("/api/admin/backup", async (req, res) => {
   res.send(JSON.stringify(dump));
 });
 // ส่งอีเมลถึงลูกค้า (จาก Babe House ผ่าน Resend) — ใช้ตอนต้องแจ้ง/ขอโทษ/ดูแลลูกค้าเป็นรายคน
+// 📦 ย้ายเล่มไปให้เจ้าของตัวจริง (คิมสั่ง 13 ส.ค.)
+//
+// ⚠️ ทำไมส่งลิงก์เฉยๆ ไม่พอ: เล่มล็อกไว้กับ "อีเมลเจ้าของ" คนอื่นเปิดลิงก์ได้ก็เจอ 403
+//    (ตั้งใจให้เป็นแบบนั้น กันคนได้ลิงก์ไปแล้วอ่านเล่มคนอื่น)
+// เคสที่ใช้: คิมสร้างเล่มให้ลูกค้าด้วยโค้ดฟรีในอีเมลตัวเอง แล้วต้องส่งต่อให้ลูกค้าจริง
+// ย้ายแล้วลูกค้าล็อกอินด้วยอีเมลตัวเอง เห็นเล่มในบัญชีถาวร ใช้ได้ครบทุกฟีเจอร์
+app.post("/api/admin/blueprint/transfer", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const bpId = String(req.body?.blueprint_id || "").trim();
+  const to = normEmail(String(req.body?.to_email || "").trim());
+  if (!bpId || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.status(400).json({ ok: false, error: "BAD_INPUT", message: "ต้องมี blueprint_id และอีเมลปลายทางที่ถูกต้อง" });
+  try {
+    const bp = await one(`SELECT b.blueprint_id, b.request_id, b.user_id, b.billing_cycle, r.email AS owner_email, r.instagram_account
+      FROM blueprints b LEFT JOIN blueprint_requests r ON r.request_id=b.request_id WHERE b.blueprint_id=$1`, [bpId]);
+    if (!bp) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่พบเล่มนี้ค่ะ" });
+    const from = normEmail(bp.owner_email || "");
+    if (from === to) return res.json({ ok: true, same: true, message: "เล่มนี้เป็นของอีเมลนี้อยู่แล้วค่ะ" });
+    // ย้ายทั้ง "คำขอสร้างเล่ม" และ "ออเดอร์" — หน้าบัญชีอ่านจากคำขอ ส่วนใบกำกับ/ประวัติอ่านจากออเดอร์
+    await run(`UPDATE blueprint_requests SET email=$1 WHERE request_id=$2`, [to, bp.request_id]);
+    const ord = await run(`UPDATE blueprint_orders SET email=$1 WHERE user_id=$2 AND billing_cycle=$3`, [to, bp.user_id, bp.billing_cycle]).catch(() => ({ rowCount: 0 }));
+    await upsertCustomer(to, bp.instagram_account || "").catch(() => {});
+    console.log(`[transfer] เล่ม ${bpId} · ${from || "(ไม่มี)"} → ${to}`);
+    // แจ้งทีมไว้เป็นหลักฐานเสมอ — การย้ายเจ้าของเล่มเป็นเรื่องใหญ่ ต้องตามย้อนหลังได้
+    sendEmail(OPS_EMAIL, `📦 ย้ายเล่ม ${bp.instagram_account || bpId} ให้เจ้าของใหม่`,
+      wrap(`<b>ช่อง:</b> ${bp.instagram_account || "-"}<br><b>เดือน:</b> ${String(bp.billing_cycle).replace("_", " ")}<br>` +
+           `<b>จาก:</b> ${from || "(ไม่มีอีเมล)"}<br><b>ไป:</b> ${to}<br><b>ออเดอร์ที่ย้ายด้วย:</b> ${ord.rowCount || 0}`)).catch(() => {});
+    res.json({ ok: true, blueprint_id: bpId, from, to, orders_moved: ord.rowCount || 0,
+      channel: bp.instagram_account, billing_cycle: bp.billing_cycle,
+      message: `ย้ายเล่มให้ ${to} แล้วค่ะ — ล็อกอินด้วยอีเมลนี้แล้วจะเห็นเล่มในบัญชีเลย` });
+  } catch (e) { console.error("transfer", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 app.post("/api/admin/send-email", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const to = String(req.body?.to || "").trim(), subject = String(req.body?.subject || "").trim(), body = String(req.body?.body || "");

@@ -5752,6 +5752,68 @@ app.get("/api/admin/ai-usage", async (req, res) => {
   });
 });
 // สร้างเล่มใหม่ให้ลูกค้า (รีเจนด้วย prompt ล่าสุด) — ระบุ order_id หรือ user_id+billing_cycle
+// ✍️ อัปเดตบรีฟลูกค้า แล้วสร้างเล่มใหม่ — สำหรับเคส "ลูกค้ากรอกฟอร์มมาน้อย เล่มเลยไม่ตรง"
+//    (คิมสั่ง 13 ส.ค. — เคสแรก @goldenhome.pattaya ลูกค้ากรอกมาเกือบว่างเปล่า
+//     พอทักไปถามเพิ่ม ได้ข้อมูลจริงมาแล้ว ต้องเอาไปใส่ก่อนสร้างใหม่
+//     ถ้าสั่ง regenerate เฉยๆ จะได้เล่มหน้าตาเดิม เพราะมันอ่านฟอร์มเดิมที่ว่างอยู่)
+// ⚠️ รูป Insight ที่ลูกค้าอัปไว้ยังอยู่ใน order_payload_json (ไม่ได้ถูกลบเหมือนใน blueprint_requests)
+//    เล่มใหม่จึงยังวิเคราะห์จากรูปเดิมได้ครบ ไม่ต้องขอลูกค้าอัปใหม่
+app.post("/api/admin/update-brief", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    let orderId = String(req.body?.order_id || "").trim();
+    const channel = String(req.body?.channel || "").trim();
+    if (!orderId && channel) {
+      const norm = channel.toLowerCase().replace(/[@\s._-]/g, "");
+      const hit = await one(
+        `SELECT order_id FROM blueprint_orders
+          WHERE payment_status IN ('paid','mock_paid')
+            AND regexp_replace(lower(instagram_account), '[@[:space:]._-]', '', 'g') = $1
+          ORDER BY created_at DESC LIMIT 1`, [norm]);
+      orderId = hit?.order_id || "";
+    }
+    if (!orderId) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND", message: "ไม่เจอออเดอร์ของช่องนี้ค่ะ" });
+    const o = await getOrder(orderId);
+    if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
+    if (!["paid", "mock_paid"].includes(o.payment_status)) return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED" });
+
+    const patch = req.body?.form && typeof req.body.form === "object" ? req.body.form : null;
+    if (!patch) return res.status(400).json({ ok: false, error: "NO_FORM", message: "ส่ง form มาด้วยนะคะ" });
+    const pl = safeJson(o.order_payload_json) || {};
+    const before = pl.form_responses || {};
+    // เขียนทับเฉพาะช่องที่ส่งมาและมีค่าจริง — ช่องอื่นของเดิมต้องไม่หาย
+    const merged = { ...before };
+    const changed = [];
+    for (const [k, v] of Object.entries(patch)) {
+      const val = typeof v === "string" ? v.trim() : v;
+      if (val === "" || val == null) continue;
+      if (String(before[k] ?? "") !== String(val)) changed.push(k);
+      merged[k] = val;
+    }
+    const next = { ...pl, form_responses: merged,
+      brief_edits: [...(Array.isArray(pl.brief_edits) ? pl.brief_edits : []), { at: new Date().toISOString(), fields: changed }] };
+    await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`, [JSON.stringify(next), orderId]);
+    // ตารางรายชื่อนักเรียนอ่านจาก blueprint_requests → อัปเดตให้ตรงกันด้วย ไม่งั้นหลังบ้านโชว์ข้อมูลเก่า
+    for (const [col, key] of [["business_type", "business_type"], ["monthly_goal", "monthly_goal"], ["starting_point", "starting_point"]]) {
+      if (merged[key]) await run(`UPDATE blueprint_requests SET ${col}=$1 WHERE user_id=$2 AND billing_cycle=$3`,
+        [String(merged[key]).slice(0, 2000), o.user_id, o.billing_cycle]).catch(() => {});
+    }
+    const doRegen = req.body?.regenerate !== false;
+    res.json({ ok: true, order_id: orderId, channel: o.instagram_account, changed_fields: changed,
+      regenerating: doRegen, form_after: merged });
+    if (!doRegen) return;
+    await run(`UPDATE blueprint_orders SET blueprint_id=NULL, generation_status='generating', generation_error=NULL WHERE order_id=$1`, [orderId]);
+    inFlightOrders.add(orderId);
+    try {
+      const result = await generateBlueprintForPayload(next);
+      await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
+      console.log(`[update-brief] ${orderId} → ${result.blueprintId} (แก้ ${changed.join(", ")})`);
+    } catch (e) {
+      console.error("update-brief regen", e.message);
+      await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), orderId]);
+    } finally { inFlightOrders.delete(orderId); }
+  } catch (e) { console.error("update-brief", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.post("/api/admin/regenerate", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   let orderId = String(req.body?.order_id || "");

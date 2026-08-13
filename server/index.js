@@ -7129,8 +7129,7 @@ async function buildDailyHealth() {
   const soldWs = await one(`SELECT COUNT(*) n, COALESCE(SUM(b.amount_satang),0)/100 baht, COALESCE(SUM(b.qty),0) seats
     FROM workshop_bookings b WHERE b.status IN ('paid','mock_paid') AND b.created_at > ${since}`).catch(() => null);
   // 🎟️ คลาสที่จะเรียนใน 3 วันข้างหน้า — ต้องเตรียมของ/ที่นั่งทัน
-  // 🧾 โควตาใบกำกับ FlowAccount — แพ็กปัจจุบัน 1,000 เอกสาร/เดือน และ 1 ออเดอร์ = 2 เอกสาร
-  //    เต็มเมื่อไหร่ = ลูกค้าจ่ายเงินแล้วไม่ได้ใบ (ผิดกฎหมาย) ต้องเตือนก่อนถึง ไม่ใช่รู้ตอนเต็ม
+  // 🧾 จำนวนเอกสารที่ออกในเดือนนี้ — 1 ออเดอร์ = 1 เอกสาร (ใบเสร็จ/ใบกำกับรวมใบเดียว)
   const invMonth = await one(`SELECT COUNT(*) n FROM tax_invoices
     WHERE to_char(COALESCE(doc_date, issued_at, created_at) AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM')
         = to_char(now() AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM')`).catch(() => null);
@@ -7169,13 +7168,16 @@ async function runDailyHealthReport() {
       `</table>` +
       // 🎟️ คลาสที่จะถึงใน 3 วัน — เตือนให้เตรียมที่นั่ง/ของ ไม่ให้ลืม
       // 🧾 ตัวเลขใบกำกับของเดือน — ไว้ให้คิมรู้ปริมาณของตัวเอง
+      //    ⚠️ 1 ออเดอร์ = 1 เอกสาร (ไม่ใช่ 2) เพราะเราออก "ใบเสร็จรับเงิน/ใบกำกับภาษี" ใบเดียวจบ
+      //       ผ่าน cash-invoices ตามที่นักบัญชีเคาะ 10 ส.ค. — ดู DOC_TYPES ใน tax.js
+      //       (เคยคิดผิดว่าเป็น 2 เอกสาร เพราะไปจำกติกาการนับทั่วไปของ FlowAccount มา — คิมทักเอง 13 ส.ค.)
       //    ⚠️ FlowAccount ยืนยัน 13 ส.ค. 69 ว่า "ยังไม่บล็อกถ้าเกิน 1,000" แพ็กราคาเป็นแผนอนาคต
-      //       และจะแจ้งล่วงหน้าถ้าจะเริ่มบล็อก → ตรงนี้จึงเป็นแค่ตัวเลขบอกสถานะ ไม่ใช่คำเตือนว่าจะพัง
+      //       ตรงนี้จึงเป็นแค่ตัวเลขบอกสถานะ ไม่ใช่คำเตือนว่าจะพัง
       //       (ตัวที่กันของจริงคือ watchTaxInvoices — ออกใบไม่สำเร็จเมื่อไหร่ ไม่ว่าเหตุใด จะเมลบอกทันที)
-      (h.invUsed > 350
+      (h.invUsed > 700
         ? `<p style="font-size:13.5px;color:#7c7268;line-height:1.8">` +
-          `🧾 ใบกำกับเดือนนี้ <b>${h.invUsed} ใบ</b> (${h.invUsed * 2} เอกสาร) — แพ็กปัจจุบันระบุ 1,000 เอกสาร ` +
-          `แต่ FlowAccount ยืนยันว่ายังไม่บล็อกถ้าเกิน และจะแจ้งล่วงหน้าถ้าจะเริ่มบล็อกค่ะ` +
+          `🧾 ใบกำกับเดือนนี้ <b>${h.invUsed} เอกสาร</b> จาก 1,000 ที่แพ็กระบุ (เราออกใบเดียวจบ 1 ออเดอร์ = 1 เอกสาร) ` +
+          `— FlowAccount ยืนยันว่ายังไม่บล็อกถ้าเกิน และจะแจ้งล่วงหน้าถ้าจะเริ่มบล็อกค่ะ` +
           `</p>` : "") +
       ((h.wsSoon || []).length
         ? `<p style="font-size:15px;margin-top:14px"><b>🎟️ คลาสที่จะถึงใน 3 วัน</b></p><ul style="font-size:14px;line-height:1.9">` +

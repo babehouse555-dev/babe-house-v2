@@ -2476,6 +2476,25 @@ app.post("/api/admin/academy/grant", async (req, res) => {
     res.json({ ok: true, email, course_id: courseId });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
+// 🔎 เช็คว่าอีเมลนี้ "เป็นเจ้าของคอร์สอะไรบ้าง" ในสายตาระบบ — ใช้ตอนลูกค้าบอกว่าเข้าเรียนไม่ได้
+//    (เจอเคสจริง 14 ส.ค. 69: เปิดสิทธิ์ให้แล้วแต่ลูกค้ายังเข้าไม่ได้ ต้องรู้ว่าติดตรงไหน
+//     — สิทธิ์ไม่เข้า · อีเมลคนละตัว · หรือแค่ยังไม่ได้ล็อกอิน)
+app.get("/api/admin/academy/owns", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = normEmail(String(req.query?.email || ""));
+  if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL" });
+  try {
+    const ids = await academyOwnedCourseIds(email);
+    const courses = ids.length
+      ? await q(`SELECT legacy_id, name, is_active FROM academy_courses WHERE legacy_id = ANY($1)`, [ids])
+      : [];
+    const grants = await q(`SELECT course_id, granted_by, created_at FROM academy_grants WHERE lower(email)=lower($1)`, [email]);
+    res.json({ ok: true, email, owns_count: ids.length,
+      courses: courses.map(c => ({ id: c.legacy_id, name: c.name })),
+      raw_ids: ids, grants,
+      note: ids.length ? "ลูกค้าเห็นคอร์สพวกนี้ได้เมื่อล็อกอินด้วยอีเมลนี้" : "อีเมลนี้ยังไม่มีสิทธิ์คอร์สใดเลย" });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.get("/api/academy/my-courses", async (req, res) => {
   try {
     const email = await authEmail(req);

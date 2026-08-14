@@ -6265,7 +6265,7 @@ app.get("/api/admin/find-customer", async (req, res) => {
   if (!email) return res.status(400).json({ ok: false, error: "ต้องใส่ ?email= หรือ ?channel=" });
   const safe = (p, args = []) => q(p, args).then(r => r.rows ?? r).catch(e => [{ _error: String(e.message || e) }]);
 
-  const [orders, requests, academy, workshops, edits, users] = await Promise.all([
+  const [orders, requests, academy, grants, workshops, edits, users] = await Promise.all([
     safe(`SELECT order_id, created_at, paid_at, payment_status, tier, billing_cycle, blueprint_id,
                  generation_status, generation_error, provider, discount_code, final_amount_satang, instagram_account, user_id,
                  provider_session_id, checkout_url,
@@ -6274,6 +6274,10 @@ app.get("/api/admin/find-customer", async (req, res) => {
     safe(`SELECT request_id, created_at, billing_cycle, user_id, instagram_account, industry, phone
           FROM blueprint_requests WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
     safe(`SELECT purchase_id, created_at, paid_at, status, course_name, amount_satang FROM academy_purchases WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
+    // 🎁 คอร์สที่ทีมเปิดให้ด้วยมือ (ลูกค้าจ่ายนอกระบบ) — ต้องเห็นตรงนี้ด้วย ไม่งั้นเช็คไม่ได้ว่าเปิดให้ไปแล้วจริงไหม
+    safe(`SELECT g.course_id, g.granted_by, g.note, g.created_at,
+            (SELECT name FROM academy_courses c WHERE c.legacy_id = g.course_id) AS course_name
+          FROM academy_grants g WHERE lower(g.email)=$1 ORDER BY g.created_at DESC`, [email]),
     safe(`SELECT booking_id, created_at, paid_at, status, workshop_id, name, qty FROM workshop_bookings WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
     safe(`SELECT order_id, created_at, payment_status, status, clips, amount_satang FROM edit_orders WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
     safe(`SELECT legacy_created, name, username, phone FROM academy_users WHERE lower(email)=$1`, [email]),
@@ -6281,7 +6285,7 @@ app.get("/api/admin/find-customer", async (req, res) => {
 
   // นับเฉพาะแถวจริง — แถวที่เป็น _error (ตารางยังไม่พร้อม) ต้องไม่ถูกนับว่า "เจอลูกค้า"
   const real = (a) => a.filter(x => !x._error).length;
-  const found = real(orders) + real(requests) + real(academy) + real(workshops) + real(edits);
+  const found = real(orders) + real(requests) + real(academy) + real(grants) + real(workshops) + real(edits);
   let similar = [];
   if (!found) {
     // ไม่เจอเลย → หาอีเมลใกล้เคียงจากคนที่จ่ายเงินมาแล้ว (ตัดโดเมนออกแล้วเทียบชื่อหน้า @)
@@ -6299,7 +6303,7 @@ app.get("/api/admin/find-customer", async (req, res) => {
       ? "เจอในระบบ — ดูรายละเอียดด้านล่าง"
       : "ไม่พบอีเมลนี้ในระบบเลย (ทั้งที่จ่ายแล้วและยังไม่จ่าย) → ลูกค้าน่าจะกรอกอีเมลอื่นตอนซื้อ",
     blueprint_orders: orders, blueprint_requests: requests,
-    academy_purchases: academy, workshop_bookings: workshops, edit_orders: edits, academy_user: users[0] || null,
+    academy_purchases: academy, academy_grants: grants, workshop_bookings: workshops, edit_orders: edits, academy_user: users[0] || null,
     similar_emails: similar,
   });
 });

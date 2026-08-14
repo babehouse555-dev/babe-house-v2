@@ -2479,6 +2479,22 @@ app.post("/api/admin/academy/grant", async (req, res) => {
 // 🔎 เช็คว่าอีเมลนี้ "เป็นเจ้าของคอร์สอะไรบ้าง" ในสายตาระบบ — ใช้ตอนลูกค้าบอกว่าเข้าเรียนไม่ได้
 //    (เจอเคสจริง 14 ส.ค. 69: เปิดสิทธิ์ให้แล้วแต่ลูกค้ายังเข้าไม่ได้ ต้องรู้ว่าติดตรงไหน
 //     — สิทธิ์ไม่เข้า · อีเมลคนละตัว · หรือแค่ยังไม่ได้ล็อกอิน)
+// 🧾 ใครซื้อคอร์สผ่านเว็บใหม่บ้าง (ล่าสุดก่อน) — เดิมมีแต่ตัวเลขรวม ไม่รู้ว่าใครซื้ออะไร
+//    (คิมถาม 14 ส.ค. "วันนี้มีคนซื้อคอร์สในเว็บแล้วหรอ" แล้วเช็คไม่ได้ว่าเป็นใคร)
+app.get("/api/admin/academy/sales", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const days = Math.max(1, Math.min(365, Number(req.query?.days) || 7));
+  try {
+    const rows = await q(`SELECT purchase_id, email, course_id, course_name, amount_satang, status,
+        provider_session_id, student_name, created_at, paid_at
+      FROM academy_purchases WHERE created_at > now() - ($1::int || ' days')::interval
+      ORDER BY created_at DESC LIMIT 100`, [days]);
+    const paid = rows.filter(r => r.status === "paid");
+    res.json({ ok: true, days,
+      paid_count: paid.length, paid_baht: Math.round(paid.reduce((t, r) => t + Number(r.amount_satang || 0), 0) / 100),
+      sales: rows });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
 app.get("/api/admin/academy/owns", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const email = normEmail(String(req.query?.email || ""));

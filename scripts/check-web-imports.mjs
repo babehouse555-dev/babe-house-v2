@@ -42,7 +42,16 @@ for (const p of files) {
   const declared = new Set();
   for (const m of src.matchAll(/(?:const|let|var|function|class)\s+([A-Z][A-Z0-9_]{2,})\b/g)) declared.add(m[1]);
 
-  const body = src.replace(/^\s*import[\s\S]*?from\s*["'][^"']+["'];?\s*$/gm, "");
+  // ตัดของที่ "ไม่ใช่โค้ดจริง" ออกก่อนตรวจ ไม่งั้นแจ้งผิด:
+  //  • บรรทัด import (ชื่อที่ import อยู่แล้วไม่ใช่ปัญหา)
+  //  • คอมเมนต์ — เคยแจ้งผิดเพราะมีคนเขียนอธิบายไว้ว่า "ดูสวิตช์ CORP_LIVE ใน config.js"
+  //    แล้วตัวตรวจนึกว่าโค้ดเรียกใช้จริง → บล็อกการขึ้นเว็บทั้งที่ไม่มีบั๊ก (14 ส.ค. 69)
+  //  • ข้อความในเครื่องหมายคำพูด — ชื่อตัวแปรที่โผล่ในข้อความก็ไม่ใช่การเรียกใช้
+  const body = src
+    .replace(/^\s*import[\s\S]*?from\s*["'][^"']+["'];?\s*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")          // คอมเมนต์แบบ /* ... */
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1")        // คอมเมนต์แบบ // ... (เลี่ยง https://)
+    .replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');   // ข้อความในเครื่องหมายคำพูด
   for (const [name, from] of exported) {
     if (imported.has(name) || declared.has(name)) continue;
     if (p === from) continue;

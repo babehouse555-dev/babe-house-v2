@@ -1,0 +1,114 @@
+[
+ {
+  "course_id": "10",
+  "course": "All In Ipad",
+  "showcase_id": "shw_prev_10",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWKIgvcpLYZVn_rwY_SAgtEO",
+  "caption": "All in iPad — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "11",
+  "course": "CAPCUT ON COMPUTER ",
+  "showcase_id": "shw_prev_11",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWIh-BeiibRNOTCh61s35w4V",
+  "caption": "CapCut PC — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "12",
+  "course": "PROCREATE DRAWING",
+  "showcase_id": "shw_prev_12",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWI3E4x187b3zDey8o5AVfIO",
+  "caption": "Procreate Drawing — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "13",
+  "course": "Mixed Media ลงสนาม รับบรีฟจริง!",
+  "showcase_id": "shw_prev_13",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWKHSIXgtbou0glyzWKkwt2A",
+  "caption": "Mixed Media — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "14",
+  "course": "Basic Premier Pro",
+  "showcase_id": "shw_prev_14",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWJjWHVurHuKA2NtMJRcP5TI",
+  "caption": "Baby Basic — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "16",
+  "course": "AE BASIC COURSE",
+  "showcase_id": "shw_prev_16",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWLWkIYw9hXoQf6U57MkfpBf",
+  "caption": "AE Basic — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "17",
+  "course": "AE ADVANCE COURSE",
+  "showcase_id": "shw_prev_17",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWISJTOUhW3WayfRZY1OAOZK",
+  "caption": "AE Advance — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "35",
+  "course": "AI (Adobe illustrator)",
+  "showcase_id": "shw_prev_35",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWKUgY_4lSmBI_qS0qrx2ouZ",
+  "caption": "AI Creator — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "39",
+  "course": "All in your Phone ( ครบจบทุกเทคนิคในมือถือเครื่องเดียว ) ",
+  "showcase_id": "shw_prev_39",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWLeGRn6KRQhsVoQ7__QZX0w",
+  "caption": "All in your Phone — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "49",
+  "course": "Canva Craft",
+  "showcase_id": "shw_prev_49",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWJPMbR7yWqReTjdOsE03lMm",
+  "caption": "Canva Craft — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "52",
+  "course": "Snap & Pop",
+  "showcase_id": "shw_prev_52",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWJ75vpuMzjTrviKckrRltiS",
+  "caption": "Snap & Pop — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "53",
+  "course": "Ai Studio",
+  "showcase_id": "shw_prev_53",
+  "url": "https://youtube.com/playlist?list=PLp12w-dw6JWLbqfLBzj3Hy77Ow42RdFuq",
+  "caption": "AI Studio — ตัวอย่างบทเรียน",
+  "seq": 1
+ },
+ {
+  "course_id": "57",
+  "course": "ตัดต่อ Advance",
+  "showcase_id": "shw_prev_57_1",
+  "url": "https://www.instagram.com/reel/DauWqfYShje/",
+  "caption": "ตัวอย่างการสอน 1",
+  "seq": 1
+ },
+ {
+  "course_id": "57",
+  "course": "ตัดต่อ Advance",
+  "showcase_id": "shw_prev_57_2",
+  "url": "https://www.instagram.com/reel/DWLr8TKk45S8My_eSdKjSe_dBPwE7ahwmnhz7c0/",
+  "caption": "ตัวอย่างการสอน 2",
+  "seq": 2
+ }
+]

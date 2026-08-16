@@ -6436,13 +6436,26 @@ app.get("/api/admin/revenue", async (req, res) => {
   const test = await one(`SELECT COUNT(*) c FROM blueprint_orders WHERE payment_status='mock_paid' OR COALESCE(provider,'')='mock' OR (payment_status='paid' AND COALESCE(provider,'')='stripe' AND COALESCE(live_mode,false)=false)`);
   const byMonth = await q(`SELECT billing_cycle, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue, COUNT(*) c FROM blueprint_orders WHERE ${realWhere} GROUP BY billing_cycle ORDER BY MIN(created_at)`, [PRICE_SATANG]);
   const byProvider = await q(`SELECT provider, COUNT(*) c, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue FROM blueprint_orders WHERE ${realWhere} GROUP BY provider`, [PRICE_SATANG]);
+  // 📣 ลูกค้ามาจากทางไหน — ข้อมูลของเราเอง ไม่ใช่ตัวเลขที่ Meta เคลม
+  //    (คิมถาม 14 ส.ค. "เราได้ยอดขายจาก ad กี่บาท")
+  //    Meta นับแบบ attribution window ของเขาเอง ซึ่งมักนับเกินจริง
+  //    ของเราจับจากตอนลูกค้าคลิกเข้ามาจริง (fbclid / utm_source) แล้วจำไว้จนกดจ่ายเงิน
+  const bySource = await q(`SELECT COALESCE(NULLIF(source,''),'ไม่ทราบที่มา') src,
+      COUNT(*) c, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue
+    FROM blueprint_orders WHERE ${realWhere} GROUP BY 1 ORDER BY 3 DESC`, [PRICE_SATANG]);
+  const bySourceMonth = await q(`SELECT COALESCE(NULLIF(source,''),'ไม่ทราบที่มา') src,
+      COUNT(*) c, COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue
+    FROM blueprint_orders WHERE ${realWhere} AND paid_at > now() - interval '30 days'
+    GROUP BY 1 ORDER BY 3 DESC`, [PRICE_SATANG]);
   // 📅 แยกตาม "เดือนที่เงินเข้าจริง" — ต่างจาก billing_cycle ที่เป็นเดือนของแผน
   //    ใช้เทียบการเปิดตัวสินค้าคนละตัวกัน (เช่น เดือนแรกของ Blueprint เทียบเดือนแรกของคอร์ส)
   const byPaid = await q(`SELECT to_char(paid_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM') ym,
       COALESCE(SUM(COALESCE(final_amount_satang,$1)),0) revenue, COUNT(*) c
     FROM blueprint_orders WHERE ${realWhere} AND paid_at IS NOT NULL GROUP BY 1 ORDER BY 1`, [PRICE_SATANG]);
   const orders = await q(`SELECT email, tier, COALESCE(final_amount_satang,$1) amt, paid_at, billing_cycle FROM blueprint_orders WHERE ${realWhere} ORDER BY paid_at DESC LIMIT 100`, [PRICE_SATANG]);
-  res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_paid_month: byPaid.map(m => ({ month: m.ym, revenue: Number(m.revenue), c: Number(m.c) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
+  res.json({ ok: true, total_satang: Number(real.s), paid_count: Number(real.c), free_count: Number(free.c), test_count: Number(test.c), by_month: byMonth.map(m => ({ ...m, revenue: Number(m.revenue), c: Number(m.c) })), by_paid_month: byPaid.map(m => ({ month: m.ym, revenue: Number(m.revenue), c: Number(m.c) })),
+    by_source: bySource.map(r => ({ source: r.src, orders: Number(r.c), baht: Math.round(Number(r.revenue) / 100) })),
+    by_source_30d: bySourceMonth.map(r => ({ source: r.src, orders: Number(r.c), baht: Math.round(Number(r.revenue) / 100) })), by_provider: byProvider.map(p => ({ ...p, revenue: Number(p.revenue), c: Number(p.c) })), paid_orders: orders.map(o => ({ email: o.email || "(ไม่มีอีเมล)", tier: o.tier, baht: Math.round(Number(o.amt) / 100), paid_at: o.paid_at, billing_cycle: o.billing_cycle })) });
 });
 app.get("/api/admin/codes", async (req, res) => { if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" }); res.json({ ok: true, codes: await q(`SELECT * FROM promo_codes ORDER BY created_at DESC`) }); });
 // เทรนด์ประจำสัปดาห์ (ทีม Babe curate) แยกตามกลุ่มอาชีพ — เก็บเป็นประวัติ แถวล่าสุด/กลุ่ม = ตัวที่ใช้ · AI ใช้เฉพาะที่อายุ < 30 วัน (1 เดือน)

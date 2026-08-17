@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import "./styles.css";
 import { captureRef, ping } from "./api.js";
 import { LangToggle, useI18n } from "./i18n.jsx";
-import { ACADEMY_LIVE, WORKSHOP_LIVE, EDIT_LIVE, PREVIEW } from "./config.js";
+import { ACADEMY_LIVE, WORKSHOP_LIVE, EDIT_LIVE, PREVIEW, CORP_LIVE } from "./config.js";
 import { initPixel, track as fbTrack } from "./pixel.js";
 import { ConfirmHost } from "./confirm.jsx";
 
@@ -43,6 +43,8 @@ function TopBar() {
           {/* เมนูคอร์สเรียน/คลาสสด — โผล่ตอนเปิดตัวเฟส 4 เท่านั้น (สลับที่ config.js) */}
           {ACADEMY_LIVE && <Link to="/academy" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คอร์สเรียน</Link>}
           {WORKSHOP_LIVE && <Link to="/workshop" className="muted" style={{ fontWeight: 600, fontSize: 14 }}>คลาสสด</Link>}
+          {/* 🏢 คิมขอ 17 ส.ค. — HR ต้องหาเจอจากเมนูบนสุด ไม่ใช่ต้องรู้ URL เอง */}
+          {CORP_LIVE && <Link to="/corporate" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>อบรมองค์กร</Link>}
           {/* 🎬 พลอยขอ 11 ส.ค. — ให้จ้างทีมตัดต่อได้จากเมนูเลย ไม่ต้องเข้าผ่านหน้าเล่มอย่างเดียว */}
           {EDIT_LIVE && <Link to="/edit" className="muted" style={{ fontWeight: 600, fontSize: 14, whiteSpace: "nowrap" }}>จ้างทีมตัดต่อ</Link>}
           <Link to="/account" className="link" style={{ fontSize: 14 }}>{tb("nav_account")}</Link>

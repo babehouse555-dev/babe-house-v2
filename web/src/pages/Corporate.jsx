@@ -23,18 +23,18 @@ const BLUE = "var(--blue)";
 const money = (n) => "฿" + Number(n || 0).toLocaleString("th-TH");
 
 const STEPS = [
-  { icon: "🎯", title: "เลือกวิชาที่ทีมต้องใช้", body: "ติ๊กได้หลายวิชา เรียนรวมกันได้ในวันเดียว ไม่คิดเพิ่ม" },
-  { icon: "👥", title: "บอกจำนวนคน", body: "ราคาขึ้นกับขนาดทีมเท่านั้น เห็นตัวเลขทันทีไม่ต้องรอใครตอบ" },
-  { icon: "🎤", title: "ครูพี่คิมสอนสดเต็มวัน", body: "ลงมือทำกับงานจริงของทีม ไม่ใช่เคสตัวอย่างจากที่อื่น" },
-  { icon: "📊", title: "ส่งผลให้ฝ่ายบุคคล", body: "ใบประกาศรายคน + รายงานว่าใครเรียนไปแล้วแค่ไหน ใช้เคลียร์งบอบรมได้" },
+  { icon: "🎯", title: "เลือกวิชา" },
+  { icon: "👥", title: "บอกจำนวนคน" },
+  { icon: "💰", title: "เห็นราคาทันที" },
+  { icon: "🎤", title: "ครูพี่คิมสอนสดเต็มวัน" },
 ];
 
 const FAQ = [
-  ["เลือกหลายวิชาราคาเพิ่มไหม", "ไม่เพิ่มค่ะ เหมาเต็มวัน เลือกกี่วิชาก็ได้ — เราจะจัดสัดส่วนเวลาให้ตามที่ทีมต้องใช้จริงมากที่สุด"],
-  ["ออกใบกำกับภาษีในนามบริษัทได้ไหม", "ได้ค่ะ ระบบออกใบกำกับภาษีเต็มรูปให้ แจ้งชื่อบริษัทกับเลขผู้เสียภาษีมาตอนตกลงราคาได้เลย"],
-  ["ต้องจ่ายก่อนไหม", "ไม่ต้องค่ะ กดส่งแล้วได้สรุปราคาเข้าอีเมลทันทีเอาไปขออนุมัติได้เลย เราส่งใบเสนอราคาอย่างเป็นทางการตามไปให้"],
-  ["ทีมพื้นฐานไม่เท่ากันจะตามทันไหม", "ทันค่ะ คนที่ยังไม่เป็นดูคอร์สออนไลน์ปูพื้นก่อนได้ พอถึงวันเรียนสดทุกคนจะอยู่จุดใกล้กันแล้ว"],
-  ["ทีมมากกว่า 30 คนได้ไหม", "ได้ค่ะ 31 คนขึ้นไปคิดเรตเดียว ใส่จำนวนจริงลงไปแล้วระบบคำนวณให้เลย"],
+  ["เลือกหลายวิชาราคาเพิ่มไหม", "ไม่เพิ่มค่ะ เหมาเต็มวัน เลือกกี่วิชาก็ได้"],
+  ["ออกใบกำกับภาษีในนามบริษัทได้ไหม", "ได้ค่ะ ออกเต็มรูปให้อัตโนมัติ"],
+  ["ต้องจ่ายก่อนไหม", "ไม่ต้องค่ะ ได้สรุปราคาเข้าอีเมลไปขออนุมัติก่อน"],
+  ["ทีมพื้นฐานไม่เท่ากันจะทันไหม", "ทันค่ะ คนที่ยังไม่เป็นดูคอร์สออนไลน์ปูพื้นก่อนได้"],
+  ["ทีมมากกว่า 30 คนได้ไหม", "ได้ค่ะ ใส่จำนวนจริงแล้วระบบคำนวณให้เลย"],
 ];
 
 const inputStyle = { width: "100%", boxSizing: "border-box", fontSize: 15, padding: "11px 13px", borderRadius: 11, border: "1px solid var(--border)", fontFamily: "inherit", background: "#fff" };
@@ -52,7 +52,7 @@ function Field({ label, hint, children }) {
 export default function Corporate() {
   const [cfg, setCfg] = useState(null);
   const [f, setF] = useState({ org_name: "", contact_name: "", email: "", phone: "", goal: "",
-    headcount: "20", level: "", place: "ที่บริษัท (กรุงเทพฯ / ปริมณฑล)", refs_text: "", budget: "", when_text: "" });
+    headcount: "", level: "", place: "", refs_text: "", budget: "", when_text: "" });
   const [topics, setTopics] = useState([]);
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -117,28 +117,25 @@ export default function Corporate() {
 
       <div className="brand">BABE HOUSE · อบรมองค์กร</div>
       <h1 className="page">ติดอาวุธให้ทีมทำคอนเทนต์เองได้</h1>
-      <p className="sub" style={{ maxWidth: 560 }}>
-        เลือกวิชาที่ทีมต้องใช้ บอกจำนวนคน แล้วเห็นราคาทันทีในหน้านี้เลย —
-        ไม่ต้องรออีเมลตอบกลับ เอาสรุปไปขออนุมัติได้วันนี้
-      </p>
+      <p className="sub" style={{ maxWidth: 520 }}>เลือกวิชา บอกจำนวนคน เห็นราคาทันที — ไม่ต้องรอใครตอบ</p>
 
-      <div className="row" style={{ gap: 12, flexWrap: "wrap", margin: "22px 0 30px" }}>
+      {/* แถบขั้นตอน — แค่บอกว่าหน้านี้ทำอะไร ไม่ต้องอธิบายยาว (คิมทัก 17 ส.ค. "ตัวหนังสือเยอะไปหมด") */}
+      <div className="row" style={{ gap: 10, flexWrap: "wrap", margin: "20px 0 26px", alignItems: "center" }}>
         {STEPS.map((s, i) => (
-          <div key={i} className="card" style={{ flex: "1 1 168px", minWidth: 168, margin: 0, padding: "15px 16px" }}>
-            <div style={{ fontSize: 22 }}>{s.icon}</div>
-            <div style={{ fontWeight: 800, fontSize: 14.5, marginTop: 5 }}>{s.title}</div>
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.65 }}>{s.body}</div>
+          <div key={i} className="row" style={{ gap: 7, alignItems: "center", background: "var(--soft)",
+            borderRadius: 999, padding: "7px 14px", fontSize: 13.5, fontWeight: 700 }}>
+            <span style={{ fontSize: 16 }}>{s.icon}</span>{s.title}
           </div>
         ))}
       </div>
 
       <div className="card">
         <h2 style={{ fontSize: 19, margin: "0 0 4px" }}>ออกแบบวันอบรมของทีมคุณ</h2>
-        <p className="muted" style={{ fontSize: 13, margin: "0 0 20px", lineHeight: 1.7 }}>
-          ราคาขยับตามจำนวนคนเท่านั้น — <b>เลือกกี่วิชาก็ได้ในวันเดียว ไม่คิดเพิ่ม</b>
+        <p className="muted" style={{ fontSize: 13, margin: "0 0 18px" }}>
+          <b>เลือกกี่วิชาก็ได้ในวันเดียว ไม่คิดเพิ่ม</b> · ราคาขยับตามจำนวนคนเท่านั้น
         </p>
 
-        <Field label="อยากให้ทีมเรียนเรื่องอะไรบ้าง" hint="ติ๊กได้หลายข้อ · ถ้าไม่มีที่ตรงใจ เขียนบอกในช่องโจทย์ด้านล่างได้เลย">
+        <Field label="อยากให้ทีมเรียนเรื่องอะไรบ้าง" hint="ติ๊กได้หลายข้อ">
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             {(cfg?.topics || []).map(t => {
               const on = topics.includes(t);
@@ -157,19 +154,28 @@ export default function Corporate() {
         <div className="row" style={{ gap: 14, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 190px" }}>
             <Field label="ทีมกี่คน">
-              <input type="number" min="1" max="9999" inputMode="numeric" value={f.headcount} onChange={set("headcount")} style={inputStyle} />
+              <input type="number" min="1" max="9999" inputMode="numeric" placeholder="เช่น 20" value={f.headcount} onChange={set("headcount")} style={inputStyle} />
             </Field>
           </div>
           <div style={{ flex: "1 1 230px" }}>
             <Field label="อยากจัดที่ไหน">
               <select value={f.place} onChange={set("place")} style={inputStyle}>
+                <option value="">— เลือก —</option>
                 {(cfg?.places || []).map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </Field>
           </div>
         </div>
 
-        {/* 💰 ราคาโชว์สดตรงนี้ — หัวใจของหน้านี้ทั้งหน้า */}
+        {/* 💰 ราคาโชว์สดตรงนี้ — หัวใจของหน้านี้ทั้งหน้า
+            ⛔ ไม่โชว์จนกว่าลูกค้าจะใส่จำนวนคนเอง — คิมทัก 17 ส.ค. "ยังไม่ได้ติ๊กอะไรเลยแต่ทำไมขึ้นราคาแล้ว"
+               เดิมตั้งค่าเริ่มต้นไว้ 20 คน กลายเป็นเสนอราคา 82,000 ให้คนที่ยังไม่ได้บอกอะไรเลย */}
+        {!quote && (
+          <div style={{ background: "var(--soft)", borderRadius: 14, padding: "16px 18px", margin: "6px 0 20px",
+            textAlign: "center", fontSize: 13.5, color: "var(--muted)", lineHeight: 1.7 }}>
+            👆 ใส่จำนวนคนในทีม แล้วราคาจะขึ้นให้ตรงนี้ทันทีค่ะ
+          </div>
+        )}
         {quote && (
           <div style={{ background: "linear-gradient(158deg,#3E93E4,#1B6FC4)", color: "#fff", borderRadius: 16,
             padding: "18px 20px", margin: "6px 0 20px", boxShadow: "0 8px 22px rgba(27,111,196,.28)" }}>
@@ -183,17 +189,15 @@ export default function Corporate() {
             </div>
             {quote.note && <div style={{ fontSize: 12.5, marginTop: 8, background: "rgba(255,255,255,.16)",
               borderRadius: 9, padding: "8px 11px", lineHeight: 1.65 }}>ℹ️ {quote.note}</div>}
-            <div style={{ fontSize: 12.5, marginTop: 8, opacity: .9 }}>
-              รวมใบประกาศรายคน + รายงานผลให้ฝ่ายบุคคล · ออกใบกำกับภาษีในนามบริษัทได้
-            </div>
+            <div style={{ fontSize: 12.5, marginTop: 8, opacity: .9 }}>รวมใบประกาศรายคน + รายงานผลให้ฝ่ายบุคคล</div>
           </div>
         )}
 
-        <Field label="อยากให้ทีมเก่งขึ้นเรื่องอะไร" hint="ไม่ต้องรู้ว่าอยากได้คอร์สอะไร บอกแค่ว่าทีมติดปัญหาตรงไหน เช่น “ทีมการตลาดถ่ายคลิปเองไม่เป็น ต้องจ้างข้างนอกทุกครั้ง”">
+        <Field label="อยากให้ทีมเก่งขึ้นเรื่องอะไร" hint="บอกแค่ว่าทีมติดปัญหาตรงไหน เช่น “ทีมการตลาดถ่ายคลิปเองไม่เป็น”">
           <textarea value={f.goal} onChange={set("goal")} style={{ ...inputStyle, minHeight: 92 }} />
         </Field>
 
-        <Field label="มีงานตัวอย่างที่อยากให้ทีมทำได้แบบนั้นไหม" hint="วางลิงก์มาได้เลย เช่น คลิป IG/TikTok ที่ชอบสไตล์ หรือเพจคู่แข่ง — จะได้ออกแบบวันสอนให้ตรงสไตล์ที่คุณต้องการจริงๆ">
+        <Field label="มีงานตัวอย่างที่อยากให้ทีมทำได้แบบนั้นไหม" hint="วางลิงก์คลิปหรือเพจที่ชอบสไตล์มาได้เลย (ไม่บังคับ)">
           <textarea value={f.refs_text} onChange={set("refs_text")} placeholder={"https://www.instagram.com/reel/...\nhttps://www.tiktok.com/@..."} style={{ ...inputStyle, minHeight: 72 }} />
         </Field>
 
@@ -220,10 +224,10 @@ export default function Corporate() {
             <div style={{ flex: "1 1 210px" }}><Field label="ชื่อผู้ติดต่อ"><input value={f.contact_name} onChange={set("contact_name")} style={inputStyle} /></Field></div>
           </div>
           <div className="row" style={{ gap: 14, flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 210px" }}><Field label="อีเมล" hint="สรุปราคาจะส่งไปที่นี่ทันที"><input type="email" value={f.email} onChange={set("email")} style={inputStyle} /></Field></div>
+            <div style={{ flex: "1 1 210px" }}><Field label="อีเมล" hint="สรุปราคาส่งไปที่นี่ทันที"><input type="email" value={f.email} onChange={set("email")} style={inputStyle} /></Field></div>
             <div style={{ flex: "1 1 210px" }}><Field label="เบอร์โทร (ไม่บังคับ)"><input value={f.phone} onChange={set("phone")} inputMode="tel" style={inputStyle} /></Field></div>
           </div>
-          <Field label="งบที่ตั้งไว้ (ไม่บังคับ)" hint="บอกมาได้ตรงๆ เราจะจัดรูปแบบให้พอดีงบมากที่สุด">
+          <Field label="งบที่ตั้งไว้ (ไม่บังคับ)" hint="บอกได้ตรงๆ เราจัดให้พอดีงบ">
             <input value={f.budget} onChange={set("budget")} placeholder="เช่น ไม่เกิน 80,000" style={inputStyle} />
           </Field>
         </div>
@@ -232,8 +236,8 @@ export default function Corporate() {
         <button className="btn full" onClick={send} disabled={busy} style={{ padding: "14px 20px", fontSize: 16 }}>
           {busy ? "กำลังส่ง…" : "ส่งโจทย์ + รับสรุปราคาทางอีเมล"}
         </button>
-        <p className="muted" style={{ fontSize: 12.5, textAlign: "center", margin: "10px 0 0", lineHeight: 1.7 }}>
-          ยังไม่ต้องจ่ายอะไรตอนนี้ค่ะ · สรุปราคาเข้าอีเมลทันที เอาไปขออนุมัติได้เลย
+        <p className="muted" style={{ fontSize: 12.5, textAlign: "center", margin: "10px 0 0" }}>
+          ยังไม่ต้องจ่ายตอนนี้ · สรุปราคาเข้าอีเมลทันที
         </p>
       </div>
 

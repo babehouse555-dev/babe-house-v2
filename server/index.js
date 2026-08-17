@@ -2292,15 +2292,16 @@ app.get("/api/admin/backup", async (req, res) => {
 //    (ตั้งใจให้เป็นแบบนั้น กันคนได้ลิงก์ไปแล้วอ่านเล่มคนอื่น)
 // เคสที่ใช้: คิมสร้างเล่มให้ลูกค้าด้วยโค้ดฟรีในอีเมลตัวเอง แล้วต้องส่งต่อให้ลูกค้าจริง
 // ย้ายแล้วลูกค้าล็อกอินด้วยอีเมลตัวเอง เห็นเล่มในบัญชีถาวร ใช้ได้ครบทุกฟีเจอร์
-app.post("/api/admin/blueprint/transfer", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const bpId = String(req.body?.blueprint_id || "").trim();
-  const to = normEmail(String(req.body?.to_email || "").trim());
-  if (!bpId || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.status(400).json({ ok: false, error: "BAD_INPUT", message: "ต้องมี blueprint_id และอีเมลปลายทางที่ถูกต้อง" });
-  try {
+// 🔧 ตัวจริงที่ทำงาน — ใช้ทั้งหน้าแอดมินของคิม และหน้า "ดูแลลูกค้า" ของพลอยใน /team
+//    คืน {error, status} ถ้าทำไม่ได้ · คืนผลลัพธ์ถ้าสำเร็จ
+async function transferBlueprint({ blueprint_id, to_email, by }) {
+  const bpId = String(blueprint_id || "").trim();
+  const to = normEmail(String(to_email || "").trim());
+  if (!bpId || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return { status: 400, error: "BAD_INPUT", message: "ต้องมีเล่มและอีเมลปลายทางที่ถูกต้อง" };
+  {
     const bp = await one(`SELECT b.blueprint_id, b.request_id, b.user_id, b.billing_cycle, r.email AS owner_email, r.instagram_account
       FROM blueprints b LEFT JOIN blueprint_requests r ON r.request_id=b.request_id WHERE b.blueprint_id=$1`, [bpId]);
-    if (!bp) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่พบเล่มนี้ค่ะ" });
+    if (!bp) return { status: 404, error: "NOT_FOUND", message: "ไม่พบเล่มนี้ค่ะ" };
     const from = normEmail(bp.owner_email || "");
     // ⚠️ ถึงเล่มจะเป็นของอีเมลนี้อยู่แล้วก็ยัง "กวาดให้ครบ" ต่อ ไม่ตัดจบตรงนี้
     //    เพราะเคยย้ายเล่มไปแล้วแต่ใบกำกับค้างที่อีเมลเดิม — ถ้าตัดจบ กดซ้ำก็ไม่มีทางแก้ได้เลย
@@ -2319,17 +2320,25 @@ app.post("/api/admin/blueprint/transfer", async (req, res) => {
     await upsertCustomer(to, bp.instagram_account || "").catch(() => {});
     console.log(`[transfer] เล่ม ${bpId} · ${from || "(ไม่มี)"} → ${to}${same ? " (กวาดซ้ำ)" : ""}`);
     // เจ้าของไม่ได้เปลี่ยน = แค่กวาดของที่ค้าง ไม่ต้องรบกวนทีมด้วยเมล
-    if (same) return res.json({ ok: true, same: true, blueprint_id: bpId, to,
+    if (same) return { ok: true, same: true, blueprint_id: bpId, to,
       orders_moved: ord.rowCount || 0, invoices_moved: inv.rowCount || 0,
-      message: "เล่มนี้เป็นของอีเมลนี้อยู่แล้วค่ะ — ตรวจใบกำกับภาษีกับออเดอร์ให้ตรงกันเรียบร้อย" });
+      message: "เล่มนี้เป็นของอีเมลนี้อยู่แล้วค่ะ — ตรวจใบกำกับภาษีกับออเดอร์ให้ตรงกันเรียบร้อย" };
     // แจ้งทีมไว้เป็นหลักฐานเสมอ — การย้ายเจ้าของเล่มเป็นเรื่องใหญ่ ต้องตามย้อนหลังได้
     sendEmail(OPS_EMAIL, `📦 ย้ายเล่ม ${bp.instagram_account || bpId} ให้เจ้าของใหม่`,
       wrap(`<b>ช่อง:</b> ${bp.instagram_account || "-"}<br><b>เดือน:</b> ${String(bp.billing_cycle).replace("_", " ")}<br>` +
            `<b>จาก:</b> ${from || "(ไม่มีอีเมล)"}<br><b>ไป:</b> ${to}<br><b>ออเดอร์ที่ย้ายด้วย:</b> ${ord.rowCount || 0}` +
-           `<br><b>ใบกำกับภาษีที่ย้ายด้วย:</b> ${inv.rowCount || 0}`)).catch(() => {});
-    res.json({ ok: true, blueprint_id: bpId, from, to, orders_moved: ord.rowCount || 0, invoices_moved: inv.rowCount || 0,
+           `<br><b>ใบกำกับภาษีที่ย้ายด้วย:</b> ${inv.rowCount || 0}<br><b>คนย้าย:</b> ${by || "แอดมิน"}`)).catch(() => {});
+    return { ok: true, blueprint_id: bpId, from, to, orders_moved: ord.rowCount || 0, invoices_moved: inv.rowCount || 0,
       channel: bp.instagram_account, billing_cycle: bp.billing_cycle,
-      message: `ย้ายเล่มให้ ${to} แล้วค่ะ — ล็อกอินด้วยอีเมลนี้แล้วจะเห็นเล่มในบัญชีเลย` });
+      message: `ย้ายเล่มให้ ${to} แล้วค่ะ — ล็อกอินด้วยอีเมลนี้แล้วจะเห็นเล่มในบัญชีเลย` };
+  }
+}
+app.post("/api/admin/blueprint/transfer", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const r = await transferBlueprint({ blueprint_id: req.body?.blueprint_id, to_email: req.body?.to_email, by: "คิม" });
+    if (r.error) return res.status(r.status).json({ ok: false, error: r.error, message: r.message });
+    res.json(r);
   } catch (e) { console.error("transfer", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
@@ -2559,14 +2568,13 @@ app.get("/api/admin/academy/owns", async (req, res) => {
 // ไม่มีอีเมลในระบบเก่าเลย** (สมัครด้วย username อย่างเดียว) รวมเป็นเงินที่จ่ายมาแล้ว ~฿1.1 ล้าน
 // คนกลุ่มนี้ล็อกอินเว็บใหม่ไม่ได้เพราะเราใช้อีเมลเป็นตัวยืนยันตัวตน
 // แอดมินจึงต้องค้นจาก "ชื่อ/เบอร์ที่ลูกค้าบอกมาในไลน์" ให้เจอ แล้วผูกอีเมลปัจจุบันของเขาเข้าไป
-app.get("/api/admin/academy/find", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const raw = String(req.query?.q || "").trim();
-  if (raw.length < 2) return res.status(400).json({ ok: false, error: "TOO_SHORT", message: "พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ" });
+// 🔧 ตัวจริงที่ทำงาน — แยกออกมาเพราะใช้ 2 ที่: หน้าแอดมินของคิม และหน้า "ดูแลลูกค้า" ของพลอยใน /team
+//    ถ้าปล่อยให้ก๊อปโค้ดไว้สองที่ วันหนึ่งจะแก้ที่เดียวแล้วอีกที่เพี้ยนเงียบๆ
+async function findAcademyCustomers(raw) {
   const like = `%${raw.toLowerCase()}%`;
   // เบอร์โทรในข้อมูลเก่าเก็บไม่เหมือนกัน (มีขีด มีเว้นวรรค) → ตัดให้เหลือแต่ตัวเลขก่อนเทียบ
   const digits = raw.replace(/\D/g, "");
-  try {
+  {
     const users = await q(`SELECT legacy_id, username, name, email, phone, legacy_created FROM academy_users
       WHERE lower(COALESCE(email,'')) LIKE $1 OR lower(COALESCE(name,'')) LIKE $1
          OR lower(COALESCE(username,'')) LIKE $1
@@ -2595,8 +2603,15 @@ app.get("/api/admin/academy/find", async (req, res) => {
         username_is_email: !!(u.username && u.username.includes("@")),
       });
     }
-    res.json({ ok: true, q: raw, count: out.length, users: out });
-  } catch (e) { console.error("academy/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+    return out;
+  }
+}
+app.get("/api/admin/academy/find", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const raw = String(req.query?.q || "").trim();
+  if (raw.length < 2) return res.status(400).json({ ok: false, error: "TOO_SHORT", message: "พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ" });
+  try { const users = await findAcademyCustomers(raw); res.json({ ok: true, q: raw, count: users.length, users }); }
+  catch (e) { console.error("academy/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
 // 🔗 ผูกอีเมลให้ลูกค้าเก่าที่ไม่มีอีเมล แล้วเปิดสิทธิ์คอร์สที่เขาจ่ายเงินไปแล้วทั้งหมดให้อีเมลนั้น
@@ -2604,15 +2619,15 @@ app.get("/api/admin/academy/find", async (req, res) => {
 // ⚠️ ทำ 2 อย่างพร้อมกันโดยตั้งใจ — ถ้าใส่อีเมลอย่างเดียวจะยังเข้าเรียนไม่ได้
 //    เพราะ academyOwnedCourseIds วิ่งจาก academy_users.email → ออเดอร์ ซึ่งจะได้ผลก็ต่อเมื่อบันทึกอีเมลลงแถวนั้นจริง
 //    แต่ถ้าลูกค้ามีหลายบัญชีเก่า/ออเดอร์ผูกคนละ user การเปิด grant ควบไปด้วยทำให้ชัวร์ว่าเห็นของครบ
-app.post("/api/admin/academy/set-email", async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  const legacyId = String(req.body?.legacy_id || "").trim();
-  const email = normEmail(req.body?.email || "");
-  if (!legacyId || !email) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีทั้งลูกค้าและอีเมล" });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return res.status(400).json({ ok: false, error: "BAD_EMAIL", message: "อีเมลนี้รูปแบบไม่ถูกต้อง ตรวจอีกทีนะคะ" });
-  try {
+// คืน {error, status} ถ้าทำไม่ได้ · คืนผลลัพธ์ถ้าสำเร็จ — ใช้ทั้งหน้าแอดมินและหน้า /team ของพลอย
+async function linkAcademyEmail({ legacy_id, email: rawEmail, by }) {
+  const legacyId = String(legacy_id || "").trim();
+  const email = normEmail(rawEmail || "");
+  if (!legacyId || !email) return { status: 400, error: "MISSING", message: "ต้องมีทั้งลูกค้าและอีเมล" };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { status: 400, error: "BAD_EMAIL", message: "อีเมลนี้รูปแบบไม่ถูกต้อง ตรวจอีกทีนะคะ" };
+  {
     const u = await one(`SELECT legacy_id, name, email FROM academy_users WHERE legacy_id=$1`, [legacyId]);
-    if (!u) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่เจอลูกค้าคนนี้" });
+    if (!u) return { status: 404, error: "NOT_FOUND", message: "ไม่เจอลูกค้าคนนี้" };
     const bought = await q(`SELECT DISTINCT x.course_id FROM (
         SELECT o.course_id FROM academy_orders o WHERE o.legacy_user_id=$1 AND o.status='Close' AND COALESCE(o.course_id,'') NOT IN ('','0')
         UNION
@@ -2622,18 +2637,27 @@ app.post("/api/admin/academy/set-email", async (req, res) => {
     const before = u.email || null;
     await run(`UPDATE academy_users SET email=lower($2) WHERE legacy_id=$1`, [legacyId, email]);
     let granted = 0;
+    const who = String(by || "admin").slice(0, 40);
     for (const b of bought) {
       await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,$4,$5)
         ON CONFLICT (lower(email), course_id) DO NOTHING`,
-        [uid("gr"), email, b.course_id, String(req.body?.granted_by || "admin").slice(0, 40),
+        [uid("gr"), email, b.course_id, who,
          `ผูกอีเมลให้ลูกค้าเก่า ${u.name || legacyId} (เดิม${before ? " " + before : "ไม่มีอีเมล"})`]);
       granted++;
     }
     // ปิดคำขอ "ไม่เจอคอร์ส" ของอีเมลนี้ให้อัตโนมัติ — จะได้ไม่ค้างในคิวให้แอดมินทำซ้ำ
     await run(`UPDATE academy_claims SET status='granted', handled_by=$2, handled_at=now() WHERE lower(email)=lower($1) AND status='open'`,
-      [email, String(req.body?.granted_by || "admin").slice(0, 40)]).catch(() => {});
+      [email, who]).catch(() => {});
     const owns = await academyOwnedCourseIds(email);
-    res.json({ ok: true, email, legacy_id: legacyId, was: before, granted, owns_count: owns.length });
+    return { ok: true, email, legacy_id: legacyId, was: before, granted, owns_count: owns.length };
+  }
+}
+app.post("/api/admin/academy/set-email", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const r = await linkAcademyEmail({ legacy_id: req.body?.legacy_id, email: req.body?.email, by: req.body?.granted_by });
+    if (r.error) return res.status(r.status).json({ ok: false, error: r.error, message: r.message });
+    res.json(r);
   } catch (e) { console.error("academy/set-email", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 app.get("/api/academy/my-courses", async (req, res) => {
@@ -4664,6 +4688,17 @@ async function teamWho(req) {
   if (isAdmin(req)) return { member_id: "admin", name: "คิม", role: "owner", position: "เจ้าของ", side: "both" };
   return null;
 }
+// 🙋 ใครมีสิทธิ์ "ดูแลลูกค้า" ได้บ้าง — เจ้าของ กับ แอดมินดูแลลูกค้า (role = support)
+//
+// คิมสั่ง 17 ส.ค. 2569: "หลังบ้านงานแอดมินเอาไปไว้ใน Babe House Team เป็นหน้าของพลอยไปเลย
+// พลอยจะได้จัดการงานแอดมินได้ด้วยตัวเอง"
+// ⛔ role นี้ต้องไม่เห็นยอดขาย/ภาพรวมรายได้/สมาชิกทีม — เห็นได้แค่ข้อมูลที่ใช้ช่วยลูกค้าคนตรงหน้า
+//    (กฎเดิมของระบบตั้งแต่ 2 ส.ค.: ทีมไม่เห็นยอดขาย)
+async function whoSupport(req) {
+  const me = await teamWho(req);
+  if (!me) return null;
+  return (me.role === "owner" || me.role === "support") ? me : null;
+}
 // คอมเมนต์ที่ทีมคุยกันเอง — ติดธง internal=1 ⛔ ลูกค้าไม่มีทางเห็น
 const teamComment = (orderId, name, text) =>
   run(`INSERT INTO edit_comments (id,order_id,author,author_name,text,internal) VALUES ($1,$2,'team',$3,$4,1)`,
@@ -5173,6 +5208,86 @@ app.post("/api/team/revision-fault", async (req, res) => {
   res.json({ ok: true, client_revisions: used, our_fix_count: Number(r.our_fix_count || 0),
     free_left: Math.max(0, EDIT_FREE_REVISIONS - used), over_rounds: over,
     charge_baht: over * (REVISION_EXTRA_SATANG / 100), per_round_baht: REVISION_EXTRA_SATANG / 100 });
+});
+
+/* ═══════════ 🙋 หน้า "ดูแลลูกค้า" ของแอดมิน (พลอย) — อยู่ใน /team ═══════════
+   เดิมพลอยไม่มีสิทธิ์เข้าระบบเราเลย ทุกเคสต้องส่งไลน์มาให้คิมกดให้ = คิมเป็นคอขวด
+   ตอนนี้พลอยปิดเคสเองได้ ในขอบเขตที่จำเป็นเท่านั้น:
+     ✅ ค้นหาลูกค้า · เปิดสิทธิ์คอร์ส · ผูกอีเมล · ย้ายเล่มที่พิมพ์อีเมลผิด · ดูคิวคนที่แจ้งไม่เจอคอร์ส
+     ⛔ ไม่เห็นยอดขาย ไม่เห็นภาพรวมรายได้ ไม่เห็นข้อมูลทีม ไม่เห็นคิวงานตัดต่อ           */
+app.get("/api/team/customer/find", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  const raw = String(req.query?.q || "").trim();
+  if (raw.length < 2) return res.status(400).json({ ok: false, error: "TOO_SHORT", message: "พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ" });
+  try {
+    // ฝั่งคอร์สเรียน (ข้อมูลเว็บเก่า) — ค้นได้ทั้งอีเมล ชื่อ ชื่อผู้ใช้ เบอร์โทร
+    const users = await findAcademyCustomers(raw);
+    // ฝั่ง Blueprint — ค้นด้วยอีเมลหรือชื่อช่อง IG (ลูกค้ามักบอกชื่อช่องมากกว่าอีเมล)
+    const like = `%${raw.toLowerCase()}%`;
+    const books = await q(`SELECT o.order_id, o.email, o.instagram_account, o.billing_cycle, o.payment_status,
+        o.blueprint_id, o.generation_status, o.created_at, o.paid_at
+      FROM blueprint_orders o
+      WHERE lower(COALESCE(o.email,'')) LIKE $1 OR lower(COALESCE(o.instagram_account,'')) LIKE $1
+      ORDER BY o.created_at DESC LIMIT 20`, [like]).catch(() => []);
+    res.json({ ok: true, q: raw, count: users.length, users, books });
+  } catch (e) { console.error("team/customer/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.get("/api/team/customer/owns", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const email = normEmail(String(req.query?.email || ""));
+  if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL" });
+  try {
+    const ids = await academyOwnedCourseIds(email);
+    const courses = ids.length ? await q(`SELECT legacy_id, name FROM academy_courses WHERE legacy_id = ANY($1)`, [ids]) : [];
+    res.json({ ok: true, email, owns_count: ids.length, courses: courses.map(c => ({ id: c.legacy_id, name: c.name })) });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/team/customer/set-email", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  try {
+    // บันทึกชื่อคนกดไว้เสมอ — ย้อนดูได้ว่าใครเปิดสิทธิ์ให้ใคร
+    const r = await linkAcademyEmail({ legacy_id: req.body?.legacy_id, email: req.body?.email, by: me.name || me.member_id });
+    if (r.error) return res.status(r.status).json({ ok: false, error: r.error, message: r.message });
+    res.json(r);
+  } catch (e) { console.error("team/customer/set-email", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// เปิดสิทธิ์คอร์สเดี่ยว — ใช้ตอนลูกค้าใช้คนละอีเมลกับตอนซื้อ (เคสจริง 17 ส.ค.)
+app.post("/api/team/customer/grant", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  const email = normEmail(req.body?.email || ""), courseId = String(req.body?.course_id || "").trim();
+  if (!email || !courseId) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีอีเมลและคอร์ส" });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return res.status(400).json({ ok: false, error: "BAD_EMAIL", message: "อีเมลนี้รูปแบบไม่ถูกต้อง ตรวจอีกทีนะคะ" });
+  try {
+    await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,$4,$5)
+      ON CONFLICT (lower(email), course_id) DO NOTHING`,
+      [uid("gr"), email, courseId, (me.name || me.member_id).slice(0, 40), String(req.body?.note || "").slice(0, 500)]);
+    await run(`UPDATE academy_claims SET status='granted', handled_by=$2, handled_at=now() WHERE lower(email)=lower($1) AND status='open'`,
+      [email, (me.name || me.member_id).slice(0, 40)]).catch(() => {});
+    const ids = await academyOwnedCourseIds(email);
+    res.json({ ok: true, email, course_id: courseId, owns_count: ids.length });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// 📦 ย้ายเล่ม Blueprint ไปอีเมลที่ถูก — ใช้ตอนลูกค้าพิมพ์อีเมลผิดตอนซื้อ (เคสจริง 17 ส.ค. gmaol.com)
+//    ย้ายทั้งเล่ม ออเดอร์ และใบกำกับภาษีให้ครบในคลิกเดียว
+app.post("/api/team/customer/move-book", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  try {
+    const r = await transferBlueprint({ blueprint_id: req.body?.blueprint_id, to_email: req.body?.to_email, by: me.name || me.member_id });
+    if (r.error) return res.status(r.status).json({ ok: false, error: r.error, message: r.message });
+    res.json(r);
+  } catch (e) { console.error("team/customer/move-book", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.get("/api/team/customer/claims", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const rows = await q(`SELECT claim_id, email, note, status, created_at FROM academy_claims
+    WHERE status='open' ORDER BY created_at LIMIT 50`).catch(() => []);
+  res.json({ ok: true, claims: rows });
 });
 
 // 🏢 ลูกตาลรับบรีฟลูกค้านอกเว็บ → ระบบมอบหมายให้เอง (คิมสั่ง 4 ส.ค. 2569)

@@ -890,7 +890,8 @@ export async function initDb() {
       member_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,              -- ชื่อเล่นที่ทีมเรียกกัน
       code TEXT NOT NULL,              -- รหัสส่วนตัวไว้ล็อกอิน
-      role TEXT NOT NULL,              -- owner | ae | senior | editor | teacher
+      role TEXT NOT NULL,              -- owner | ae | senior | editor | graphic | teacher | support
+                                       -- support = แอดมินดูแลลูกค้า (พลอย) เห็นเฉพาะหน้าช่วยลูกค้า ไม่เห็นยอด/คิวงานตัด
       email TEXT,                      -- ไว้ส่งแจ้งเตือนงานใหม่
       position TEXT,                   -- ตำแหน่งจริง เช่น "ตัดต่อ" "กราฟฟิก" "AE"
       side TEXT DEFAULT 'production',  -- production | academy | both

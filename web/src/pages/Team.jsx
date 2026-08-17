@@ -13,7 +13,9 @@ import { api } from "../api.js";
 //   owner   → ทุกอย่าง + ยอดเงิน + กำไร + จัดการสมาชิก (คิมคนเดียว)
 // ⛔ ทุกบทบาทยกเว้น owner ไม่เห็นยอดเงินและอีเมลเต็มของลูกค้า — ตัดตั้งแต่ SQL ไม่ใช่ซ่อนในหน้าเว็บ
 
-const ROLE_TH = { owner: "เจ้าของ", ae: "AE / ผู้ดูแลงาน", senior: "หัวหน้าทีมตัดต่อ", editor: "ทีมตัดต่อ", teacher: "ผู้สอน" };
+//   support → หน้า "ดูแลลูกค้า" อย่างเดียว (พลอย) — ค้นลูกค้า เปิดสิทธิ์คอร์ส ย้ายเล่มที่พิมพ์อีเมลผิด
+//             ⛔ ไม่เห็นคิวงานตัดต่อ ไม่เห็นยอดเงิน ไม่เห็นสมาชิกทีม
+const ROLE_TH = { owner: "เจ้าของ", ae: "AE / ผู้ดูแลงาน", senior: "หัวหน้าทีมตัดต่อ", editor: "ทีมตัดต่อ", graphic: "กราฟฟิก", teacher: "ผู้สอน", support: "แอดมินดูแลลูกค้า" };
 const DAY = 86400000;
 
 // กลุ่มงานเรียงตามลำดับที่ต้องลงมือจริง
@@ -140,6 +142,8 @@ export default function Team() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("jobs");
+  // แอดมินดูแลลูกค้าไม่มีแท็บงานตัดต่อ — เข้ามาต้องเจอหน้าของตัวเองเลย ไม่ใช่จอว่าง
+  useEffect(() => { if (d?.me?.role === "support" && tab === "jobs") setTab("customer"); }, [d]);   // eslint-disable-line
   const [gjUrl, setGjUrl] = useState({});      // ลิงก์ไฟล์งานที่แฟรี่กำลังพิมพ์ (แยกตามงาน)
   // ลิงก์คลิปที่คนขอมาแปะเพิ่มทีหลัง ในแท็บงานกราฟฟิก (คนละตัวกับช่องตอนสั่งงานครั้งแรกในการ์ดงานตัดต่อ)
   const [gjClipFix, setGjClipFix] = useState({});
@@ -177,6 +181,7 @@ export default function Team() {
   const [intake, setIntake] = useState({ client_name: "", client_email: "", client_contact: "", title: "", brief: "", clips: 1, client_due: "", footage_url: "", ref_links: "" });
   const [intakeMsg, setIntakeMsg] = useState(null);
   const [rev, setRev] = useState(null);               // 🧠 รายงาน AI รายสัปดาห์
+  const [claims, setClaims] = useState([]);           // 🙋 ลูกค้าที่แจ้งว่าไม่เจอคอร์ส
   const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "", amount_baht: "" });
 
   const load = (c) => {
@@ -201,6 +206,9 @@ export default function Team() {
   useEffect(() => { if (tab === "content" && d) loadCp(cpOpen); }, [tab, d, cpOpen]);   // eslint-disable-line
   useEffect(() => { if (tab === "review" && d?.me?.role === "owner" && !rev)
     api(`/api/team/weekly-review?code=${encodeURIComponent(code)}`).then(setRev).catch(() => {}); }, [tab, d, rev, code]);
+  // คิวคนที่แจ้งว่าไม่เจอคอร์ส — โหลดตั้งแต่เข้าหน้า เพื่อให้ตัวเลขขึ้นบนแท็บได้เลย
+  useEffect(() => { if (!d || !["owner", "support"].includes(d?.me?.role)) return;
+    api(`/api/team/customer/claims?code=${encodeURIComponent(code)}`).then(r => setClaims(r.claims || [])).catch(() => {}); }, [d, code, tab]);
 
   const post = async (path, body, id) => {
     setBusy(id); setErr("");
@@ -235,13 +243,18 @@ export default function Team() {
   // 🎨 งานกราฟฟิก (คิมสั่ง 7 ส.ค.) — แฟรี่เห็นคิวตัวเอง · คนตัดเห็นงานที่ตัวเองขอไว้
   const gjs = d.graphic_jobs || [];
   const gjOpen = gjs.filter(g => !["done", "canceled"].includes(g.status));
-  const TABS = [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
+  // 🙋 แอดมินดูแลลูกค้า (พลอย) เห็นแค่ 2 แท็บ — งานของเขาไม่เกี่ยวกับคิวตัดต่อเลย
+  //    ถ้าโชว์แท็บงานตัดต่อที่ว่างเปล่าให้เขา จะงงว่าเข้าผิดที่หรือเปล่า
+  const isSupport = me.role === "support";
+  const TABS = isSupport
+    ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["leave", "🌴 วันลา", null]]
+    : [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
     .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
     .concat([["content", "📝 คอนเทนต์ลูกค้า", null]])
     .concat([["leave", "🌴 วันลา", null]])
     .concat((isOwner || isAE) ? [["intake", "📥 รับบรีฟใหม่", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
-    .concat(isOwner ? [["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
+    .concat(isOwner ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px" }}>
@@ -1130,6 +1143,10 @@ export default function Team() {
         </>
       )}
 
+      {/* ═══ 🙋 ดูแลลูกค้า — หน้าของพลอย (คิมสั่ง 17 ส.ค. 2569) ═══ */}
+      {tab === "customer" && <CustomerDesk code={code} claims={claims} reloadClaims={() =>
+        api(`/api/team/customer/claims?code=${encodeURIComponent(code)}`).then(r => setClaims(r.claims || [])).catch(() => {})} />}
+
       {/* ═══ คลาสที่สอน + ค่าคอม 10% ═══ */}
       {tab === "teach" && (<>
         <p style={{ color: "#7c7268", fontSize: 13, marginTop: 0 }}>
@@ -1630,3 +1647,191 @@ function People({ d, post, busy }) {
 const Field = ({ label, children }) => (
   <label style={{ fontSize: 13, color: "#7c7268" }}>{label}<div style={{ marginTop: 4 }}>{children}</div></label>
 );
+
+/* ═══════════ 🙋 หน้า "ดูแลลูกค้า" — ของพลอย (แอดมิน) ═══════════
+   คิมสั่ง 17 ส.ค. 2569: "หลังบ้านงานแอดมินเอาไปไว้ใน Babe House Team เป็นหน้าของพลอยไปเลย
+   พลอยจะได้จัดการงานแอดมินได้ด้วยตัวเอง"
+
+   ก่อนหน้านี้พลอยไม่มีสิทธิ์เข้าระบบเลย — ลูกค้าทักมา พลอยส่งไลน์หาคิม คิมกดให้ = คิมเป็นคอขวด
+   ถ้าคิมติดประชุมหรือหลับ ลูกค้าที่จ่ายเงินแล้วก็รอไปเรื่อยๆ
+
+   2 เคสที่เจอจริงและหน้านี้แก้ได้เอง:
+     • ลูกค้าเก่าใช้คนละอีเมลกับตอนซื้อ / ไม่ได้กรอกอีเมลไว้เลย → ค้นเจอแล้วเปิดสิทธิ์ให้
+     • ลูกค้าพิมพ์อีเมลผิดตอนซื้อ Blueprint (gmaol.com) → ย้ายเล่มไปอีเมลที่ถูก
+   ⛔ หน้านี้ไม่มียอดขาย ไม่มีภาพรวมรายได้ ไม่มีข้อมูลทีม — ตัดตั้งแต่ฝั่งเซิร์ฟเวอร์ ไม่ใช่ซ่อนในหน้าเว็บ */
+function CustomerDesk({ code, claims, reloadClaims }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [draft, setDraft] = useState({});      // legacy_id → อีเมลที่กำลังพิมพ์
+  const [bookTo, setBookTo] = useState({});    // blueprint_id → อีเมลที่กำลังพิมพ์
+
+  const say = (t, bad) => setMsg((bad ? "❌ " : "✅ ") + t);
+  async function search(e) {
+    e?.preventDefault();
+    if (q.trim().length < 2) { say("พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ", true); return; }
+    setBusy(true); setMsg("");
+    try { setRes(await api(`/api/team/customer/find?code=${encodeURIComponent(code)}&q=${encodeURIComponent(q.trim())}`)); }
+    catch (e2) { setRes(null); say(e2?.message || "ค้นหาไม่สำเร็จ ลองใหม่นะคะ", true); }
+    setBusy(false);
+  }
+  async function call(path, body, okText) {
+    setBusy(true); setMsg("");
+    try {
+      const r = await api(`${path}?code=${encodeURIComponent(code)}`, { method: "POST", body });
+      say(okText(r)); await search(); reloadClaims?.();
+    } catch (e2) { say(e2?.message || "ทำรายการไม่สำเร็จค่ะ", true); }
+    setBusy(false);
+  }
+  const linkEmail = (u) => {
+    const email = (draft[u.legacy_id] ?? (u.username_is_email && !u.email ? u.username : "")).trim();
+    if (!email) return say("ใส่อีเมลของลูกค้าก่อนนะคะ", true);
+    call("/api/team/customer/set-email", { legacy_id: u.legacy_id, email },
+      r => `เรียบร้อย — ${r.email} เข้าเรียนได้ ${r.owns_count} คอร์สแล้ว บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ`);
+  };
+  const grantOne = (u, courseId, courseName) => {
+    const email = (draft[u.legacy_id] || "").trim();
+    if (!email) return say("ใส่อีเมลที่ลูกค้าใช้อยู่ตอนนี้ก่อนนะคะ", true);
+    call("/api/team/customer/grant", { email, course_id: courseId,
+      note: `ลูกค้าคนเดียวกับ ${u.name || u.username} (${u.email || "ไม่มีอีเมลเดิม"}) แต่ใช้อีเมลใหม่เข้าเว็บ` },
+      r => `เปิด "${courseName}" ให้ ${r.email} แล้วค่ะ (ตอนนี้เห็น ${r.owns_count} คอร์ส)`);
+  };
+  const moveBook = (b) => {
+    const email = (bookTo[b.blueprint_id] || "").trim();
+    if (!email) return say("ใส่อีเมลที่ถูกต้องของลูกค้าก่อนนะคะ", true);
+    call("/api/team/customer/move-book", { blueprint_id: b.blueprint_id, to_email: email },
+      r => `ย้ายเล่มไป ${r.to} แล้วค่ะ (ใบกำกับภาษีย้ายตามไปด้วย ${r.invoices_moved || 0} ใบ) บอกลูกค้าล็อกอินใหม่ได้เลย`);
+  };
+
+  const bookStage = (b) => b.payment_status !== "paid" ? "⏳ ยังไม่จ่ายเงิน"
+    : b.generation_status === "ready" ? "✅ เล่มพร้อมแล้ว"
+    : b.generation_status === "error" ? "❌ สร้างเล่มไม่สำเร็จ" : "⏳ กำลังสร้างเล่ม";
+
+  return (
+    <>
+      {/* คิวคนที่กดแจ้งจากหน้าเว็บ — คนพวกนี้จ่ายเงินแล้วแต่เข้าไม่ได้ เร่งที่สุด */}
+      {claims.length > 0 && (
+        <div style={{ ...card, borderLeft: "4px solid #b42318", background: "#FEF6F5" }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>🙋 ลูกค้าแจ้งว่าไม่เจอคอร์สที่เคยซื้อ ({claims.length})</div>
+          <p style={{ color: "#7c7268", fontSize: 13, margin: "4px 0 10px" }}>
+            คนพวกนี้จ่ายเงินแล้วแต่เข้าเรียนไม่ได้ค่ะ — ก๊อปอีเมลไปค้นในช่องด้านล่างได้เลย
+          </p>
+          {claims.map(c => (
+            <div key={c.claim_id} style={{ borderTop: "1px solid #f0e6dc", padding: "9px 0", fontSize: 13.5 }}>
+              <b style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => { setQ(c.email); }}>{c.email}</b>
+              <span style={{ color: "#a89f96", marginLeft: 8 }}>{String(c.created_at || "").slice(0, 10)}</span>
+              <div style={{ color: "#7c7268", marginTop: 3 }}>{c.note || "(ไม่ได้เขียนเพิ่ม)"}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={card}>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>🔎 ค้นหาลูกค้า</div>
+        <p style={{ color: "#7c7268", fontSize: 13, margin: "4px 0 10px", lineHeight: 1.7 }}>
+          ใส่ <b>อีเมล ชื่อ ชื่อผู้ใช้ เบอร์โทร หรือชื่อช่อง IG</b> อะไรก็ได้ที่ลูกค้าบอกมาค่ะ
+          (เบอร์พิมพ์มีขีดไม่มีขีดก็เจอ)
+        </p>
+        <form onSubmit={search} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input style={{ ...input, flex: 1, minWidth: 200, width: "auto" }} value={q} onChange={e => setQ(e.target.value)}
+            placeholder="เช่น kamonlak / 0891153009 / somchai@gmail.com / @Jeenaii" />
+          <button style={btn()} disabled={busy}>{busy ? "…" : "ค้นหา"}</button>
+        </form>
+        {msg && <p style={{ fontSize: 13.5, marginTop: 10, marginBottom: 0, fontWeight: 600,
+          color: msg.startsWith("❌") ? "#b42318" : "#1a7f43" }}>{msg}</p>}
+      </div>
+
+      {res && (
+        <>
+          {/* ── ฝั่งคอร์สเรียน ── */}
+          {res.users.length > 0 && <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 8px" }}>🎓 คอร์สเรียน</div>}
+          {res.users.map(u => (
+            <div key={u.legacy_id} style={{ ...card, borderLeft: `4px solid ${u.can_see_now > 0 ? "#1a7f43" : u.paid_orders > 0 ? "#e0a800" : "#ddd2c8"}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <b style={{ fontSize: 15 }}>{u.name || u.username || "(ไม่มีชื่อ)"}</b>
+                <span style={{ fontSize: 13, fontWeight: 700, color: u.can_see_now > 0 ? "#1a7f43" : "#8a6d1f" }}>
+                  {u.can_see_now > 0 ? `✅ เข้าเรียนได้ ${u.can_see_now} คอร์ส` : "⚠️ ยังเข้าเรียนไม่ได้"}
+                </span>
+              </div>
+              <div style={{ color: "#7c7268", fontSize: 13, marginTop: 4, lineHeight: 1.8 }}>
+                อีเมลในระบบ: <b style={{ color: u.needs_email ? "#b42318" : "#2f2a26" }}>{u.email || "— ไม่มี —"}</b>
+                {" · "}ชื่อผู้ใช้: {u.username || "-"}
+                {u.phone ? <> · โทร: <a href={`tel:${u.phone}`} style={{ color: "#0b6ea8" }}>{u.phone}</a></> : null}
+                <br />สมัคร {u.joined || "-"} · จ่ายเงินแล้ว {u.paid_orders} ออเดอร์
+              </div>
+              {u.bought.length > 0 && <div style={{ fontSize: 13, marginTop: 6 }}>
+                📚 คอร์สที่จ่ายแล้ว: {u.bought.map(b => b.name).join(" · ")}
+              </div>}
+
+              {u.paid_orders > 0 && (
+                <div style={{ marginTop: 10, background: "#faf7f4", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
+                    {u.can_see_now > 0
+                      ? "ถ้าลูกค้าอยากใช้อีเมลอื่นเข้าเว็บ ใส่อีเมลใหม่แล้วกดเปิดคอร์สให้ได้เลย"
+                      : "ถามอีเมลที่ลูกค้าใช้อยู่ตอนนี้ แล้วใส่ตรงนี้ → เขาจะเข้าเรียนได้ทันที"}
+                  </div>
+                  {u.username_is_email && !u.email &&
+                    <p style={{ color: "#7c7268", fontSize: 12, margin: "0 0 6px", lineHeight: 1.6 }}>
+                      💡 ตอนสมัครเขาพิมพ์ <b>{u.username}</b> ไว้ในช่องชื่อผู้ใช้ — น่าจะเป็นอีเมลเขา แต่ยืนยันกับลูกค้าก่อนนะคะ
+                    </p>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input type="email" style={{ ...input, flex: 1, minWidth: 190, width: "auto" }} placeholder="อีเมลของลูกค้า"
+                      value={draft[u.legacy_id] ?? (u.username_is_email && !u.email ? u.username : "")}
+                      onChange={e => setDraft(d2 => ({ ...d2, [u.legacy_id]: e.target.value }))} />
+                    {u.needs_email
+                      ? <button style={btn()} disabled={busy} onClick={() => linkEmail(u)}>เปิดสิทธิ์ทุกคอร์ส</button>
+                      : u.bought.map(b => (
+                          <button key={b.id} style={btn("#0b6ea8")} disabled={busy} onClick={() => grantOne(u, b.id, b.name)}>
+                            เปิด “{b.name.length > 18 ? b.name.slice(0, 18) + "…" : b.name}”
+                          </button>))}
+                  </div>
+                </div>
+              )}
+              {u.paid_orders === 0 && <p style={{ color: "#7c7268", fontSize: 12.5, marginTop: 8, marginBottom: 0, lineHeight: 1.7 }}>
+                บัญชีนี้<b>ไม่มีออเดอร์ที่จ่ายเงินสำเร็จ</b>เลยค่ะ — อาจกดสั่งแล้วไม่ได้โอน หรือโอนในชื่อ/อีเมลอื่น
+                ลองขอสลิปกับวันที่โอนมาตรวจก่อนเปิดสิทธิ์นะคะ
+              </p>}
+            </div>
+          ))}
+
+          {/* ── ฝั่ง Blueprint ── */}
+          {res.books?.length > 0 && <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 8px" }}>📘 แผนคอนเทนต์ (Blueprint)</div>}
+          {(res.books || []).map(b => (
+            <div key={b.order_id} style={{ ...card, borderLeft: `4px solid ${b.payment_status === "paid" ? "#1a7f43" : "#ddd2c8"}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                <b style={{ fontSize: 15 }}>{b.instagram_account || "(ไม่มีชื่อช่อง)"}</b>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{bookStage(b)}</span>
+              </div>
+              <div style={{ color: "#7c7268", fontSize: 13, marginTop: 4, lineHeight: 1.8 }}>
+                อีเมลที่ผูกไว้: <b style={{ color: "#2f2a26" }}>{b.email || "—"}</b>
+                <br />เดือน {String(b.billing_cycle || "").replace("_", " ")} · ซื้อเมื่อ {String(b.created_at || "").slice(0, 10)}
+              </div>
+              {b.payment_status === "paid" && b.blueprint_id && (
+                <div style={{ marginTop: 10, background: "#faf7f4", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
+                    ลูกค้าพิมพ์อีเมลผิดตอนซื้อ? ใส่อีเมลที่ถูกต้องแล้วกดย้าย — ใบกำกับภาษีย้ายตามไปด้วยค่ะ
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input type="email" style={{ ...input, flex: 1, minWidth: 190, width: "auto" }} placeholder="อีเมลที่ถูกต้อง"
+                      value={bookTo[b.blueprint_id] || ""} onChange={e => setBookTo(v => ({ ...v, [b.blueprint_id]: e.target.value }))} />
+                    <button style={btn("#0b6ea8")} disabled={busy} onClick={() => moveBook(b)}>ย้ายเล่ม</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {res.users.length === 0 && !(res.books || []).length && (
+            <div style={card}>
+              <p style={{ color: "#7c7268", fontSize: 13.5, margin: 0, lineHeight: 1.8 }}>
+                ไม่เจอลูกค้าคนนี้เลยค่ะ — ลองค้นด้วยคำอื่นดูนะคะ (ชื่อจริง · ชื่อผู้ใช้ · เบอร์โทร · ชื่อช่อง IG)
+                <br />ถ้ายังไม่เจอ แปลว่าเขาอาจซื้อในชื่อ/อีเมลอื่น ลองขอสลิปหรือวันที่โอนมาดูค่ะ
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}

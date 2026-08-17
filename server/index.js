@@ -10,7 +10,7 @@ import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
-import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht, tryAttachShapes, fixDocNames, redoInvoice } from "./tax.js";
+import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht, tryAttachShapes, fixDocNames, redoInvoice , issueQuotation } from "./tax.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -1918,6 +1918,28 @@ app.post("/api/team/corp/price", async (req, res) => {
   if (l.paid_at) return res.status(400).json({ ok: false, error: "ALREADY_PAID", message: "ดีลนี้ชำระเงินแล้ว แก้ราคาไม่ได้ค่ะ" });
   await run(`UPDATE corp_leads SET agreed_satang=$2, updated_at=now() WHERE lead_id=$1`, [id, Math.round(baht * 100)]);
   res.json({ ok: true, agreed_satang: Math.round(baht * 100) });
+});
+
+// 🧾 ออกใบเสนอราคาอย่างเป็นทางการใน FlowAccount (คิมบอก 17 ส.ค. "ก็ต้องไปทำใน FlowAccount สิ")
+//    ⚠️ ยิงแล้วเป็นเอกสารจริงในบัญชี กินเลขที่เอกสารจริง → กันออกซ้ำด้วย quotation_no ที่เก็บไว้
+app.post("/api/team/corp/quotation", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const id = String(req.body?.lead_id || "").trim();
+  const l = await one(`SELECT * FROM corp_leads WHERE lead_id=$1`, [id]);
+  if (!l) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (l.quotation_no) return res.json({ ok: true, already: true, quotation_no: l.quotation_no,
+    message: `ออกใบเสนอราคาไปแล้วค่ะ เลขที่ ${l.quotation_no} — เปิดดู/ส่งซ้ำได้ใน FlowAccount` });
+  const amount = Number(l.agreed_satang || l.quoted_satang || 0);
+  const topics = safeJson(l.topics_json) || [];
+  const r = await issueQuotation({ orderId: l.lead_id, email: l.email, amountSatang: amount,
+    description: `อบรมองค์กร ${l.org_name || ""} — ${l.headcount || "-"} คน เรียนสดเต็มวัน${topics.length ? " (" + topics.join(", ") + ")" : ""}`.trim(),
+    contact: { name: l.org_name, branch: "สำนักงานใหญ่" } });
+  if (!r.ok) return res.status(502).json({ ok: false, error: r.error, message: r.message });
+  await run(`UPDATE corp_leads SET quotation_no=$2, quotation_at=now(), status=CASE WHEN status='new' THEN 'quoted' ELSE status END, updated_at=now() WHERE lead_id=$1`,
+    [id, r.doc_number || r.doc_id]);
+  res.json({ ok: true, quotation_no: r.doc_number, valid_until: r.valid_until,
+    message: `ออกใบเสนอราคาแล้วค่ะ เลขที่ ${r.doc_number} (ยืนราคาถึง ${r.valid_until}) — เข้า FlowAccount เพื่อส่งให้ลูกค้าได้เลย` });
 });
 
 // 📎 พลอยแนบสลิปแทนลูกค้า (ลูกค้าส่งมาทางไลน์) → เข้าคิวรอคิมยืนยันเหมือนทางอื่นทุกประการ

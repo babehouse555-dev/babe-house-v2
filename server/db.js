@@ -1095,6 +1095,10 @@ export async function initDb() {
     ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS agreed_satang INTEGER;   -- ราคาที่ตกลงกันจริง (ถ้าต่างจากบันได)
     ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS created_by TEXT;         -- ใครกรอก: ลูกค้าเอง (เว็บ) หรือพลอย
     ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;     -- คิมยืนยันว่าเงินเข้าแล้วเมื่อไหร่
+    -- 🧾 ใบเสนอราคาที่ออกใน FlowAccount (คิมบอก 17 ส.ค. "ก็ต้องไปทำใน FlowAccount สิ")
+    --    เก็บเลขที่ไว้ฝั่งเราด้วย จะได้รู้ว่าดีลไหนออกใบไปแล้ว ไม่ออกซ้ำจนเลขเอกสารเดินฟรี
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS quotation_no TEXT;
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS quotation_at TIMESTAMPTZ;
 
     -- ═══════ 🏦 โอนเข้าบัญชีบริษัท — สำหรับลูกค้าที่เป็นนิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ═══════
     -- ทำไมต้องมี: ฝ่ายบัญชีของบริษัทลูกค้าหลายที่ "จ่ายบัตร/พร้อมเพย์ไม่ได้" ต้องโอนจากบัญชีบริษัทเท่านั้น

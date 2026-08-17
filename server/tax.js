@@ -497,3 +497,50 @@ export async function redoInvoice(invoiceId) {
   const after = await one(`SELECT status, doc_number FROM tax_invoices WHERE invoice_id=$1`, [invoiceId]);
   return { ok: true, deleted, reissued: again, now: after };
 }
+
+/* ═══════════ 🧾 ใบเสนอราคา (Quotation) — สำหรับลูกค้าองค์กร ═══════════
+   คิมบอก 17 ส.ค. 2569: "ใบเสนอราคาอย่างเป็นทางการ ก็ต้องไปทำใน FlowAccount สิ"
+   ถูกต้อง — ห้ามมีเอกสารสองระบบ เลขที่เอกสารต้องเดินในสมุดบัญชีเล่มเดียวกัน
+
+   ต่างจากใบกำกับภาษีตรงที่:
+     • ยังไม่มีการรับเงิน → ไม่ส่งฟิลด์รับชำระใดๆ
+     • มีวันหมดอายุ (ยืนราคากี่วัน) แทนวันครบกำหนดชำระ
+   ⚠️ ยิงแล้วเป็นเอกสารจริงในบัญชีคิม กินเลขที่เอกสารจริง — ห้ามยิงเล่น */
+const QUOTE_VALID_DAYS = 30;
+export async function issueQuotation({ orderId, email, amountSatang, description, contact }) {
+  if (!flowAccountReady()) return { ok: false, error: "NOT_CONNECTED", message: "ยังไม่ได้ต่อ FlowAccount ค่ะ" };
+  const amount = Math.round(Number(amountSatang) || 0);
+  if (!orderId || amount <= 0) return { ok: false, error: "NO_AMOUNT", message: "ต้องมียอดเงินก่อนออกใบเสนอราคาค่ะ" };
+  const c = contact || {};
+  const { net, vat } = splitVat(amount);
+  const today = new Date();
+  const until = new Date(today.getTime() + QUOTE_VALID_DAYS * 86400000);
+  const doc = {
+    publishedOn: today.toISOString().slice(0, 10),
+    dueDate: until.toISOString().slice(0, 10),        // ยืนราคาถึงวันนี้
+    isVat: true,
+    contactName: String(c.name || "").trim() || NO_TAX_NAME,
+    contactTaxId: c.tax_id || undefined,
+    contactBranch: c.branch || "สำนักงานใหญ่",
+    contactAddress: c.address || undefined,
+    contactEmail: email || undefined,
+    isVatInclusive: false,
+    vatType: 7,
+    items: [{ name: description || "อบรมองค์กร", quantity: 1,
+              pricePerUnit: net / 100, total: net / 100, vatRate: 7 }],
+    subTotal: net / 100,
+    totalAfterDiscount: net / 100,
+    vatAmount: vat / 100,
+    grandTotal: amount / 100,
+    documentStructureType: "0",
+    reference: orderId,
+  };
+  try {
+    const token = await getToken();
+    const r = await pushOne("quotations", doc, token);
+    return { ok: true, doc_id: r.doc_id, doc_number: r.doc_number, valid_until: until.toISOString().slice(0, 10) };
+  } catch (e) {
+    console.error("quotation", e.message);
+    return { ok: false, error: "FAILED", message: String(e.message).slice(0, 300) };
+  }
+}

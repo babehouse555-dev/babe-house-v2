@@ -2068,6 +2068,10 @@ function CorpDesk({ code, d, reload }) {
                   onClick={() => call("/api/team/corp/price", { lead_id: l.lead_id, agreed_baht: Number(price[l.lead_id]) }, l.lead_id)}>
                   บันทึกราคา
                 </button>
+                <button style={{ ...ghost, fontSize: 13.5 }} disabled={busy === l.lead_id}
+                  onClick={() => call("/api/team/corp/quotation", { lead_id: l.lead_id }, l.lead_id)}>
+                  {l.quotation_no ? `🧾 ใบเสนอราคา ${l.quotation_no}` : "🧾 ออกใบเสนอราคา"}
+                </button>
                 <label style={{ ...btn("#0b6ea8"), fontSize: 13.5, cursor: "pointer" }}>
                   📎 แนบสลิป
                   <input type="file" accept="image/*,application/pdf" hidden disabled={busy === l.lead_id}
@@ -2075,7 +2079,8 @@ function CorpDesk({ code, d, reload }) {
                 </label>
               </div>
               <p style={{ color: "#7c7268", fontSize: 12, margin: "7px 0 0", lineHeight: 1.65 }}>
-                แนบแล้วรอพี่คิมกดยืนยันเงินเข้า → ระบบออกใบกำกับภาษีในนามบริษัทและส่งอีเมลให้ลูกค้าเองค่ะ
+                🧾 ใบเสนอราคาออกจริงใน FlowAccount (กินเลขที่เอกสารจริง กดครั้งเดียวพอ) เข้าไปส่งให้ลูกค้าได้เลย
+                <br />📎 แนบสลิปแล้วรอพี่คิมกดยืนยันเงินเข้า → ระบบออกใบกำกับภาษีในนามบริษัทและส่งอีเมลให้ลูกค้าเองค่ะ
               </p>
             </div>
           )}

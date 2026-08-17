@@ -1088,6 +1088,13 @@ export async function initDb() {
     ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS topics_json TEXT;
     ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS refs_text TEXT;
     ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS quoted_satang INTEGER;
+    -- 💬 ดีลที่ปิดทางไลน์ (คิมเคาะ 17 ส.ค.: "พลอยใส่เอง")
+    --    ลูกค้าองค์กรยอดหลักแสนคุยกับคนเสมอ ไม่มีใครกดซื้อเองในเว็บ
+    --    → พลอยกรอกแทนลูกค้าได้ และแก้ราคาที่ตกลงกันจริงได้ (agreed_satang) โดยไม่ต้องรอคิม
+    --    เว็บทำหน้าที่ "ที่เก็บบันทึก" ไม่ใช่ช่องทางขาย — ทุกดีลจบที่เดียวกันไม่ว่าเข้ามาทางไหน
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS agreed_satang INTEGER;   -- ราคาที่ตกลงกันจริง (ถ้าต่างจากบันได)
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS created_by TEXT;         -- ใครกรอก: ลูกค้าเอง (เว็บ) หรือพลอย
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;     -- คิมยืนยันว่าเงินเข้าแล้วเมื่อไหร่
 
     -- ═══════ 🏦 โอนเข้าบัญชีบริษัท — สำหรับลูกค้าที่เป็นนิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ═══════
     -- ทำไมต้องมี: ฝ่ายบัญชีของบริษัทลูกค้าหลายที่ "จ่ายบัตร/พร้อมเพย์ไม่ได้" ต้องโอนจากบัญชีบริษัทเท่านั้น

@@ -1924,6 +1924,8 @@ function CorpDesk({ code, d, reload }) {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [draft, setDraft] = useState({});
+  const [price, setPrice] = useState({});      // ราคาที่ตกลงกันจริง (พลอยแก้เองได้)
+  const [add, setAdd] = useState(null);        // ฟอร์มเพิ่มดีลที่ปิดมาจากไลน์
   if (!d) return <div style={card}>กำลังโหลด…</div>;
   const leads = d.leads || [];
   if (!leads.length) return (
@@ -1944,6 +1946,26 @@ function CorpDesk({ code, d, reload }) {
     catch (e) { setMsg("❌ " + (e?.message || "บันทึกไม่สำเร็จ")); }
     setBusy("");
   }
+  async function call(path, body, id, okText) {
+    setBusy(id); setMsg("");
+    try { const r = await api(`${path}?code=${encodeURIComponent(code)}`, { method: "POST", body });
+      setMsg("✅ " + (r.message || okText || "เรียบร้อยค่ะ")); await reload(); return r; }
+    catch (e) { setMsg("❌ " + (e?.message || "ทำรายการไม่สำเร็จ")); }
+    finally { setBusy(""); }
+  }
+  // แนบสลิปแทนลูกค้า — ลูกค้าส่งรูปมาทางไลน์ พลอยเซฟแล้วอัปตรงนี้
+  async function upSlip(id, file) {
+    if (!file) return;
+    setBusy(id); setMsg("");
+    try {
+      const b64 = await new Promise((ok, no) => { const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => no(new Error("อ่านไฟล์ไม่สำเร็จ")); r.readAsDataURL(file); });
+      const r = await api(`/api/team/corp/slip?code=${encodeURIComponent(code)}`, { method: "POST",
+        body: { lead_id: id, name: file.name, mime: file.type, data_b64: b64 } });
+      setMsg("✅ " + r.message); await reload();
+    } catch (e) { setMsg("❌ " + (e?.message || "ส่งสลิปไม่สำเร็จ")); }
+    setBusy("");
+  }
 
   return (
     <>
@@ -1954,13 +1976,63 @@ function CorpDesk({ code, d, reload }) {
           <br />ถ้าเขาขอต่อราคาหรือขอนอกบันได <b>ส่งให้พี่คิมตัดสิน</b>นะคะ
         </p>
         {msg && <p style={{ fontSize: 13.5, fontWeight: 600, marginTop: 9, marginBottom: 0, color: msg.startsWith("❌") ? "#b42318" : "#1a7f43" }}>{msg}</p>}
+        <button style={{ ...btn(), marginTop: 11 }}
+          onClick={() => setAdd(add ? null : { org_name: "", contact_name: "", email: "", phone: "", headcount: "", agreed_baht: "", goal: "", when_text: "" })}>
+          {add ? "ปิดฟอร์ม" : "➕ เพิ่มดีลที่ปิดมาจากไลน์"}
+        </button>
       </div>
+
+      {/* ➕ ลูกค้าองค์กรคุยกับคนเสมอ ไม่ได้กรอกฟอร์มเอง — พลอยกรอกแทนได้ที่นี่
+          กรอกเสร็จ = มีบันทึกในระบบเหมือนคนที่กดซื้อในเว็บทุกประการ (ใบกำกับภาษี/อีเมล/ประวัติ) */}
+      {add && (
+        <div style={{ ...card, borderLeft: "4px solid #0b6ea8" }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>➕ ดีลที่ปิดมาจากไลน์</div>
+          <p style={{ color: "#7c7268", fontSize: 12.5, margin: "0 0 12px", lineHeight: 1.7 }}>
+            กรอกแทนลูกค้าได้เลย · ใส่ราคาที่ตกลงกันจริง (ถ้าเว้นว่างจะใช้ราคาตามบันไดให้)
+          </p>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            {[["org_name", "ชื่อบริษัท *"], ["contact_name", "ชื่อผู้ติดต่อ"], ["email", "อีเมลลูกค้า *"], ["phone", "เบอร์โทร"]].map(([k, label]) => (
+              <div key={k} style={{ flex: "1 1 200px" }}>
+                <Field label={label}><input style={input} value={add[k]} onChange={e => setAdd(v => ({ ...v, [k]: e.target.value }))} /></Field>
+              </div>
+            ))}
+            <div style={{ flex: "1 1 130px" }}>
+              <Field label="ทีมกี่คน"><input type="number" style={input} value={add.headcount}
+                onChange={e => setAdd(v => ({ ...v, headcount: e.target.value }))} /></Field>
+            </div>
+            <div style={{ flex: "1 1 170px" }}>
+              <Field label="ราคาที่ตกลงกัน (บาท)"><input type="number" style={input} placeholder="เว้นว่าง = ตามบันได"
+                value={add.agreed_baht} onChange={e => setAdd(v => ({ ...v, agreed_baht: e.target.value }))} /></Field>
+            </div>
+            <div style={{ flex: "1 1 170px" }}>
+              <Field label="อยากจัดช่วงไหน"><input style={input} value={add.when_text}
+                onChange={e => setAdd(v => ({ ...v, when_text: e.target.value }))} /></Field>
+            </div>
+          </div>
+          <Field label="สรุปสเปคที่คุยกัน"><textarea style={{ ...input, minHeight: 70 }} value={add.goal}
+            onChange={e => setAdd(v => ({ ...v, goal: e.target.value }))} /></Field>
+          <button style={btn()} disabled={busy === "new"}
+            onClick={async () => { const r = await call("/api/team/corp/create", add, "new"); if (r?.ok) setAdd(null); }}>
+            บันทึกดีล
+          </button>
+        </div>
+      )}
 
       {leads.map(l => (
         <div key={l.lead_id} style={{ ...card, borderLeft: `4px solid ${TONE[l.status] || "#ddd2c8"}` }}>
           <div className="between" style={{ gap: 8, flexWrap: "wrap" }}>
             <b style={{ fontSize: 15.5 }}>{l.org_name}</b>
-            <b style={{ fontSize: 15, color: "#1a7f43" }}>฿{Number(l.quoted_satang || 0) / 100 ? (Number(l.quoted_satang) / 100).toLocaleString() : "-"}</b>
+            <div style={{ textAlign: "right" }}>
+              <b style={{ fontSize: 16, color: l.paid_at ? "#1a7f43" : "#2f2a26" }}>
+                ฿{(Number(l.agreed_satang || l.quoted_satang || 0) / 100).toLocaleString()}
+              </b>
+              {/* ราคาตกลงต่างจากบันได = ต้องเห็นชัดว่าลดไปเท่าไหร่ ไม่ใช่ทับตัวเลขเดิมเงียบๆ */}
+              {l.agreed_satang != null && Number(l.agreed_satang) !== Number(l.quoted_satang) &&
+                <div style={{ fontSize: 12, color: "#7c7268", textDecoration: "line-through" }}>
+                  ฿{(Number(l.quoted_satang || 0) / 100).toLocaleString()}
+                </div>}
+              {l.paid_at && <div style={{ fontSize: 12, color: "#1a7f43", fontWeight: 700 }}>✅ เงินเข้าแล้ว</div>}
+            </div>
           </div>
           <div style={{ color: "#7c7268", fontSize: 13, marginTop: 5, lineHeight: 1.85 }}>
             👤 {l.contact_name} · <a href={`mailto:${l.email}`} style={{ color: "#0b6ea8" }}>{l.email}</a>
@@ -1985,6 +2057,29 @@ function CorpDesk({ code, d, reload }) {
                 style={{ ...(l.status === v ? btn(TONE[v]) : ghost), fontSize: 13, padding: "7px 13px" }}>{label}</button>
             ))}
           </div>
+          {!l.paid_at && (
+            <div style={{ background: "#faf7f4", borderRadius: 10, padding: "10px 12px", marginTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 7 }}>ลูกค้าโอนเงินมาแล้ว?</div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="number" style={{ ...input, flex: "1 1 150px", width: "auto" }} placeholder="ราคาที่ตกลงกัน (บาท)"
+                  value={price[l.lead_id] ?? (l.agreed_satang != null ? Number(l.agreed_satang) / 100 : "")}
+                  onChange={e => setPrice(v => ({ ...v, [l.lead_id]: e.target.value }))} />
+                <button style={{ ...ghost, fontSize: 13.5 }} disabled={busy === l.lead_id}
+                  onClick={() => call("/api/team/corp/price", { lead_id: l.lead_id, agreed_baht: Number(price[l.lead_id]) }, l.lead_id)}>
+                  บันทึกราคา
+                </button>
+                <label style={{ ...btn("#0b6ea8"), fontSize: 13.5, cursor: "pointer" }}>
+                  📎 แนบสลิป
+                  <input type="file" accept="image/*,application/pdf" hidden disabled={busy === l.lead_id}
+                    onChange={e => upSlip(l.lead_id, e.target.files?.[0])} />
+                </label>
+              </div>
+              <p style={{ color: "#7c7268", fontSize: 12, margin: "7px 0 0", lineHeight: 1.65 }}>
+                แนบแล้วรอพี่คิมกดยืนยันเงินเข้า → ระบบออกใบกำกับภาษีในนามบริษัทและส่งอีเมลให้ลูกค้าเองค่ะ
+              </p>
+            </div>
+          )}
+
           <div className="row" style={{ gap: 8, marginTop: 9, flexWrap: "wrap" }}>
             <input style={{ ...input, flex: 1, minWidth: 190, width: "auto" }} placeholder="บันทึกภายใน เช่น คุยแล้ว รอ HR เคาะงบ"
               value={draft[l.lead_id] ?? (l.note || "")} onChange={e => setDraft(v => ({ ...v, [l.lead_id]: e.target.value }))} />

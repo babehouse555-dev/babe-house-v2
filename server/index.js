@@ -316,7 +316,7 @@ async function notifyAdminPurchase(orderId, provider, liveMode) {
 // ⛔ ห้ามพังการจ่ายเงินไม่ว่าจะเกิดอะไรขึ้น (เรียกแบบ fire-and-forget + จับ error ครบ)
 const KIND_LABEL = { credits: "แพ็กเครดิตสคริปต์", video: "บริการตรวจคลิป (Video Audit)",
                      edit: "เครดิตตัดต่อคลิป", academy: "คอร์สออนไลน์ Babe House Academy", workshop: "Workshop",
-                     revision: "ค่ารอบแก้งานตัดต่อ (เกินโควตาฟรี)" };
+                     revision: "ค่ารอบแก้งานตัดต่อ (เกินโควตาฟรี)", corp: "อบรมองค์กร (in-house training)" };
 // 🏷️ ออเดอร์นี้คือสินค้าอะไร — ใช้ตั้งชื่อบนใบกำกับภาษีและแยกหมวดยอดขาย
 // ⚠️ เดิมโค้ดชุดนี้ถูกก๊อปไว้ 3 ที่ พอเพิ่มสินค้าใหม่แล้วลืมแก้ให้ครบ ใบกำกับจะเขียนว่า
 //    "AI Creator Blueprint — รายเดือน" ทั้งที่ลูกค้าซื้ออย่างอื่น (เจอจริง 12 ส.ค.: ค่ารอบแก้ ฿500)
@@ -1858,6 +1858,94 @@ app.post("/api/corp/lead", rateLimit(10, M10), async (req, res) => {
       message: "ได้รับโจทย์แล้วค่ะ 🩵 ส่งสรุปราคาเข้าอีเมลให้แล้ว เอาไปขออนุมัติได้เลย · ทีมจะส่งใบเสนอราคาอย่างเป็นทางการตามไปภายใน 1 วันทำการนะคะ" });
   } catch (e) { console.error("corp-lead", e.message); res.status(500).json({ ok: false, error: "FAILED", message: "ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" }); }
 });
+// 🏢 ปิดดีลองค์กร = ลูกค้าจ่ายเงินแล้วจริง → ออกใบกำกับภาษี + ส่งอีเมลให้ลูกค้า
+//    เดินท่อเดียวกับสินค้าอื่นทุกตัว (issueTaxInvoice) ไม่มีทางลัดพิเศษ
+async function finalizeCorpDeal(l) {
+  if (!l || l.paid_at) return;
+  const amount = Number(l.agreed_satang || l.quoted_satang || 0);
+  await run(`UPDATE corp_leads SET paid_at=now(), status='won', updated_at=now() WHERE lead_id=$1 AND paid_at IS NULL`, [l.lead_id]);
+  const topics = safeJson(l.topics_json) || [];
+  issueTaxInvoice({ orderId: l.lead_id, kind: "corp", email: l.email, amountSatang: amount,
+    description: `อบรมองค์กร — ${l.org_name || ""} (${l.headcount || "-"} คน)`.trim(),
+    docDate: new Date(), tax: { is_company: true, name: l.org_name, fallback_name: l.contact_name || l.email },
+  }).catch(e => console.error("tax-invoice corp", e.message));
+  const baht = (n) => "฿" + (n / 100).toLocaleString("th-TH");
+  sendEmail(l.email, `ยืนยันการชำระเงิน — อบรมทีม ${l.org_name || ""}`, wrap(
+    `สวัสดีค่ะ คุณ${l.contact_name || ""} 🩵<br><br>ได้รับชำระเงินเรียบร้อยแล้วค่ะ<br><br>` +
+    `<b>บริษัท:</b> ${l.org_name || "-"}<br><b>ทีม:</b> ${l.headcount || "-"} คน<br>` +
+    `<b>วิชาที่เรียน:</b> ${topics.length ? topics.join(" · ") : "ตามที่ตกลงกัน"}<br>` +
+    `<b>ยอดชำระ:</b> <b style="font-size:18px">${baht(amount)}</b><br><br>` +
+    `📄 ใบกำกับภาษีเต็มรูปในนามบริษัทออกให้แล้ว โหลดได้ที่หน้า "บัญชีของฉัน" โดยเข้าสู่ระบบด้วยอีเมลนี้ ` +
+    `เก็บไว้ให้ตลอด ไม่หายค่ะ<br><br>${btn(appBaseUrl() + "/account", "เปิดบัญชีของฉัน")}<br><br>` +
+    `ทีมจะติดต่อกลับเพื่อนัดวันอบรมอีกครั้งนะคะ<br><br>ครูพี่คิม · Babe House`)).catch(() => {});
+  console.log(`[corp] ปิดดีล ${l.org_name} · ${baht(amount)}`);
+}
+
+// ➕ พลอยกรอกดีลแทนลูกค้า (ปิดมาจากไลน์) — คิมเคาะ 17 ส.ค. "พลอยใส่เอง"
+//    ลูกค้าองค์กรคุยกับคนเสมอ ไม่ได้กรอกฟอร์มเอง — เว็บต้องรับดีลที่ปิดข้างนอกเข้ามาเก็บให้ครบ
+app.post("/api/team/corp/create", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  const b = req.body || {};
+  const s = (v, n) => String(v ?? "").trim().slice(0, n);
+  const org = s(b.org_name, 200), who = s(b.contact_name, 120), email = normEmail(b.email || "");
+  if (!org || !email) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีชื่อบริษัทกับอีเมลลูกค้าค่ะ" });
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ ok: false, error: "BAD_EMAIL", message: "อีเมลดูไม่ถูกต้องค่ะ" });
+  const topics = Array.isArray(b.topics) ? b.topics.filter(t => CORP_TOPICS.includes(t)).slice(0, 8) : [];
+  const place = Object.keys(CORP_TRAVEL).includes(String(b.place)) ? String(b.place) : null;
+  const quote = corpQuote(b.headcount, place);
+  // ราคาที่ตกลงกันจริง — พลอยใส่เองได้ ถ้าไม่ใส่ใช้ราคาตามบันได
+  const agreed = Math.max(0, Math.round(Number(b.agreed_baht) * 100)) || null;
+  const id = uid("corp");
+  await run(`INSERT INTO corp_leads (lead_id,org_name,contact_name,email,phone,goal,headcount,topics_json,refs_text,place,quoted_satang,agreed_satang,when_text,status,created_by,source)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'quoted',$14,'line')`,
+    [id, org, who || "-", email, s(b.phone, 40) || null, s(b.goal, 2000) || "(ปิดดีลทางไลน์)", quote.headcount,
+     JSON.stringify(topics), s(b.refs_text, 2000) || null, place, quote.total_satang, agreed, s(b.when_text, 120) || null, me.name || me.member_id]);
+  res.json({ ok: true, lead_id: id, quoted_satang: quote.total_satang, agreed_satang: agreed,
+    message: "บันทึกดีลแล้วค่ะ — แนบสลิปได้เลยเมื่อลูกค้าโอนเงินมา" });
+});
+
+// 💰 พลอยแก้ราคาที่ตกลงกันจริง (คิมอนุญาตให้ใส่เองได้ ไม่ต้องรอเคาะ)
+app.post("/api/team/corp/price", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const id = String(req.body?.lead_id || "").trim();
+  const baht = Number(req.body?.agreed_baht);
+  if (!id || !(baht >= 0)) return res.status(400).json({ ok: false, error: "BAD_INPUT", message: "ใส่ราคาที่ตกลงกันด้วยนะคะ" });
+  const l = await one(`SELECT paid_at, quoted_satang FROM corp_leads WHERE lead_id=$1`, [id]);
+  if (!l) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  // ⛔ จ่ายเงินแล้วห้ามแก้ราคา — ใบกำกับภาษีออกไปแล้ว แก้ทีหลังทำให้เอกสารไม่ตรงกับเงินที่รับจริง
+  if (l.paid_at) return res.status(400).json({ ok: false, error: "ALREADY_PAID", message: "ดีลนี้ชำระเงินแล้ว แก้ราคาไม่ได้ค่ะ" });
+  await run(`UPDATE corp_leads SET agreed_satang=$2, updated_at=now() WHERE lead_id=$1`, [id, Math.round(baht * 100)]);
+  res.json({ ok: true, agreed_satang: Math.round(baht * 100) });
+});
+
+// 📎 พลอยแนบสลิปแทนลูกค้า (ลูกค้าส่งมาทางไลน์) → เข้าคิวรอคิมยืนยันเหมือนทางอื่นทุกประการ
+app.post("/api/team/corp/slip", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const id = String(req.body?.lead_id || "").trim();
+  const b64 = String(req.body?.data_b64 || ""), mime = String(req.body?.mime || "").slice(0, 60);
+  if (!id || !b64) return res.status(400).json({ ok: false, error: "MISSING", message: "แนบสลิปด้วยนะคะ" });
+  if (!/^image\/(png|jpe?g|webp|heic|heif)$/i.test(mime) && mime !== "application/pdf")
+    return res.status(400).json({ ok: false, error: "BAD_TYPE", message: "แนบเป็นรูปภาพหรือ PDF นะคะ" });
+  if (Math.ceil(b64.length * 3 / 4) > SLIP_MAX_BYTES) return res.status(413).json({ ok: false, error: "TOO_BIG", message: "ไฟล์ใหญ่เกิน 4 MB ค่ะ" });
+  const l = await one(`SELECT * FROM corp_leads WHERE lead_id=$1`, [id]);
+  if (!l) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (l.paid_at) return res.json({ ok: true, already: true, message: "ดีลนี้ยืนยันการชำระเงินแล้วค่ะ" });
+  const amount = Number(l.agreed_satang || l.quoted_satang || 0);
+  await run(`INSERT INTO bank_transfers (transfer_id, order_kind, order_id, email, amount_satang, ref_code, slip_name, slip_mime, slip_b64, slip_at, status)
+    VALUES ($1,'corp',$2,$3,$4,$5,$6,$7,$8,now(),'waiting')
+    ON CONFLICT (order_kind, order_id) DO UPDATE SET slip_name=EXCLUDED.slip_name, slip_mime=EXCLUDED.slip_mime,
+      slip_b64=EXCLUDED.slip_b64, slip_at=now(), status='waiting', note=NULL, amount_satang=EXCLUDED.amount_satang`,
+    [uid("bt"), id, l.email, amount, refCodeOf(id), String(req.body?.name || "slip").slice(0, 120), mime, b64]);
+  sendEmail(OPS_EMAIL, `🏢 ดีลองค์กรรอยืนยันเงินเข้า — ${l.org_name} ฿${(amount / 100).toLocaleString()}`,
+    wrap(`<b>${me.name}</b> แนบสลิปดีลองค์กรแล้วค่ะ รอคิมกดยืนยันในหน้าแอดมิน<br><br>` +
+         `<b>บริษัท:</b> ${l.org_name}<br><b>ยอด:</b> ฿${(amount / 100).toLocaleString()}<br>` +
+         `⚠️ ลูกค้ายังไม่ได้ใบกำกับภาษีจนกว่าจะกดยืนยัน`)).catch(() => {});
+  res.json({ ok: true, message: "แนบสลิปแล้วค่ะ — รอพี่คิมกดยืนยันเงินเข้า แล้วระบบจะออกใบกำกับภาษีให้อัตโนมัติ" });
+});
+
 app.get("/api/admin/corp/leads", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   res.json({ ok: true, leads: await q(`SELECT * FROM corp_leads ORDER BY created_at DESC LIMIT 300`).catch(() => []) });
@@ -1884,6 +1972,9 @@ const TRANSFER_KINDS = {
   blueprint: { table: "blueprint_orders", id: "order_id", amount: "final_amount_satang", paidWhen: "payment_status IN ('paid','mock_paid')" },
   academy:   { table: "academy_purchases", id: "purchase_id", amount: "amount_satang", paidWhen: "status='paid'" },
   workshop:  { table: "workshop_bookings", id: "booking_id",  amount: "amount_satang", paidWhen: "status='paid'" },
+  // 🏢 ดีลองค์กร — ยอดหลักแสน จ่ายบัตร/พร้อมเพย์ไม่ได้จริง ต้องโอนเข้าบัญชีบริษัทเท่านั้น
+  //    ใช้ราคาที่ตกลงกันจริงก่อน (agreed) ถ้าไม่ได้แก้ก็ใช้ราคาที่เว็บเสนอไป (quoted)
+  corp:      { table: "corp_leads", id: "lead_id", amount: "COALESCE(agreed_satang, quoted_satang)", paidWhen: "paid_at IS NOT NULL" },
 };
 async function loadTransferOrder(kind, orderId) {
   const k = TRANSFER_KINDS[kind]; if (!k) return null;
@@ -1989,6 +2080,7 @@ app.post("/api/admin/bank-transfers/confirm", async (req, res) => {
     if (t.order_kind === "blueprint") await markOrderPaid(t.order_id, "bank_transfer", t.ref_code || "");
     else if (t.order_kind === "academy") await finalizeAcademyPurchase(o);
     else if (t.order_kind === "workshop") await finalizeWorkshopBooking(o);
+    else if (t.order_kind === "corp") await finalizeCorpDeal(o);
     await run(`UPDATE bank_transfers SET status='confirmed', handled_by='คิม', handled_at=now() WHERE transfer_id=$1`, [id]);
     console.log(`[bank-transfer] ยืนยัน ${t.order_kind} ${t.order_id} · ฿${Number(t.amount_satang || 0) / 100}`);
     sendEmail(t.email, "ยืนยันการชำระเงินเรียบร้อยแล้วค่ะ 🩵", wrap(

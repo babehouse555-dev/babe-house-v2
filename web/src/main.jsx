@@ -167,6 +167,7 @@ import AcademyPaid from "./pages/AcademyPaid.jsx";
 import AcademyCertificate from "./pages/AcademyCertificate.jsx";
 import PreviewAccount from "./pages/PreviewAccount.jsx";
 import Workshops from "./pages/Workshops.jsx";
+import Corporate from "./pages/Corporate.jsx";
 import WorkshopDetail from "./pages/WorkshopDetail.jsx";
 import WorkshopPaid from "./pages/WorkshopPaid.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -190,6 +191,8 @@ createRoot(document.getElementById("root")).render(
       <Route path="/account" element={<Account />} />
       <Route path="/invoice/:id" element={<Invoice />} />
       <Route path="/compare" element={<Compare />} />
+      {/* 🏢 อบรมองค์กร — คนละหน้ากับ /workshops เพราะพูดกับ HR ไม่ใช่คนที่อยากเรียนเอง */}
+      <Route path="/corporate" element={<Corporate />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/projects" element={<Projects />} />
       <Route path="/edit" element={<EditOrder />} />

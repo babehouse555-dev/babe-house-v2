@@ -70,3 +70,11 @@ export const EDIT_LIVE = OPEN || false;
 //    และดันใบย้อนหลังขึ้นครบ 316 ใบ ทุกใบมีเลขที่เอกสารจริง ลูกค้าเปิดมาแล้วเห็นของครบ
 //    (เดิมปิดไว้เพราะยังไม่มีรหัส FlowAccount = รับปากแล้วส่งใบให้ไม่ได้)
 export const TAX_INVOICE_LIVE = true;
+
+// ═══════ 🏢 สวิตช์หน้า "อบรมองค์กร" (/corporate) ═══════
+// หน้านี้บอกราคาเองได้ทันที (บันไดราคา Private Class ที่คิมใช้อยู่จริง)
+// ⚠️ อ่านค่าจาก CORP_ENABLED ตรงๆ ไม่ผ่าน OPEN — เพราะในสนามเด็กเล่น OPEN=true เสมอ
+//    ถ้าเช็ก !CORP_LIVE แถบเตือน "ลูกค้ายังไม่เห็น" จะไม่ขึ้นในที่ที่คิมต้องเห็นที่สุด
+const CORP_ENABLED = false;                       // ← เปลี่ยนเป็น true ตอนเปิดจริง
+export const CORP_LIVE = OPEN || CORP_ENABLED;    // เห็นหน้าได้ไหม
+export const CORP_PREVIEW_ONLY = !CORP_ENABLED;   // ลูกค้าจริงยังไม่เห็น → ต้องขึ้นแถบเตือนเสมอ

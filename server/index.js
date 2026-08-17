@@ -1759,6 +1759,112 @@ app.get("/api/me/tax-invoices", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
+/* ═══════════ 🏢 อบรมองค์กร — HR ออกแบบคอร์สเองแล้วเห็นราคาทันที (คิมสั่ง 17 ส.ค. 2569) ═══════════
+   "คัสตอมวิชาเรียนได้ว่าเค้าอยากเรียนอะไร เลือกได้ว่าจะเรียนกี่คน ราคามันก็จะไม่เท่ากัน
+    ทำทุกอย่างเสร็จสรรพในเว็บได้เลย ไม่ต้องผ่านแอดมินเยอะ"
+
+   ⚠️ ราคาทั้งหมดอยู่ฝั่งเซิร์ฟเวอร์ที่เดียว ห้ามคำนวณซ้ำในหน้าเว็บ
+      เพราะถ้าคิดสองที่ วันหนึ่งแก้ที่เดียวแล้วลูกค้าจะเห็นคนละราคากับที่เราคิดจริง
+   💰 บันไดราคา = ของจริงที่คิมใช้อยู่แล้วใน Private Class (server/seed-workshops.js) ไม่ได้ตั้งใหม่
+   📌 คิมเคาะ 17 ส.ค.: "เหมา 1 วัน เลือกกี่วิชาก็ได้" → จำนวนคนเป็นตัวเดียวที่กำหนดราคา */
+const CORP_TIERS = [
+  { max: 2,    satang: 1290000, label: "1–2 คน" },
+  { max: 5,    satang: 3500000, label: "3–5 คน" },
+  { max: 10,   satang: 5000000, label: "6–10 คน" },
+  { max: 20,   satang: 8000000, label: "11–20 คน" },
+  { max: 30,   satang: 10000000, label: "21–30 คน" },
+  { max: 9999, satang: 12000000, label: "31 คนขึ้นไป" },
+];
+// ค่าเดินทางออกไปสอนนอกสถานที่ — ต่างจังหวัดยังต้องบวกตั๋วเครื่องบิน+ที่พักตามจริง เลยไม่ใส่ในราคาอัตโนมัติ
+const CORP_TRAVEL = { "ที่บริษัท (กรุงเทพฯ / ปริมณฑล)": 200000, "ที่บริษัท (ต่างจังหวัด)": 200000, "ที่ Babe House": 0, "ออนไลน์": 0 };
+const CORP_TOPICS = [
+  "คิดคอนเทนต์ให้ปัง", "ถ่าย–ตัดต่อคลิปด้วยมือถือ", "ตัดต่อขั้นสูง (คอม/iPad)",
+  "ออกแบบกราฟิกด้วย Canva", "ใช้ AI ช่วยงานคอนเทนต์", "คอนเทนต์การตลาดที่ขายได้",
+  "พูดหน้ากล้องให้ดูน่าเชื่อถือ", "วางแผนคอนเทนต์ทั้งเดือน",
+];
+const CORP_LEVELS = ["ไม่มีพื้นฐาน", "พอทำได้บ้าง", "ทำเป็นแล้วอยากลึกขึ้น", "ปนกันหลายระดับ"];
+const corpTierOf = (n) => CORP_TIERS.find(t => Number(n || 0) <= t.max) || CORP_TIERS[CORP_TIERS.length - 1];
+function corpQuote(headcount, place) {
+  const head = Math.max(1, Math.min(9999, Number(headcount) || 1));
+  const tier = corpTierOf(head);
+  const travel = CORP_TRAVEL[String(place)] || 0;
+  const upcountry = String(place).includes("ต่างจังหวัด");
+  return { headcount: head, tier_label: tier.label, base_satang: tier.satang, travel_satang: travel,
+    total_satang: tier.satang + travel, upcountry,
+    // ⛔ ห้ามใส่ค่าเครื่องบิน/ที่พักเป็นตัวเลข — ขึ้นกับจังหวัดและวันเดินทาง เดาแล้วผิดแน่
+    note: upcountry ? "ต่างจังหวัดมีค่าเครื่องบินและที่พักตามจริงเพิ่มเติม เราจะแจ้งยอดชัดเจนในใบเสนอราคาค่ะ" : null };
+}
+app.get("/api/corp/pricing", (req, res) => {
+  res.json({ ok: true, tiers: CORP_TIERS.map(t => ({ label: t.label, satang: t.satang })),
+    topics: CORP_TOPICS, levels: CORP_LEVELS, places: Object.keys(CORP_TRAVEL), travel: CORP_TRAVEL });
+});
+app.get("/api/corp/quote", (req, res) => res.json({ ok: true, ...corpQuote(req.query?.headcount, req.query?.place) }));
+
+app.post("/api/corp/lead", rateLimit(10, M10), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const s = (v, n) => String(v ?? "").trim().slice(0, n);
+    const org = s(b.org_name, 200), who = s(b.contact_name, 120), email = s(b.email, 160), goal = s(b.goal, 2000);
+    const missing = [!org && "ชื่อบริษัท", !who && "ชื่อผู้ติดต่อ", !email && "อีเมล", !goal && "สิ่งที่อยากให้ทีมเก่งขึ้น"].filter(Boolean);
+    if (missing.length) return res.status(400).json({ ok: false, error: "MISSING", message: `กรอก${missing.join(" · ")}ด้วยนะคะ` });
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ ok: false, error: "BAD_EMAIL", message: "อีเมลดูไม่ถูกต้องค่ะ ลองเช็กอีกครั้งนะคะ" });
+
+    const topics = Array.isArray(b.topics) ? b.topics.filter(t => CORP_TOPICS.includes(t)).slice(0, 8) : [];
+    const place = Object.keys(CORP_TRAVEL).includes(String(b.place)) ? String(b.place) : null;
+    const level = CORP_LEVELS.includes(String(b.level)) ? String(b.level) : null;
+    // ⚠️ คำนวณราคาใหม่ฝั่งเรา ไม่เชื่อตัวเลขที่หน้าเว็บส่งมา
+    const quote = corpQuote(b.headcount, place);
+    const id = uid("corp");
+    await run(`INSERT INTO corp_leads (lead_id,org_name,contact_name,email,phone,goal,headcount,topics_json,refs_text,level,place,quoted_satang,budget,when_text,source)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [id, org, who, email, s(b.phone, 40) || null, goal, quote.headcount, JSON.stringify(topics),
+       s(b.refs_text, 2000) || null, level, place, quote.total_satang, s(b.budget, 80) || null, s(b.when_text, 120) || null, s(b.source, 60) || null]);
+
+    const baht = (n) => "฿" + (n / 100).toLocaleString("th-TH");
+    sendEmail(OPS_EMAIL, `🏢 องค์กรขอใบเสนอราคา — ${org} (${quote.headcount} คน · ${baht(quote.total_satang)})`,
+      wrap(`<b>บริษัท:</b> ${org}<br><b>ผู้ติดต่อ:</b> ${who}<br><b>อีเมล:</b> ${email}<br><b>โทร:</b> ${s(b.phone, 40) || "-"}<br><br>` +
+           `<b>ทีม:</b> ${quote.headcount} คน (${quote.tier_label}) · <b>ระดับ:</b> ${level || "-"}<br>` +
+           `<b>สถานที่:</b> ${place || "-"} · <b>ช่วงเวลา:</b> ${s(b.when_text, 120) || "-"}<br>` +
+           `<b>วิชาที่เลือก:</b> ${topics.length ? topics.join(" · ") : "(ยังไม่เลือก)"}<br>` +
+           `<b>ราคาที่เว็บเสนอไป:</b> ${baht(quote.total_satang)}${quote.upcountry ? " (+ตั๋วเครื่องบิน/ที่พักตามจริง)" : ""}<br>` +
+           `<b>งบที่ตั้งไว้:</b> ${s(b.budget, 80) || "-"}<br><br>` +
+           `<b>อยากให้ทีมเก่งเรื่องอะไร:</b><br>${goal.replace(/\n/g, "<br>")}<br><br>` +
+           (s(b.refs_text, 2000) ? `<b>ตัวอย่างงานที่เขาชอบ:</b><br>${s(b.refs_text, 2000).replace(/\n/g, "<br>")}<br><br>` : "") +
+           `ดูรายการทั้งหมดที่หลังบ้าน → /admin`)).catch(() => {});
+
+    // ✉️ ส่งสรุปให้ HR ทันที — เขาต้องมีอะไรเอาไปขออนุมัติภายในเลย ไม่ใช่รอเราตอบพรุ่งนี้
+    sendEmail(email, `สรุปแพ็กอบรมทีม ${org} · ${baht(quote.total_satang)}`, wrap(
+      `สวัสดีค่ะ คุณ${who} 🩵<br><br>ขอบคุณที่สนใจจัดอบรมให้ทีมกับ Babe House นะคะ นี่คือสรุปที่คุณเลือกไว้ค่ะ<br><br>` +
+      `<b>ทีม:</b> ${quote.headcount} คน (${quote.tier_label})<br>` +
+      `<b>รูปแบบ:</b> เรียนสดเต็มวันกับครูพี่คิม เลือกกี่วิชาก็ได้ในวันเดียว<br>` +
+      `<b>วิชาที่เลือก:</b> ${topics.length ? topics.join(" · ") : "รอออกแบบร่วมกัน"}<br>` +
+      `<b>สถานที่:</b> ${place || "รอสรุป"}<br><br>` +
+      `<b>ราคาเหมา:</b> ${baht(quote.base_satang)}` +
+      (quote.travel_satang ? `<br><b>ค่าเดินทาง:</b> ${baht(quote.travel_satang)}` : "") +
+      `<br><b>รวม:</b> <b style="font-size:19px">${baht(quote.total_satang)}</b><br>` +
+      (quote.note ? `<span style="color:#8a6d3b">${quote.note}</span><br>` : "") +
+      `<br>ราคานี้รวมใบประกาศนียบัตรรายคน และรายงานผลให้ฝ่ายบุคคลแล้วค่ะ<br>` +
+      `ออกใบกำกับภาษีเต็มรูปในนามบริษัทได้ · ยังไม่ต้องจ่ายอะไรตอนนี้นะคะ<br><br>` +
+      `ทีมจะติดต่อกลับพร้อม<b>ใบเสนอราคาอย่างเป็นทางการ</b>ภายใน 1 วันทำการค่ะ<br><br>ครูพี่คิม · Babe House`)).catch(() => {});
+
+    res.json({ ok: true, lead_id: id, quote,
+      message: "ได้รับโจทย์แล้วค่ะ 🩵 ส่งสรุปราคาเข้าอีเมลให้แล้ว เอาไปขออนุมัติได้เลย · ทีมจะส่งใบเสนอราคาอย่างเป็นทางการตามไปภายใน 1 วันทำการนะคะ" });
+  } catch (e) { console.error("corp-lead", e.message); res.status(500).json({ ok: false, error: "FAILED", message: "ส่งไม่สำเร็จ ลองใหม่อีกครั้งนะคะ" }); }
+});
+app.get("/api/admin/corp/leads", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  res.json({ ok: true, leads: await q(`SELECT * FROM corp_leads ORDER BY created_at DESC LIMIT 300`).catch(() => []) });
+});
+app.post("/api/admin/corp/lead", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const id = String(req.body?.lead_id || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const st = ["new", "quoted", "won", "lost"].includes(req.body?.status) ? req.body.status : null;
+  await run(`UPDATE corp_leads SET status=COALESCE($1,status), note=COALESCE($2,note), updated_at=now() WHERE lead_id=$3`,
+    [st, req.body?.note != null ? String(req.body.note).slice(0, 2000) : null, id]);
+  res.json({ ok: true });
+});
+
 /* ═══════════ 🏦 โอนเข้าบัญชีบริษัท — สำหรับลูกค้านิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ═══════════
    แอดมินแจ้ง: "เราต้องเพิ่มเลขบัญชีสำหรับลูกค้าบริษัทนะคะ" — ฝ่ายบัญชีหลายบริษัทจ่ายบัตร/พร้อมเพย์ไม่ได้
 

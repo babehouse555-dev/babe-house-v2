@@ -1053,6 +1053,42 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_edit_rounds_order ON edit_rounds(order_id, round_no);
 
+    -- ═══════ 🏢 อบรมองค์กร (in-house) — HR ออกแบบคอร์สเองแล้วเห็นราคาทันที ═══════
+    -- คิมสั่ง 17 ส.ค. 2569: "ทำแพ็กเกจบริษัทให้เสร็จ ที่มันคัสตอมวิชาเรียนได้ว่าเค้าอยากเรียนอะไร
+    --                        เลือกได้ว่าจะเรียนกี่คน ราคามันก็จะไม่เท่ากัน ทำทุกอย่างเสร็จสรรพในเว็บได้เลย"
+    --
+    -- ⚠️ คอขวดจริงของลูกค้าองค์กรไม่ใช่ปุ่มจ่ายเงิน — คือ "รอคนตอบว่าเท่าไหร่"
+    --    หน้านี้จึงบอกราคาทันทีและออกใบเสนอราคาให้เอง เขาเอาไปขออนุมัติได้ในวันเดียวกัน
+    --    (องค์กรต้องผ่านขั้นตอนอนุมัติภายในเสมอ จึงยังไม่ตัดเงินตรงนี้)
+    CREATE TABLE IF NOT EXISTS corp_leads (
+      lead_id TEXT PRIMARY KEY,
+      org_name TEXT NOT NULL,          -- ชื่อบริษัท
+      contact_name TEXT NOT NULL,      -- ชื่อผู้ติดต่อ (มักเป็น HR)
+      email TEXT NOT NULL,
+      phone TEXT,
+      goal TEXT NOT NULL,              -- "อยากให้ทีมเก่งเรื่องอะไร" ← หัวใจของฟอร์ม
+      headcount INTEGER,               -- ทีมกี่คน → ตัวเดียวที่กำหนดราคา (คิมเคาะ: เหมา 1 วัน เลือกกี่วิชาก็ได้)
+      topics_json TEXT,                -- วิชาที่เลือก ["ตัดต่อ","AI",...] — ไม่มีผลกับราคา แต่กำหนดเนื้อหาวันสอน
+      refs_text TEXT,                  -- ลิงก์ตัวอย่างงาน/สไตล์ที่อยากได้ (คิมสั่ง "ต้องแนบ Reference ได้")
+      level TEXT,                      -- ไม่มีพื้นฐาน | พอทำได้ | ทำเป็นแล้วอยากลึกขึ้น
+      place TEXT,                      -- ที่บริษัท | ที่ Babe House | ออนไลน์
+      quoted_satang INTEGER,           -- ราคาที่เว็บคำนวณให้ตอนนั้น (เก็บไว้กันราคาเปลี่ยนทีหลังแล้วเถียงกัน)
+      budget TEXT,                     -- ช่วงงบที่ตั้งไว้ (ไม่บังคับ)
+      when_text TEXT,                  -- ช่วงเวลาที่อยากจัด
+      status TEXT DEFAULT 'new',       -- new | quoted | won | lost
+      note TEXT,                       -- โน้ตภายในของคิม
+      source TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_corp_leads_new ON corp_leads(status, created_at DESC);
+    -- ⚠️ ต้องมี ALTER ด้วย ไม่ใช่แค่ CREATE — ฐานข้อมูลที่เคยมีตารางนี้อยู่แล้วจะไม่ได้คอลัมน์ใหม่
+    --    (CREATE TABLE IF NOT EXISTS เจอตารางเดิมแล้วข้ามไปเฉยๆ ไม่เพิ่มคอลัมน์ให้)
+    --    เจอจริงตอนเทสต์ 17 ส.ค. 2569: ฟอร์มองค์กรพัง 500 เพราะ topics_json ไม่มีในตารางเก่า
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS topics_json TEXT;
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS refs_text TEXT;
+    ALTER TABLE corp_leads ADD COLUMN IF NOT EXISTS quoted_satang INTEGER;
+
     -- ═══════ 🏦 โอนเข้าบัญชีบริษัท — สำหรับลูกค้าที่เป็นนิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ═══════
     -- ทำไมต้องมี: ฝ่ายบัญชีของบริษัทลูกค้าหลายที่ "จ่ายบัตร/พร้อมเพย์ไม่ได้" ต้องโอนจากบัญชีบริษัทเท่านั้น
     --            (แอดมินแจ้ง 17 ส.ค. "เราต้องเพิ่มเลขบัญชีสำหรับลูกค้าบริษัทนะคะ")

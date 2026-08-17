@@ -273,14 +273,18 @@ export default function Account() {
               // 🗑️ คิมสั่ง 13 ส.ค. "เล่มที่ลบไปแล้ว แยกไปอยู่โฟลเดอร์ถังขยะเลย ไม่ต้องมารวมกับคนอื่น"
               //    เดิมกล่อง "เล่มที่ลบไป" โผล่ค้างทุกโฟลเดอร์ ทั้งที่เป็นของที่ลบทิ้งแล้ว
               { key: "trash", icon: "🗑️", label: "ถังขยะ", pastel: "#E2DED9", deep: "#C9C3BC", n: deleted.length },
-            ].filter(f => f.n > 0).map(f => {
+              // 👤 ข้อมูลส่วนตัว — ต้องมีเสมอ ไม่มีของให้นับ (always) จึงไม่โดนตัวกรอง n > 0 ตัดทิ้ง
+              //    ⚠️ เดิมซ่อนไว้ในโฟลเดอร์ "แพ็กเกจของฉัน" — คิมเปิดหน้าตัวเองยังหาไม่เจอ (17 ส.ค.)
+              //       ถ้าเจ้าของเว็บยังหาไม่เจอ ลูกค้าไม่มีทางเจอ → ให้มีโฟลเดอร์ของตัวเอง
+              { key: "me", icon: "👤", label: "ข้อมูลของฉัน", pastel: "#EFE0D6", deep: "#E0C9B8", always: true },
+            ].filter(f => f.always || f.n > 0).map(f => {
               const on = f.key === folder;
               return (
                 <button key={f.key} className={`fld${on ? " on" : ""}`} onClick={() => setFolder(f.key)} aria-pressed={on}
                   style={{ position: "relative" }}>
                   <span className="fld-body" style={{ "--c": f.pastel, "--d": f.deep }}>
                     <span className="fld-icon">{f.icon}</span>
-                    <span className="fld-n">{f.n}</span>
+                    {f.n != null && <span className="fld-n">{f.n}</span>}
                   </span>
                   <span className="fld-label">{f.label}</span>
                   {/* จุดแดง = มีของรอให้กด (ตอนนี้ใช้กับคอร์สฟรีที่ยังไม่ได้เลือก) */}
@@ -652,7 +656,7 @@ export default function Account() {
             เดิมต้องทักแอดมินให้แก้ให้ · ชื่อตรงนี้คือชื่อที่ขึ้นบนประกาศนียบัตรด้วย
             พร้อมกันนั้นใส่ทางออกให้ลูกค้าเก่าที่ "ซื้อคอร์สแล้วแต่ไม่เห็นในบัญชี" ไว้ตรงนี้เลย
             (ตอนย้ายข้อมูลเจอว่าลูกค้าเก่า 253 คนไม่มีอีเมลในระบบเดิม = ล็อกอินมาแล้วจอว่าง ไม่รู้จะทำยังไงต่อ) */}
-        {(!showFolders || folder === "member") && <ProfileCard email={data.email} />}
+        {(!showFolders || folder === "me") && <ProfileCard email={data.email} />}
 
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>

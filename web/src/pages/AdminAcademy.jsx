@@ -629,3 +629,132 @@ export function SecurityPanel({ adminKey }) {
     </div>
   );
 }
+
+/* ══════════ 6) ช่วยลูกค้าที่เข้าเรียนไม่ได้ ══════════
+   ทำขึ้น 17 ส.ค. 2569 หลังแอดมิน (พลอย) แจ้ง "มีลูกค้าเก่า เข้าเว็บใหม่ ยังไม่เจอคอร์ส"
+
+   ต้นเหตุจริงที่เจอตอนย้ายข้อมูล: ลูกค้าที่จ่ายเงินแล้ว 253 คน "ไม่มีอีเมลในระบบเก่าเลย"
+   (สมัครด้วย username อย่างเดียว) รวมเงินที่จ่ายมาแล้ว ~฿1.1 ล้าน — คนกลุ่มนี้ล็อกอินเว็บใหม่ไม่ได้
+   เพราะเราใช้อีเมลเป็นตัวยืนยันตัวตน
+
+   เดิมฝั่งเซิร์ฟเวอร์มี endpoint เปิดสิทธิ์อยู่แล้ว แต่ "ไม่มีหน้าจอให้กด" ทีมเลยแก้เองไม่ได้เลย
+   ต้องส่งเรื่องมาให้ทีมพัฒนาทุกครั้ง — แผงนี้ตัดคอขวดนั้นออก */
+export function CustomerHelp({ adminKey }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState({});      // legacy_id → อีเมลที่แอดมินกำลังพิมพ์
+  const [msg, setMsg] = useState("");
+
+  async function search(e) {
+    e?.preventDefault();
+    if (q.trim().length < 2) { setMsg("พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ"); return; }
+    setBusy(true); setMsg("");
+    try { setRes(await api(`/api/admin/academy/find?q=${encodeURIComponent(q.trim())}`, { adminKey })); }
+    catch { setRes(null); setMsg("ค้นหาไม่สำเร็จ ลองใหม่อีกทีนะคะ"); }
+    setBusy(false);
+  }
+
+  async function link(u) {
+    const email = (draft[u.legacy_id] || "").trim();
+    if (!email) { setMsg("ใส่อีเมลของลูกค้าก่อนนะคะ"); return; }
+    if (!await askConfirm(`ผูกอีเมล ${email} ให้ "${u.name || u.username}" และเปิดสิทธิ์ ${u.bought.length} คอร์สที่เขาจ่ายเงินไปแล้ว?`)) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await api("/api/admin/academy/set-email", { method: "POST", adminKey,
+        body: { legacy_id: u.legacy_id, email, granted_by: "admin" } });
+      setMsg(`✅ เรียบร้อย — ${r.email} เข้าเรียนได้ ${r.owns_count} คอร์สแล้ว บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ`);
+      await search();
+    } catch (e) { setMsg("❌ " + (e?.message || "ทำไม่สำเร็จ")); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card">
+      <h3>🙋 ช่วยลูกค้าที่เข้าเรียนไม่ได้</h3>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.7 }}>
+        ลูกค้าทักมาว่า “ซื้อคอร์สแล้วแต่ล็อกอินไปไม่เจอ” ให้ค้นที่นี่ได้เลย —
+        ใส่ <b>อีเมล ชื่อ ชื่อผู้ใช้ หรือเบอร์โทร</b> อะไรก็ได้ที่ลูกค้าบอกมา
+      </p>
+      <form onSubmit={search} className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="เช่น kamonlak / 0891153009 / somchai@gmail.com"
+          style={{ ...inp, flex: 1, minWidth: 220, width: "auto" }} />
+        <button className="btn" disabled={busy} style={{ padding: "8px 18px" }}>{busy ? "…" : "ค้นหา"}</button>
+      </form>
+      {msg && <p style={{ fontSize: 13, marginTop: 10, fontWeight: 600, color: msg.startsWith("❌") ? "#b3261e" : "#1a7f43" }}>{msg}</p>}
+
+      {res && (res.users.length === 0
+        ? <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
+            ไม่เจอลูกค้าชื่อนี้ในข้อมูลเว็บเก่าเลยค่ะ — ลองค้นด้วยคำอื่น (ชื่อจริง/ชื่อผู้ใช้/เบอร์)
+            ถ้ายังไม่เจอ แปลว่าเขาอาจซื้อในชื่อคนอื่น ลองขอสลิปหรือวันที่โอนมาดูนะคะ
+          </p>
+        : <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {res.users.map(u => (
+              <div key={u.legacy_id} style={{ ...box, marginBottom: 0,
+                borderLeft: `4px solid ${u.can_see_now > 0 ? "#22c55e" : u.paid_orders > 0 ? "#e0a800" : "var(--border)"}` }}>
+                <div className="between" style={{ flexWrap: "wrap", gap: 6 }}>
+                  <b style={{ fontSize: 14 }}>{u.name || u.username || "(ไม่มีชื่อ)"}</b>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: u.can_see_now > 0 ? "#1a7f43" : "#8a6d1f" }}>
+                    {u.can_see_now > 0 ? `✅ เข้าเรียนได้แล้ว ${u.can_see_now} คอร์ส` : "⚠️ ยังเข้าเรียนไม่ได้"}
+                  </span>
+                </div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.8 }}>
+                  อีเมลในระบบ: <b style={{ color: u.needs_email ? "#b3261e" : "inherit" }}>{u.email || "— ไม่มี —"}</b>
+                  {" · "}ชื่อผู้ใช้: {u.username || "-"}
+                  {u.phone ? <> · โทร: <a className="link" href={`tel:${u.phone}`}>{u.phone}</a></> : null}
+                  <br />สมัครเมื่อ {u.joined || "-"} · จ่ายเงินแล้ว {u.paid_orders} ออเดอร์ รวม {money(u.spent_baht)}
+                </div>
+                {u.bought.length > 0 && <div style={{ fontSize: 12.5, marginTop: 6 }}>
+                  📚 คอร์สที่จ่ายเงินแล้ว: {u.bought.map(b => b.name).join(" · ")}
+                </div>}
+
+                {u.can_see_now === 0 && u.paid_orders > 0 && <div style={{ marginTop: 10, background: "var(--soft)", borderRadius: 10, padding: "10px 12px" }}>
+                  <label style={{ ...lbl, marginTop: 0 }}>
+                    ถามอีเมลที่ลูกค้าใช้อยู่ตอนนี้ แล้วใส่ตรงนี้ → เขาจะเข้าเรียนได้ทันที
+                  </label>
+                  {u.username_is_email && !u.email &&
+                    <p className="muted" style={{ fontSize: 12, margin: "0 0 6px", lineHeight: 1.6 }}>
+                      💡 ตอนสมัครเขาพิมพ์ <b>{u.username}</b> ไว้ในช่องชื่อผู้ใช้ — น่าจะเป็นอีเมลเขา แต่ยืนยันกับลูกค้าก่อนนะคะ
+                    </p>}
+                  <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <input type="email" placeholder="อีเมลของลูกค้า"
+                      value={draft[u.legacy_id] ?? (u.username_is_email && !u.email ? u.username : "")}
+                      onChange={e => setDraft(d => ({ ...d, [u.legacy_id]: e.target.value }))}
+                      style={{ ...inp, flex: 1, minWidth: 200, width: "auto" }} />
+                    <button className="btn" disabled={busy} onClick={() => link(u)} style={{ padding: "8px 16px" }}>เปิดสิทธิ์ให้</button>
+                  </div>
+                </div>}
+
+                {u.can_see_now === 0 && u.paid_orders === 0 &&
+                  <p className="muted" style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.7 }}>
+                    บัญชีนี้<b>ไม่มีออเดอร์ที่จ่ายเงินสำเร็จ</b>ในระบบเก่าเลยค่ะ — อาจกดสั่งแล้วไม่ได้โอน
+                    หรือโอนในชื่อ/อีเมลอื่น ลองขอสลิปกับวันที่โอนมาตรวจก่อนเปิดสิทธิ์นะคะ
+                  </p>}
+              </div>
+            ))}
+          </div>)}
+    </div>
+  );
+}
+
+/* ══════════ 7) คิวลูกค้าที่กดแจ้ง "ไม่เจอคอร์สที่เคยซื้อ" จากหน้าเว็บ ══════════ */
+export function ClaimsPanel({ adminKey }) {
+  const [d, setD] = useState(null);
+  useEffect(() => { api("/api/admin/academy/claims", { adminKey }).then(setD).catch(() => setD({ claims: [] })); }, []);
+  const open = (d?.claims || []).filter(c => c.status === "open");
+  if (!open.length) return null;         // ไม่มีคนรออยู่ = ไม่ต้องรกสายตา
+  return (
+    <div className="card" style={{ borderLeft: "4px solid #b3261e" }}>
+      <h3>🙋 ลูกค้าแจ้งว่าไม่เจอคอร์สที่เคยซื้อ ({open.length})</h3>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+        คนพวกนี้จ่ายเงินแล้วแต่เข้าเรียนไม่ได้ — เร่งที่สุด · แก้ได้ที่แผง “🙋 ช่วยลูกค้าที่เข้าเรียนไม่ได้” ด้านล่าง
+      </p>
+      <table style={{ marginTop: 10 }}><thead><tr><th>แจ้งเมื่อ</th><th>อีเมล</th><th>ลูกค้าเล่าว่า</th></tr></thead>
+        <tbody>{open.map(c => <tr key={c.claim_id}>
+          <td style={{ whiteSpace: "nowrap" }}>{thDate(c.created_at)}</td>
+          <td>{c.email}</td>
+          <td style={{ fontSize: 12.5 }}>{c.note || <span className="muted">(ไม่ได้เขียนเพิ่ม)</span>}</td>
+        </tr>)}</tbody></table>
+    </div>
+  );
+}

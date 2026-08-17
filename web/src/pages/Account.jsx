@@ -648,6 +648,12 @@ export default function Account() {
           </div>;
         })()}
 
+        {/* 👤 ข้อมูลของฉัน — แอดมินขอ 17 ส.ค. "ลูกค้าอยากเปลี่ยนข้อมูลส่วนตัว เช่น ชื่อ ผู้ใช้งาน"
+            เดิมต้องทักแอดมินให้แก้ให้ · ชื่อตรงนี้คือชื่อที่ขึ้นบนประกาศนียบัตรด้วย
+            พร้อมกันนั้นใส่ทางออกให้ลูกค้าเก่าที่ "ซื้อคอร์สแล้วแต่ไม่เห็นในบัญชี" ไว้ตรงนี้เลย
+            (ตอนย้ายข้อมูลเจอว่าลูกค้าเก่า 253 คนไม่มีอีเมลในระบบเดิม = ล็อกอินมาแล้วจอว่าง ไม่รู้จะทำยังไงต่อ) */}
+        {(!showFolders || folder === "member") && <ProfileCard email={data.email} />}
+
         {ref && <div className="card" style={{ background: "linear-gradient(135deg,#E4F4F3,#EAF3FD)", border: "1px solid #bfe3df", borderTop: "4px solid #2C8E8C" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{t("ac_ref_title")}</div>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 14, lineHeight: 1.6 }}>{t("ac_ref_desc_a")} <b style={{ color: "#2C8E8C" }}>{t("ac_ref_desc_b")} {ref.percent}% {t("ac_ref_desc_c")}</b> <b style={{ color: "#2C8E8C" }}>{t("ac_ref_desc_d")}</b> {t("ac_ref_desc_e")}</div>
@@ -691,6 +697,94 @@ export default function Account() {
         .fld.on .fld-label { color: var(--ink); font-weight: 800; }
         @media (prefers-reduced-motion: reduce){ .fld-body, .fld-icon { transition: none; } }
       `}</style>
+    </div>
+  );
+}
+
+/* 👤 การ์ด "ข้อมูลของฉัน" — แก้ชื่อ/เบอร์ได้เอง + ทางออกสำหรับคนที่ไม่เห็นคอร์สที่เคยซื้อ
+   ⛔ ไม่มีช่องแก้อีเมลโดยตั้งใจ — อีเมลคือกุญแจเข้าบัญชี ถ้าแก้เองได้จะกลายเป็นช่องยึดบัญชีคนอื่น */
+function ProfileCard({ email }) {
+  const [p, setP] = useState(null);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [saved, setSaved] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [openHelp, setOpenHelp] = useState(false);
+  const [note, setNote] = useState("");
+  const [claim, setClaim] = useState("");
+
+  useEffect(() => {
+    api("/api/me/profile", { token: session.get() })
+      .then(r => { setP(r); setName(r.name || ""); setPhone(r.phone || ""); })
+      .catch(() => setP({ error: true }));
+  }, []);
+  if (!p || p.error) return null;
+
+  const dirty = name.trim() !== (p.name || "") || phone.trim() !== (p.phone || "");
+  async function save() {
+    if (!name.trim()) { setSaved("กรอกชื่อด้วยนะคะ"); return; }
+    setBusy(true); setSaved("");
+    try {
+      const r = await api("/api/me/profile", { method: "POST", token: session.get(), body: { name: name.trim(), phone: phone.trim() } });
+      setP(v => ({ ...v, name: r.name, phone: r.phone }));
+      setSaved("✅ บันทึกแล้วค่ะ");
+    } catch { setSaved("บันทึกไม่สำเร็จ ลองใหม่อีกทีนะคะ"); }
+    setBusy(false);
+  }
+  async function sendClaim() {
+    setBusy(true);
+    try {
+      const r = await api("/api/academy/claim", { method: "POST", token: session.get(), body: { note: note.trim() } });
+      setClaim(r.already
+        ? "เราได้รับเรื่องของคุณไว้แล้วนะคะ ทีมกำลังตรวจสอบให้อยู่ค่ะ 🩵"
+        : "ส่งเรื่องให้ทีมแล้วค่ะ 🩵 เราจะเปิดสิทธิ์ให้แล้วแจ้งกลับทางอีเมลนี้นะคะ");
+    } catch { setClaim("ส่งไม่สำเร็จ ลองใหม่อีกทีนะคะ"); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>👤 ข้อมูลของฉัน</div>
+      <div className="muted" style={{ fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
+        ชื่อนี้คือชื่อที่จะขึ้นบน<b>ประกาศนียบัตร</b>ของคุณ กรอกให้ตรงกับที่อยากให้แสดงได้เลยค่ะ
+      </div>
+      <div className="field"><label>ชื่อ-นามสกุล</label>
+        <input value={name} onChange={e => { setName(e.target.value); setSaved(""); }} placeholder="เช่น สมหญิง ใจดี" style={{ width: "100%", boxSizing: "border-box" }} /></div>
+      <div className="field"><label>เบอร์โทร <span className="muted" style={{ fontWeight: 400 }}>(ไม่บังคับ)</span></label>
+        <input value={phone} inputMode="tel" onChange={e => { setPhone(e.target.value); setSaved(""); }} placeholder="08x-xxx-xxxx" style={{ width: "100%", boxSizing: "border-box" }} /></div>
+      <div className="field"><label>อีเมล</label>
+        <input value={email} readOnly disabled style={{ width: "100%", boxSizing: "border-box", background: "var(--soft)" }} />
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.6 }}>
+          อีเมลคือกุญแจเข้าบัญชี เลยแก้เองไม่ได้นะคะ — ถ้าต้องการเปลี่ยน ทักแอดมินได้เลยค่ะ
+        </div></div>
+      <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn" onClick={save} disabled={busy || !dirty} style={{ padding: "10px 20px" }}>
+          {busy ? "กำลังบันทึก…" : "บันทึก"}
+        </button>
+        {saved && <span style={{ fontSize: 13.5, fontWeight: 700, color: saved.startsWith("✅") ? "#1a7f43" : "#b3261e" }}>{saved}</span>}
+      </div>
+
+      {/* 🙋 ทางออกของลูกค้าเก่าที่ล็อกอินมาแล้วไม่เห็นคอร์ส — เดิมเจอจอว่างแล้วไม่รู้จะทำยังไงต่อ */}
+      <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
+        {claim
+          ? <p style={{ fontSize: 13.5, margin: 0, fontWeight: 600, color: "#1a7f43" }}>{claim}</p>
+          : !openHelp
+            ? <button className="link" onClick={() => setOpenHelp(true)} style={{ background: "none", border: 0, padding: 0, fontSize: 13.5, cursor: "pointer", textAlign: "left" }}>
+                เคยซื้อคอร์สกับ Babe House Academy แต่ไม่เห็นในบัญชีนี้? แจ้งเราได้เลยค่ะ ›
+              </button>
+            : <div>
+                <div className="muted" style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 8 }}>
+                  ส่วนใหญ่เกิดจากตอนสมัครเว็บเดิมใช้คนละอีเมลกับที่ใช้ตอนนี้ค่ะ
+                  เล่าให้เราฟังหน่อยว่า<b>ซื้อคอร์สอะไร ประมาณเมื่อไหร่ และจ่ายด้วยชื่อ/อีเมลไหน</b> เดี๋ยวทีมเปิดสิทธิ์ให้นะคะ
+                </div>
+                <textarea value={note} onChange={e => setNote(e.target.value)} style={{ width: "100%", boxSizing: "border-box", minHeight: 84 }}
+                  placeholder="เช่น ซื้อคอร์สตัดต่อ Advance ประมาณเดือน พ.ค. 2569 โอนในชื่อ สมหญิง ใจดี สมัครไว้ด้วยอีเมล somying.old@gmail.com" />
+                <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                  <button className="btn" onClick={sendClaim} disabled={busy} style={{ padding: "10px 20px" }}>{busy ? "กำลังส่ง…" : "ส่งให้ทีมตรวจสอบ"}</button>
+                  <button className="link" onClick={() => setOpenHelp(false)} style={{ background: "none", border: 0, fontSize: 13.5, cursor: "pointer" }}>ยกเลิก</button>
+                </div>
+              </div>}
+      </div>
     </div>
   );
 }

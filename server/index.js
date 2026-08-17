@@ -2027,6 +2027,32 @@ app.post("/api/me/delete-book", async (req, res) => {
   await run(`UPDATE blueprints SET deleted_at=now() WHERE blueprint_id=$1`, [bpId]);
   res.json({ ok: true, restorable_days: RESTORE_DAYS });
 });
+// 👤 ข้อมูลส่วนตัวของลูกค้า — ดู/แก้ชื่อกับเบอร์ได้เอง (แอดมินขอ 17 ส.ค.: "ลูกค้าอยากเปลี่ยนชื่อ")
+//
+// ⛔ แก้อีเมลเองไม่ได้โดยตั้งใจ — อีเมลคือตัวยืนยันตัวตน ถ้าปล่อยให้เปลี่ยนเองจะกลายเป็นช่องยึดบัญชีคนอื่น
+//    (พิมพ์อีเมลคนที่ซื้อคอร์สแพงไว้ = ได้คอร์สเขาไปเลย) ลูกค้าที่อยากเปลี่ยนอีเมลต้องทักแอดมิน
+// 📜 ชื่อที่แก้ตรงนี้ถูกใช้เป็นชื่อบนประกาศนียบัตรด้วย (ผ่าน bestStudentName) = แก้ตรงนี้ที่เดียวพอ
+app.get("/api/me/profile", async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const u = await one(`SELECT name, phone FROM academy_users WHERE lower(email)=lower($1) ORDER BY COALESCE(name,'') DESC LIMIT 1`, [email]).catch(() => null);
+  res.json({ ok: true, email, name: (await bestStudentName(email, u?.name)) || "", phone: u?.phone || "" });
+});
+app.post("/api/me/profile", rateLimit(20, M10), async (req, res) => {
+  const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const name = String(req.body?.name ?? "").trim().slice(0, 120);
+  const phone = String(req.body?.phone ?? "").replace(/[^\d+\-\s]/g, "").trim().slice(0, 30);
+  if (!name) return res.status(400).json({ ok: false, error: "NO_NAME", message: "กรอกชื่อด้วยนะคะ" });
+  try {
+    // ลูกค้าคนเดียวอาจมีหลายบัญชีเก่า (สมัครซ้ำ) → อัปเดตทุกแถวที่เป็นอีเมลนี้ ไม่งั้นชื่อเก่าจะโผล่กลับมา
+    const r = await run(`UPDATE academy_users SET name=$2, phone=COALESCE(NULLIF($3,''), phone) WHERE lower(email)=lower($1)`, [email, name, phone]);
+    // ไม่เคยเป็นลูกค้าเว็บเก่า (ซื้อ Blueprint อย่างเดียว) → ยังไม่มีแถวให้แก้ สร้างให้เก็บชื่อไว้
+    if (!r?.rowCount) await run(`INSERT INTO academy_users (legacy_id, email, name, phone, role, legacy_created)
+      VALUES ($1, lower($2), $3, NULLIF($4,''), 'student', now()::text) ON CONFLICT (legacy_id) DO NOTHING`,
+      ["nw_" + email.replace(/[^a-z0-9]/gi, "").slice(0, 24), email, name, phone]);
+    res.json({ ok: true, name, phone });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 // 🗑️➡️ ลูกค้ากู้เล่มตัวเองได้ภายใน 30 วัน — ไม่ต้องรอทักแอดมิน (เจอเคสจริง 2 ส.ค.)
 const RESTORE_DAYS = 30;
 app.get("/api/me/deleted-books", async (req, res) => {
@@ -2510,6 +2536,90 @@ app.get("/api/admin/academy/owns", async (req, res) => {
       raw_ids: ids, grants,
       note: ids.length ? "ลูกค้าเห็นคอร์สพวกนี้ได้เมื่อล็อกอินด้วยอีเมลนี้" : "อีเมลนี้ยังไม่มีสิทธิ์คอร์สใดเลย" });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 🔎 ค้นหาลูกค้าเว็บเก่าจากอะไรก็ได้ที่แอดมินมีในมือ — อีเมล ชื่อ username หรือเบอร์โทร
+//
+// ทำไมต้องค้นได้หลายทาง: ตอนย้ายข้อมูล (17 ส.ค. 2569) เจอว่า **ลูกค้าที่จ่ายเงินแล้ว 253 คน
+// ไม่มีอีเมลในระบบเก่าเลย** (สมัครด้วย username อย่างเดียว) รวมเป็นเงินที่จ่ายมาแล้ว ~฿1.1 ล้าน
+// คนกลุ่มนี้ล็อกอินเว็บใหม่ไม่ได้เพราะเราใช้อีเมลเป็นตัวยืนยันตัวตน
+// แอดมินจึงต้องค้นจาก "ชื่อ/เบอร์ที่ลูกค้าบอกมาในไลน์" ให้เจอ แล้วผูกอีเมลปัจจุบันของเขาเข้าไป
+app.get("/api/admin/academy/find", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const raw = String(req.query?.q || "").trim();
+  if (raw.length < 2) return res.status(400).json({ ok: false, error: "TOO_SHORT", message: "พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ" });
+  const like = `%${raw.toLowerCase()}%`;
+  // เบอร์โทรในข้อมูลเก่าเก็บไม่เหมือนกัน (มีขีด มีเว้นวรรค) → ตัดให้เหลือแต่ตัวเลขก่อนเทียบ
+  const digits = raw.replace(/\D/g, "");
+  try {
+    const users = await q(`SELECT legacy_id, username, name, email, phone, legacy_created FROM academy_users
+      WHERE lower(COALESCE(email,'')) LIKE $1 OR lower(COALESCE(name,'')) LIKE $1
+         OR lower(COALESCE(username,'')) LIKE $1
+         OR ($2 <> '' AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') LIKE '%' || $2 || '%')
+      ORDER BY legacy_created DESC NULLS LAST LIMIT 25`, [like, digits]);
+    const out = [];
+    for (const u of users) {
+      // คอร์สที่ "จ่ายเงินแล้วจริง" ของ user คนนี้ — อ่านทั้ง order.course_id และ order_lines เหมือน academyOwnedCourseIds
+      const bought = await q(`SELECT DISTINCT x.course_id, c.name FROM (
+          SELECT o.course_id FROM academy_orders o WHERE o.legacy_user_id=$1 AND o.status='Close' AND COALESCE(o.course_id,'') NOT IN ('','0')
+          UNION
+          SELECT l.course_id FROM academy_order_lines l JOIN academy_orders o ON o.legacy_id=l.order_id
+            WHERE o.legacy_user_id=$1 AND o.status='Close' AND COALESCE(l.course_id,'') NOT IN ('','0')
+        ) x LEFT JOIN academy_courses c ON c.legacy_id = x.course_id`, [u.legacy_id]);
+      const spent = await one(`SELECT COALESCE(SUM(NULLIF(total,'')::numeric),0) s, COUNT(*) c
+        FROM academy_orders WHERE legacy_user_id=$1 AND status='Close'`, [u.legacy_id]);
+      // เข้าเรียนได้จริงไหม = อีเมลที่ผูกอยู่ตอนนี้เห็นคอร์สกี่ตัว (0 = ล็อกอินไปก็ไม่เจออะไร)
+      const canSee = u.email && u.email.includes("@") ? (await academyOwnedCourseIds(u.email)).length : 0;
+      out.push({
+        legacy_id: u.legacy_id, username: u.username, name: u.name, email: u.email, phone: u.phone,
+        joined: u.legacy_created, paid_orders: Number(spent.c || 0), spent_baht: Math.round(Number(spent.s || 0)),
+        bought: bought.map(b => ({ id: b.course_id, name: b.name || `คอร์ส ${b.course_id}` })),
+        can_see_now: canSee,
+        // ธงช่วยแอดมินตัดสินใจ — ชี้ตรงๆ ว่าเคสนี้ต้องทำอะไร
+        needs_email: !u.email || !u.email.includes("@"),
+        username_is_email: !!(u.username && u.username.includes("@")),
+      });
+    }
+    res.json({ ok: true, q: raw, count: out.length, users: out });
+  } catch (e) { console.error("academy/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// 🔗 ผูกอีเมลให้ลูกค้าเก่าที่ไม่มีอีเมล แล้วเปิดสิทธิ์คอร์สที่เขาจ่ายเงินไปแล้วทั้งหมดให้อีเมลนั้น
+//
+// ⚠️ ทำ 2 อย่างพร้อมกันโดยตั้งใจ — ถ้าใส่อีเมลอย่างเดียวจะยังเข้าเรียนไม่ได้
+//    เพราะ academyOwnedCourseIds วิ่งจาก academy_users.email → ออเดอร์ ซึ่งจะได้ผลก็ต่อเมื่อบันทึกอีเมลลงแถวนั้นจริง
+//    แต่ถ้าลูกค้ามีหลายบัญชีเก่า/ออเดอร์ผูกคนละ user การเปิด grant ควบไปด้วยทำให้ชัวร์ว่าเห็นของครบ
+app.post("/api/admin/academy/set-email", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const legacyId = String(req.body?.legacy_id || "").trim();
+  const email = normEmail(req.body?.email || "");
+  if (!legacyId || !email) return res.status(400).json({ ok: false, error: "MISSING", message: "ต้องมีทั้งลูกค้าและอีเมล" });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return res.status(400).json({ ok: false, error: "BAD_EMAIL", message: "อีเมลนี้รูปแบบไม่ถูกต้อง ตรวจอีกทีนะคะ" });
+  try {
+    const u = await one(`SELECT legacy_id, name, email FROM academy_users WHERE legacy_id=$1`, [legacyId]);
+    if (!u) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่เจอลูกค้าคนนี้" });
+    const bought = await q(`SELECT DISTINCT x.course_id FROM (
+        SELECT o.course_id FROM academy_orders o WHERE o.legacy_user_id=$1 AND o.status='Close' AND COALESCE(o.course_id,'') NOT IN ('','0')
+        UNION
+        SELECT l.course_id FROM academy_order_lines l JOIN academy_orders o ON o.legacy_id=l.order_id
+          WHERE o.legacy_user_id=$1 AND o.status='Close' AND COALESCE(l.course_id,'') NOT IN ('','0')
+      ) x`, [legacyId]);
+    const before = u.email || null;
+    await run(`UPDATE academy_users SET email=lower($2) WHERE legacy_id=$1`, [legacyId, email]);
+    let granted = 0;
+    for (const b of bought) {
+      await run(`INSERT INTO academy_grants (grant_id,email,course_id,granted_by,note) VALUES ($1,lower($2),$3,$4,$5)
+        ON CONFLICT (lower(email), course_id) DO NOTHING`,
+        [uid("gr"), email, b.course_id, String(req.body?.granted_by || "admin").slice(0, 40),
+         `ผูกอีเมลให้ลูกค้าเก่า ${u.name || legacyId} (เดิม${before ? " " + before : "ไม่มีอีเมล"})`]);
+      granted++;
+    }
+    // ปิดคำขอ "ไม่เจอคอร์ส" ของอีเมลนี้ให้อัตโนมัติ — จะได้ไม่ค้างในคิวให้แอดมินทำซ้ำ
+    await run(`UPDATE academy_claims SET status='granted', handled_by=$2, handled_at=now() WHERE lower(email)=lower($1) AND status='open'`,
+      [email, String(req.body?.granted_by || "admin").slice(0, 40)]).catch(() => {});
+    const owns = await academyOwnedCourseIds(email);
+    res.json({ ok: true, email, legacy_id: legacyId, was: before, granted, owns_count: owns.length });
+  } catch (e) { console.error("academy/set-email", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 app.get("/api/academy/my-courses", async (req, res) => {
   try {

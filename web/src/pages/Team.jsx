@@ -107,6 +107,8 @@ const ExpandBar = ({ list, setOpen }) => list.length > 1 ? (
 const card = { background: "#fff", border: "1px solid #eee4dc", borderRadius: 14, padding: 16, marginBottom: 12 };
 const btn = (bg = "#2f2a26") => ({ background: bg, color: "#fff", border: 0, borderRadius: 999, padding: "9px 18px", fontSize: 14, cursor: "pointer", fontWeight: 600 });
 const ghost = { background: "#fff", color: "#2f2a26", border: "1px solid #ddd2c8", borderRadius: 999, padding: "8px 16px", fontSize: 14, cursor: "pointer" };
+// วัน-เวลาไทย — เซิร์ฟเวอร์เก็บเป็น UTC ต้องบังคับโซนเวลาไทยตอนแสดง ไม่งั้นเพี้ยน 7 ชม.
+const thDate = (iso) => iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }) : "-";
 const input = { width: "100%", padding: "10px 12px", border: "1px solid #ddd2c8", borderRadius: 10, fontSize: 15, fontFamily: "inherit", boxSizing: "border-box" };
 
 
@@ -182,6 +184,7 @@ export default function Team() {
   const [intakeMsg, setIntakeMsg] = useState(null);
   const [rev, setRev] = useState(null);               // 🧠 รายงาน AI รายสัปดาห์
   const [claims, setClaims] = useState([]);           // 🙋 ลูกค้าที่แจ้งว่าไม่เจอคอร์ส
+  const [corp, setCorp] = useState(null);             // 🏢 องค์กรที่ขอใบเสนอราคา
   const [extF, setExtF] = useState({ title: "", clips: 1, client: "", due_at: "", amount_baht: "" });
 
   const load = (c) => {
@@ -208,7 +211,8 @@ export default function Team() {
     api(`/api/team/weekly-review?code=${encodeURIComponent(code)}`).then(setRev).catch(() => {}); }, [tab, d, rev, code]);
   // คิวคนที่แจ้งว่าไม่เจอคอร์ส — โหลดตั้งแต่เข้าหน้า เพื่อให้ตัวเลขขึ้นบนแท็บได้เลย
   useEffect(() => { if (!d || !["owner", "support"].includes(d?.me?.role)) return;
-    api(`/api/team/customer/claims?code=${encodeURIComponent(code)}`).then(r => setClaims(r.claims || [])).catch(() => {}); }, [d, code, tab]);
+    api(`/api/team/customer/claims?code=${encodeURIComponent(code)}`).then(r => setClaims(r.claims || [])).catch(() => {});
+    api(`/api/team/corp/leads?code=${encodeURIComponent(code)}`).then(setCorp).catch(() => {}); }, [d, code, tab]);
 
   const post = async (path, body, id) => {
     setBusy(id); setErr("");
@@ -247,14 +251,14 @@ export default function Team() {
   //    ถ้าโชว์แท็บงานตัดต่อที่ว่างเปล่าให้เขา จะงงว่าเข้าผิดที่หรือเปล่า
   const isSupport = me.role === "support";
   const TABS = isSupport
-    ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["leave", "🌴 วันลา", null]]
+    ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["corp", "🏢 ลูกค้าองค์กร", corp?.open || null], ["leave", "🌴 วันลา", null]]
     : [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
     .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
     .concat([["content", "📝 คอนเทนต์ลูกค้า", null]])
     .concat([["leave", "🌴 วันลา", null]])
     .concat((isOwner || isAE) ? [["intake", "📥 รับบรีฟใหม่", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
-    .concat(isOwner ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
+    .concat(isOwner ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["corp", "🏢 ลูกค้าองค์กร", corp?.open || null], ["review", "🧠 รายงานทีม", null], ["money", "👑 ภาพรวม + รายได้", null], ["people", "👥 สมาชิกทีม", (d.members || []).length]] : []);
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px" }}>
@@ -1150,6 +1154,9 @@ export default function Team() {
       {tab === "customer" && <CustomerDesk code={code} claims={claims} reloadClaims={() =>
         api(`/api/team/customer/claims?code=${encodeURIComponent(code)}`).then(r => setClaims(r.claims || [])).catch(() => {})} />}
 
+      {tab === "corp" && <CorpDesk code={code} d={corp} reload={() =>
+        api(`/api/team/corp/leads?code=${encodeURIComponent(code)}`).then(setCorp).catch(() => {})} />}
+
       {/* ═══ คลาสที่สอน + ค่าคอม 10% ═══ */}
       {tab === "teach" && (<>
         <p style={{ color: "#7c7268", fontSize: 13, marginTop: 0 }}>
@@ -1902,6 +1909,90 @@ function CustomerDesk({ code, claims, reloadClaims }) {
           )}
         </>
       )}
+    </>
+  );
+}
+
+/* ═══════════ 🏢 คิวลูกค้าองค์กร — ของพลอย (คิมบอก "ปกติพลอยจะเป็นคนขายและคอนเฟิร์ม") ═══════════
+   HR กรอกโจทย์ที่หน้า /corporate → เห็นราคาทันที + ได้สรุปเข้าอีเมลเขาเอง
+   → เรื่องเด้งมาที่นี่ให้พลอยตามปิดการขาย
+
+   ⛔ หน้านี้ไม่ใช่ "อนุมัติราคา" — ราคาเว็บคิดให้แล้วตามบันไดที่คิมเคาะ
+      พลอยมีหน้าที่ตามต่อ ส่งใบเสนอราคาอย่างเป็นทางการ แล้วมาร์คว่าปิดได้/ไม่ได้
+      ถ้าลูกค้าขอต่อราคาหรือขอนอกบันได = ส่งให้คิมตัดสิน (ไม่มีปุ่มแก้ราคาให้กดโดยตั้งใจ) */
+function CorpDesk({ code, d, reload }) {
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const [draft, setDraft] = useState({});
+  if (!d) return <div style={card}>กำลังโหลด…</div>;
+  const leads = d.leads || [];
+  if (!leads.length) return (
+    <div style={card}>
+      <div style={{ fontWeight: 800, fontSize: 15 }}>🏢 ยังไม่มีองค์กรส่งโจทย์เข้ามาค่ะ</div>
+      <p style={{ color: "#7c7268", fontSize: 13, margin: "6px 0 0", lineHeight: 1.7 }}>
+        เมื่อ HR กรอกฟอร์มที่หน้า “อบรมองค์กร” เรื่องจะเด้งมาที่นี่ พร้อมราคาที่เว็บเสนอไปให้เขาแล้ว
+      </p>
+    </div>
+  );
+  const STATUS = [["new", "🆕 ใหม่"], ["quoted", "📤 ส่งใบเสนอราคาแล้ว"], ["won", "🎉 ปิดได้"], ["lost", "❌ ไม่ได้ดีล"]];
+  const TONE = { new: "#B26A00", quoted: "#0b6ea8", won: "#1a7f43", lost: "#a89f96" };
+
+  async function save(id, body) {
+    setBusy(id); setMsg("");
+    try { await api(`/api/team/corp/lead?code=${encodeURIComponent(code)}`, { method: "POST", body: { lead_id: id, ...body } });
+      setMsg("✅ บันทึกแล้วค่ะ"); await reload(); }
+    catch (e) { setMsg("❌ " + (e?.message || "บันทึกไม่สำเร็จ")); }
+    setBusy("");
+  }
+
+  return (
+    <>
+      <div style={{ ...card, background: "#faf7f4" }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>🏢 องค์กรที่ขอใบเสนอราคา</div>
+        <p style={{ color: "#7c7268", fontSize: 13, margin: "5px 0 0", lineHeight: 1.75 }}>
+          ลูกค้าได้<b>สรุปราคาเข้าอีเมลเขาแล้ว</b>ตั้งแต่ตอนกดส่ง — พลอยตามต่อได้เลย ไม่ต้องเริ่มจากศูนย์
+          <br />ถ้าเขาขอต่อราคาหรือขอนอกบันได <b>ส่งให้พี่คิมตัดสิน</b>นะคะ
+        </p>
+        {msg && <p style={{ fontSize: 13.5, fontWeight: 600, marginTop: 9, marginBottom: 0, color: msg.startsWith("❌") ? "#b42318" : "#1a7f43" }}>{msg}</p>}
+      </div>
+
+      {leads.map(l => (
+        <div key={l.lead_id} style={{ ...card, borderLeft: `4px solid ${TONE[l.status] || "#ddd2c8"}` }}>
+          <div className="between" style={{ gap: 8, flexWrap: "wrap" }}>
+            <b style={{ fontSize: 15.5 }}>{l.org_name}</b>
+            <b style={{ fontSize: 15, color: "#1a7f43" }}>฿{Number(l.quoted_satang || 0) / 100 ? (Number(l.quoted_satang) / 100).toLocaleString() : "-"}</b>
+          </div>
+          <div style={{ color: "#7c7268", fontSize: 13, marginTop: 5, lineHeight: 1.85 }}>
+            👤 {l.contact_name} · <a href={`mailto:${l.email}`} style={{ color: "#0b6ea8" }}>{l.email}</a>
+            {l.phone ? <> · <a href={`tel:${l.phone}`} style={{ color: "#0b6ea8" }}>{l.phone}</a></> : null}
+            <br />👥 {l.headcount || "-"} คน · 📍 {l.place || "ยังไม่ระบุ"} · 🗓️ {l.when_text || "ยังไม่ระบุ"}
+            {l.level ? <> · พื้นฐาน: {l.level}</> : null}
+            {l.budget ? <><br />💰 งบที่ตั้งไว้: {l.budget}</> : null}
+            <br /><span style={{ fontSize: 12.5 }}>ส่งมาเมื่อ {thDate(l.created_at)}</span>
+          </div>
+          {(l.topics || []).length > 0 &&
+            <div style={{ fontSize: 13, marginTop: 7 }}>📚 วิชาที่เลือก: {l.topics.join(" · ")}</div>}
+          <div style={{ background: "#faf7f4", borderRadius: 10, padding: "10px 12px", marginTop: 9, fontSize: 13, lineHeight: 1.75 }}>
+            <b>โจทย์ของเขา:</b><br />{l.goal}
+            {l.refs_text && <><br /><br /><b>ตัวอย่างงานที่เขาชอบ:</b><br />
+              {String(l.refs_text).split("\n").filter(Boolean).map((u, i) =>
+                <div key={i}><a href={u} target="_blank" rel="noreferrer" style={{ color: "#0b6ea8", wordBreak: "break-all" }}>{u}</a></div>)}</>}
+          </div>
+
+          <div className="row" style={{ gap: 7, flexWrap: "wrap", marginTop: 11 }}>
+            {STATUS.map(([v, label]) => (
+              <button key={v} disabled={busy === l.lead_id} onClick={() => save(l.lead_id, { status: v })}
+                style={{ ...(l.status === v ? btn(TONE[v]) : ghost), fontSize: 13, padding: "7px 13px" }}>{label}</button>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+            <input style={{ ...input, flex: 1, minWidth: 190, width: "auto" }} placeholder="บันทึกภายใน เช่น คุยแล้ว รอ HR เคาะงบ"
+              value={draft[l.lead_id] ?? (l.note || "")} onChange={e => setDraft(v => ({ ...v, [l.lead_id]: e.target.value }))} />
+            <button style={{ ...ghost, fontSize: 13.5 }} disabled={busy === l.lead_id}
+              onClick={() => save(l.lead_id, { note: draft[l.lead_id] ?? "" })}>บันทึกโน้ต</button>
+          </div>
+        </div>
+      ))}
     </>
   );
 }

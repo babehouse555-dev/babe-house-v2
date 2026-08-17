@@ -5658,6 +5658,35 @@ app.post("/api/team/customer/fix-book", async (req, res) => {
     })();
   } catch (e) { console.error("team/customer/fix-book", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
+// 🏢 คิวลูกค้าองค์กรของพลอย — คิมบอก 17 ส.ค. "ปกติพลอยจะเป็นคนขายและคอนเฟิร์ม"
+//    ⚠️ เดิมผมทำที่เก็บข้อมูลไว้แต่ไม่มีหน้าจอให้ใครกด (พลาดแบบเดียวกับคิวเปิดสิทธิ์คอร์ส)
+//       โจทย์ที่ HR ส่งมาจะไปนอนอยู่ในฐานข้อมูลเงียบๆ มีแค่อีเมลแจ้งทีมฉบับเดียว
+app.get("/api/team/corp/leads", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  const rows = await q(`SELECT * FROM corp_leads ORDER BY (status='new') DESC, created_at DESC LIMIT 100`).catch(() => []);
+  res.json({ ok: true, open: rows.filter(r => r.status === "new").length,
+    leads: rows.map(r => ({ ...r, topics: safeJson(r.topics_json) || [] })) });
+});
+app.post("/api/team/corp/lead", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  const id = String(req.body?.lead_id || "").trim();
+  if (!id) return res.status(400).json({ ok: false, error: "NO_ID" });
+  const st = ["new", "quoted", "won", "lost"].includes(req.body?.status) ? req.body.status : null;
+  const note = req.body?.note != null ? String(req.body.note).slice(0, 2000) : null;
+  const r = await run(`UPDATE corp_leads SET status=COALESCE($1,status), note=COALESCE($2,note), updated_at=now() WHERE lead_id=$3`, [st, note, id]);
+  if (!r.rowCount) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  // ปิดดีลได้ = เรื่องใหญ่ ต้องให้คิมรู้ทันทีโดยไม่ต้องมานั่งเฝ้าหน้าจอ
+  if (st === "won" || st === "lost") {
+    const l = await one(`SELECT org_name, quoted_satang FROM corp_leads WHERE lead_id=$1`, [id]).catch(() => null);
+    sendEmail(OPS_EMAIL, `🏢 ดีลองค์กร ${st === "won" ? "ปิดได้ 🎉" : "ไม่ได้"} — ${l?.org_name || id}`,
+      wrap(`<b>${me.name}</b> อัปเดตดีลองค์กรค่ะ<br><br><b>บริษัท:</b> ${l?.org_name || "-"}<br>` +
+           `<b>ยอดที่เสนอ:</b> ฿${(Number(l?.quoted_satang || 0) / 100).toLocaleString()}<br>` +
+           `<b>สถานะ:</b> ${st === "won" ? "ปิดการขายได้" : "ไม่ได้ดีล"}${note ? `<br><b>บันทึก:</b> ${note}` : ""}`)).catch(() => {});
+  }
+  res.json({ ok: true });
+});
 app.get("/api/team/customer/claims", async (req, res) => {
   const me = await whoSupport(req);
   if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });

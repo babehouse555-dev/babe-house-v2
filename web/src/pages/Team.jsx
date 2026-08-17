@@ -1750,28 +1750,43 @@ function CustomerDesk({ code, claims, reloadClaims }) {
           {/* 📧 คำตอบตรงๆ ของคำถามที่แอดมินอยากรู้ที่สุด — วางไว้บนสุดเสมอเมื่อค้นด้วยอีเมล
               เดิมไม่มีอันนี้ พลอยค้นอีเมลที่เราเพิ่งเปิดสิทธิ์ให้แล้วขึ้นว่าไม่เจอ นึกว่าระบบพัง
               (สิทธิ์ที่เราเปิดให้เองไม่ได้อยู่ในทะเบียนเว็บเก่า ช่องค้นหาเดิมเลยมองไม่เห็น) */}
-          {res.access && (
-            <div style={{ ...card, marginTop: 16,
-              borderLeft: `4px solid ${res.access.owns_count > 0 ? "#1a7f43" : "#b42318"}`,
-              background: res.access.owns_count > 0 ? "#F3FAF5" : "#FEF6F5" }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>
-                {res.access.owns_count > 0
-                  ? `✅ อีเมลนี้เข้าเรียนได้ ${res.access.owns_count} คอร์สแล้ว`
-                  : "⚠️ อีเมลนี้ยังเข้าเรียนไม่ได้เลย"}
+          {res.access && (() => {
+            const a = res.access;
+            // 3 สถานะ ไม่ใช่ 2 — "0 คอร์ส แต่เป็นลูกค้า Blueprint" คือเรื่องปกติ ไม่ใช่ปัญหา
+            // (คิมท้วง 17 ส.ค.: ค้นอีเมลลูกค้า Blueprint แล้วขึ้นกล่องแดง งงว่าคืออะไร)
+            const kind = a.owns_count > 0 ? "ok" : a.blueprint_count > 0 ? "bp" : "none";
+            const look = { ok: ["#1a7f43", "#F3FAF5"], bp: ["#0b6ea8", "#F2F8FC"], none: ["#B26A00", "#FDF8EE"] }[kind];
+            return (
+              <div style={{ ...card, marginTop: 16, borderLeft: `4px solid ${look[0]}`, background: look[1] }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>
+                  {kind === "ok" ? `✅ อีเมลนี้เข้าเรียนได้ ${a.owns_count} คอร์สแล้ว`
+                    : kind === "bp" ? "📘 อีเมลนี้เป็นลูกค้าแผนคอนเทนต์ (Blueprint)"
+                    : "🔍 ยังไม่เจอของที่ผูกกับอีเมลนี้"}
+                </div>
+                <div style={{ fontSize: 13, color: "#7c7268", marginTop: 4, lineHeight: 1.8 }}>
+                  {a.email}
+                  {kind === "ok" && <><br />📚 {a.courses.map(c => c.name).join(" · ")}
+                    <br />บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ ถ้ายังไม่เห็น ให้ลองออกจากระบบแล้วเข้าใหม่</>}
+                  {kind === "bp" && <><br />เขาซื้อ<b>แผนคอนเทนต์ {a.blueprint_count} เล่ม</b> แต่<b>ไม่ได้ซื้อคอร์สเรียน</b> — ปกติค่ะ ไม่ใช่ปัญหา
+                    <br />ดูเล่มของเขาได้ที่หัวข้อ “แผนคอนเทนต์” ด้านล่างนะคะ</>}
+                  {kind === "none" && <><br />ไม่มีทั้งคอร์สเรียนและแผนคอนเทนต์ผูกกับอีเมลนี้ —
+                    ถ้าลูกค้ายืนยันว่าซื้อจริง ลองค้นด้วย<b>ชื่อจริง เบอร์โทร หรือชื่อผู้ใช้</b>ดูนะคะ
+                    ลูกค้าเก่าหลายคนซื้อไว้ด้วยอีเมลคนละตัวกับที่ใช้อยู่ตอนนี้ค่ะ</>}
+                </div>
               </div>
-              <div style={{ fontSize: 13, color: "#7c7268", marginTop: 4, lineHeight: 1.8 }}>
-                {res.access.email}
-                {res.access.owns_count > 0
-                  ? <><br />📚 {res.access.courses.map(c => c.name).join(" · ")}
-                      <br />บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ ถ้ายังไม่เห็น ให้ลองออกจากระบบแล้วเข้าใหม่</>
-                  : <><br />ยังไม่มีคอร์สผูกกับอีเมลนี้ — ถ้าเขายืนยันว่าซื้อจริง ลองค้นด้วย<b>ชื่อจริง เบอร์โทร หรือชื่อผู้ใช้</b>ดูนะคะ
-                      ลูกค้าเก่าหลายคนซื้อไว้ด้วยอีเมลคนละตัวกับที่ใช้อยู่ตอนนี้ค่ะ</>}
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
-          {/* ── ฝั่งคอร์สเรียน ── */}
-          {res.users.length > 0 && <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 8px" }}>🎓 คอร์สเรียน (ทะเบียนลูกค้าเว็บเก่า)</div>}
+          {/* ── ฝั่งคอร์สเรียน ──
+              ⚠️ พวกนี้คือ "ผลค้นหา" ไม่ใช่ลูกค้าคนเดียวกันเสมอไป — ต้องเตือนให้ชัด
+                 เคยเจอ 17 ส.ค.: ค้นอีเมลแล้วขึ้นคนอื่นที่ชื่อ/เบอร์คล้ายกันมาด้วย พลอยเกือบเปิดคอร์สให้ผิดคน */}
+          {res.users.length > 0 && <>
+            <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 4px" }}>🎓 คอร์สเรียน — ผลค้นหา {res.users.length} รายชื่อ</div>
+            <p style={{ color: "#B26A00", fontSize: 12.5, margin: "0 0 8px", lineHeight: 1.7 }}>
+              ⚠️ ข้างล่างนี้คือ<b>ทุกคนที่ชื่อ/อีเมล/เบอร์คล้ายกับที่ค้น</b> อาจมีคนอื่นปนมาได้
+              เช็กชื่อกับเบอร์ให้ตรงกับลูกค้าที่คุยอยู่ก่อนกดเปิดสิทธิ์นะคะ
+            </p>
+          </>}
           {res.users.map(u => (
             <div key={u.legacy_id} style={{ ...card, borderLeft: `4px solid ${u.can_see_now > 0 ? "#1a7f43" : u.paid_orders > 0 ? "#e0a800" : "#ddd2c8"}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -1840,11 +1855,19 @@ function CustomerDesk({ code, claims, reloadClaims }) {
                   ถ้าเขาบอกว่าโอนแล้ว รบกวนขอสลิปแล้วส่งให้พี่คิมตรวจนะคะ
                 </p>
               )}
+              {/* 🔧 จ่ายแล้วแต่ไม่ได้เล่ม = ลูกค้าเสียเงินแล้วไม่ได้ของ เร่งที่สุด ให้พลอยกดซ่อมเองได้
+                  ปุ่มนี้ปลอดภัยเพราะฝั่งเซิร์ฟเวอร์จะปฏิเสธถ้าเล่มไม่ได้พังจริง (ห้ามทับเล่มที่ดีอยู่แล้ว) */}
               {b.payment_status === "paid" && !b.blueprint_id && (
-                <p style={{ color: "#7c7268", fontSize: 12.5, marginTop: 8, marginBottom: 0, lineHeight: 1.7 }}>
-                  จ่ายเงินแล้วแต่<b>เล่มยังสร้างไม่เสร็จ</b>ค่ะ — ปกติใช้เวลาไม่กี่นาที
-                  ถ้าเกินครึ่งชั่วโมงแล้วยังไม่ขึ้น บอกพี่คิมได้เลยนะคะ
-                </p>
+                <div style={{ marginTop: 10, background: "#FEF6F5", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                    ⚠️ <b>ลูกค้าจ่ายเงินแล้วแต่ยังไม่ได้เล่ม</b> — ปกติสร้างเสร็จใน 2-5 นาที
+                    ถ้าเกิน 10 นาทีแล้วยังไม่ขึ้น กดปุ่มนี้ให้ระบบสร้างใหม่ได้เลยค่ะ
+                  </div>
+                  <button style={{ ...btn("#b42318"), marginTop: 8 }} disabled={busy}
+                    onClick={() => call("/api/team/customer/fix-book", { order_id: b.order_id }, r => r.message)}>
+                    🔧 ลองสร้างเล่มใหม่
+                  </button>
+                </div>
               )}
               {b.payment_status === "paid" && b.blueprint_id && (
                 <div style={{ marginTop: 10, background: "#faf7f4", borderRadius: 10, padding: "10px 12px" }}>

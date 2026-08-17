@@ -2585,8 +2585,13 @@ async function emailAccessSummary(rawEmail) {
   const grants = await q(`SELECT course_id, granted_by, created_at FROM academy_grants WHERE lower(email)=lower($1)`, [email]).catch(() => []);
   const bought = await q(`SELECT course_name, amount_satang, paid_at FROM academy_purchases
     WHERE lower(email)=lower($1) AND status='paid' ORDER BY paid_at DESC LIMIT 10`, [email]).catch(() => []);
+  // 📘 อีเมลนี้เป็นลูกค้า Blueprint ไหม — สำคัญมากต่อการ "ตีความ" ว่า 0 คอร์สคือปัญหาหรือปกติ
+  //    ลูกค้า Blueprint ที่ไม่เคยซื้อคอร์สเรียน = ปกติสุดๆ ไม่ใช่เรื่องต้องตกใจ
+  //    (เดิมขึ้นกล่องแดง "ยังเข้าเรียนไม่ได้เลย" ให้ลูกค้า Blueprint ทุกคน คิมงงว่าคืออะไร)
+  const bp = await one(`SELECT COUNT(*)::int c FROM blueprint_orders
+    WHERE lower(COALESCE(email,''))=lower($1) AND payment_status IN ('paid','mock_paid')`, [email]).catch(() => ({ c: 0 }));
   return {
-    email, owns_count: ids.length,
+    email, owns_count: ids.length, blueprint_count: Number(bp?.c || 0),
     courses: courses.map(c => ({ id: c.legacy_id, name: c.name })),
     granted: grants.map(g => ({ course_id: g.course_id, by: g.granted_by, at: g.created_at })),
     bought_here: bought.map(b => ({ name: b.course_name, at: b.paid_at })),
@@ -2594,8 +2599,14 @@ async function emailAccessSummary(rawEmail) {
 }
 async function findAcademyCustomers(raw) {
   const like = `%${raw.toLowerCase()}%`;
-  // เบอร์โทรในข้อมูลเก่าเก็บไม่เหมือนกัน (มีขีด มีเว้นวรรค) → ตัดให้เหลือแต่ตัวเลขก่อนเทียบ
-  const digits = raw.replace(/\D/g, "");
+  // 📞 เทียบเบอร์โทร "เฉพาะตอนที่คำค้นเป็นเบอร์จริงๆ" เท่านั้น
+  //
+  // ⚠️ บั๊กจริงที่เจอ 17 ส.ค. 2569: เดิมดึงตัวเลขออกจากคำค้นทุกกรณี
+  //    ค้น jeena6945@gmail.com → ได้เลข "6945" → ไปแมตช์เบอร์ 0626945594 และ 0946945222
+  //    = ขึ้นลูกค้าคนอื่นที่ไม่เกี่ยวข้องกันเลยมาเต็มหน้า **เสี่ยงเปิดคอร์สให้ผิดคน**
+  //    อีเมลกับชื่อมีตัวเลขปนได้เสมอ จึงห้ามเอาไปเดาว่าเป็นเบอร์เด็ดขาด
+  const looksLikePhone = /^[\d\s\-+().]{6,}$/.test(raw);
+  const digits = looksLikePhone ? raw.replace(/\D/g, "") : "";
   {
     const users = await q(`SELECT legacy_id, username, name, email, phone, legacy_created FROM academy_users
       WHERE lower(COALESCE(email,'')) LIKE $1 OR lower(COALESCE(name,'')) LIKE $1
@@ -5308,6 +5319,74 @@ app.post("/api/team/customer/move-book", async (req, res) => {
     if (r.error) return res.status(r.status).json({ ok: false, error: r.error, message: r.message });
     res.json(r);
   } catch (e) { console.error("team/customer/move-book", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+// 🔧 ปุ่ม "ลองสร้างเล่มใหม่" ของแอดมิน — สำหรับเล่มที่ "พังจริง" เท่านั้น
+//
+// คิมถาม 17 ส.ค.: "ถ้าเล่มไหนมันเกิดปัญหา พลอยกดแก้เองได้เลยหรอ"
+// ตอบ: ให้กดได้ แต่เฉพาะเคสที่ไม่ต้องใช้วิจารณญาณ = ลูกค้าจ่ายเงินแล้วแต่ไม่ได้เล่ม
+//
+// ⛔ ด่านสำคัญที่สุดของ endpoint นี้คือ "ห้ามทับเล่มที่ปกติดี"
+//    ถ้าเล่มสมบูรณ์อยู่แล้วต้องปฏิเสธและอธิบาย ไม่ใช่เจนใหม่ทับของเดิม
+//    (เจนใหม่ = เนื้อหาเปลี่ยนหมด ลูกค้าที่อ่านไปแล้ว/วางแผนไว้แล้วจะงง และเสียเงินค่า AI ฟรีๆ)
+// ⛔ ไม่เปิดให้แก้ "เนื้อหาไม่ตรงนิช" ทางนี้ — อันนั้นต้องใส่ทิศทางเอง เป็นงานที่คิมตัดสินใจ
+app.post("/api/team/customer/fix-book", async (req, res) => {
+  const me = await whoSupport(req);
+  if (!me) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะแอดมินดูแลลูกค้าค่ะ" });
+  const orderId = String(req.body?.order_id || "").trim();
+  if (!orderId) return res.status(400).json({ ok: false, error: "NO_ORDER" });
+  try {
+    const o = await one(`SELECT order_id, email, billing_cycle, payment_status, blueprint_id, generation_status, paid_at, order_payload_json
+      FROM blueprint_orders WHERE order_id=$1`, [orderId]);
+    if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่พบออเดอร์นี้ค่ะ" });
+    if (!["paid", "mock_paid"].includes(o.payment_status))
+      return res.status(400).json({ ok: false, error: "NOT_PAID", message: "ออเดอร์นี้ยังไม่ได้จ่ายเงินค่ะ — ยังไม่มีเล่มให้ซ่อม" });
+
+    const minsSincePaid = o.paid_at ? (Date.now() - new Date(o.paid_at).getTime()) / 60000 : 9999;
+    const st = o.generation_status || "pending";
+    // "พังจริง" = ยังไม่มีเล่ม และ (เจนพัง หรือ ค้างนานเกิน 10 นาทีจนผิดปกติ)
+    const broken = !o.blueprint_id && (st === "error" || minsSincePaid > 10);
+    if (!broken) {
+      if (o.blueprint_id) return res.status(400).json({ ok: false, error: "BOOK_OK",
+        message: "เล่มนี้สร้างเสร็จปกติแล้วค่ะ ไม่ต้องซ่อม — ถ้าลูกค้าบอกว่าเนื้อหาไม่ตรง รบกวนส่งเรื่องให้พี่คิมนะคะ" });
+      return res.status(400).json({ ok: false, error: "TOO_SOON",
+        message: `เพิ่งจ่ายเงินมา ${Math.max(1, Math.round(minsSincePaid))} นาที ระบบกำลังสร้างเล่มอยู่ค่ะ รอครบ 10 นาทีก่อนนะคะ` });
+    }
+    if (inFlightOrders.has(orderId))
+      return res.status(409).json({ ok: false, error: "BUSY", message: "ระบบกำลังสร้างเล่มนี้อยู่แล้วค่ะ รออีกสักครู่นะคะ" });
+
+    // จองสิทธิ์ก่อนเริ่ม — กันกดรัวหรือชนกับตัวกู้อัตโนมัติที่วิ่งอยู่เบื้องหลัง
+    const claim = await run(`UPDATE blueprint_orders SET generation_status='generating', generation_error=NULL
+      WHERE order_id=$1 AND blueprint_id IS NULL`, [orderId]);
+    if (claim.rowCount !== 1) return res.status(409).json({ ok: false, error: "BUSY", message: "มีคนกดซ่อมเล่มนี้ไปแล้วค่ะ รอสักครู่นะคะ" });
+
+    console.log(`[fix-book] ${me.name} สั่งสร้างเล่มใหม่ · order ${orderId}`);
+    res.json({ ok: true, order_id: orderId, status: "generating",
+      message: "เริ่มสร้างเล่มใหม่ให้แล้วค่ะ ปกติใช้เวลา 2-5 นาที · ระบบจะส่งอีเมลหาลูกค้าเองเมื่อเสร็จ" });
+
+    inFlightOrders.add(orderId);
+    (async () => {
+      try {
+        const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
+        await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
+        console.log(`[fix-book] order ${orderId} สำเร็จ → ${result.blueprintId}`);
+        if (o.email) {
+          const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`;
+          const l = langOfPayload(result.parsed);
+          await sendEmail(o.email,
+            tr(l, `เล่ม Blueprint เดือน ${o.billing_cycle} พร้อมแล้ว 🩵`, `Your ${o.billing_cycle} Blueprint is ready 🩵`),
+            wrap(tr(l, `ครูพี่คิมวิเคราะห์เสร็จแล้ว เล่มแผน 30 วันพร้อมเปิดดูค่ะ<br><br>${btn(url, "เปิด Dashboard ของฉัน")}`,
+              `Kim has finished the analysis — your 30-day plan is ready.<br><br>${btn(url, "Open my dashboard")}`))).catch(() => {});
+        }
+      } catch (e) {
+        console.error("[fix-book]", orderId, e.message);
+        await run(`UPDATE blueprint_orders SET generation_status='error', generation_error=$1 WHERE order_id=$2`, [String(e.message).slice(0, 300), orderId]);
+        // ซ่อมไม่สำเร็จ = ต้องมีคนรู้ ไม่ปล่อยให้ลูกค้ารอเงียบๆ
+        sendEmail(OPS_EMAIL, `🔧 ซ่อมเล่มไม่สำเร็จ — ${o.email || orderId}`,
+          wrap(`<b>${me.name}</b> กดสร้างเล่มใหม่ให้ <b>${o.email || "-"}</b> (เดือน ${o.billing_cycle}) แต่ยังไม่สำเร็จค่ะ<br><br>` +
+               `<b>สาเหตุ:</b> ${String(e.message).slice(0, 300)}<br><br>รบกวนคิมเข้าไปดูที่หน้าแอดมินนะคะ`)).catch(() => {});
+      } finally { inFlightOrders.delete(orderId); }
+    })();
+  } catch (e) { console.error("team/customer/fix-book", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 app.get("/api/team/customer/claims", async (req, res) => {
   const me = await whoSupport(req);

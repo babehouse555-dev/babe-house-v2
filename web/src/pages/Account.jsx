@@ -718,7 +718,7 @@ function ProfileCard({ email }) {
   const [claim, setClaim] = useState("");
 
   useEffect(() => {
-    api("/api/me/profile", { token: session.get() })
+    api("/api/me/profile", { token: session.token })
       .then(r => { setP(r); setName(r.name || ""); setPhone(r.phone || ""); })
       .catch(() => setP({ error: true }));
   }, []);
@@ -729,7 +729,7 @@ function ProfileCard({ email }) {
     if (!name.trim()) { setSaved("กรอกชื่อด้วยนะคะ"); return; }
     setBusy(true); setSaved("");
     try {
-      const r = await api("/api/me/profile", { method: "POST", token: session.get(), body: { name: name.trim(), phone: phone.trim() } });
+      const r = await api("/api/me/profile", { method: "POST", token: session.token, body: { name: name.trim(), phone: phone.trim() } });
       setP(v => ({ ...v, name: r.name, phone: r.phone }));
       setSaved("✅ บันทึกแล้วค่ะ");
     } catch { setSaved("บันทึกไม่สำเร็จ ลองใหม่อีกทีนะคะ"); }
@@ -738,7 +738,7 @@ function ProfileCard({ email }) {
   async function sendClaim() {
     setBusy(true);
     try {
-      const r = await api("/api/academy/claim", { method: "POST", token: session.get(), body: { note: note.trim() } });
+      const r = await api("/api/academy/claim", { method: "POST", token: session.token, body: { note: note.trim() } });
       setClaim(r.already
         ? "เราได้รับเรื่องของคุณไว้แล้วนะคะ ทีมกำลังตรวจสอบให้อยู่ค่ะ 🩵"
         : "ส่งเรื่องให้ทีมแล้วค่ะ 🩵 เราจะเปิดสิทธิ์ให้แล้วแจ้งกลับทางอีเมลนี้นะคะ");

@@ -758,3 +758,97 @@ export function ClaimsPanel({ adminKey }) {
     </div>
   );
 }
+
+/* ══════════ 8) 🏦 สลิปโอนเงินรอตรวจ — ลูกค้านิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ══════════
+   ⛔ คิมคนเดียวที่กดยืนยันได้ (คิมเลือกเอง) — การกดนี้เท่ากับรับรองว่าเงินเข้าบัญชีจริง
+      กดแล้วลูกค้าได้ของทันทีและใบกำกับภาษีออกอัตโนมัติ แก้กลับไม่ได้
+   พลอยเปิดดูได้เพื่อตอบลูกค้าว่าอยู่ขั้นไหน แต่ปุ่มจะไม่ขึ้นให้ */
+export function BankTransfers({ adminKey }) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const [why, setWhy] = useState({});
+  const load = () => api("/api/admin/bank-transfers", { adminKey }).then(setD).catch(() => setD({ transfers: [] }));
+  useEffect(() => { load(); }, []);
+  if (!d) return null;
+  const waiting = (d.transfers || []).filter(t => t.status === "waiting");
+  const done = (d.transfers || []).filter(t => t.status !== "waiting").slice(0, 10);
+  if (!waiting.length && !done.length) return null;   // ยังไม่เคยมีใครโอน = ไม่ต้องรกหน้าจอ
+
+  async function act(path, body, ask) {
+    if (ask && !await askConfirm(ask)) return;
+    setBusy(body.transfer_id); setMsg("");
+    try { const r = await api(path, { method: "POST", adminKey, body }); setMsg("✅ " + (r.message || "เรียบร้อยค่ะ")); await load(); }
+    catch (e) { setMsg("❌ " + (e?.message || "ทำรายการไม่สำเร็จ")); }
+    setBusy("");
+  }
+  const KIND_TH = { blueprint: "แผนคอนเทนต์ / เครดิต", academy: "คอร์สออนไลน์", workshop: "คลาสสด" };
+  const STATUS_TH = { confirmed: "✅ ยืนยันแล้ว", rejected: "❌ ปฏิเสธ", waiting: "⏳ รอตรวจ" };
+
+  return (
+    <div className="card" style={{ borderLeft: `4px solid ${waiting.length ? "#B26A00" : "var(--border)"}` }}>
+      <h3>🏦 สลิปโอนเงินรอตรวจ{waiting.length ? ` (${waiting.length})` : ""}</h3>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.7 }}>
+        ลูกค้านิติบุคคลที่โอนเข้าบัญชีบริษัท — <b>ลูกค้ายังไม่ได้ของจนกว่าจะกดยืนยัน</b>
+        <br />กดยืนยัน = รับรองว่าเงินเข้าบัญชีจริง ระบบจะปล่อยของและออกใบกำกับภาษีให้อัตโนมัติทันที
+      </p>
+      {msg && <p style={{ fontSize: 13.5, fontWeight: 600, marginTop: 10, color: msg.startsWith("❌") ? "#b3261e" : "#1a7f43" }}>{msg}</p>}
+
+      {waiting.map(t => (
+        <div key={t.transfer_id} style={{ ...box, marginTop: 10, borderLeft: "4px solid #B26A00" }}>
+          <div className="between" style={{ flexWrap: "wrap", gap: 6 }}>
+            <b style={{ fontSize: 15 }}>{money(Number(t.amount_satang || 0) / 100)}</b>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "#8a6d1f" }}>{KIND_TH[t.order_kind] || t.order_kind}</span>
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.8 }}>
+            {t.email || "(ไม่มีอีเมล)"}<br />
+            รหัสอ้างอิง <b>{t.ref_code || "-"}</b> · แนบสลิปเมื่อ {t.slip_at ? thDate(t.slip_at) : "— ยังไม่แนบ —"}
+          </div>
+          {t.has_slip
+            ? <a href={`/api/admin/bank-transfer/slip/${t.transfer_id}?admin_key=${encodeURIComponent(adminKey)}`}
+                 target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 9 }}>
+                <img alt="สลิปการโอน" src={`/api/admin/bank-transfer/slip/${t.transfer_id}?admin_key=${encodeURIComponent(adminKey)}`}
+                  style={{ maxWidth: "100%", maxHeight: 320, borderRadius: 10, border: "1px solid var(--border)" }} />
+                <span className="link" style={{ fontSize: 12.5 }}>เปิดรูปเต็ม ›</span>
+              </a>
+            : <p className="muted" style={{ fontSize: 12.5, marginTop: 8, marginBottom: 0 }}>
+                ลูกค้ากดขอเลขบัญชีแล้วแต่<b>ยังไม่ได้แนบสลิป</b> — รออีกสักพัก หรือทักไปถามได้ค่ะ
+              </p>}
+
+          {d.can_confirm && t.has_slip && (
+            <div style={{ marginTop: 11, display: "grid", gap: 8 }}>
+              <button className="btn" disabled={busy === t.transfer_id} style={{ padding: "10px 18px" }}
+                onClick={() => act("/api/admin/bank-transfers/confirm", { transfer_id: t.transfer_id },
+                  `ยืนยันว่าเงิน ${money(Number(t.amount_satang || 0) / 100)} เข้าบัญชีจริงแล้ว?\n\nกดแล้วลูกค้าได้ของทันที และใบกำกับภาษีจะออกอัตโนมัติ แก้กลับไม่ได้นะคะ`)}>
+                {busy === t.transfer_id ? "กำลังทำรายการ…" : "✅ ยืนยันว่าเงินเข้าแล้ว"}
+              </button>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <input value={why[t.transfer_id] || ""} placeholder="เหตุผลที่ปฏิเสธ (ลูกค้าจะได้รับอีเมลนี้)"
+                  onChange={e => setWhy(v => ({ ...v, [t.transfer_id]: e.target.value }))}
+                  style={{ ...inp, flex: 1, minWidth: 180, width: "auto" }} />
+                <button className="btn ghost" disabled={busy === t.transfer_id} style={{ padding: "8px 14px" }}
+                  onClick={() => act("/api/admin/bank-transfers/reject", { transfer_id: t.transfer_id, note: why[t.transfer_id] || "" })}>
+                  ปฏิเสธ
+                </button>
+              </div>
+            </div>
+          )}
+          {!d.can_confirm && <p className="muted" style={{ fontSize: 12.5, marginTop: 9, marginBottom: 0 }}>
+            รอพี่คิมตรวจสลิปและกดยืนยันค่ะ — ตอบลูกค้าได้ว่ากำลังตรวจสอบอยู่นะคะ
+          </p>}
+        </div>
+      ))}
+
+      {done.length > 0 && <div style={{ marginTop: 14 }}>
+        <div className="muted" style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>รายการที่ปิดแล้ว</div>
+        <table><thead><tr><th>วันที่</th><th>อีเมล</th><th>ยอด</th><th>สถานะ</th></tr></thead>
+          <tbody>{done.map(t => <tr key={t.transfer_id}>
+            <td style={{ whiteSpace: "nowrap" }}>{thDate(t.handled_at || t.created_at)}</td>
+            <td>{t.email || "-"}</td>
+            <td style={{ whiteSpace: "nowrap" }}>{money(Number(t.amount_satang || 0) / 100)}</td>
+            <td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{STATUS_TH[t.status] || t.status}{t.note ? ` · ${t.note}` : ""}</td>
+          </tr>)}</tbody></table>
+      </div>}
+    </div>
+  );
+}

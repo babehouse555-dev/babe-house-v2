@@ -285,8 +285,12 @@ async function langOfEmail(email) {
 
 // ---------- payment / referral ----------
 async function markOrderPaid(orderId, provider = "mock", sid = "") {
-  // live_mode = จ่ายด้วย Stripe จริง (คีย์ sk_live_) เท่านั้น = เงินเข้าจริง; mock/code/test = false
-  const liveMode = provider === "stripe" && String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live_");
+  // live_mode = "เงินเข้าจริง" ไม่ใช่แค่ "จ่ายผ่าน Stripe"
+  //   • stripe ที่ใช้คีย์ sk_live_ = เงินเข้าจริง
+  //   • bank_transfer = โอนเข้าบัญชีบริษัทจริง คิมตรวจสลิปแล้วถึงกดยืนยัน → เงินเข้าจริงเหมือนกัน
+  // ⚠️ ต้องเป็น true ไม่งั้นยอดโอนหายจากรายงานรายได้ทั้งหมด (ตัวกรองยอดขายเช็ค live_mode=true)
+  const liveMode = (provider === "stripe" && String(process.env.STRIPE_SECRET_KEY || "").startsWith("sk_live_"))
+    || provider === "bank_transfer";
   // flip เฉพาะตอนยังไม่ paid → rowCount บอกว่า "เพิ่งจ่ายครั้งแรก" (กัน webhook ยิงซ้ำแล้วแจ้งเตือนซ้ำ)
   const upd = await run(`UPDATE blueprint_orders SET payment_status='paid', provider=$1, provider_session_id=COALESCE($2,provider_session_id), live_mode=$3, paid_at=now() WHERE order_id=$4 AND payment_status<>'paid'`, [provider, sid || null, liveMode, orderId]);
   grantCreditsIfCreditOrder(orderId).catch(e => console.error("grant-credits", e.message));
@@ -1723,6 +1727,16 @@ app.get("/api/me/blueprints", async (req, res) => {
 // ===== เครดิต: สร้างสคริปต์เดี่ยว on-demand (งานสปอนเซอร์/คอนเทนต์ด่วน นอกแผน 30 วัน) =====
 // ข้อมูลผู้ขายที่ต้องขึ้นบนใบกำกับภาษี — ตั้งใน Railway (ห้าม hardcode เดาเอง ผิดกฎหมายได้)
 // ยังไม่ตั้ง = หน้าบัญชียังโชว์รายการใบได้ แต่ยังพิมพ์สำเนาไม่ได้ (บอกลูกค้าตรงๆ ว่ารอ)
+// 🏦 บัญชีรับโอนสำหรับลูกค้านิติบุคคล (คิมส่งสมุดบัญชีมา 17 ส.ค. 2569)
+// ⚠️ ชื่อบัญชีต้องสะกดเป๊ะตามหน้าสมุด — ฝ่ายบัญชีของบริษัทลูกค้าจะกรอกตามที่เห็นบนเว็บ
+//    ถ้าไม่ตรงเงินอาจโอนไม่ผ่าน (คิมยืนยันเอง: "เบ๊บ" ไม้ตรี ไม่ใช่ "เบ็บ")
+// ไม่ใช่ความลับ — ข้อมูลนี้ต้องโชว์บนหน้าจ่ายเงินอยู่แล้ว แต่เปิดให้ override ทาง env ได้เผื่อเปลี่ยนบัญชี
+const BANK = {
+  bank: process.env.BANK_NAME || "ธนาคารกสิกรไทย",
+  branch: process.env.BANK_BRANCH || "สาขาเซ็นทรัลพลาซา เวสต์เกต",
+  account_no: process.env.BANK_ACCOUNT_NO || "139-1-70970-6",
+  account_name: process.env.BANK_ACCOUNT_NAME || "หจก. เบ๊บ เฮาส์",
+};
 const SELLER = {
   name: process.env.SELLER_NAME || "",
   tax_id: process.env.SELLER_TAX_ID || "",
@@ -1743,6 +1757,149 @@ app.get("/api/me/tax-invoices", async (req, res) => {
       FROM tax_invoices WHERE lower(email)=lower($1) ORDER BY COALESCE(doc_date, issued_at, created_at) DESC`, [email]);
     res.json({ ok: true, invoices: rows, seller: SELLER });
   } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+/* ═══════════ 🏦 โอนเข้าบัญชีบริษัท — สำหรับลูกค้านิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ═══════════
+   แอดมินแจ้ง: "เราต้องเพิ่มเลขบัญชีสำหรับลูกค้าบริษัทนะคะ" — ฝ่ายบัญชีหลายบริษัทจ่ายบัตร/พร้อมเพย์ไม่ได้
+
+   หลักการที่ยึด: ทางนี้ต้อง "ช้ากว่า" แต่ "ไม่พิเศษกว่า"
+     • ลูกค้าโอนแล้วอัปสลิป → เข้าคิวรอ ไม่ได้ของทันที (ต่างจาก Stripe)
+     • คิมกดยืนยัน → วิ่งเข้าท่อจ่ายเงินเส้นเดียวกับ Stripe เป๊ะ
+       = ได้ของ + ใบกำกับภาษีออกอัตโนมัติ + เมลแจ้ง ครบเหมือนกันทุกอย่าง ไม่มีโค้ดพิเศษแยก
+   ⛔ คิมคนเดียวที่กดยืนยันได้ (คิมเลือกเอง) — พลอยเห็นได้แต่กดไม่ได้ เพราะนี่คือการรับรองว่าเงินเข้าจริง */
+const TRANSFER_KINDS = {
+  blueprint: { table: "blueprint_orders", id: "order_id", amount: "final_amount_satang", paidWhen: "payment_status IN ('paid','mock_paid')" },
+  academy:   { table: "academy_purchases", id: "purchase_id", amount: "amount_satang", paidWhen: "status='paid'" },
+  workshop:  { table: "workshop_bookings", id: "booking_id",  amount: "amount_satang", paidWhen: "status='paid'" },
+};
+async function loadTransferOrder(kind, orderId) {
+  const k = TRANSFER_KINDS[kind]; if (!k) return null;
+  return one(`SELECT *, ${k.amount} AS _amount, (${k.paidWhen}) AS _paid FROM ${k.table} WHERE ${k.id}=$1`, [orderId]);
+}
+// รหัสอ้างอิงสั้นๆ ให้ลูกค้าใส่ในหมายเหตุตอนโอน — ช่วยจับคู่สลิปกับออเดอร์ตอนที่ชื่อผู้โอนไม่ตรงกับชื่อลูกค้า
+const refCodeOf = (orderId) => "BH" + String(orderId).replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+
+// ① ลูกค้าเลือก "โอนเข้าบัญชีบริษัท" → คืนเลขบัญชี + รหัสอ้างอิง
+app.post("/api/bank-transfer/start", rateLimit(20, M10), async (req, res) => {
+  const email = await authEmail(req);
+  const kind = String(req.body?.kind || "");
+  const orderId = String(req.body?.order_id || "").trim();
+  if (!TRANSFER_KINDS[kind] || !orderId) return res.status(400).json({ ok: false, error: "BAD_INPUT" });
+  try {
+    const o = await loadTransferOrder(kind, orderId);
+    if (!o) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่พบออเดอร์นี้ค่ะ" });
+    if (o._paid) return res.status(400).json({ ok: false, error: "ALREADY_PAID", message: "ออเดอร์นี้ชำระเงินแล้วค่ะ" });
+    // ⛔ ออเดอร์เป็นของคนอื่น = ห้ามแตะ (ไม่งั้นใครก็ยิงเลขออเดอร์มั่วเพื่อดูอีเมลคนอื่นได้)
+    if (email && o.email && normEmail(o.email) !== normEmail(email))
+      return res.status(403).json({ ok: false, error: "NOT_OWNER" });
+    const amount = Number(o._amount || 0);
+    const ref = refCodeOf(orderId);
+    const id = uid("bt");
+    await run(`INSERT INTO bank_transfers (transfer_id, order_kind, order_id, email, amount_satang, ref_code)
+      VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (order_kind, order_id) DO NOTHING`,
+      [id, kind, orderId, o.email || email || null, amount, ref]);
+    const row = await one(`SELECT transfer_id, status, ref_code FROM bank_transfers WHERE order_kind=$1 AND order_id=$2`, [kind, orderId]);
+    res.json({ ok: true, transfer_id: row.transfer_id, status: row.status, ref_code: row.ref_code,
+      amount_satang: amount, bank: BANK });
+  } catch (e) { console.error("bank-transfer/start", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// ② ลูกค้าอัปสลิป — เก็บในฐานข้อมูลเลย (ไฟล์เล็ก และต้องอยู่คู่กับออเดอร์ ไม่ควรไปฝากที่อื่น)
+const SLIP_MAX_BYTES = 4 * 1024 * 1024;
+app.post("/api/bank-transfer/slip", rateLimit(20, M10), async (req, res) => {
+  const id = String(req.body?.transfer_id || "").trim();
+  const b64 = String(req.body?.data_b64 || "");
+  const mime = String(req.body?.mime || "").slice(0, 60);
+  if (!id || !b64) return res.status(400).json({ ok: false, error: "MISSING", message: "แนบสลิปด้วยนะคะ" });
+  if (!/^image\/(png|jpe?g|webp|heic|heif)$/i.test(mime) && mime !== "application/pdf")
+    return res.status(400).json({ ok: false, error: "BAD_TYPE", message: "แนบเป็นรูปภาพหรือ PDF นะคะ" });
+  if (Math.ceil(b64.length * 3 / 4) > SLIP_MAX_BYTES)
+    return res.status(413).json({ ok: false, error: "TOO_BIG", message: "ไฟล์ใหญ่เกิน 4 MB ค่ะ ลองย่อรูปก่อนนะคะ" });
+  try {
+    const t = await one(`SELECT * FROM bank_transfers WHERE transfer_id=$1`, [id]);
+    if (!t) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (t.status === "confirmed") return res.json({ ok: true, already: true, message: "ยืนยันการชำระเงินเรียบร้อยแล้วค่ะ" });
+    await run(`UPDATE bank_transfers SET slip_name=$2, slip_mime=$3, slip_b64=$4, slip_at=now(), status='waiting', note=NULL
+      WHERE transfer_id=$1`, [id, String(req.body?.name || "slip").slice(0, 120), mime, b64]);
+    sendEmail(OPS_EMAIL, `🏦 มีสลิปโอนเงินรอตรวจ — ฿${(Number(t.amount_satang || 0) / 100).toLocaleString()}`,
+      wrap(`ลูกค้านิติบุคคลโอนเงินเข้าบัญชีบริษัทและแนบสลิปแล้วค่ะ<br><br>` +
+           `<b>อีเมล:</b> ${t.email || "-"}<br><b>ยอด:</b> ฿${(Number(t.amount_satang || 0) / 100).toLocaleString()}<br>` +
+           `<b>รหัสอ้างอิง:</b> ${t.ref_code || "-"}<br><b>สินค้า:</b> ${t.order_kind}<br><br>` +
+           `⚠️ ลูกค้ายังไม่ได้ของ จนกว่าคิมจะกดยืนยันในหน้าแอดมิน → หัวข้อ "🏦 สลิปโอนเงินรอตรวจ"`)).catch(() => {});
+    res.json({ ok: true, message: "ได้รับสลิปแล้วค่ะ ทีมจะตรวจสอบและเปิดให้ภายใน 1 วันทำการ แล้วส่งอีเมลแจ้งนะคะ 🩵" });
+  } catch (e) { console.error("bank-transfer/slip", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
+// ③ ลูกค้าเช็กสถานะของตัวเอง
+app.get("/api/bank-transfer/:id", async (req, res) => {
+  const t = await one(`SELECT transfer_id, order_kind, order_id, amount_satang, ref_code, status, note, slip_at, created_at
+    FROM bank_transfers WHERE transfer_id=$1`, [String(req.params.id)]).catch(() => null);
+  if (!t) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  res.json({ ok: true, transfer: t, bank: BANK });
+});
+
+// ④ คิวให้คิมตรวจ — พลอยเปิดดูได้ (จะได้ตอบลูกค้าว่าอยู่ขั้นไหน) แต่กดยืนยันไม่ได้
+app.get("/api/admin/bank-transfers", async (req, res) => {
+  if (!isAdmin(req) && !(await whoSupport(req))) return res.status(403).json({ ok: false, error: "NOT_ALLOWED" });
+  const rows = await q(`SELECT transfer_id, order_kind, order_id, email, amount_satang, ref_code, status, note,
+      slip_name, slip_mime, (slip_b64 IS NOT NULL) AS has_slip, slip_at, handled_by, handled_at, created_at
+    FROM bank_transfers ORDER BY (status='waiting') DESC, created_at DESC LIMIT 100`).catch(() => []);
+  res.json({ ok: true, waiting: rows.filter(r => r.status === "waiting").length, transfers: rows, can_confirm: isAdmin(req) });
+});
+// รูปสลิป — ส่งเป็นไฟล์จริงเพื่อให้แปะใน <img> ได้เลย
+app.get("/api/admin/bank-transfer/slip/:id", async (req, res) => {
+  if (!isAdmin(req) && !(await whoSupport(req))) return res.status(403).send("ไม่มีสิทธิ์");
+  const t = await one(`SELECT slip_b64, slip_mime FROM bank_transfers WHERE transfer_id=$1`, [String(req.params.id)]).catch(() => null);
+  if (!t?.slip_b64) return res.status(404).send("ไม่มีสลิป");
+  res.setHeader("Content-Type", t.slip_mime || "image/jpeg");
+  res.setHeader("Cache-Control", "private, max-age=60");
+  res.send(Buffer.from(t.slip_b64, "base64"));
+});
+
+// ⑤ คิมกดยืนยันว่าเงินเข้าจริง → ปล่อยของผ่านท่อเดียวกับ Stripe
+// ⛔ เฉพาะ isAdmin เท่านั้น (คิมเลือกเอง 17 ส.ค.: "คิมคนเดียว")
+app.post("/api/admin/bank-transfers/confirm", async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะคิมเท่านั้นที่ยืนยันเงินเข้าได้ค่ะ" });
+  const id = String(req.body?.transfer_id || "").trim();
+  try {
+    const t = await one(`SELECT * FROM bank_transfers WHERE transfer_id=$1`, [id]);
+    if (!t) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (t.status === "confirmed") return res.json({ ok: true, already: true, message: "ยืนยันไปแล้วค่ะ" });
+    const o = await loadTransferOrder(t.order_kind, t.order_id);
+    if (!o) return res.status(404).json({ ok: false, error: "ORDER_GONE", message: "ไม่พบออเดอร์ของรายการนี้แล้วค่ะ" });
+    if (o._paid) {
+      await run(`UPDATE bank_transfers SET status='confirmed', handled_by='คิม', handled_at=now() WHERE transfer_id=$1`, [id]);
+      return res.json({ ok: true, already: true, message: "ออเดอร์นี้ปล่อยของไปแล้วค่ะ (ปิดรายการให้เรียบร้อย)" });
+    }
+    // 🔑 จุดสำคัญ: เรียกฟังก์ชันเดียวกับที่ Stripe เรียก — ไม่เขียนทางลัดใหม่
+    //    ของ + ใบกำกับภาษี + เมลลูกค้า + แจ้งทีม จะทำงานเหมือนกันทุกอย่างโดยอัตโนมัติ
+    if (t.order_kind === "blueprint") await markOrderPaid(t.order_id, "bank_transfer", t.ref_code || "");
+    else if (t.order_kind === "academy") await finalizeAcademyPurchase(o);
+    else if (t.order_kind === "workshop") await finalizeWorkshopBooking(o);
+    await run(`UPDATE bank_transfers SET status='confirmed', handled_by='คิม', handled_at=now() WHERE transfer_id=$1`, [id]);
+    console.log(`[bank-transfer] ยืนยัน ${t.order_kind} ${t.order_id} · ฿${Number(t.amount_satang || 0) / 100}`);
+    sendEmail(t.email, "ยืนยันการชำระเงินเรียบร้อยแล้วค่ะ 🩵", wrap(
+      `ได้รับเงินโอนของคุณเรียบร้อยแล้วค่ะ<br><br>เปิดสิทธิ์ให้เรียบร้อยแล้ว เข้าใช้งานได้เลยนะคะ` +
+      `<br><br>${btn(appBaseUrl() + "/account", "เข้าบัญชีของฉัน")}<br><br>ขอบคุณมากค่ะ 🩵<br>Babe House`)).catch(() => {});
+    res.json({ ok: true, transfer_id: id, kind: t.order_kind,
+      message: t.order_kind === "blueprint"
+        ? "ยืนยันแล้วค่ะ — ระบบจะสร้างเล่มให้เองภายใน 2 นาที แล้วส่งลิงก์เข้าเมลลูกค้า"
+        : "ยืนยันแล้วค่ะ — เปิดสิทธิ์ให้ลูกค้าและออกใบกำกับภาษีเรียบร้อย" });
+  } catch (e) { console.error("bank-transfers/confirm", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+app.post("/api/admin/bank-transfers/reject", async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ ok: false, error: "NOT_ALLOWED", message: "เฉพาะคิมเท่านั้นค่ะ" });
+  const id = String(req.body?.transfer_id || "").trim();
+  const note = String(req.body?.note || "").trim().slice(0, 300);
+  if (!note) return res.status(400).json({ ok: false, error: "NEED_NOTE", message: "ใส่เหตุผลด้วยนะคะ ลูกค้าจะได้รู้ว่าต้องแก้อะไร" });
+  const t = await one(`SELECT * FROM bank_transfers WHERE transfer_id=$1`, [id]).catch(() => null);
+  if (!t) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+  if (t.status === "confirmed") return res.status(400).json({ ok: false, error: "ALREADY_CONFIRMED", message: "รายการนี้ยืนยันไปแล้ว ปฏิเสธไม่ได้ค่ะ" });
+  await run(`UPDATE bank_transfers SET status='rejected', note=$2, handled_by='คิม', handled_at=now() WHERE transfer_id=$1`, [id, note]);
+  sendEmail(t.email, "เรื่องการโอนเงินของคุณค่ะ", wrap(
+    `ขออภัยค่ะ ทางเรายังยืนยันการชำระเงินให้ไม่ได้<br><br><b>เหตุผล:</b> ${note}<br><br>` +
+    `รบกวนติดต่อกลับมาทางไลน์ Babe House เพื่อตรวจสอบอีกครั้งนะคะ 🩵`)).catch(() => {});
+  res.json({ ok: true, message: "ปฏิเสธแล้ว และส่งอีเมลแจ้งลูกค้าเรียบร้อยค่ะ" });
 });
 
 // 🧾🛡️ ยามใบกำกับภาษี — ลองออกใบที่ยังไม่สำเร็จซ้ำเอง แล้วเตือนคิมถ้ายังไม่ขึ้นสักที

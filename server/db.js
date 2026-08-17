@@ -1053,6 +1053,30 @@ export async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_edit_rounds_order ON edit_rounds(order_id, round_no);
 
+    -- ═══════ 🏦 โอนเข้าบัญชีบริษัท — สำหรับลูกค้าที่เป็นนิติบุคคล (คิมสั่ง 17 ส.ค. 2569) ═══════
+    -- ทำไมต้องมี: ฝ่ายบัญชีของบริษัทลูกค้าหลายที่ "จ่ายบัตร/พร้อมเพย์ไม่ได้" ต้องโอนจากบัญชีบริษัทเท่านั้น
+    --            (แอดมินแจ้ง 17 ส.ค. "เราต้องเพิ่มเลขบัญชีสำหรับลูกค้าบริษัทนะคะ")
+    --
+    -- ⚠️ ตารางนี้ไม่ได้ทำให้ลูกค้า "จ่ายเงินสำเร็จ" ด้วยตัวเอง — เป็นแค่คิวรอคิมตรวจสลิป
+    --    ของจะปล่อยก็ต่อเมื่อคิมกดยืนยันเท่านั้น (คิมเลือกเอง 17 ส.ค.: "คิมคนเดียว")
+    --    ตอนกดยืนยันจะวิ่งเข้าท่อจ่ายเงินเส้นเดียวกับ Stripe เป๊ะ = ได้ของ + ใบกำกับภาษี + เมล ครบเหมือนกัน
+    CREATE TABLE IF NOT EXISTS bank_transfers (
+      transfer_id TEXT PRIMARY KEY,
+      order_kind TEXT NOT NULL,        -- blueprint | academy | workshop  (ชี้ว่าต้องไปปลดล็อกที่ตารางไหน)
+      order_id TEXT NOT NULL,          -- order_id / purchase_id / booking_id ของขานั้น
+      email TEXT,
+      amount_satang INTEGER DEFAULT 0,
+      ref_code TEXT,                   -- รหัสอ้างอิงให้ลูกค้าใส่ในหมายเหตุการโอน (หาสลิปเจอง่ายขึ้น)
+      slip_name TEXT, slip_mime TEXT, slip_b64 TEXT,   -- สลิปที่ลูกค้าอัปโหลด
+      slip_at TIMESTAMPTZ,
+      status TEXT DEFAULT 'waiting',   -- waiting = รอลูกค้าโอน/รอตรวจ · confirmed = คิมยืนยันแล้ว · rejected = ปฏิเสธ
+      note TEXT,                       -- เหตุผลตอนปฏิเสธ หรือบันทึกของคิม
+      handled_by TEXT, handled_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_bank_transfers_status ON bank_transfers(status, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_transfers_order ON bank_transfers(order_kind, order_id);
+
     -- 🧾 ข้อมูลใบกำกับภาษีที่ลูกค้ากรอกตอนซื้อ (ชื่อบริษัท/เลขผู้เสียภาษี/ที่อยู่)
     -- เก็บไว้กับออเดอร์ของแต่ละสินค้า เพราะใบกำกับต้องออกทันทีที่เงินเข้า แก้ทีหลังไม่ได้
     -- ⚠️ ALTER ต้องอยู่หลัง CREATE ของตารางนั้นเสมอ (ฐานข้อมูลใหม่จะบูตไม่ขึ้นถ้าสลับ)

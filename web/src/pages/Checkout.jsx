@@ -4,6 +4,7 @@ import { api, baht, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
 import { PlanCards } from "../PlanCards.jsx";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
+import BankTransferBox from "../BankTransferBox.jsx";
 import { TAX_INVOICE_LIVE, PREVIEW } from "../config.js";
 
 export default function Checkout() {
@@ -98,6 +99,9 @@ export default function Checkout() {
         }
         {/* กล่องนี้เก็บชื่อ-นามสกุลจริงสำหรับใบกำกับ ต้องโผล่เสมอ (สวิตช์ TAX_INVOICE_LIVE คุมหน้า “ใบกำกับของฉัน” คนละเรื่องกัน) */}
         <TaxInvoiceBox onChange={setTaxF} totalSatang={price} />
+        {/* 🏦 ทางเลือกโอนเข้าบัญชีบริษัท — โผล่เฉพาะคนที่ติ๊กว่าออกใบกำกับในนามบริษัท
+            คนทั่วไปไม่เห็น เพราะทางนี้ช้ากว่า (ต้องรอคิมตรวจสลิป) และถ้าเปิดให้ทุกคนงานตรวจสลิปจะท่วมแอดมิน */}
+        <BankTransferBox kind="blueprint" orderId={orderId} isCompany={!!taxF?.is_company} amountSatang={price} />
         {taxMsg && <div className="msg" style={{ background: "#fde8e8", color: "#b42318", marginBottom: 10 }}>{taxMsg.t}</div>}
 
         {isMock ? <>

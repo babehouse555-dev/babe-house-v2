@@ -1747,8 +1747,31 @@ function CustomerDesk({ code, claims, reloadClaims }) {
 
       {res && (
         <>
+          {/* 📧 คำตอบตรงๆ ของคำถามที่แอดมินอยากรู้ที่สุด — วางไว้บนสุดเสมอเมื่อค้นด้วยอีเมล
+              เดิมไม่มีอันนี้ พลอยค้นอีเมลที่เราเพิ่งเปิดสิทธิ์ให้แล้วขึ้นว่าไม่เจอ นึกว่าระบบพัง
+              (สิทธิ์ที่เราเปิดให้เองไม่ได้อยู่ในทะเบียนเว็บเก่า ช่องค้นหาเดิมเลยมองไม่เห็น) */}
+          {res.access && (
+            <div style={{ ...card, marginTop: 16,
+              borderLeft: `4px solid ${res.access.owns_count > 0 ? "#1a7f43" : "#b42318"}`,
+              background: res.access.owns_count > 0 ? "#F3FAF5" : "#FEF6F5" }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>
+                {res.access.owns_count > 0
+                  ? `✅ อีเมลนี้เข้าเรียนได้ ${res.access.owns_count} คอร์สแล้ว`
+                  : "⚠️ อีเมลนี้ยังเข้าเรียนไม่ได้เลย"}
+              </div>
+              <div style={{ fontSize: 13, color: "#7c7268", marginTop: 4, lineHeight: 1.8 }}>
+                {res.access.email}
+                {res.access.owns_count > 0
+                  ? <><br />📚 {res.access.courses.map(c => c.name).join(" · ")}
+                      <br />บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ ถ้ายังไม่เห็น ให้ลองออกจากระบบแล้วเข้าใหม่</>
+                  : <><br />ยังไม่มีคอร์สผูกกับอีเมลนี้ — ถ้าเขายืนยันว่าซื้อจริง ลองค้นด้วย<b>ชื่อจริง เบอร์โทร หรือชื่อผู้ใช้</b>ดูนะคะ
+                      ลูกค้าเก่าหลายคนซื้อไว้ด้วยอีเมลคนละตัวกับที่ใช้อยู่ตอนนี้ค่ะ</>}
+              </div>
+            </div>
+          )}
+
           {/* ── ฝั่งคอร์สเรียน ── */}
-          {res.users.length > 0 && <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 8px" }}>🎓 คอร์สเรียน</div>}
+          {res.users.length > 0 && <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 8px" }}>🎓 คอร์สเรียน (ทะเบียนลูกค้าเว็บเก่า)</div>}
           {res.users.map(u => (
             <div key={u.legacy_id} style={{ ...card, borderLeft: `4px solid ${u.can_see_now > 0 ? "#1a7f43" : u.paid_orders > 0 ? "#e0a800" : "#ddd2c8"}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -1810,6 +1833,19 @@ function CustomerDesk({ code, claims, reloadClaims }) {
                 อีเมลที่ผูกไว้: <b style={{ color: "#2f2a26" }}>{b.email || "—"}</b>
                 <br />เดือน {String(b.billing_cycle || "").replace("_", " ")} · ซื้อเมื่อ {String(b.created_at || "").slice(0, 10)}
               </div>
+              {/* ยังไม่จ่าย = ไม่มีอะไรให้ย้าย ต้องบอกให้ชัดว่าทำไมไม่มีปุ่ม ไม่งั้นดูเหมือนระบบพัง */}
+              {b.payment_status !== "paid" && (
+                <p style={{ color: "#7c7268", fontSize: 12.5, marginTop: 8, marginBottom: 0, lineHeight: 1.7 }}>
+                  ลูกค้ากดสั่งไว้แต่<b>ยังไม่ได้จ่ายเงิน</b>ค่ะ — ยังไม่มีเล่มให้ย้าย
+                  ถ้าเขาบอกว่าโอนแล้ว รบกวนขอสลิปแล้วส่งให้พี่คิมตรวจนะคะ
+                </p>
+              )}
+              {b.payment_status === "paid" && !b.blueprint_id && (
+                <p style={{ color: "#7c7268", fontSize: 12.5, marginTop: 8, marginBottom: 0, lineHeight: 1.7 }}>
+                  จ่ายเงินแล้วแต่<b>เล่มยังสร้างไม่เสร็จ</b>ค่ะ — ปกติใช้เวลาไม่กี่นาที
+                  ถ้าเกินครึ่งชั่วโมงแล้วยังไม่ขึ้น บอกพี่คิมได้เลยนะคะ
+                </p>
+              )}
               {b.payment_status === "paid" && b.blueprint_id && (
                 <div style={{ marginTop: 10, background: "#faf7f4", borderRadius: 10, padding: "10px 12px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>

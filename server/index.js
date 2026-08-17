@@ -2570,6 +2570,28 @@ app.get("/api/admin/academy/owns", async (req, res) => {
 // แอดมินจึงต้องค้นจาก "ชื่อ/เบอร์ที่ลูกค้าบอกมาในไลน์" ให้เจอ แล้วผูกอีเมลปัจจุบันของเขาเข้าไป
 // 🔧 ตัวจริงที่ทำงาน — แยกออกมาเพราะใช้ 2 ที่: หน้าแอดมินของคิม และหน้า "ดูแลลูกค้า" ของพลอยใน /team
 //    ถ้าปล่อยให้ก๊อปโค้ดไว้สองที่ วันหนึ่งจะแก้ที่เดียวแล้วอีกที่เพี้ยนเงียบๆ
+//
+// 📧 ตอบคำถามที่แอดมินอยากรู้ที่สุด: "อีเมลนี้เข้าเรียนได้ไหม" — ตอบตรงๆ ไม่ต้องเดาจากทะเบียน
+//
+// ⚠️ ทำขึ้นเพราะเจอบั๊กจริง 17 ส.ค. 2569: พลอยค้น wichayaporn.jitb@gmail.com แล้วขึ้นว่าไม่เจอ
+//    ทั้งที่อีเมลนั้นเข้าเรียนได้แล้ว — เพราะสิทธิ์มาจาก academy_grants ไม่ใช่ทะเบียนเว็บเก่า
+//    (ลูกค้าซื้อด้วยอีเมลหนึ่ง แล้วมาใช้อีกอีเมลเข้าเว็บ · หรือซื้อคอร์สบนเว็บใหม่ตั้งแต่แรก)
+//    ช่องค้นหาที่ดูแค่ทะเบียนเก่าจึงตอบผิดในเคสที่เราเพิ่งช่วยไปเอง = แอดมินนึกว่าระบบพัง
+async function emailAccessSummary(rawEmail) {
+  const email = normEmail(rawEmail || "");
+  if (!email || !email.includes("@")) return null;
+  const ids = await academyOwnedCourseIds(email);
+  const courses = ids.length ? await q(`SELECT legacy_id, name FROM academy_courses WHERE legacy_id = ANY($1)`, [ids]) : [];
+  const grants = await q(`SELECT course_id, granted_by, created_at FROM academy_grants WHERE lower(email)=lower($1)`, [email]).catch(() => []);
+  const bought = await q(`SELECT course_name, amount_satang, paid_at FROM academy_purchases
+    WHERE lower(email)=lower($1) AND status='paid' ORDER BY paid_at DESC LIMIT 10`, [email]).catch(() => []);
+  return {
+    email, owns_count: ids.length,
+    courses: courses.map(c => ({ id: c.legacy_id, name: c.name })),
+    granted: grants.map(g => ({ course_id: g.course_id, by: g.granted_by, at: g.created_at })),
+    bought_here: bought.map(b => ({ name: b.course_name, at: b.paid_at })),
+  };
+}
 async function findAcademyCustomers(raw) {
   const like = `%${raw.toLowerCase()}%`;
   // เบอร์โทรในข้อมูลเก่าเก็บไม่เหมือนกัน (มีขีด มีเว้นวรรค) → ตัดให้เหลือแต่ตัวเลขก่อนเทียบ
@@ -2610,8 +2632,11 @@ app.get("/api/admin/academy/find", async (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const raw = String(req.query?.q || "").trim();
   if (raw.length < 2) return res.status(400).json({ ok: false, error: "TOO_SHORT", message: "พิมพ์อย่างน้อย 2 ตัวอักษรนะคะ" });
-  try { const users = await findAcademyCustomers(raw); res.json({ ok: true, q: raw, count: users.length, users }); }
-  catch (e) { console.error("academy/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+  try {
+    const users = await findAcademyCustomers(raw);
+    const access = raw.includes("@") ? await emailAccessSummary(raw) : null;
+    res.json({ ok: true, q: raw, count: users.length, users, access });
+  } catch (e) { console.error("academy/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 
 // 🔗 ผูกอีเมลให้ลูกค้าเก่าที่ไม่มีอีเมล แล้วเปิดสิทธิ์คอร์สที่เขาจ่ายเงินไปแล้วทั้งหมดให้อีเมลนั้น
@@ -5230,7 +5255,9 @@ app.get("/api/team/customer/find", async (req, res) => {
       FROM blueprint_orders o
       WHERE lower(COALESCE(o.email,'')) LIKE $1 OR lower(COALESCE(o.instagram_account,'')) LIKE $1
       ORDER BY o.created_at DESC LIMIT 20`, [like]).catch(() => []);
-    res.json({ ok: true, q: raw, count: users.length, users, books });
+    // ถ้าค้นด้วยอีเมล → ตอบตรงๆ ว่าอีเมลนี้เข้าเรียนได้กี่คอร์ส (ครอบคลุมสิทธิ์ที่เราเปิดให้เองด้วย)
+    const access = raw.includes("@") ? await emailAccessSummary(raw) : null;
+    res.json({ ok: true, q: raw, count: users.length, users, books, access });
   } catch (e) { console.error("team/customer/find", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
 });
 app.get("/api/team/customer/owns", async (req, res) => {

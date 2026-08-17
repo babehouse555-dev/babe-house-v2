@@ -1758,6 +1758,9 @@ function CustomerDesk({ code, claims, reloadClaims }) {
             const look = { ok: ["#1a7f43", "#F3FAF5"], bp: ["#0b6ea8", "#F2F8FC"], none: ["#B26A00", "#FDF8EE"] }[kind];
             return (
               <div style={{ ...card, marginTop: 16, borderLeft: `4px solid ${look[0]}`, background: look[1] }}>
+                <div style={{ fontSize: 11.5, letterSpacing: ".08em", fontWeight: 700, color: look[0], marginBottom: 3 }}>
+                  คำตอบของอีเมลนี้ — อ่านกล่องนี้กล่องเดียวพอค่ะ
+                </div>
                 <div style={{ fontWeight: 800, fontSize: 15 }}>
                   {kind === "ok" ? `✅ อีเมลนี้เข้าเรียนได้ ${a.owns_count} คอร์สแล้ว`
                     : kind === "bp" ? "📘 อีเมลนี้เป็นลูกค้าแผนคอนเทนต์ (Blueprint)"
@@ -1766,7 +1769,8 @@ function CustomerDesk({ code, claims, reloadClaims }) {
                 <div style={{ fontSize: 13, color: "#7c7268", marginTop: 4, lineHeight: 1.8 }}>
                   {a.email}
                   {kind === "ok" && <><br />📚 {a.courses.map(c => c.name).join(" · ")}
-                    <br />บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ ถ้ายังไม่เห็น ให้ลองออกจากระบบแล้วเข้าใหม่</>}
+                    <br />บอกลูกค้าให้ล็อกอินด้วยอีเมลนี้ได้เลยค่ะ ถ้ายังไม่เห็น ให้ลองออกจากระบบแล้วเข้าใหม่
+                    <br /><b>เคสนี้จบแล้ว</b> — ข้างล่างเป็นแค่ข้อมูลประกอบ ไม่ต้องกดอะไรเพิ่มค่ะ</>}
                   {kind === "bp" && <><br />เขาซื้อ<b>แผนคอนเทนต์ {a.blueprint_count} เล่ม</b> แต่<b>ไม่ได้ซื้อคอร์สเรียน</b> — ปกติค่ะ ไม่ใช่ปัญหา
                     <br />ดูเล่มของเขาได้ที่หัวข้อ “แผนคอนเทนต์” ด้านล่างนะคะ</>}
                   {kind === "none" && <><br />ไม่มีทั้งคอร์สเรียนและแผนคอนเทนต์ผูกกับอีเมลนี้ —
@@ -1884,7 +1888,11 @@ function CustomerDesk({ code, claims, reloadClaims }) {
             </div>
           ))}
 
-          {res.users.length === 0 && !(res.books || []).length && (
+          {/* ⚠️ ขึ้นเฉพาะตอน "ไม่มีกล่องสถานะ" เท่านั้น (คือค้นด้วยชื่อ/เบอร์ ไม่ใช่อีเมล)
+              เดิมขึ้นคู่กับกล่องเขียวได้ → อ่านแล้วขัดกันเอง
+              "เข้าเรียนได้ 1 คอร์สแล้ว" กับ "ไม่เจอลูกค้าคนนี้เลย" พร้อมกัน (คิมท้วง 17 ส.ค.)
+              ถ้าค้นด้วยอีเมล กล่องสถานะคือคำตอบครบแล้ว ไม่ต้องมีอะไรต่อท้าย */}
+          {!res.access && res.users.length === 0 && !(res.books || []).length && (
             <div style={card}>
               <p style={{ color: "#7c7268", fontSize: 13.5, margin: 0, lineHeight: 1.8 }}>
                 ไม่เจอลูกค้าคนนี้เลยค่ะ — ลองค้นด้วยคำอื่นดูนะคะ (ชื่อจริง · ชื่อผู้ใช้ · เบอร์โทร · ชื่อช่อง IG)

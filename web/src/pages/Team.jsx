@@ -269,8 +269,10 @@ export default function Team() {
         <button style={{ ...ghost, fontSize: 13 }} onClick={() => { localStorage.removeItem("babe_my_code"); setD(null); setCode(""); setTyped(""); }}>ออกจากระบบ</button>
       </div>
 
-      {/* สรุปวันนี้ — บอกสั้นๆ ว่าต้องทำอะไร */}
-      <div style={{ ...card, background: "#fbf7f3", display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14 }}>
+      {/* สรุปวันนี้ — บอกสั้นๆ ว่าต้องทำอะไร
+          ⛔ แอดมินดูแลลูกค้าไม่เห็นการ์ดนี้ — เป็นตัวเลขของทีมตัดต่อ (งานของฉัน/เลยกำหนดส่ง)
+             ขึ้น 0 ทุกช่องแล้วทำให้งงว่าเข้าผิดที่หรือเปล่า (คิมท้วง 17 ส.ค.) */}
+      {!isSupport && <div style={{ ...card, background: "#fbf7f3", display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14 }}>
         <Stat n={mine} label="งานของฉัน" />
         {canReview && <Stat n={toReview} label="รอฉันตรวจ" tone={toReview ? "#0b6ea8" : null} />}
         {(isOwner || isAE) && <Stat n={active.filter(j => !j.assigned_to && j.status !== "awaiting_files").length} label="ยังไม่มีคนทำ" tone="#B26A00" />}
@@ -278,11 +280,12 @@ export default function Team() {
         <div style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "#a89f96" }}>
           {d.working_now ? "🟢 อยู่ในเวลาทำงาน" : "🌙 นอกเวลาทำงาน"} · {d.hours}
         </div>
-      </div>
+      </div>}
 
       {/* 📊 สรุปงานของฉันรายเดือน — คิมสั่ง 12 ส.ค. "ต้องมีสรุปปลายเดือนว่าเค้าทำงานไปทั้งหมดกี่คลิป"
-          นับจากวันที่ "ส่งงานถึงลูกค้า" งานที่ยังทำอยู่ยังไม่นับ · เทียบกับเดือนที่แล้วให้เห็นว่าตัวเองขึ้นหรือลง */}
-      {d.my_month && (() => {
+          นับจากวันที่ "ส่งงานถึงลูกค้า" งานที่ยังทำอยู่ยังไม่นับ · เทียบกับเดือนที่แล้วให้เห็นว่าตัวเองขึ้นหรือลง
+          ⛔ ไม่ขึ้นให้แอดมินดูแลลูกค้า — เป็นยอดค่าตอบแทนคลิปละ ฿800 ของทีมตัดต่อ ไม่เกี่ยวกับงานเขาเลย */}
+      {!isSupport && d.my_month && (() => {
         const m = d.my_month.this, p = d.my_month.prev;
         const diff = (m.clip_units || m.clips) - (p.clip_units || p.clips);
         // 🎨 พนักงานประจำสายกราฟฟิก (แฟรี่): งานกราฟฟิก จ-ศ = งานบริษัท กินเงินเดือน ไม่ใช่งานคลิปละ ฿800

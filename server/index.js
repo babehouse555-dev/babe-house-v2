@@ -2302,17 +2302,32 @@ app.post("/api/admin/blueprint/transfer", async (req, res) => {
       FROM blueprints b LEFT JOIN blueprint_requests r ON r.request_id=b.request_id WHERE b.blueprint_id=$1`, [bpId]);
     if (!bp) return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "ไม่พบเล่มนี้ค่ะ" });
     const from = normEmail(bp.owner_email || "");
-    if (from === to) return res.json({ ok: true, same: true, message: "เล่มนี้เป็นของอีเมลนี้อยู่แล้วค่ะ" });
+    // ⚠️ ถึงเล่มจะเป็นของอีเมลนี้อยู่แล้วก็ยัง "กวาดให้ครบ" ต่อ ไม่ตัดจบตรงนี้
+    //    เพราะเคยย้ายเล่มไปแล้วแต่ใบกำกับค้างที่อีเมลเดิม — ถ้าตัดจบ กดซ้ำก็ไม่มีทางแก้ได้เลย
+    //    ทุกคำสั่งด้านล่างเขียนค่าเดิมทับค่าเดิม รันซ้ำกี่ครั้งก็ไม่เสียหาย
+    const same = from === to;
     // ย้ายทั้ง "คำขอสร้างเล่ม" และ "ออเดอร์" — หน้าบัญชีอ่านจากคำขอ ส่วนใบกำกับ/ประวัติอ่านจากออเดอร์
     await run(`UPDATE blueprint_requests SET email=$1 WHERE request_id=$2`, [to, bp.request_id]);
     const ord = await run(`UPDATE blueprint_orders SET email=$1 WHERE user_id=$2 AND billing_cycle=$3`, [to, bp.user_id, bp.billing_cycle]).catch(() => ({ rowCount: 0 }));
+    // 🧾 ต้องย้ายใบกำกับภาษีตามไปด้วย — หน้า "บัญชีของฉัน" อ่านใบจากอีเมล
+    //    ถ้าไม่ย้าย ลูกค้าจะได้เล่มแต่ใบกำกับหายไปกับอีเมลเก่า และไม่มีใครรู้จนกว่าเขาจะทวง
+    //    (เจอเคสจริง 17 ส.ค. 69: ลูกค้าพิมพ์ gmaol.com ตอนซื้อ ย้ายเล่มแล้วใบยังค้างที่อีเมลผิด)
+    //    ⛔ ไม่ออกใบใหม่ ไม่ยกเลิกใบเดิม — เอกสารออกกับ FlowAccount ไปแล้ว แค่ย้ายว่าใครเห็นในเว็บ
+    const inv = await run(`UPDATE tax_invoices SET email=lower($1) WHERE order_id IN (
+        SELECT order_id FROM blueprint_orders WHERE user_id=$2 AND billing_cycle=$3)`,
+      [to, bp.user_id, bp.billing_cycle]).catch(() => ({ rowCount: 0 }));
     await upsertCustomer(to, bp.instagram_account || "").catch(() => {});
-    console.log(`[transfer] เล่ม ${bpId} · ${from || "(ไม่มี)"} → ${to}`);
+    console.log(`[transfer] เล่ม ${bpId} · ${from || "(ไม่มี)"} → ${to}${same ? " (กวาดซ้ำ)" : ""}`);
+    // เจ้าของไม่ได้เปลี่ยน = แค่กวาดของที่ค้าง ไม่ต้องรบกวนทีมด้วยเมล
+    if (same) return res.json({ ok: true, same: true, blueprint_id: bpId, to,
+      orders_moved: ord.rowCount || 0, invoices_moved: inv.rowCount || 0,
+      message: "เล่มนี้เป็นของอีเมลนี้อยู่แล้วค่ะ — ตรวจใบกำกับภาษีกับออเดอร์ให้ตรงกันเรียบร้อย" });
     // แจ้งทีมไว้เป็นหลักฐานเสมอ — การย้ายเจ้าของเล่มเป็นเรื่องใหญ่ ต้องตามย้อนหลังได้
     sendEmail(OPS_EMAIL, `📦 ย้ายเล่ม ${bp.instagram_account || bpId} ให้เจ้าของใหม่`,
       wrap(`<b>ช่อง:</b> ${bp.instagram_account || "-"}<br><b>เดือน:</b> ${String(bp.billing_cycle).replace("_", " ")}<br>` +
-           `<b>จาก:</b> ${from || "(ไม่มีอีเมล)"}<br><b>ไป:</b> ${to}<br><b>ออเดอร์ที่ย้ายด้วย:</b> ${ord.rowCount || 0}`)).catch(() => {});
-    res.json({ ok: true, blueprint_id: bpId, from, to, orders_moved: ord.rowCount || 0,
+           `<b>จาก:</b> ${from || "(ไม่มีอีเมล)"}<br><b>ไป:</b> ${to}<br><b>ออเดอร์ที่ย้ายด้วย:</b> ${ord.rowCount || 0}` +
+           `<br><b>ใบกำกับภาษีที่ย้ายด้วย:</b> ${inv.rowCount || 0}`)).catch(() => {});
+    res.json({ ok: true, blueprint_id: bpId, from, to, orders_moved: ord.rowCount || 0, invoices_moved: inv.rowCount || 0,
       channel: bp.instagram_account, billing_cycle: bp.billing_cycle,
       message: `ย้ายเล่มให้ ${to} แล้วค่ะ — ล็อกอินด้วยอีเมลนี้แล้วจะเห็นเล่มในบัญชีเลย` });
   } catch (e) { console.error("transfer", e.message); res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }

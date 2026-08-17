@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "./api.js";
+import { BANK_TRANSFER_LIVE } from "./config.js";
 
 // 🏦 กล่อง "โอนเข้าบัญชีบริษัท" — ใช้ร่วมกันทุกสินค้า (เล่ม Blueprint · คอร์ส · workshop · เครดิตตัดต่อ)
 //
@@ -15,7 +16,8 @@ export default function BankTransferBox({ kind, orderId, isCompany, amountSatang
   const [msg, setMsg] = useState(null);
   const [open, setOpen] = useState(false);
 
-  if (!isCompany || !orderId) return null;   // ลูกค้าบุคคลไม่เห็นทางนี้เลย
+  // ⛔ ปิดทั้งก้อนถ้าสวิตช์ยังไม่เปิด (คิมยังไม่เคาะว่าจะรับโอน) · ลูกค้าบุคคลไม่เห็นทางนี้อยู่แล้ว
+  if (!BANK_TRANSFER_LIVE || !isCompany || !orderId) return null;
 
   const baht = (n) => "฿" + (Number(n || 0) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

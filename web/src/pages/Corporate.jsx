@@ -177,6 +177,7 @@ export default function Corporate() {
             <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.25, margin: "2px 0 6px" }}>{money(quote.total_satang / 100)}</div>
             <div style={{ fontSize: 13.5, opacity: .92, lineHeight: 1.75 }}>
               ทีม {quote.headcount} คน ({quote.tier_label}) · เรียนสดเต็มวันกับครูพี่คิม
+              {quote.per_head_satang > 0 && <><br />เฉลี่ย <b>{money(Math.round(quote.per_head_satang / 100))}/คน</b></>}
               {topics.length > 0 && <><br />วิชาที่เลือก: {topics.join(" · ")}</>}
               {quote.travel_satang > 0 && <><br />รวมค่าเดินทาง {money(quote.travel_satang / 100)} แล้ว</>}
             </div>
@@ -245,7 +246,7 @@ export default function Corporate() {
           ))}</tbody></table>
         <p className="muted" style={{ fontSize: 12.5, marginTop: 12, lineHeight: 1.75 }}>
           ราคาเป็นแบบเหมาต่อกลุ่ม ไม่ใช่ต่อคน · เลือกกี่วิชาก็ได้ในวันเดียว
-          <br />สอนที่บริษัท มีค่าเดินทาง 2,000 บาท · ต่างจังหวัดมีค่าเครื่องบินและที่พักตามจริงเพิ่ม
+          <br />สอนที่บริษัทในกรุงเทพฯ +2,000 บาท · ต่างจังหวัดคิดค่าเดินทางและค่าที่พักตามจริง
         </p>
       </div>
 

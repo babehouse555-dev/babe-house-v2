@@ -4591,10 +4591,10 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
     await upsertCustomer(email, "");
     // ใช้ท่อเดียวกับสินค้าอื่นทั้งหมด: blueprint_orders → จ่ายเงิน → markOrderPaid()
     // ได้ครบในทีเดียว ทั้งเติมเครดิต · ออกใบกำกับ · แจ้งเตือนคิม โดยไม่ต้องต่อท่อใหม่
-    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url,discount_code,discount_percent) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12)`,
+    await run(`INSERT INTO blueprint_orders (order_id,user_id,instagram_account,email,tier,billing_cycle,payment_status,order_payload_json,provider,final_amount_satang,checkout_url,discount_code,discount_percent,source) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9,$10,$11,$12,$13)`,
       [orderId, "editcredits_" + Date.now(), "", normEmail(email), "EditCredits_" + n, currentBillingCycle(),
        JSON.stringify({ edit_credit_pack: n, email: normEmail(email), tax: ct.tax }), PROVIDER, payNow, "/edit",
-       promo.code || null, promo.percent || null]);
+       promo.code || null, promo.percent || null, cleanSource(req.body?.source)]);
     // โค้ดลด 100% → ยอด 0 บาท สร้าง checkout ไม่ได้ · เติมเครดิตให้เลย (ใช้ provider 'code' จะได้ไม่ถูกนับเป็นยอดขาย)
     if (payNow <= 0) {
       await markOrderPaid(orderId, "code", promo.code || "FREE");

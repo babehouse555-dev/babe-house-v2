@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, getSource } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
 import LoginBox from "../LoginBox.jsx";
@@ -60,7 +60,7 @@ export default function AcademyCourse() {
     if (nm.length < 2) { alert("กรอกชื่อ-นามสกุลสำหรับเกียรติบัตรด้วยนะคะ"); return; }
     setBuying(true);
     try {
-      const r = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id, code: code.trim() || undefined, tax, student_name: nm } });
+      const r = await api("/api/academy/buy", { method: "POST", token: session.token, body: { course_id: id, code: code.trim() || undefined, tax, student_name: nm, source: getSource() } });
       window.location.href = r.free ? r.redirect_url : r.checkout_url;
     }
     catch (e) { alert(e.message || "ลองใหม่อีกครั้งนะคะ"); setBuying(false); }

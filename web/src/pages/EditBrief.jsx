@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, getSource } from "../api.js";
 import LoginBox from "../LoginBox.jsx";
 import { OUR_STYLES } from "../editStyles.js";
 
@@ -98,7 +98,7 @@ export default function EditBrief() {
       localStorage.setItem(draftKey, JSON.stringify({ f, picks, jobTitle }));
       const back = location.pathname + location.search + (location.search.includes("topup=") ? "" : (location.search ? "&" : "?") + "topup=ok");
       const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token,
-        body: { credits: 1, return_to: back } });
+        body: { credits: 1, return_to: back, source: getSource() } });
       if (r.external && r.redirect_url) { location.href = r.redirect_url; return; }
       // จ่ายเสร็จในเว็บเลย (โค้ดฟรี / สนามทดสอบ) → เครดิตเข้าแล้ว ส่งงานต่อได้ทันที
       localStorage.removeItem(draftKey);

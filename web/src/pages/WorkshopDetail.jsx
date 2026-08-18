@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, getSource } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
 import LoginBox from "../LoginBox.jsx";
@@ -47,7 +47,7 @@ export default function WorkshopDetail() {
     if (bad) return alert(bad);
     setBusy(true);
     try {
-      const r = await api("/api/workshops/book", { method: "POST", token: session.token, body: { session_id: pick, qty: Number(form.qty) || 1, name: form.name.trim(), phone: form.phone.trim(), code: form.code.trim() || undefined, food_note: form.food_note.trim(), needs_parking: form.needs_parking, customer_note: form.customer_note.trim(), tax } });
+      const r = await api("/api/workshops/book", { method: "POST", token: session.token, body: { session_id: pick, qty: Number(form.qty) || 1, name: form.name.trim(), phone: form.phone.trim(), code: form.code.trim() || undefined, food_note: form.food_note.trim(), needs_parking: form.needs_parking, customer_note: form.customer_note.trim(), tax, source: getSource() } });
       window.location.href = r.free ? r.redirect_url : r.checkout_url;
     } catch (e) {
       alert(e.message || "จองไม่สำเร็จ ลองใหม่อีกครั้งนะคะ");

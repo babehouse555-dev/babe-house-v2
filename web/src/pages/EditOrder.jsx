@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, session } from "../api.js";
+import { api, session, getSource } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
 import LoginBox from "../LoginBox.jsx";
@@ -79,7 +79,7 @@ export default function EditOrder() {
     if (bad) { setMsg(bad); return; }
     setBusy(true); setMsg("");
     try {
-      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips, tax, code: code.trim() || undefined } });
+      const r = await api("/api/edit/credits/buy", { method: "POST", token: session.token, body: { credits: clips, tax, code: code.trim() || undefined, source: getSource() } });
       // จ่ายผ่าน Stripe → เด้งออกไปหน้าจ่ายเงิน · สนามเด็กเล่น → กลับมาโหลดยอดใหม่
       if (r.external && r.redirect_url) { location.href = r.redirect_url; return; }
       setMsg(`ได้เครดิตตัดต่อ ${clips} คลิปแล้วค่ะ 🎉 เปิดเล่มของคุณ แล้วเลือกได้เลยว่าจะให้ทีมตัดวันไหนบ้าง`);

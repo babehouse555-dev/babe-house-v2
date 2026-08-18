@@ -462,7 +462,7 @@ export default function Form() {
           <div className="field">
             <label>{t("fm_platform_label")} <span style={{ color: "var(--blue)" }}>⭐</span></label>
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-              {[["tiktok", "🎵 TikTok"], ["instagram", "📷 Instagram"], ["both", "ทั้งสองช่อง"]].map(([v, label]) => (
+              {[["tiktok", "🎵 TikTok"], ["instagram", "📷 Instagram"]].map(([v, label]) => (
                 <button type="button" key={v} onClick={() => { setF(x => ({ ...x, platform: v })); setFocus(null); }}
                   style={{ border: `1.5px solid ${f.platform === v ? "var(--blue)" : "var(--border)"}`,
                     background: f.platform === v ? "var(--blue)" : "#fff", color: f.platform === v ? "#fff" : "var(--ink)",

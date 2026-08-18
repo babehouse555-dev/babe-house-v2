@@ -638,7 +638,7 @@ const DICT = {
   fm_v_email2: { th: "ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่มให้ + เข้าดูย้อนหลังทุกเดือน", en: "Please enter a valid email — for your book + monthly access" },
   // 📱 แพลตฟอร์มหลัก — เพิ่ม 17 ส.ค. 2569 จากรีวิว 2 ดาว (ลูกค้าลง Insight ของ TikTok แต่ได้เล่ม Instagram)
   fm_platform_label: { th: "ช่องหลักของคุณอยู่ที่ไหน", en: "Where is your main channel?" },
-  fm_platform_hint: { th: "เลือกช่องที่คนติดตามเราจริงนะคะ — เล่มนี้จะเจาะช่องนั้นช่องเดียวเต็มที่ เพราะ TikTok กับ Instagram เล่นคนละแบบกันเลย ถ้าวางแผนให้ครอบทั้งสองช่องพร้อมกัน คอนเทนต์จะออกมากลางๆ ไม่เวิร์กกับช่องไหนสักช่องค่ะ", en: "Pick where your followers actually are — this plan goes all-in on that one platform. TikTok and Instagram work very differently; planning for both at once produces content that works for neither." },
+  fm_platform_hint: { th: "เลือกช่องที่คนตามเราเยอะสุด — ฮุกกับฟอร์แมตจะเขียนให้ตรงกลไกช่องนั้นค่ะ (ลงช่องอื่นด้วยได้ตามปกติ)", en: "Pick where most of your followers are — hooks and formats will be written for that platform (you can still cross-post)." },
   fm_v_platform: { th: "เลือกช่องหลักของคุณด้วยนะคะ (TikTok หรือ Instagram)", en: "Please choose your main platform (TikTok or Instagram)" },
   fm_v_channel: { th: "ช่วยกรอกชื่อช่อง/แฮนเดิลด้วยนะคะ", en: "Please enter your channel name/handle" },
   fm_v_phone: { th: "ช่วยกรอกเบอร์โทรด้วยนะคะ 🩵 เผื่อเล่มมีปัญหา ครูพี่คิมจะได้ติดต่อไปช่วยแก้ให้ทันค่ะ", en: "Please add your phone number 🩵 so Kim can reach you quickly if your book needs a fix" },

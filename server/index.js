@@ -465,7 +465,13 @@ const CheckoutSchema = z.object({
     user_id: z.string().min(1), instagram_account: z.string().min(1), email: z.string().email().optional(), referred_by: z.string().optional(),
     source: z.string().optional(),   // ⚠️ ต้องประกาศตรงนี้ ไม่งั้น zod ตัดทิ้งเงียบๆ (เคยพลาดมาแล้วกับ phone)
     meta_purchase: z.object({ tier: z.literal("Premium_490"), billing_cycle: z.string().min(1) }),
-    form_responses: z.object({ self_term: z.string().optional().default(""), audience_term: z.string().optional().default(""), catchphrases: z.string().optional().default(""), tone: z.string().optional().default(""), business_type: z.string().optional().default(""), gender: z.string().optional().default(""), age_range: z.string().optional().default(""), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1),
+    form_responses: z.object({
+      // 📱 แพลตฟอร์มหลัก — เพิ่ม 17 ส.ค. 2569 หลังลูกค้าให้ 2 ดาว
+      //    เดิมระบบไม่เคยถามเลย AI ต้องเดาจากรูป Insight แล้วเดาผิด
+      //    ลูกค้าลง Insight ของ TikTok (1,000 ผู้ติดตาม) แต่ได้เล่มที่โฟกัส Instagram (4 ผู้ติดตาม)
+      //    ⚠️ ถ้าไม่ประกาศตรงนี้ Zod จะตัดทิ้งเงียบๆ (เคยพลาดมาแล้วกับ phone/source)
+      platform: z.string().optional().default(""),
+      self_term: z.string().optional().default(""), audience_term: z.string().optional().default(""), catchphrases: z.string().optional().default(""), tone: z.string().optional().default(""), business_type: z.string().optional().default(""), gender: z.string().optional().default(""), age_range: z.string().optional().default(""), work_style: z.string().optional().default(""), audience: z.string().optional().default(""), experience: z.string().optional().default(""), goal_primary: z.string().optional().default(""), starting_point: z.string().optional().default(""), monthly_goal: z.string().min(1),
       // 🎯 แนวคอนเทนต์ที่อยาก/ไม่อยากได้ (เพิ่ม 2 ส.ค.) — ⚠️ ถ้าไม่ประกาศตรงนี้ Zod จะตัดทิ้งเงียบๆ
       content_want: z.string().optional().default(""), content_avoid: z.string().optional().default(""),
       competitor_1: z.string().optional().default(""), competitor_2: z.string().optional().default(""), display_name: z.string().optional().default(""), phone: z.string().optional().default("") }),

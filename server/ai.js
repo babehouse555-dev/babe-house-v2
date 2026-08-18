@@ -251,8 +251,28 @@ function wantAvoidBlock(fr) {
 
 function buildUserText(parsed) {
   const fr = parsed.form_responses;
+  // 📱 บอก AI ให้ชัดว่าลูกค้าอยู่แพลตฟอร์มไหน — เพิ่ม 17 ส.ค. 2569 จากรีวิว 2 ดาวของลูกค้าจริง
+  //
+  // เดิมระบบ "ไม่เคยบอก AI เลย" ว่าลูกค้าอยู่ TikTok หรือ Instagram (ช่องในฟอร์มชื่อ instagram_account ตรงๆ)
+  // AI จึงต้องเดาจากรูป Insight แล้วเดาผิด — ลูกค้าลง Insight ของ TikTok (ผู้ติดตาม ~1,000)
+  // แต่ได้เล่มที่วางแผนบน Instagram ทั้งเล่ม (ที่นั่นมีผู้ติดตาม 4 คน) เธอเลยใช้เล่มไม่ได้เลย
+  // ⚠️ AI ไม่ได้อ่านผิด — มันไม่เคยถูกบอก
+  const PLAT = {
+    tiktok: `\n\n📱 *** แพลตฟอร์มหลักของลูกค้าคือ TikTok *** (ลูกค้าเลือกเองในฟอร์ม)
+⛔ ห้ามวางแผนโดยยึด Instagram เป็นหลักเด็ดขาด · ห้ามใช้คำว่า Reels / Feed / Story เป็นฟอร์แมตหลัก
+✅ ใช้ภาษาและกลไกของ TikTok: คลิปสั้น · ฮุก 3 วิแรก · เสียง/เพลงเทรนด์ · For You Page · การดูจนจบ · คอมเมนต์
+✅ ตัวเลขและการวิเคราะห์ทั้งหมดให้อ้างอิงผลบน TikTok
+ถ้าจะพูดถึง Instagram ให้เป็นแค่ "ช่องรองไว้ต่อยอดทีหลัง" เท่านั้น ไม่ใช่แกนของเล่ม`,
+    instagram: `\n\n📱 *** แพลตฟอร์มหลักของลูกค้าคือ Instagram *** (ลูกค้าเลือกเองในฟอร์ม)
+✅ ใช้ภาษาและกลไกของ IG: Reels · ภาพเลื่อน (carousel) · Story · การส่งต่อทาง DM · การบันทึกโพสต์
+ถ้าจะพูดถึง TikTok ให้เป็นแค่ช่องรองไว้ต่อยอด ไม่ใช่แกนของเล่ม`,
+    both: `\n\n📱 *** ลูกค้าทำทั้ง TikTok และ Instagram *** (ลูกค้าเลือกเองในฟอร์ม)
+✅ วางแผนให้ใช้ได้ทั้งสองช่อง และระบุให้ชัดในแต่ละวันว่าคลิปนั้น "ลงที่ไหนก่อน" และต้องปรับอะไรตอนลงอีกช่อง
+⚠️ อย่าเขียนแบบกลางๆ จนไม่รู้ว่าทำอะไรที่ช่องไหน`,
+  };
+  const platBlock = PLAT[String(fr.platform || "").toLowerCase()] || "";
   const voice = [fr.self_term && `แทนตัวเองว่า "${fr.self_term}"`, fr.audience_term && `เรียกคนดูว่า "${fr.audience_term}"`, fr.catchphrases && `คำติดปาก/สไตล์พูด: ${fr.catchphrases}`, fr.tone && `โทน: ${fr.tone}`].filter(Boolean).join(" · ") || "(ไม่ระบุ)";
-  return `ข้อมูลผู้ใช้:\ninstagram_account: ${parsed.instagram_account}\nชื่อที่อยากให้เรียก (display_name): ${fr.display_name || "(ไม่ระบุ — ใช้ชื่อช่อง/@handle หรือ 'คุณ' ห้ามเดาชื่อจากรูป)"}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\n🎤 น้ำเสียง/ตัวตนของเจ้าของช่อง (ใช้กับบทพูดในสคริปต์ให้เหมือนเขาพูดเอง): ${voice}\n\nคำตอบจากฟอร์ม:\nbusiness_type (ช่องเกี่ยวกับอะไร/ทำคอนเทนต์แนวไหน): ${fr.business_type || "(ไม่ระบุ — ให้วิเคราะห์จากรูป Insight + ข้อมูลที่เหลือ)"}\nเพศเจ้าของช่อง: ${fr.gender || "(ไม่ระบุ)"} · ช่วงอายุ: ${fr.age_range || "(ไม่ระบุ)"}\nwork_style (สถานะ/บทบาทของเจ้าของช่อง เช่น นักศึกษา/พนักงานประจำ/ฟรีแลนซ์/เจ้าของร้าน — ไม่จำเป็นต้องขายของ): ${fr.work_style || "(ไม่ระบุ)"}\naudience (คนดู/ผู้ติดตามหลัก): ${fr.audience || "(ไม่ระบุ)"}\nexperience (ทำมานานแค่ไหน): ${fr.experience || "(ไม่ระบุ)"}\ngoal_primary (เป้าหมายที่อยากได้เดือนนี้ อาจมีหลายข้อ): ${fr.goal_primary || "(ไม่ระบุ)"}\nเรื่องราว/ตัวตนของเจ้าของช่อง (จุดเริ่มต้น/จุดต่าง/เป้าหมายระยะยาว — สำคัญมากต่อความเป็นตัวเขา ให้ดึงมาใช้): ${fr.starting_point || "(ไม่ระบุ)"}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}${wantAvoidBlock(fr)}\n\n⚠️ ต้องใช้ work_style + audience + experience กำหนดทิศทางให้ "ตรงตัวคนนี้จริงๆ" — อาชีพเดียวกันแต่ทำงานคนละแบบ/ลูกค้าคนละกลุ่ม ต้องได้แผนคนละแบบ ห้ามเหมารวม (เช่น ช่างทำผมฟรีแลนซ์ ≠ เจ้าของร้าน)${todayBlock()}${prevBlock(parsed)}${trendsBlock(parsed)}`;
+  return `${platBlock}\n\nข้อมูลผู้ใช้:\nช่องหลัก: ${parsed.instagram_account}\nชื่อที่อยากให้เรียก (display_name): ${fr.display_name || "(ไม่ระบุ — ใช้ชื่อช่อง/@handle หรือ 'คุณ' ห้ามเดาชื่อจากรูป)"}\ntier: ${parsed.meta_purchase.tier}\nbilling_cycle: ${parsed.meta_purchase.billing_cycle}\n\n🎤 น้ำเสียง/ตัวตนของเจ้าของช่อง (ใช้กับบทพูดในสคริปต์ให้เหมือนเขาพูดเอง): ${voice}\n\nคำตอบจากฟอร์ม:\nbusiness_type (ช่องเกี่ยวกับอะไร/ทำคอนเทนต์แนวไหน): ${fr.business_type || "(ไม่ระบุ — ให้วิเคราะห์จากรูป Insight + ข้อมูลที่เหลือ)"}\nเพศเจ้าของช่อง: ${fr.gender || "(ไม่ระบุ)"} · ช่วงอายุ: ${fr.age_range || "(ไม่ระบุ)"}\nwork_style (สถานะ/บทบาทของเจ้าของช่อง เช่น นักศึกษา/พนักงานประจำ/ฟรีแลนซ์/เจ้าของร้าน — ไม่จำเป็นต้องขายของ): ${fr.work_style || "(ไม่ระบุ)"}\naudience (คนดู/ผู้ติดตามหลัก): ${fr.audience || "(ไม่ระบุ)"}\nexperience (ทำมานานแค่ไหน): ${fr.experience || "(ไม่ระบุ)"}\ngoal_primary (เป้าหมายที่อยากได้เดือนนี้ อาจมีหลายข้อ): ${fr.goal_primary || "(ไม่ระบุ)"}\nเรื่องราว/ตัวตนของเจ้าของช่อง (จุดเริ่มต้น/จุดต่าง/เป้าหมายระยะยาว — สำคัญมากต่อความเป็นตัวเขา ให้ดึงมาใช้): ${fr.starting_point || "(ไม่ระบุ)"}\nmonthly_goal: ${fr.monthly_goal}\ncompetitor_1: ${fr.competitor_1}\ncompetitor_2: ${fr.competitor_2}${wantAvoidBlock(fr)}\n\n⚠️ ต้องใช้ work_style + audience + experience กำหนดทิศทางให้ "ตรงตัวคนนี้จริงๆ" — อาชีพเดียวกันแต่ทำงานคนละแบบ/ลูกค้าคนละกลุ่ม ต้องได้แผนคนละแบบ ห้ามเหมารวม (เช่น ช่างทำผมฟรีแลนซ์ ≠ เจ้าของร้าน)${todayBlock()}${prevBlock(parsed)}${trendsBlock(parsed)}`;
 }
 
 // เดือน 2+ (ลูกค้าเก่า): ใส่บริบท "ทุกเดือนที่ผ่านมา" → ต่อยอดจากผลจริง ไม่ใช่เริ่มใหม่ + ห้ามคอนเทนต์ซ้ำทุกเดือนเก่า

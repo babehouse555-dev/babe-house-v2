@@ -240,7 +240,7 @@ export default function Form() {
   const [sp] = useSearchParams();
   const renew = sp.get("renew") === "1";
   const pickedPlan = sp.get("plan") || "";   // 💳 แพ็กที่ลูกค้าเลือกมาจากหน้าแรก — ส่งต่อให้หน้าจ่ายเงินเลือกไว้ให้
-  const [f, setF] = useState({ email: "", phone: "", display_name: "", instagram_account: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", content_want: "", content_avoid: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
+  const [f, setF] = useState({ email: "", phone: "", display_name: "", instagram_account: "", platform: "", business_type: "", gender: "", age_range: "", work_style: "", work_style_other: "", audience: [], audience_other: "", experience: "", goal_primary: [], self_term: "", audience_term: "", catchphrases: "", tone: "", q_origin: "", q_diff: "", q_vision: "", content_want: "", content_avoid: "", monthly_goal: "", competitor_1: "", competitor_2: "" });
   const [files, setFiles] = useState([]);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -293,6 +293,7 @@ export default function Form() {
     if (step === 1) {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email")); return; }
       if (!f.instagram_account.trim()) { setErr(t("fm_v_channel")); return; }
+      if (!f.platform) { setErr(t("fm_v_platform")); return; }
       if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); return; } // บังคับเบอร์ ≥9 หลัก — ครูพี่คิมต้องติดต่อได้ถ้าเล่มมีปัญหา
     }
     if (step === 3 && hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); return; } // บังคับแนบรูป Insight — ไม่มีรูป บทวิเคราะห์จะมั่ว
@@ -307,6 +308,7 @@ export default function Form() {
     if (step !== 4) { goNext(); return; } // กด Enter ก่อนถึงขั้นสุดท้าย = ไปขั้นถัดไป ไม่ใช่ส่งฟอร์ม
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) { setErr(t("fm_v_email2")); setStep(1); toTop(); return; }
     if (!f.instagram_account.trim()) { setErr(t("fm_v_channel2")); setStep(1); toTop(); return; }
+    if (!f.platform) { setErr(t("fm_v_platform")); setStep(1); toTop(); return; }
     if (f.phone.replace(/\D/g, "").length < 9) { setErr(t("fm_v_phone")); setStep(1); toTop(); return; } // double-lock เบอร์โทร
     if (hasChannel && ![...files].length) { setErr(t("fm_v_noimg")); setStep(3); toTop(); return; } // double-lock: มีช่องต้องมีรูป Insight เสมอ
     // ยังมีข้อความตัวอย่างของเราค้างอยู่ → หยุดไว้ก่อน ไม่งั้นได้เล่มของ Babe House ไม่ใช่ของเขา
@@ -322,6 +324,7 @@ export default function Form() {
         meta_purchase: { tier: "Premium_490", billing_cycle: currentCycle() },
         instagram_account: f.instagram_account,
         form_responses: {
+          platform: f.platform,
           business_type: f.business_type, gender: f.gender, age_range: f.age_range,
           work_style: [f.work_style, f.work_style_other.trim()].filter(Boolean).join(" / "),
           audience: [...(f.audience || []), f.audience_other.trim()].filter(Boolean).join(", "),
@@ -450,6 +453,25 @@ export default function Form() {
           <div className="field"><label>{t("fm_email_label")} <span style={{ color: "var(--blue)" }}>⭐</span> <span className="muted">{t("fm_email_hint_inline")}</span></label><input type="email" value={f.email} onChange={upd("email")} onFocus={() => setFocus(null)} placeholder="you@email.com" /><div className="hint">{t("fm_email_hint")}</div></div>
           <div className="field"><label>{t("fm_channel_name")} <span style={{ color: "var(--blue)" }}>⭐</span></label><input value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="@babehouse_academy" />{inlineGuide("instagram_account")}
             <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>{t("fm_multi_hint")}</div>
+          </div>
+          {/* 📱 ช่องหลักอยู่แพลตฟอร์มไหน — เพิ่ม 17 ส.ค. 2569 จากรีวิว 2 ดาวของลูกค้าจริง
+              เดิมระบบ "ไม่เคยถามเลย" (ช่องในฟอร์มชื่อ instagram_account ตรงๆ ไม่มีตัวแปร platform อยู่เลย)
+              AI ต้องเดาเอาจากรูป Insight → ลูกค้าลง Insight ของ TikTok แต่ได้บทวิเคราะห์ Instagram
+              เธอมีผู้ติดตาม TikTok ~1,000 คน แต่ IG แค่ 4 คน แล้วเล่มไปโฟกัส IG ทั้งเล่ม
+              ⚠️ AI ไม่ได้อ่านผิด — มันไม่เคยถูกบอก */}
+          <div className="field">
+            <label>{t("fm_platform_label")} <span style={{ color: "var(--blue)" }}>⭐</span></label>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              {[["tiktok", "🎵 TikTok"], ["instagram", "📷 Instagram"], ["both", "ทั้งสองช่อง"]].map(([v, label]) => (
+                <button type="button" key={v} onClick={() => { setF(x => ({ ...x, platform: v })); setFocus(null); }}
+                  style={{ border: `1.5px solid ${f.platform === v ? "var(--blue)" : "var(--border)"}`,
+                    background: f.platform === v ? "var(--blue)" : "#fff", color: f.platform === v ? "#fff" : "var(--ink)",
+                    borderRadius: 999, padding: "9px 17px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.6 }}>{t("fm_platform_hint")}</div>
           </div>
           <div className="field"><label>{t("fm_call_you")} <span className="muted">{t("fm_optional")}</span></label><input value={f.display_name} onChange={upd("display_name")} onFocus={() => setFocus(null)} placeholder="Namo / Mint" /><div className="hint">{t("fm_call_you_hint")}</div></div>
           <div className="field"><label>{t("fm_phone_label")}</label><input type="tel" value={f.phone} onChange={upd("phone")} onFocus={() => setFocus(null)} placeholder="08x-xxx-xxxx" /><div className="hint">{t("fm_phone_hint")}</div></div>

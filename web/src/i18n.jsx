@@ -636,6 +636,10 @@ const DICT = {
   // validation
   fm_v_email: { th: "ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่ม + เข้าดูย้อนหลัง", en: "Please enter a valid email — it's for sending your book + access" },
   fm_v_email2: { th: "ช่วยกรอกอีเมลให้ถูกต้องด้วยนะคะ — ใช้ส่งเล่มให้ + เข้าดูย้อนหลังทุกเดือน", en: "Please enter a valid email — for your book + monthly access" },
+  // 📱 แพลตฟอร์มหลัก — เพิ่ม 17 ส.ค. 2569 จากรีวิว 2 ดาว (ลูกค้าลง Insight ของ TikTok แต่ได้เล่ม Instagram)
+  fm_platform_label: { th: "ช่องหลักของคุณอยู่ที่ไหน", en: "Where is your main channel?" },
+  fm_platform_hint: { th: "เลือกให้ตรงกับที่คนติดตามเราจริงนะคะ — ครูพี่คิมจะวางแผนด้วยภาษาและกลไกของแพลตฟอร์มนั้น ซึ่งคนละแบบกันเลย", en: "Pick where your followers actually are — Kim plans using that platform's language and mechanics, which differ a lot." },
+  fm_v_platform: { th: "เลือกช่องหลักของคุณด้วยนะคะ (TikTok หรือ Instagram)", en: "Please choose your main platform (TikTok or Instagram)" },
   fm_v_channel: { th: "ช่วยกรอกชื่อช่อง/แฮนเดิลด้วยนะคะ", en: "Please enter your channel name/handle" },
   fm_v_phone: { th: "ช่วยกรอกเบอร์โทรด้วยนะคะ 🩵 เผื่อเล่มมีปัญหา ครูพี่คิมจะได้ติดต่อไปช่วยแก้ให้ทันค่ะ", en: "Please add your phone number 🩵 so Kim can reach you quickly if your book needs a fix" },
   fm_v_channel2: { th: "ช่วยกรอกชื่อช่อง/แฮนเดิล (⭐) ให้หน่อยนะคะ — ที่เหลือไม่บังคับค่ะ", en: "Please enter your channel name/handle (⭐) — the rest is optional" },

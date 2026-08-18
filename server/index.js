@@ -2867,14 +2867,19 @@ async function academyOwnedCourseIds(email) {
   // อีเมลลูกค้า → user เก่า (อาจหลายบัญชี) → ออเดอร์ Close → คอร์สที่ซื้อ (จาก order.course_id + order_lines)
   const rows = await q(`
     SELECT DISTINCT x.course_id FROM (
+      -- ⚠️ ต้องตัด course_id = '0' ทิ้งด้วย ไม่ใช่แค่ค่าว่าง
+      --    ระบบเก่าเวลาซื้อหลายคอร์สในออเดอร์เดียว จะใส่ courseId = 0 ไว้ที่หัวออเดอร์
+      --    แล้วเก็บคอร์สจริงไว้ใน orderLine แทน — '0' ไม่ใช่คอร์สที่มีอยู่จริง
+      --    ของเดิมนับ '0' เป็นคอร์สด้วย ทำให้หน้าแอดมินขึ้นจำนวนคอร์สเกินจริง
+      --    (เจอ 18 ส.ค. 69 ตอนเช็กลูกค้า Ponsiri — ซื้อ 1 คอร์ส แต่ขึ้นว่า 2)
       SELECT o.course_id FROM academy_orders o
         JOIN academy_users u ON u.legacy_id = o.legacy_user_id
-        WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(o.course_id,'') <> ''
+        WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(o.course_id,'') NOT IN ('', '0')
       UNION
       SELECT l.course_id FROM academy_order_lines l
         JOIN academy_orders o ON o.legacy_id = l.order_id
         JOIN academy_users u ON u.legacy_id = o.legacy_user_id
-        WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(l.course_id,'') <> ''
+        WHERE lower(u.email) = lower($1) AND o.status = 'Close' AND COALESCE(l.course_id,'') NOT IN ('', '0')
       UNION
       -- 🎁 สิทธิ์ที่ทีมเปิดให้เพิ่ม (ลูกค้าจ่ายผ่านแอดมิน/LINE แต่ออเดอร์ในระบบเก่าค้างสถานะ Open)
       SELECT g.course_id FROM academy_grants g WHERE lower(g.email) = lower($1)

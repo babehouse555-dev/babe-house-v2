@@ -1133,6 +1133,16 @@ export async function initDb() {
     -- → ลูกค้าใหม่ได้ใบที่เขียนว่า "babehouse555" ซึ่งเอาไปอวดไม่ได้
     ALTER TABLE academy_purchases ADD COLUMN IF NOT EXISTS student_name TEXT;
     ALTER TABLE workshop_bookings ADD COLUMN IF NOT EXISTS tax_json TEXT;
+
+    -- 📣 ลูกค้าคนนี้มาจากทางไหน (แอด / ไลน์ / ค้นหา / เข้าตรง)
+    -- คิมถาม 18 ส.ค. 69: "ยิงแอดแล้ว บรอดแคสต์ไลน์แล้ว ยอดก็ยังไม่เข้า ทำยังไงดี"
+    -- ตอบไม่ได้ เพราะของเดิมเก็บที่มาเฉพาะ "เล่ม Blueprint" (blueprint_orders.source)
+    -- ส่วนคอร์สกับคลาสสด ซึ่งเป็นของราคาแพงที่ทำยอดจริง กลับไม่เก็บเลย
+    -- → ลงงบโฆษณาโดยไม่รู้ว่าเงินที่ได้กลับมาเป็นผลจากช่องทางไหน
+    ALTER TABLE academy_purchases  ADD COLUMN IF NOT EXISTS source TEXT;
+    ALTER TABLE workshop_bookings  ADD COLUMN IF NOT EXISTS source TEXT;
+    CREATE INDEX IF NOT EXISTS idx_apay_source ON academy_purchases(source);
+    CREATE INDEX IF NOT EXISTS idx_wsb_source  ON workshop_bookings(source);
   `);
   console.log("[db] schema ready");
 }

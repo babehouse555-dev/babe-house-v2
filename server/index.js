@@ -865,6 +865,13 @@ function cleanTax(b) {
 // 📌 กติกาสำคัญ: ยอดที่ "บันทึกลงตาราง" (amount_satang / final_amount_satang) ต้องเป็น **ยอดเต็ม** เสมอ
 //    หักเฉพาะตอนส่งไปเก็บเงินที่ Stripe เท่านั้น
 //    ถ้าเก็บยอดที่หักแล้วลงตาราง ตอนออกใบกำกับมันจะไปหัก 3% ซ้ำจากยอดที่หักไปแล้ว
+// 📣 ล้างค่า "ที่มาของลูกค้า" ที่หน้าเว็บส่งมา — ใช้ร่วมกันทุกสินค้า
+// หน้าเว็บจำไว้ตั้งแต่คลิกเข้ามาครั้งแรก (fbclid / utm_source / ผู้ส่งต่อ) แล้วส่งมาตอนกดจ่ายเงิน
+// ⚠️ เป็นข้อความที่ลูกค้าส่งมาได้เอง → ตัดความยาวและกันอักขระแปลกก่อนเก็บเสมอ
+function cleanSource(v) {
+  const s = String(v || "").trim().replace(/[^\w\-./ก-๙ ]/g, "").slice(0, 60);
+  return s || null;
+}
 function whtCutSatang(amountSatang, tax) {
   if (!tax?.is_company || !tax?.wht) return 0;
   // หักจากยอดก่อน VAT ตามกฎหมาย (ราคาเรารวม VAT แล้ว ต้องถอดก่อน)
@@ -3229,7 +3236,7 @@ app.post("/api/academy/buy", rateLimit(20, M10), async (req, res) => {
     const origin = appBaseUrl();
     // โค้ดส่วนลด 100% → ข้าม Stripe ให้สิทธิ์เรียนเลย
     if (amountSatang <= 0) {
-      await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, student_name) VALUES ($1, lower($2), $3, $4, 0, $5)`, [purchaseId, email, courseId, c.name, studentName || null]);
+      await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, student_name, source) VALUES ($1, lower($2), $3, $4, 0, $5, $6)`, [purchaseId, email, courseId, c.name, studentName || null, cleanSource(req.body?.source)]);
       await finalizeAcademyPurchase(await one(`SELECT * FROM academy_purchases WHERE purchase_id=$1`, [purchaseId]));
       return res.json({ ok: true, free: true, purchase_id: purchaseId, redirect_url: `/academy/paid?purchase_id=${encodeURIComponent(purchaseId)}` });
     }
@@ -3249,8 +3256,8 @@ app.post("/api/academy/buy", rateLimit(20, M10), async (req, res) => {
       cancel_url: `${origin}/academy?payment=cancelled`,
       metadata: { academy_purchase_id: purchaseId, course_id: courseId },
     });
-    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id, tax_json, student_name) VALUES ($1, lower($2), $3, $4, $5, $6, $7, $8)`,
-      [purchaseId, email, courseId, c.name, amountSatang, s.id, JSON.stringify(ct.tax), studentName || null]);
+    await run(`INSERT INTO academy_purchases (purchase_id, email, course_id, course_name, amount_satang, provider_session_id, tax_json, student_name, source) VALUES ($1, lower($2), $3, $4, $5, $6, $7, $8, $9)`,
+      [purchaseId, email, courseId, c.name, amountSatang, s.id, JSON.stringify(ct.tax), studentName || null, cleanSource(req.body?.source)]);
     res.json({ ok: true, checkout_url: s.url, purchase_id: purchaseId });
   } catch (e) { console.error("academy buy", e.message); res.status(500).json({ ok: false, error: "BUY_FAILED", message: e.message }); }
 });
@@ -3656,8 +3663,8 @@ app.post("/api/workshops/book", rateLimit(20, M10), async (req, res) => {
     const origin = appBaseUrl();
     // โค้ดส่วนลด 100% → ไม่ต้องผ่าน Stripe (ยอด 0 บาทสร้าง checkout ไม่ได้) บันทึกจองให้เลย
     if (amountSatang <= 0) {
-      await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, promo_code, food_note, needs_parking, customer_note)
-        VALUES ($1,$2,$3,lower($4),$5,$6,$7,0,$8,$9,$10,$11)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, promo.code || null, food, parking, note]);
+      await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, promo_code, food_note, needs_parking, customer_note, source)
+        VALUES ($1,$2,$3,lower($4),$5,$6,$7,0,$8,$9,$10,$11,$12)`, [bookingId, sessionId, s.workshop_id, email, name, phone, qty, promo.code || null, food, parking, note, cleanSource(req.body?.source)]);
       await finalizeWorkshopBooking(await one(`SELECT * FROM workshop_bookings WHERE booking_id=$1`, [bookingId]));
       return res.json({ ok: true, free: true, booking_id: bookingId, redirect_url: `/workshop/paid?booking_id=${encodeURIComponent(bookingId)}` });
     }
@@ -3675,9 +3682,9 @@ app.post("/api/workshops/book", rateLimit(20, M10), async (req, res) => {
       cancel_url: `${origin}/workshop/${encodeURIComponent(s.workshop_id)}?payment=cancelled`,
       metadata: { workshop_booking_id: bookingId, session_id: sessionId },
     });
-    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code, food_note, needs_parking, customer_note, tax_json)
-      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null, food, parking, note, JSON.stringify(wsTax)]);
+    await run(`INSERT INTO workshop_bookings (booking_id, session_id, workshop_id, email, name, phone, qty, amount_satang, provider_session_id, promo_code, food_note, needs_parking, customer_note, tax_json, source)
+      VALUES ($1,$2,$3,lower($4),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [bookingId, sessionId, s.workshop_id, email, name, phone, qty, amountSatang, ck.id, promo.code || null, food, parking, note, JSON.stringify(wsTax), cleanSource(req.body?.source)]);
     res.json({ ok: true, checkout_url: ck.url, booking_id: bookingId });
   } catch (e) { console.error("workshop book", e.message); res.status(500).json({ ok: false, error: "BOOK_FAILED", message: e.message }); }
 });
@@ -7023,6 +7030,54 @@ app.post("/api/admin/regenerate", async (req, res) => {
     finally { inFlightOrders.delete(orderId); }
   })();
 });
+// ✏️ แก้คำตอบในฟอร์มของลูกค้า แล้วค่อยกด "สร้างใหม่" ต่อ
+//
+// ทำไมต้องมี (เคสจริง 18 ส.ค. 69 — ลูกค้า natcha ทักมาว่า "ขอเล่มใหม่ค่า" พร้อมคำตอบชุดใหม่):
+//   ปุ่ม /api/admin/regenerate ของเดิม สร้างจาก "คำตอบเดิม" เท่านั้น → ได้เล่มหน้าตาเหมือนเดิมเป๊ะ
+//   ทางเดียวที่เหลือคือให้ลูกค้ากรอกฟอร์มใหม่ทั้งชุด ซึ่งต้องอัปรูป Insight ใหม่หมด
+//   ทั้งที่รูปเดิมของเขายังอยู่ครบใน order_payload_json อยู่แล้ว
+//   → ตรงนี้แก้เฉพาะ "ข้อความที่ตอบ" แล้วใช้รูปเดิมต่อ ลูกค้าไม่ต้องทำอะไรเลย
+//
+// ⛔ แก้ได้เฉพาะช่องที่อยู่ในรายการนี้ — กันพลาดไปทับ meta_purchase / รูป / ข้อมูลการจ่ายเงิน
+const EDITABLE_FORM_FIELDS = ["platform", "business_type", "starting_point", "monthly_goal",
+  "content_want", "content_avoid", "audience", "tone", "goal_primary", "display_name",
+  "competitor_1", "competitor_2", "self_term", "audience_term", "catchphrases",
+  "gender", "age_range", "work_style", "experience"];
+app.post("/api/admin/order/edit-form", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const orderId = String(req.body?.order_id || "");
+  const o = await getOrder(orderId);
+  if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND", message: "ไม่เจอออเดอร์นี้ค่ะ" });
+  if (!["paid", "mock_paid"].includes(o.payment_status))
+    return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED", message: "ออเดอร์นี้ยังไม่ได้ชำระเงินค่ะ" });
+
+  const payload = safeJson(o.order_payload_json) || {};
+  if (!payload.form_responses)
+    return res.status(409).json({ ok: false, error: "NO_FORM", message: "ออเดอร์นี้ไม่มีข้อมูลฟอร์มเดิม ต้องให้ลูกค้ากรอกใหม่ค่ะ" });
+
+  const changed = [];
+  for (const k of EDITABLE_FORM_FIELDS) {
+    if (req.body?.fields && Object.prototype.hasOwnProperty.call(req.body.fields, k)) {
+      const v = String(req.body.fields[k] ?? "").slice(0, 4000);
+      if (v !== String(payload.form_responses[k] ?? "")) { payload.form_responses[k] = v; changed.push(k); }
+    }
+  }
+  // 📺 ชื่อช่องอยู่ 2 ที่ (ในคอลัมน์ของออเดอร์ และในตัว payload) ต้องแก้ให้ตรงกันทั้งคู่
+  //    ไม่งั้นบทวิเคราะห์จะอ้างชื่อช่องผิด (ลูกค้ากรอกชื่อตัวเองแทนชื่อช่องบ่อยมาก)
+  const newChannel = req.body?.instagram_account !== undefined ? String(req.body.instagram_account).trim().slice(0, 100) : null;
+  if (newChannel !== null && newChannel !== String(o.instagram_account || "")) {
+    payload.instagram_account = newChannel;
+    await run(`UPDATE blueprint_orders SET instagram_account=$1 WHERE order_id=$2`, [newChannel, orderId]);
+    changed.push("instagram_account");
+  }
+  if (!changed.length) return res.json({ ok: true, changed: [], message: "ไม่มีอะไรเปลี่ยนค่ะ" });
+
+  await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`, [JSON.stringify(payload), orderId]);
+  res.json({ ok: true, order_id: orderId, changed,
+    form_responses: payload.form_responses, instagram_account: payload.instagram_account ?? o.instagram_account,
+    next: "แก้คำตอบแล้วค่ะ — กด /api/admin/regenerate ต่อเพื่อสร้างเล่มใหม่จากคำตอบชุดนี้ (ใช้รูป Insight เดิม)" });
+});
+
 async function getStudents(industry) {
   // 1 อีเมล/รอบเดือน = 1 แถว (เอาออเดอร์ที่จ่ายแล้วล่าสุด) + สถานะการสร้างเล่ม + ข้อมูลฟอร์มจาก request ล่าสุด
   const rows = await q(`

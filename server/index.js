@@ -855,6 +855,27 @@ function cleanTax(b) {
                   wht: !!b.wht } };
 }
 
+// 💸 หัก ณ ที่จ่าย 3% — คิดที่เดียว ใช้ร่วมกันทุกท่อจ่ายเงิน
+//
+// ⚠️ บั๊กจริง 18 ส.ค. 2569 (พลอยแจ้ง: "เขาบอกว่าติ๊กแล้ว แต่ระบบยังขึ้นจ่ายเต็ม")
+//    ของเดิมมีแค่ท่อเล่ม Blueprint ที่หักจริง — คอร์ส · คลาสสด · เครดิตตัดต่อ "ลืมหัก"
+//    ผลคือลูกค้าติ๊กแล้ว Stripe ยังเก็บเต็ม แต่ใบกำกับออกโดยหัก 3%
+//    → เงินที่เข้าจริงไม่ตรงกับใบกำกับ บัญชีเพี้ยน และลูกค้าจ่ายเกิน
+//
+// 📌 กติกาสำคัญ: ยอดที่ "บันทึกลงตาราง" (amount_satang / final_amount_satang) ต้องเป็น **ยอดเต็ม** เสมอ
+//    หักเฉพาะตอนส่งไปเก็บเงินที่ Stripe เท่านั้น
+//    ถ้าเก็บยอดที่หักแล้วลงตาราง ตอนออกใบกำกับมันจะไปหัก 3% ซ้ำจากยอดที่หักไปแล้ว
+function whtCutSatang(amountSatang, tax) {
+  if (!tax?.is_company || !tax?.wht) return 0;
+  // หักจากยอดก่อน VAT ตามกฎหมาย (ราคาเรารวม VAT แล้ว ต้องถอดก่อน)
+  return Math.round(Math.round(Number(amountSatang || 0) / 1.07) * 3 / 100);
+}
+function chargeAfterWht(amountSatang, tax) {
+  const cut = whtCutSatang(amountSatang, tax);
+  // ขั้นต่ำ 1 บาท กัน Stripe ปฏิเสธรายการ
+  return cut > 0 ? Math.max(100, Number(amountSatang) - cut) : Number(amountSatang);
+}
+
 app.post("/api/order/tax-info", rateLimit(60, M10), async (req, res) => {
   const orderId = String(req.body?.order_id || "");
   const o = await getOrder(orderId);
@@ -1055,10 +1076,8 @@ app.post("/api/create-payment-session", async (req, res) => {
     let amount = o.final_amount_satang || PRICE_SATANG;
     // 💸 ลูกค้านิติบุคคลที่หัก ณ ที่จ่าย 3% จ่ายน้อยลงเท่าที่หัก (คิมสั่ง 8 ส.ค.)
     //    ⚠️ ต้องลดยอดที่เก็บจริงด้วย ไม่งั้นใบเสร็จบอกว่าหัก แต่เงินเข้าเต็ม = บัญชีไม่ตรง
-    //    หักจากยอดก่อน VAT ตามกฎหมาย (ยอดเรารวม VAT แล้ว ต้องถอดก่อน)
     const taxInfo = (safeJson(o.order_payload_json) || {}).tax || {};
-    const whtCut = (taxInfo.is_company && taxInfo.wht) ? Math.round(Math.round(amount / 1.07) * 3 / 100) : 0;
-    if (whtCut > 0) amount = Math.max(100, amount - whtCut);   // ขั้นต่ำ 1 บาท กัน Stripe ปฏิเสธ
+    amount = chargeAfterWht(amount, taxInfo);
     if (o.provider === "stripe") {
       // ความปลอดภัย: ถ้าตั้ง stripe แต่ไม่มีคีย์ → ห้ามแจกฟรีเงียบๆ
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงานค่ะ" });
@@ -3214,11 +3233,13 @@ app.post("/api/academy/buy", rateLimit(20, M10), async (req, res) => {
     if (!String(process.env.STRIPE_SECRET_KEY || "").trim()) return res.status(503).json({ ok: false, error: "PAYMENT_NOT_CONFIGURED", message: "ระบบชำระเงินยังไม่พร้อม" });
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    // 💸 นิติบุคคลที่หัก ณ ที่จ่าย 3% เก็บเงินน้อยลงเท่าที่หัก — แต่ amount_satang ที่บันทึกยังเป็นยอดเต็ม
+    const payNow = chargeAfterWht(amountSatang, ct.tax);
     const s = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: (process.env.STRIPE_PAYMENT_METHODS || "card,promptpay").split(",").map(x => x.trim()).filter(Boolean),
       customer_email: email,
-      line_items: [{ price_data: { currency: "thb", product_data: { name: `คอร์ส ${c.name} · Babe House Academy` }, unit_amount: amountSatang }, quantity: 1 }],
+      line_items: [{ price_data: { currency: "thb", product_data: { name: `คอร์ส ${c.name} · Babe House Academy` }, unit_amount: payNow }, quantity: 1 }],
       success_url: `${origin}/academy/paid?purchase_id=${encodeURIComponent(purchaseId)}`,
       cancel_url: `${origin}/academy?payment=cancelled`,
       metadata: { academy_purchase_id: purchaseId, course_id: courseId },
@@ -3638,11 +3659,13 @@ app.post("/api/workshops/book", rateLimit(20, M10), async (req, res) => {
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const when = new Date(s.starts_at).toLocaleString("th-TH", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Bangkok" });
+    // 💸 นิติบุคคลที่หัก ณ ที่จ่าย 3% เก็บเงินน้อยลงเท่าที่หัก — แต่ amount_satang ที่บันทึกยังเป็นยอดเต็ม
+    const payNow = chargeAfterWht(amountSatang, wsTax);
     const ck = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: (process.env.STRIPE_PAYMENT_METHODS || "card,promptpay").split(",").map(x => x.trim()).filter(Boolean),
       customer_email: email,
-      line_items: [{ price_data: { currency: "thb", product_data: { name: `${s.ws_name} · รอบ ${when}` }, unit_amount: amountSatang }, quantity: 1 }],
+      line_items: [{ price_data: { currency: "thb", product_data: { name: `${s.ws_name} · รอบ ${when}` }, unit_amount: payNow }, quantity: 1 }],
       success_url: `${origin}/workshop/paid?booking_id=${encodeURIComponent(bookingId)}`,
       cancel_url: `${origin}/workshop/${encodeURIComponent(s.workshop_id)}?payment=cancelled`,
       metadata: { workshop_booking_id: bookingId, session_id: sessionId },
@@ -4568,7 +4591,8 @@ app.post("/api/edit/credits/buy", rateLimit(20, M10), async (req, res) => {
     if (PROVIDER === "stripe") {
       if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ ok: false, error: "PAYMENT_UNAVAILABLE", message: "ระบบชำระเงินยังไม่พร้อมค่ะ" });
       const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: payNow, email,
+      // 💸 นิติบุคคลที่หัก ณ ที่จ่าย 3% เก็บเงินน้อยลงเท่าที่หัก — final_amount_satang ที่บันทึกยังเป็นยอดเต็ม
+      const ck = await createStripeCheckout({ orderId, payload: {}, origin, amountSatang: chargeAfterWht(payNow, ct.tax), email,
         productName: `Babe House เครดิตตัดต่อ ${n} คลิป`, successPath: backTo });
       await run(`UPDATE blueprint_orders SET provider_session_id=$1 WHERE order_id=$2`, [ck.provider_session_id, orderId]);
       return res.json({ ok: true, redirect_url: ck.checkout_url, external: true });

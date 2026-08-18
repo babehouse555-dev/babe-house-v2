@@ -205,7 +205,10 @@ export default function AcademyCourse() {
             {!owned && promo && <div style={{ background: "#e8f7ee", border: "1px solid #9ed3b0", borderRadius: 10, padding: "9px 12px", marginBottom: 10, fontSize: 13.5, color: "#1a7f43", fontWeight: 700 }}>
               ราคาหลังใช้โค้ด: {promo.final <= 0 ? "ฟรี!" : `฿${(promo.final / 100).toLocaleString()}`}
             </div>}
-            {!owned && session.token && TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
+            {/* ⚠️ ต้องส่ง totalSatang เสมอ — ไม่งั้นกล่องสรุป "ยอดที่ต้องชำระ" ไม่ขึ้นเลย
+                ลูกค้าติ๊ก "หัก ณ ที่จ่าย" แล้วเหมือนไม่มีอะไรเกิดขึ้น (พลอยแจ้ง 18 ส.ค. 69) */}
+            {!owned && session.token && TAX_INVOICE_LIVE &&
+              <TaxInvoiceBox onChange={setTax} totalSatang={promo ? promo.final : Math.round(finalPrice * 100)} />}
             {owned
               ? <Link className="btn full" to={`/academy/learn?course=${c.id}`} style={{ textAlign: "center" }}>เข้าเรียน →</Link>
               : showLogin && !session.token

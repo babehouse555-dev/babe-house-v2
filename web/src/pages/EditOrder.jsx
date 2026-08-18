@@ -218,7 +218,10 @@ export default function EditOrder() {
             ราคาหลังใช้โค้ด: {promo.final <= 0 ? "ฟรี!" : `฿${(promo.final / 100).toLocaleString()}`}
           </div>}
         </div>
-        {TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
+        {/* ⚠️ ต้องส่ง totalSatang เสมอ — ไม่งั้นกล่องสรุป "ยอดที่ต้องชำระ" ไม่ขึ้นเลย
+            ลูกค้าติ๊ก "หัก ณ ที่จ่าย" แล้วเหมือนไม่มีอะไรเกิดขึ้น (พลอยแจ้ง 18 ส.ค. 69) */}
+        {TAX_INVOICE_LIVE &&
+          <TaxInvoiceBox onChange={setTax} totalSatang={promo ? promo.final : Math.round((price?.total || 0) * 100)} />}
         {!authed && showLogin
           ? <LoginBox title="เข้าสู่ระบบก่อนซื้อเครดิตนะคะ"
               hint={<>ใช้อีเมลเดิมที่เคยซื้อกับเรา — <b>เครดิตจะไปเข้าบัญชีนี้ค่ะ</b></>}

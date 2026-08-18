@@ -213,7 +213,10 @@ export default function WorkshopDetail() {
                 <span>ยอดรวม</span>
                 <span>{promo ? (promo.final <= 0 ? "ฟรี!" : money(promo.final / 100)) : money(totalSatang / 100)}</span>
               </div>
-              {!soldOut && session.token && TAX_INVOICE_LIVE && <TaxInvoiceBox onChange={setTax} />}
+              {/* ⚠️ ต้องส่ง totalSatang เสมอ — ไม่งั้นกล่องสรุป "ยอดที่ต้องชำระ" ไม่ขึ้นเลย
+                  ลูกค้าติ๊ก "หัก ณ ที่จ่าย" แล้วเหมือนไม่มีอะไรเกิดขึ้น (พลอยแจ้ง 18 ส.ค. 69) */}
+              {!soldOut && session.token && TAX_INVOICE_LIVE &&
+                <TaxInvoiceBox onChange={setTax} totalSatang={promo ? promo.final : totalSatang} />}
               {showLogin && !session.token
                 ? <LoginBox title="เข้าสู่ระบบก่อนจองนะคะ"
                     hint={<>ใช้อีเมลเดิมที่เคยซื้อกับเราได้เลย — <b>เข้าเสร็จอยู่หน้านี้ต่อ ที่กรอกไว้ไม่หายค่ะ</b></>}

@@ -7070,6 +7070,19 @@ app.post("/api/admin/order/edit-form", async (req, res) => {
     await run(`UPDATE blueprint_orders SET instagram_account=$1 WHERE order_id=$2`, [newChannel, orderId]);
     changed.push("instagram_account");
   }
+  // 🖼️ ล้างรูป Insight เดิมทิ้ง — ใช้ตอน "เปลี่ยนช่อง" เท่านั้น
+  // ⚠️ เคสจริง 19 ส.ค. 69: ลูกค้าซื้อเล่มให้ช่องส่วนตัว แล้วขอเปลี่ยนเป็นช่องธุรกิจ
+  //    ถ้าไม่ล้าง AI จะเอา "ตัวเลขของช่องเก่า" มาวิเคราะห์ให้ "ธุรกิจใหม่" = บทวิเคราะห์ผิดทั้งเล่ม
+  //    (บทเรียนเดียวกับรีวิว 2 ดาว — ข้อมูลช่องผิด ลูกค้าไม่พอใจแน่นอน)
+  // 📌 ถ้าล้างแล้ว ต้องใส่ตัวเลขจริงลง starting_point เป็นข้อความแทน ไม่งั้น AI ไม่มีอะไรให้อ่านเลย
+  if (req.body?.clear_images === true) {
+    const had = (payload.insight_images?.length || 0) + (payload.insight_screenshot_base64 ? 1 : 0);
+    if (had) {
+      delete payload.insight_images;
+      delete payload.insight_screenshot_base64;
+      changed.push(`ล้างรูป Insight เดิม ${had} รูป`);
+    }
+  }
   if (!changed.length) return res.json({ ok: true, changed: [], message: "ไม่มีอะไรเปลี่ยนค่ะ" });
 
   await run(`UPDATE blueprint_orders SET order_payload_json=$1 WHERE order_id=$2`, [JSON.stringify(payload), orderId]);

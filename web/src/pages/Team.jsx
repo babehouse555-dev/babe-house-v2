@@ -141,6 +141,8 @@ function L({ t, children }) {
 export default function Team() {
   const [code, setCode] = useState(localStorage.getItem("babe_my_code") || "");
   const [typed, setTyped] = useState("");
+  // 👁️ โชว์/ซ่อนรหัสตอนพิมพ์ (คิมสั่ง 19 ส.ค. 69) — ทีมพิมพ์รหัสผิดแล้วไม่รู้ว่าผิดตรงไหน
+  const [showPw, setShowPw] = useState(false);
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState("jobs");
@@ -228,8 +230,20 @@ export default function Team() {
       <div style={{ fontSize: 40, marginBottom: 8 }}>🩵</div>
       <h1 style={{ fontSize: 24, margin: "0 0 6px" }}>Babe House Team</h1>
       <p style={{ color: "#7c7268", fontSize: 14, marginBottom: 22 }}>ใส่รหัสส่วนตัวของคุณเพื่อดูงานของตัวเองค่ะ</p>
-      <input style={{ ...input, textAlign: "center", letterSpacing: 1 }} type="password" placeholder="รหัสส่วนตัว"
-        value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => e.key === "Enter" && load(typed.trim())} />
+      {/* 👁️ ปุ่มโชว์รหัส — วางซ้อนในช่องด้านขวา ไม่กินที่และไม่ทับตัวหนังสือ
+          paddingRight เผื่อไว้ให้ตัวรหัสยาวๆ ไม่ไหลไปอยู่ใต้ปุ่ม */}
+      <div style={{ position: "relative" }}>
+        <input style={{ ...input, textAlign: "center", letterSpacing: 1, paddingRight: 44 }}
+          type={showPw ? "text" : "password"} placeholder="รหัสส่วนตัว" autoComplete="current-password"
+          value={typed} onChange={e => setTyped(e.target.value)} onKeyDown={e => e.key === "Enter" && load(typed.trim())} />
+        <button type="button" onClick={() => setShowPw(v => !v)}
+          title={showPw ? "ซ่อนรหัส" : "โชว์รหัส"} aria-label={showPw ? "ซ่อนรหัส" : "โชว์รหัส"}
+          style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                   border: 0, background: "transparent", cursor: "pointer", fontSize: 17,
+                   padding: "4px 6px", lineHeight: 1, opacity: .75 }}>
+          {showPw ? "🙈" : "👁️"}
+        </button>
+      </div>
       {err && <p style={{ color: "#b42318", fontSize: 13, marginTop: 10 }}>{err}</p>}
       <button style={{ ...btn(), marginTop: 14, width: "100%" }} onClick={() => load(typed.trim())}>เข้าสู่ระบบ</button>
       <p style={{ color: "#a89f96", fontSize: 12, marginTop: 20 }}>ลืมรหัส? ทักคิมได้เลยค่ะ</p>

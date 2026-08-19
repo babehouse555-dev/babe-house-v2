@@ -7013,6 +7013,14 @@ app.post("/api/admin/regenerate", async (req, res) => {
   }
   const o = await getOrder(orderId); if (!o) return res.status(404).json({ ok: false, error: "ORDER_NOT_FOUND" });
   if (!["paid", "mock_paid"].includes(o.payment_status)) return res.status(402).json({ ok: false, error: "PAYMENT_REQUIRED" });
+  // 🗑️ จำเล่มเดิมไว้ เพื่อลบทิ้งหลังสร้างเล่มใหม่สำเร็จ
+  // ⚠️ บั๊กจริง 19 ส.ค. 69 — ลูกค้า Blue Whale แจ้งผ่านพลอย:
+  //    "ขึ้นเป็นช่องนี้ แต่กดเข้าไปมันเป็นเนื้อหาของอีกช่องนึงค่ะ"
+  //    ของเดิม regenerate แค่ชี้ออเดอร์ไปเล่มใหม่ แต่ "แถวเล่มเก่ายังอยู่และยังไม่ถูกลบ"
+  //    หน้าบัญชีลูกค้าอ่านจากตาราง blueprints ตรงๆ → เห็นทั้งเล่มเก่าและเล่มใหม่ปนกัน
+  //    กดผิดเล่มก็เจอเนื้อหาเก่า ทั้งที่เราบอกลูกค้าไปแล้วว่าแก้ให้เรียบร้อย
+  // 📌 ลบแบบกู้คืนได้ (soft delete) — ผิดตัวยังกู้ด้วย /api/admin/restore-book ได้ 30 วัน
+  const oldBpId = o.blueprint_id || null;
   await run(`UPDATE blueprint_orders SET blueprint_id=NULL, generation_status='generating', generation_error=NULL WHERE order_id=$1`, [orderId]);
   res.json({ ok: true, order_id: orderId, status: "generating" });
   inFlightOrders.add(orderId);
@@ -7020,6 +7028,11 @@ app.post("/api/admin/regenerate", async (req, res) => {
     try {
       const result = await generateBlueprintForPayload(safeJson(o.order_payload_json));
       await run(`UPDATE blueprint_orders SET blueprint_id=$1, generation_status='ready', generation_error=NULL WHERE order_id=$2`, [result.blueprintId, orderId]);
+      // เล่มใหม่ขึ้นแล้วค่อยลบเล่มเก่า — ถ้าสร้างพลาด ลูกค้ายังมีเล่มเดิมอ่านได้ ไม่ตกอยู่ในสภาพไม่มีอะไรเลย
+      if (oldBpId && oldBpId !== result.blueprintId) {
+        await run(`UPDATE blueprints SET deleted_at=now() WHERE blueprint_id=$1 AND deleted_at IS NULL`, [oldBpId]).catch(() => {});
+        console.log(`[regenerate] ลบเล่มเก่า ${oldBpId} (กู้คืนได้ ${RESTORE_DAYS} วัน)`);
+      }
       console.log(`[regenerate] order ${orderId} → ${result.blueprintId}`);
       if (o.email) { const url = `${appBaseUrl()}/dashboard?user_id=${encodeURIComponent(result.parsed.user_id)}&billing_cycle=${encodeURIComponent(result.parsed.meta_purchase.billing_cycle)}&blueprint_id=${encodeURIComponent(result.blueprintId)}`; const l = langOfPayload(result.parsed); await sendEmail(o.email,
         tr(l, `บทวิเคราะห์ช่องของคุณพร้อมแล้ว 🩵`, `Your channel analysis is ready 🩵`),
@@ -7062,8 +7075,6 @@ app.post("/api/admin/order/edit-form", async (req, res) => {
       if (v !== String(payload.form_responses[k] ?? "")) { payload.form_responses[k] = v; changed.push(k); }
     }
   }
-  // 📺 ชื่อช่องอยู่ 2 ที่ (ในคอลัมน์ของออเดอร์ และในตัว payload) ต้องแก้ให้ตรงกันทั้งคู่
-  //    ไม่งั้นบทวิเคราะห์จะอ้างชื่อช่องผิด (ลูกค้ากรอกชื่อตัวเองแทนชื่อช่องบ่อยมาก)
   // 📺 ชื่อช่องเก็บไว้ 3 ที่ ต้องตรงกันทั้งหมด
   //    1. blueprint_orders.instagram_account
   //    2. order_payload_json.instagram_account

@@ -7068,7 +7068,13 @@ app.post("/api/admin/order/edit-form", async (req, res) => {
   if (newChannel !== null && newChannel !== String(o.instagram_account || "")) {
     payload.instagram_account = newChannel;
     await run(`UPDATE blueprint_orders SET instagram_account=$1 WHERE order_id=$2`, [newChannel, orderId]);
-    changed.push("instagram_account");
+    // ⚠️ ชื่อช่องเก็บไว้ 3 ที่ ต้องแก้ให้ครบทุกที่ ไม่งั้นหน้าบัญชีลูกค้ายังโชว์ชื่อเก่า
+    //    บั๊กจริง 19 ส.ค. 69 (พลอยแจ้ง "ของคนนี้เล่มขึ้นอันเดียวค่า" พร้อมรูปที่ยังเขียน @marsbluecry)
+    //    เพราะ getCustomerMonths() อ่านชื่อช่องจาก blueprint_requests ไม่ใช่ blueprint_orders
+    const rq = await run(`UPDATE blueprint_requests SET instagram_account=$1
+      WHERE user_id=$2 AND billing_cycle=$3 AND lower(email)=lower($4)`,
+      [newChannel, o.user_id, o.billing_cycle, o.email || ""]);
+    changed.push(`instagram_account (ออเดอร์ + ฟอร์ม ${rq.rowCount || 0} แถว)`);
   }
   // 🖼️ ล้างรูป Insight เดิมทิ้ง — ใช้ตอน "เปลี่ยนช่อง" เท่านั้น
   // ⚠️ เคสจริง 19 ส.ค. 69: ลูกค้าซื้อเล่มให้ช่องส่วนตัว แล้วขอเปลี่ยนเป็นช่องธุรกิจ

@@ -7064,17 +7064,29 @@ app.post("/api/admin/order/edit-form", async (req, res) => {
   }
   // 📺 ชื่อช่องอยู่ 2 ที่ (ในคอลัมน์ของออเดอร์ และในตัว payload) ต้องแก้ให้ตรงกันทั้งคู่
   //    ไม่งั้นบทวิเคราะห์จะอ้างชื่อช่องผิด (ลูกค้ากรอกชื่อตัวเองแทนชื่อช่องบ่อยมาก)
+  // 📺 ชื่อช่องเก็บไว้ 3 ที่ ต้องตรงกันทั้งหมด
+  //    1. blueprint_orders.instagram_account
+  //    2. order_payload_json.instagram_account
+  //    3. blueprint_requests.instagram_account  ← ตัวที่หน้าบัญชีลูกค้าใช้แสดงจริง (getCustomerMonths)
+  //
+  // ⚠️ บั๊กจริง 19 ส.ค. 69 (พลอยแจ้ง "ของคนนี้เล่มขึ้นอันเดียวค่า" + รูปที่ยังเขียน @marsbluecry)
+  //    รอบแรกแก้แค่ 2 ที่แรก หน้าบัญชีเลยยังโชว์ชื่อเก่า
+  //    รอบสองใส่เงื่อนไข "แก้เฉพาะตอนชื่อในออเดอร์ต่างจากที่ส่งมา" → พอออเดอร์ถูกแล้ว
+  //    มันข้ามการซิงก์ที่ 3 ไปเลย ซ่อมของที่ค้างอยู่ไม่ได้
+  // → ตอนนี้ "ซิงก์เสมอ" เมื่อส่งชื่อช่องมา ยิงซ้ำกี่รอบก็ปลอดภัย
   const newChannel = req.body?.instagram_account !== undefined ? String(req.body.instagram_account).trim().slice(0, 100) : null;
-  if (newChannel !== null && newChannel !== String(o.instagram_account || "")) {
-    payload.instagram_account = newChannel;
-    await run(`UPDATE blueprint_orders SET instagram_account=$1 WHERE order_id=$2`, [newChannel, orderId]);
-    // ⚠️ ชื่อช่องเก็บไว้ 3 ที่ ต้องแก้ให้ครบทุกที่ ไม่งั้นหน้าบัญชีลูกค้ายังโชว์ชื่อเก่า
-    //    บั๊กจริง 19 ส.ค. 69 (พลอยแจ้ง "ของคนนี้เล่มขึ้นอันเดียวค่า" พร้อมรูปที่ยังเขียน @marsbluecry)
-    //    เพราะ getCustomerMonths() อ่านชื่อช่องจาก blueprint_requests ไม่ใช่ blueprint_orders
+  if (newChannel) {
+    const parts = [];
+    if (newChannel !== String(o.instagram_account || "")) {
+      payload.instagram_account = newChannel;
+      await run(`UPDATE blueprint_orders SET instagram_account=$1 WHERE order_id=$2`, [newChannel, orderId]);
+      parts.push("ออเดอร์");
+    }
     const rq = await run(`UPDATE blueprint_requests SET instagram_account=$1
-      WHERE user_id=$2 AND billing_cycle=$3 AND lower(email)=lower($4)`,
+      WHERE user_id=$2 AND billing_cycle=$3 AND lower(email)=lower($4) AND COALESCE(instagram_account,'') <> $1`,
       [newChannel, o.user_id, o.billing_cycle, o.email || ""]);
-    changed.push(`instagram_account (ออเดอร์ + ฟอร์ม ${rq.rowCount || 0} แถว)`);
+    if (rq.rowCount) parts.push(`ฟอร์ม ${rq.rowCount} แถว`);
+    if (parts.length) changed.push(`ชื่อช่อง → ${newChannel} (${parts.join(" + ")})`);
   }
   // 🖼️ ล้างรูป Insight เดิมทิ้ง — ใช้ตอน "เปลี่ยนช่อง" เท่านั้น
   // ⚠️ เคสจริง 19 ส.ค. 69: ลูกค้าซื้อเล่มให้ช่องส่วนตัว แล้วขอเปลี่ยนเป็นช่องธุรกิจ

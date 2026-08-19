@@ -1747,6 +1747,32 @@ async function getCustomerChannels(email) {
     return { channel: display, months: list, latest: list[list.length - 1], count: list.length };
   });
 }
+// 👀 ดูหน้า "บัญชีของฉัน" แทนลูกค้า — ใช้ฟังก์ชันตัวเดียวกับที่ลูกค้าเห็นเป๊ะๆ
+//
+// ⚠️ ทำไมต้องมี (19 ส.ค. 69 — พลาดกับลูกค้ารายเดียว 3 รอบติด):
+//    รอบ 1 แก้ชื่อช่องแค่ 2 ที่จาก 3 → หน้าบัญชียังโชว์ชื่อเก่า
+//    รอบ 2 ใส่เงื่อนไขจนซ่อมของที่ค้างไม่ได้
+//    รอบ 3 ลืมลบเล่มเก่า → ลูกค้ากดเข้าไปเจอเนื้อหาช่องอื่น
+//    ทั้ง 3 รอบเกิดเพราะ "ตรวจจากตารางที่เราเพิ่งแก้" ไม่ใช่ "ตรวจจากสิ่งที่ลูกค้าเห็น"
+// → ตรงนี้เรียก getCustomerChannels() ตัวเดียวกับหน้าลูกค้า ไม่มีทางเห็นไม่ตรงกัน
+app.get("/api/admin/as-customer", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  const email = normEmail(req.query.email || "");
+  if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL", message: "ใส่ ?email= ด้วยนะคะ" });
+  const channels = await getCustomerChannels(email);
+  res.json({ ok: true, email,
+    note: "นี่คือสิ่งที่ลูกค้าเห็นจริงในหน้าบัญชีของฉัน (เล่มที่ถูกลบจะไม่ขึ้นตรงนี้)",
+    channel_count: channels.length,
+    channels: channels.map(c => ({
+      ป้ายชื่อช่อง: c.channel,
+      จำนวนเล่ม: c.count,
+      เล่มที่เห็น: c.months.map(m => ({
+        blueprint_id: m.blueprint_id, รอบเดือน: m.billing_cycle,
+        ชื่อช่องในเล่ม: m.instagram_account,
+        ธุรกิจในเล่ม: String(m.business_type || "").slice(0, 120),
+      })),
+    })) });
+});
 app.get("/api/me/blueprints", async (req, res) => {
   const email = await authEmail(req); if (!email) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
   const months = await getCustomerMonths(email, undefined, { all: true });

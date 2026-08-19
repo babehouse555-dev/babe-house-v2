@@ -96,6 +96,22 @@ await check("บริษัท เลขภาษีไม่ครบ 13 ห�
 await check("บริษัทกรอกครบ → จ่ายได้", () =>
   must(validateTax({ is_company: true, name: "บ.เอ", tax_id: "1234567890123", address: "กทม" }) === null, "บล็อกทั้งที่กรอกครบ"));
 
+// 📧 ตัวเตือนอีเมลพิมพ์ผิด — เคสจริง 19 ส.ค. 69: ลูกค้าพิมพ์ gmail.con
+//    จ่ายเงินสำเร็จ เล่มสร้างเสร็จ แต่อีเมลส่งไม่ถึง ลูกค้าเข้าใจว่า "จ่ายแล้วไม่ได้ของ"
+const { emailTypoHint } = await import("../web/src/validate.js");
+await check("อีเมล gmail.con → ต้องเตือนและเดาตัวที่ถูกได้", () =>
+  must(emailTypoHint("saranya.kanr@gmail.con")?.suggest === "saranya.kanr@gmail.com",
+    "ไม่จับ gmail.con — เคสที่ทำให้ลูกค้าไม่ได้ของ 19 ส.ค. 69"));
+await check("อีเมลพิมพ์ผิดแบบอื่น (gmial / hotmial / yahooo) → ต้องเตือน", () =>
+  must(["a@gmial.com", "b@hotmial.com", "c@yahooo.com"].every(e => emailTypoHint(e)?.suggest),
+    "จับโดเมนยอดฮิตที่พิมพ์ผิดไม่ได้"));
+await check("โดเมนบริษัทลงท้าย .con → ต้องเตือนด้วย", () =>
+  must(emailTypoHint("hr@company.con")?.suggest === "hr@company.com", "จับ .con ของโดเมนอื่นไม่ได้"));
+// ⚠️ ข้อนี้สำคัญกว่าข้อบน — เตือนผิดบ่อยๆ ลูกค้าจะเลิกเชื่อแล้วกดข้ามหมด
+await check("อีเมลที่ถูกต้อง → ห้ามเตือน (กันเตือนมั่ว)", () =>
+  must(["ok@gmail.com", "a@babehouse.net", "b@chula.ac.th", "c@hotmail.com", "ไม่มีแอท"]
+    .every(e => emailTypoHint(e) === null), "เตือนทั้งที่อีเมลถูกต้อง"));
+
 // ═════════════ 2) เส้นทางเงิน: เล่ม Blueprint ═════════════
 group("2️⃣  ซื้อเล่ม Blueprint");
 const EM = "checkup@test.local";

@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { api, filesToBase64, getRef, getSource, currentCycle, session, track } from "../api.js";
 import { useI18n } from "../i18n.jsx";
+import EmailTypoWarn from "../EmailTypoWarn.jsx";
 
 const MAX_IMG = 8;
+
 // กล่องอัปรูป Insight — เลือกไฟล์ หรือ "ลากวาง" ได้ (ไฮไลต์เขียวตอนลากทับ)
 // 🐛 บั๊กที่ลูกค้าเจอ (@_junenicha 1 ส.ค.): "อัปโหลดรูปได้รูปเดียว"
 //    เดิม onChange = setFiles(e.target.files) → เลือกใหม่ = "ทับ" ของเก่า
@@ -450,7 +452,11 @@ export default function Form() {
 
         {/* ===== ขั้น 1: ติดต่อ & ช่อง ===== */}
         {step === 1 && <div className="card">
-          <div className="field"><label>{t("fm_email_label")} <span style={{ color: "var(--blue)" }}>⭐</span> <span className="muted">{t("fm_email_hint_inline")}</span></label><input type="email" value={f.email} onChange={upd("email")} onFocus={() => setFocus(null)} placeholder="you@email.com" /><div className="hint">{t("fm_email_hint")}</div></div>
+          <div className="field"><label>{t("fm_email_label")} <span style={{ color: "var(--blue)" }}>⭐</span> <span className="muted">{t("fm_email_hint_inline")}</span></label><input type="email" value={f.email} onChange={upd("email")} onFocus={() => setFocus(null)} placeholder="you@email.com" /><div className="hint">{t("fm_email_hint")}</div>
+            {/* 📧 เตือนอีเมลพิมพ์ผิด — เคสจริง 19 ส.ค. 69: ลูกค้าพิมพ์ gmail.con
+                จ่ายเงินสำเร็จ เล่มสร้างเสร็จ แต่อีเมลแจ้งเล่มส่งไม่ถึงตลอดกาล
+                ⚠️ เตือนอย่างเดียว ห้ามบล็อกการจ่ายเงิน — โดเมนแปลกที่ถูกจริงก็มี */}
+            <EmailTypoWarn value={f.email} onFix={(fixed) => setF(v => ({ ...v, email: fixed }))} /></div>
           <div className="field"><label>{t("fm_channel_name")} <span style={{ color: "var(--blue)" }}>⭐</span></label><input value={f.instagram_account} onChange={upd("instagram_account")} {...fieldProps("instagram_account")} placeholder="@babehouse_academy" />{inlineGuide("instagram_account")}
             <div className="msg" style={{ background: "#eef4fb", color: "#3F6BAE", border: "1px dashed #bcd4ee", fontSize: 12, margin: "8px 0 0", lineHeight: 1.5 }}>{t("fm_multi_hint")}</div>
           </div>

@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { api, session } from "./api.js";
+import EmailTypoWarn from "./EmailTypoWarn.jsx";
 
 export default function LoginBox({ title = "เข้าสู่ระบบก่อนส่งงานนะคะ", hint, onDone }) {
   const [step, setStep] = useState("email");
@@ -50,6 +51,8 @@ export default function LoginBox({ title = "เข้าสู่ระบบก
               onChange={e => setEmail(e.target.value)}
               onKeyDown={e => e.key === "Enter" && sendCode()}
               placeholder="you@email.com" />
+            {/* 📧 พิมพ์อีเมลผิดตรงนี้ = ไม่ได้รหัส OTP เลย ล็อกอินไม่ได้ทั้งที่จ่ายเงินแล้ว */}
+            <EmailTypoWarn value={email} onFix={setEmail} />
           </div>
           <button className="btn full" onClick={sendCode} disabled={busy}>
             {busy ? "กำลังส่งรหัส…" : "ส่งรหัส 6 หลักไปที่อีเมล"}

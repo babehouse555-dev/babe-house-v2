@@ -46,6 +46,9 @@ const DOMAIN_FIXES = {
   "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmil.com": "gmail.com",
   "gmaill.com": "gmail.com", "gnail.com": "gmail.com", "gmali.com": "gmail.com",
   "gamil.com": "gmail.com", "gmail.co.th": "gmail.com",
+  // เจอจากลูกค้าจริง 17 ส.ค. 69 (jeena6945@gmaol.com) — สลับ i กับ o
+  "gmaol.com": "gmail.com", "gmail.om": "gmail.com", "gmaii.com": "gmail.com",
+  "gmail.clm": "gmail.com", "gmail.con.": "gmail.com", "gmall.com": "gmail.com",
   // hotmail
   "hotmail.con": "hotmail.com", "hotmial.com": "hotmail.com", "hotmai.com": "hotmail.com",
   "hotmail.co": "hotmail.com", "hotmail.cm": "hotmail.com",

@@ -209,8 +209,21 @@ export default function Team() {
   useEffect(() => { if (tab === "cal" && d) loadCal(); }, [tab, d]);   // eslint-disable-line
   useEffect(() => { if (tab === "leave" && d) loadLeave(); }, [tab, d]);   // eslint-disable-line
   useEffect(() => { if (tab === "content" && d) loadCp(cpOpen); }, [tab, d, cpOpen]);   // eslint-disable-line
+  // 🔄 คอนเทนต์ที่กางอยู่ ให้ดึงใหม่ทุก 15 วินาที (ทีมขอ 20 ส.ค. 69 "แก้ได้แบบเรียลไทม์")
+  //    กันกับลูกตาลเปิดงานเดียวกันพร้อมกันได้ ต่างคนต่างเห็นของอีกฝ่ายโดยไม่ต้องกดรีเฟรช
+  // ⚠️ ปลอดภัยกับคนที่กำลังพิมพ์อยู่ — ช่องกรอกอ่านจาก ciD (ร่างในเครื่อง) ก่อนเสมอ
+  //    ของที่พิมพ์ค้างไว้จึงไม่ถูกเขียนทับตอนดึงข้อมูลใหม่
+  useEffect(() => {
+    if (tab !== "content" || !d || !cpOpen) return;
+    const t = setInterval(() => loadCp(cpOpen), 15000);
+    return () => clearInterval(t);
+  }, [tab, d, cpOpen]);   // eslint-disable-line
   useEffect(() => { if (tab === "review" && d?.me?.role === "owner" && !rev)
     api(`/api/team/weekly-review?code=${encodeURIComponent(code)}`).then(setRev).catch(() => {}); }, [tab, d, rev, code]);
+  // 📝 งานคอนเทนต์ — โหลดตั้งแต่เข้าหน้า ไม่ต้องรอกดแท็บ
+  //    ไม่งั้นตัวเลขบนแท็บจะขึ้น 0 ตลอดจนกว่าจะกดเข้าไปดู ซึ่งไม่มีประโยชน์
+  //    (ทีมขอให้เห็นเลขงานค้างตั้งแต่เปิดหน้า เหมือนเลขแจ้งเตือนใน LINE)
+  useEffect(() => { if (d && !cp) loadCp(""); }, [d]);   // eslint-disable-line
   // คิวคนที่แจ้งว่าไม่เจอคอร์ส — โหลดตั้งแต่เข้าหน้า เพื่อให้ตัวเลขขึ้นบนแท็บได้เลย
   useEffect(() => { if (!d || !["owner", "support"].includes(d?.me?.role)) return;
     api(`/api/team/customer/claims?code=${encodeURIComponent(code)}`).then(r => setClaims(r.claims || [])).catch(() => {});
@@ -264,11 +277,18 @@ export default function Team() {
   // 🙋 แอดมินดูแลลูกค้า (พลอย) เห็นแค่ 2 แท็บ — งานของเขาไม่เกี่ยวกับคิวตัดต่อเลย
   //    ถ้าโชว์แท็บงานตัดต่อที่ว่างเปล่าให้เขา จะงงว่าเข้าผิดที่หรือเปล่า
   const isSupport = me.role === "support";
+  // 📝 นับงานคอนเทนต์ที่รอ "เรา" ลงมือ (ใช้โชว์เป็นตัวเลขบนแท็บ)
+  const cpWaiting = (cp?.projects || []).filter(p =>
+    (p.status === "review" && p.assigned_to === me.member_id) ||
+    (p.status === "ae_check" && (isOwner || isAE))).length;
   const TABS = isSupport
     ? [["customer", "🙋 ดูแลลูกค้า", claims.length || null], ["corp", "🏢 ลูกค้าองค์กร", corp?.open || null], ["leave", "🌴 วันลา", null]]
     : [["jobs", "🎬 งานตัดต่อ", active.length], ["cal", "📅 ตารางงาน", null]]
     .concat(gjs.length || d.me?.role === "graphic" ? [["graphic", "🎨 งานกราฟฟิก", gjOpen.length]] : [])
-    .concat([["content", "📝 คอนเทนต์ลูกค้า", null]])
+    // 📝 ตัวเลขงานคอนเทนต์ที่ "รอเราทำ" — ทีมขอ 20 ส.ค. 69 ให้ขึ้นเลขเหมือนใน LINE
+    //    กัน = งานที่รอตัวเองตรวจ · ลูกตาล/คิม = งานที่รอ AE ตรวจ
+    //    นับเฉพาะงานที่ต้องลงมือจริงๆ ไม่นับงานที่ส่งลูกค้าไปแล้ว ไม่งั้นเลขค้างตลอดจนเลิกสนใจ
+    .concat([["content", "📝 คอนเทนต์ลูกค้า", cpWaiting || null]])
     .concat([["leave", "🌴 วันลา", null]])
     .concat((isOwner || isAE) ? [["intake", "📥 รับบรีฟใหม่", null]] : [])
     .concat([["teach", "🎓 คลาสที่สอน", (d.teach || []).length]])
@@ -843,6 +863,12 @@ export default function Team() {
           {cp.projects.map(p => {
             const open = cpOpen === p.cp_id;
             const mineToReview = p.status === "review" && (p.assigned_to === me.member_id || isOwner || isAE);
+            // ✏️ กันแก้คอนเทนต์ต่อได้แม้ส่งให้ลูกตาลแล้ว (ทีมขอ 20 ส.ค. 69)
+            //    ของเดิมล็อกทันทีที่พ้นสถานะ "รอกันตรวจ" → เจอคำผิดทีหลังก็แก้ไม่ได้ ต้องวานลูกตาลแก้ให้
+            //    ⛔ ยกเว้นสถานะ "ส่งลูกค้าแล้ว" — ของออกไปหาลูกค้าแล้ว แก้ในระบบก็ไม่ทันแล้ว
+            //       ถ้าจะแก้จริงต้องให้ AE ดึงกลับก่อน (กันแก้เงียบๆ แล้วเข้าใจผิดว่าลูกค้าได้ฉบับใหม่)
+            const canEditNow = ["review", "ae_check"].includes(p.status)
+              && (p.assigned_to === me.member_id || isOwner || isAE);
             return (
               <div key={p.cp_id} style={{ ...card, borderLeft: `4px solid ${tone[p.status]}` }}>
                 <div onClick={() => { setCpOpen(open ? "" : p.cp_id); }} style={{ cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
@@ -873,7 +899,7 @@ export default function Team() {
                     const dr = ciD[it.ci_id] || {};
                     const val = (k) => (dr[k] !== undefined ? dr[k] : (it[k] || ""));
                     const set = (k, v) => setCiD(o => ({ ...o, [it.ci_id]: { ...o[it.ci_id], [k]: v } }));
-                    const canEdit = mineToReview;
+                    const canEdit = canEditNow;
                     return (
                       <div key={it.ci_id} style={{ border: `1px solid ${it.approved ? "#cfe3d6" : "var(--border)"}`,
                         background: it.approved ? "#f7fbf8" : "#fff", borderRadius: 12, padding: 12, marginTop: 10 }}>

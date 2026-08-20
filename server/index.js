@@ -6358,7 +6358,9 @@ app.post("/api/team/content/item", async (req, res) => {
       title=COALESCE($2,title), hook=COALESCE($3,hook), script=COALESCE($4,script), visual=COALESCE($5,visual),
       caption=COALESCE($6,caption), hashtags=COALESCE($7,hashtags), cta=COALESCE($8,cta), format_note=COALESCE($9,format_note),
       approved=COALESCE($10,approved), edited_by=$11, updated_at=now() WHERE ci_id=$1`,
-    [it.ci_id, f("title", 200), f("hook", 500), f("script", 6000), f("visual", 2000),
+    // ⚠️ script ต้องเท่ากับเพดานฝั่ง AI (20000) — 20 ส.ค. 69 เปลี่ยนสคริปต์เป็นแผนถ่ายทีละคัต
+    //    ถ้าเหลือ 6000 เหมือนเดิม ลูกตาลแก้งานยาวๆ แล้วกดเซฟ จะโดนตัดท้ายหายเงียบๆ
+    [it.ci_id, f("title", 200), f("hook", 500), f("script", 20000), f("visual", 2000),
      f("caption", 2000), f("hashtags", 500), f("cta", 300), f("format_note", 2000),
      b.approved === undefined ? null : !!b.approved, me.name]);
   res.json({ ok: true });

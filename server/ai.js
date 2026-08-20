@@ -1350,6 +1350,25 @@ VO: จริงๆ แล้วมีแค่ 3 ขั้นตอนเอง
 - ภาษาพูดแบบคนไทยคุยกัน ไม่ใช่ภาษาโฆษณาแข็งๆ ไม่ใช้คำวัยรุ่นเกินจริง
 - ห้ามกล่าวอ้างสรรพคุณเกินจริง โดยเฉพาะอาหาร/เครื่องสำอาง/อาหารเสริม
 
+🗣️ เรียกคนดูว่า "ทุกคน" (ทีมสั่ง 20 ส.ค. 69)
+- ⛔ ห้ามใช้คำว่า "คุณ" เรียกคนดู — คนไทยคุยกันจริงๆ ไม่ค่อยใช้ ฟังแล้วเหมือนโฆษณา
+- ✅ ใช้ "ทุกคน" เป็นหลัก · จะละไม่เรียกเลยก็ได้ถ้าประโยคลื่นกว่า
+  เช่น "ทุกคนเคยเป็นแบบนี้ไหม" · "เคยเป็นแบบนี้ไหมคะ" (ไม่ใช่ "คุณเคยเป็นแบบนี้ไหม")
+- ยกเว้นบรีฟระบุมาเองว่าให้เรียกคนดูว่าอะไร ให้ใช้ตามบรีฟ
+
+🎤 ถ้าเป็นคอนเทนต์สัมภาษณ์ — คำถามคือหัวใจ (ทีมติว่า "คำถามยังไม่ค่อยน่าสนใจ")
+- ⛔ ห้ามถามคำถามที่เดาคำตอบได้ตั้งแต่ยังไม่ถาม
+  เช่น "สินค้าดียังไง" · "ทำไมถึงเลือกแบรนด์นี้" · "ฝากถึงลูกค้าหน่อย"
+- ✅ คำถามที่ดีต้องมีอย่างน้อย 1 อย่างนี้
+  1. ขุดของจริงที่คนนอกไม่รู้ — "วันที่แย่ที่สุดตั้งแต่ทำมาคือวันไหน"
+  2. บังคับให้เลือกข้าง — "ถ้าต้องตัดออก 1 อย่างจะตัดอะไร"
+  3. ตัวเลข/ของจริงที่จับต้องได้ — "กว่าจะได้สูตรนี้ ทิ้งไปกี่ครั้ง"
+  4. สวนความเชื่อคนทั่วไป — "เรื่องที่คนเข้าใจผิดเกี่ยวกับงานนี้มากที่สุดคืออะไร"
+  5. คำถามที่คนตอบต้องคิดก่อนตอบ ไม่ใช่ตอบได้ทันที
+- ✅ เรียงคำถามจากเบาไปหนัก · คำถามแรกต้องตอบง่ายเพื่อให้คนสัมภาษณ์ผ่อนคลาย
+- ✅ ใส่คำถามตามจี้ไว้ด้วย ("แล้วตอนนั้นรู้สึกยังไง") เพราะคำตอบที่ดีมักอยู่ในรอบที่สอง
+- ✅ เขียนคำถามลงในบรรทัด VO ของคัตนั้นๆ ให้คนถ่ายอ่านแล้วถามตามได้เลย
+
 ตอบเป็น JSON เท่านั้น:
 {"items":[{
   "title":"ชื่อคอนเทนต์สั้นๆ",
@@ -1398,10 +1417,41 @@ ${fileParts.length ? "\n📎 มีไฟล์บรีฟแนบมาด้
   });
   if (!resp.text?.trim()) throw new Error(`empty response (finishReason=${resp.candidates?.[0]?.finishReason || "?"})`);
   const raw = JSON.parse(resp.text);
+  // 🎬 แปลง script ให้เป็นข้อความเสมอ
+  // ⚠️ บั๊กจริง 20 ส.ค. 69 — พอเปลี่ยน prompt ให้เขียนเป็น "แผนถ่ายทีละคัต"
+  //    บางครั้ง AI ส่ง script กลับมาเป็น array ของ object (คัตละ 1 ก้อน) แทนที่จะเป็นข้อความ
+  //    ของเดิม String(x.script) เจอ array แล้วได้ "[object Object],[object Object]" ส่งถึงลูกตาลเลย
+  //    ⛔ ห้ามลบตัวแปลงนี้ทิ้ง — AI ส่งกลับมาไม่เหมือนกันทุกครั้ง (บางรอบเป็น string บางรอบเป็น array)
+  const KEYMAP = [["ins", "INS"], ["instruction", "INS"], ["shot", "INS"], ["visual", "INS"],
+                  ["broll", "ขึ้นภาพประกอบ"], ["b_roll", "ขึ้นภาพประกอบ"], ["overlay", "ขึ้นภาพประกอบ"],
+                  ["ภาพประกอบ", "ขึ้นภาพประกอบ"], ["ขึ้นภาพประกอบ", "ขึ้นภาพประกอบ"],
+                  ["text", "TEXT"], ["on_screen_text", "TEXT"], ["onscreen", "TEXT"],
+                  ["vo", "VO"], ["voice_over", "VO"], ["voiceover", "VO"], ["say", "VO"], ["script", "VO"]];
+  const cutToText = (cut) => {
+    if (typeof cut === "string") return cut.trim();
+    if (!cut || typeof cut !== "object") return "";
+    const lines = [];
+    const used = new Set();
+    for (const [k, label] of KEYMAP) {
+      const hit = Object.keys(cut).find(kk => kk.toLowerCase().replace(/[\s-]/g, "_") === k && !used.has(kk));
+      if (hit && String(cut[hit] || "").trim()) { used.add(hit); lines.push(`${label}: ${String(cut[hit]).trim()}`); }
+    }
+    // คีย์แปลกที่ไม่รู้จัก ก็เอามาต่อท้ายไว้ ดีกว่าทำข้อมูลหาย
+    for (const kk of Object.keys(cut)) {
+      if (used.has(kk) || !String(cut[kk] || "").trim()) continue;
+      lines.push(`${kk}: ${String(cut[kk]).trim()}`);
+    }
+    return lines.join("\n");
+  };
+  const scriptToText = (s) => {
+    if (Array.isArray(s)) return s.map(cutToText).filter(Boolean).join("\n\n");
+    if (s && typeof s === "object") return cutToText(s);
+    return String(s ?? "");
+  };
   const items = (Array.isArray(raw.items) ? raw.items : []).slice(0, n).map(x => ({
     title: String(x.title || "").slice(0, 200), angle: String(x.angle || "").slice(0, 500),
     // ⚠️ script เก็บแผนถ่ายทีละคัตแล้ว ยาวกว่าเดิมมาก — เพดาน 6000 เดิมตัดทิ้งกลางคัต
-    hook: String(x.hook || "").slice(0, 500), script: String(x.script || "").slice(0, 20000),
+    hook: String(x.hook || "").slice(0, 500), script: scriptToText(x.script).slice(0, 20000),
     visual: String(x.visual || "").slice(0, 2000), caption: String(x.caption || "").slice(0, 2000),
     hashtags: String(x.hashtags || "").slice(0, 500), cta: String(x.cta || "").slice(0, 300),
   }));

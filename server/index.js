@@ -7218,9 +7218,13 @@ app.get("/api/admin/find-customer", async (req, res) => {
   const safe = (p, args = []) => q(p, args).then(r => r.rows ?? r).catch(e => [{ _error: String(e.message || e) }]);
 
   const [orders, requests, academy, grants, workshops, edits, users] = await Promise.all([
+    // 📣 ต้องมี source ด้วย — 19 ส.ค. 69 ผมเช็คที่มาลูกค้าด้วย endpoint นี้แล้วขึ้นว่างทุกคน
+    //    เลยไปรายงานคิมว่า "ระบบเก็บที่มาไม่ทำงาน" ทั้งที่มันทำงานปกติมาตลอด
+    //    ความจริงคือ SELECT ตรงนี้ไม่ได้ดึงคอลัมน์ source มา → อ่านได้ค่าว่างเสมอ
+    //    บทเรียน: ค่าว่างจากเครื่องมือตรวจ ≠ ค่าว่างในฐานข้อมูล ต้องยืนยันก่อนสรุป
     safe(`SELECT order_id, created_at, paid_at, payment_status, tier, billing_cycle, blueprint_id,
                  generation_status, generation_error, provider, discount_code, final_amount_satang, instagram_account, user_id,
-                 provider_session_id, checkout_url,
+                 provider_session_id, checkout_url, source,
                  (COALESCE(order_payload_json,'') LIKE '%form_responses%') AS has_form_data
           FROM blueprint_orders WHERE lower(email)=$1 ORDER BY created_at DESC`, [email]),
     safe(`SELECT request_id, created_at, billing_cycle, user_id, instagram_account, industry, phone

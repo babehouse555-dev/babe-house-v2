@@ -234,7 +234,11 @@ export default function WorkshopDetail() {
         </div>
       </div>
       {/* มือถือ: กล่องเลือกรอบ+จองต้องอยู่บนสุด — คนเข้ามาเพื่อดูว่า "เรียนได้วันไหน" ก่อนอ่านรายละเอียด */}
-      <style>{`@media (max-width: 900px){ .ws-grid{ grid-template-columns: 1fr !important; } .ws-grid > .card{ position: static !important; order: -1; } }`}</style>
+      {/* ⚠️ ต้องเป็น minmax(0,1fr) ห้ามใช้ 1fr เปล่าๆ (คิมเจอเอง 21 ส.ค. 69 บนมือถือ)
+          1fr = minmax(auto,1fr) ซึ่ง "auto" จะยอมกว้างตามรูปต้นฉบับ (ปกหน้าคอร์สกว้าง 1200px)
+          ผลคือบนจอมือถือ 375px คอลัมน์บวมเป็น 1022px แล้วโดน body{overflow-x:clip} ตัดหายไปครึ่งจอ
+          ตัวหนังสือ/ปุ่มจอง/ที่นั่งคงเหลือ ล้นออกนอกจอหมด เลื่อนตามไปดูก็ไม่ได้ */}
+      <style>{`@media (max-width: 900px){ .ws-grid{ grid-template-columns: minmax(0,1fr) !important; } .ws-grid > .card{ position: static !important; order: -1; } }`}</style>
     </div>
   );
 }

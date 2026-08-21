@@ -4,6 +4,7 @@ import { api, session, getSource } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
 import LoginBox from "../LoginBox.jsx";
+import StickyBuyBar from "../StickyBuyBar.jsx";
 
 // หน้ารายละเอียดคอร์ส — อ่านก่อน ตัดสินใจก่อน แล้วค่อยซื้อ (ตาม feedback คิม: ไม่เอาปุ่มซื้อโดดใส่หน้าแรก)
 const BLUE = "var(--blue)";
@@ -179,7 +180,8 @@ export default function AcademyCourse() {
             </div>}
           </div>
 
-          <div className="card" style={{ borderRadius: 18, position: "sticky", top: 76, margin: 0 }}>
+          {/* id นี้ให้แถบลอยด้านล่างเลื่อนมาหา และใช้เช็คว่าเห็นกล่องจริงหรือยัง */}
+          <div id="course-buy" className="card" style={{ borderRadius: 18, position: "sticky", top: 76, margin: 0 }}>
             <div style={{ fontSize: 30, fontWeight: 800 }}>
               {sale ? <><span style={{ color: BLUE }}>฿{c.price_sale.toLocaleString()}</span> <span className="muted" style={{ fontSize: 15, textDecoration: "line-through", fontWeight: 400 }}>฿{c.price.toLocaleString()}</span></> : <>฿{c.price.toLocaleString()}</>}
             </div>
@@ -231,7 +233,14 @@ export default function AcademyCourse() {
           1fr = minmax(auto,1fr) ซึ่ง "auto" จะยอมกว้างตามรูปต้นฉบับ (ปกหน้าคอร์สกว้าง 1200px)
           ผลคือบนจอมือถือ 375px คอลัมน์บวมเป็น 1022px แล้วโดน body{overflow-x:clip} ตัดหายไปครึ่งจอ
           ตัวหนังสือ/ปุ่มจอง/ที่นั่งคงเหลือ ล้นออกนอกจอหมด เลื่อนตามไปดูก็ไม่ได้ */}
-      <style>{`@media (max-width: 900px){ .course-grid{ grid-template-columns: minmax(0,1fr) !important; } .course-grid > .card{ position: static !important; order: -1; } }`}</style>
+      {/* 📱 มือถือ: กล่องซื้อต้องอยู่ "ล่างสุด" ใต้รายละเอียดและคลิปตัวอย่าง (คิมสั่ง 21 ส.ค. 69 พร้อมหน้าเวิร์กช็อป)
+          เหตุผลเดียวกัน — เปิดหน้ามาเจอปุ่มจ่ายเงินทันทีทั้งที่ยังไม่รู้ว่าคอร์สสอนอะไร
+          บนคอมไม่เปลี่ยน ยังเป็นสองคอลัมน์ กล่องซื้อลอยอยู่ข้างขวาเหมือนเดิม
+          ⚠️ ต้องเป็น minmax(0,1fr) ห้ามใช้ 1fr เปล่าๆ ไม่งั้นคอลัมน์บวมตามรูปปกแล้วล้นจอมือถือ */}
+      <StickyBuyBar targetId="course-buy" disabled={owned}
+        price={sale ? `฿${c.price_sale.toLocaleString()}` : `฿${c.price.toLocaleString()}`}
+        note="จ่ายครั้งเดียว · เรียนซ้ำได้ไม่จำกัด" label="สมัครเรียน" />
+      <style>{`@media (max-width: 900px){ .course-grid{ grid-template-columns: minmax(0,1fr) !important; } .course-grid > .card{ position: static !important; order: 1; } }`}</style>
     </div>
   );
 }

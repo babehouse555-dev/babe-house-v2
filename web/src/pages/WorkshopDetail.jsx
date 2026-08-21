@@ -4,6 +4,7 @@ import { api, session, getSource } from "../api.js";
 import TaxInvoiceBox, { validateTax } from "../TaxInvoiceBox.jsx";
 import { TAX_INVOICE_LIVE } from "../config.js";
 import LoginBox from "../LoginBox.jsx";
+import StickyBuyBar from "../StickyBuyBar.jsx";
 
 // รายละเอียดคลาสสด + เลือกรอบ + จองและจ่ายเอง (ที่นั่งเช็กสดตอนกดจอง กันจองเกิน)
 const BLUE = "var(--blue)";
@@ -160,8 +161,8 @@ export default function WorkshopDetail() {
             })()}
           </div>
 
-          {/* กล่องจอง */}
-          <div className="card" style={{ borderRadius: 18, position: "sticky", top: 76, margin: 0 }}>
+          {/* กล่องจอง — id นี้ให้แถบลอยด้านล่างเลื่อนมาหา และใช้เช็คว่าเห็นกล่องจริงหรือยัง */}
+          <div id="ws-book" className="card" style={{ borderRadius: 18, position: "sticky", top: 76, margin: 0 }}>
             <div style={{ fontSize: 30, fontWeight: 800 }}>{money(unit)}</div>
             <div className="muted" style={{ fontSize: 13, margin: "4px 0 14px" }}>{w.duration} · {w.instructor}</div>
 
@@ -242,6 +243,11 @@ export default function WorkshopDetail() {
           1fr = minmax(auto,1fr) ซึ่ง "auto" จะยอมกว้างตามรูปต้นฉบับ (ปกหน้าคอร์สกว้าง 1200px)
           ผลคือบนจอมือถือ 375px คอลัมน์บวมเป็น 1022px แล้วโดน body{overflow-x:clip} ตัดหายไปครึ่งจอ
           ตัวหนังสือ/ปุ่มจอง/ที่นั่งคงเหลือ ล้นออกนอกจอหมด เลื่อนตามไปดูก็ไม่ได้ */}
+      {/* 📱 ปุ่มจองลอยติดขอบล่าง — เพราะกล่องจองย้ายไปอยู่ล่างสุดแล้ว คนตัดสินใจแล้วจะได้ไม่ต้องเลื่อนยาว
+          ไม่มีรอบเปิดรับ = ไม่ต้องโชว์ (ไม่มีอะไรให้จอง) */}
+      <StickyBuyBar targetId="ws-book" disabled={!d.sessions.length}
+        price={money(unit)} note={`${w.duration} · ${w.instructor}`}
+        label={soldOut ? "ดูรอบเรียน" : "จองเลย"} />
       <style>{`@media (max-width: 900px){ .ws-grid{ grid-template-columns: minmax(0,1fr) !important; } .ws-grid > .card{ position: static !important; order: 1; } }`}</style>
     </div>
   );

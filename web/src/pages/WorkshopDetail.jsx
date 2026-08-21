@@ -154,7 +154,16 @@ export default function WorkshopDetail() {
                       overflow: hidden; background: var(--soft); border: 1px solid var(--border); }
                     .rv-box iframe { width: 326px; height: 640px; border: 0; display: block;
                       transform: scale(var(--scale)); transform-origin: top left; }
-                    @media (max-width: 420px) { .rv-box { --w: 132px; --scale: 0.405; height: 262px; } }
+                    /* 📱 มือถือ: คลิปต้องใหญ่พอที่จะดูรู้เรื่อง (คิมบอก 21 ส.ค. 69 "มันเล็กมากเลย ขยายได้มั้ย")
+                    ของเดิมกว้าง 132px = เล็กกว่าครึ่งของขนาดจริงที่ Instagram ส่งมา (326px) อ่านซับไม่ออกเลย
+                    ตอนนี้ 245px (ใหญ่ขึ้นเกือบ 2 เท่า) แต่จงใจไม่ให้เต็มพอดี เหลือขอบให้เห็นคลิปถัดไปโผล่มา
+                    คนจะได้รู้ว่ายังมีต่อ ต้องปัดไปทางขวา (ถ้าเต็มพอดีเป๊ะ คนจะนึกว่ามีคลิปเดียว)
+                       เลือก 245 เพราะพื้นที่จริงมีแค่ 297px บนจอ 375 และเหลือ 284px บน iPhone จอเล็กสุด
+                    ⚠️ ใช้ 600px ไม่ใช่ 420px เพราะ iPhone รุ่นจอใหญ่กว้างถึง 430px จะตกขอบ
+                    บนคอมยังเล็กเหมือนเดิม — คิมเลือกไว้เองตั้งแต่ 2 ส.ค. */
+                    @media (max-width: 600px) { .rv-box { --w: 245px; --scale: 0.7515; height: 481px; } }
+                    /* จอเล็กสุด (iPhone SE รุ่นแรก 320px) พื้นที่จริงเหลือแค่ 242px — 245 จะล้น ไม่เห็นคลิปถัดไปเลย */
+                    @media (max-width: 340px) { .rv-box { --w: 205px; --scale: 0.629; height: 403px; } }
                   `}</style>
                 </div>
               );

@@ -11,21 +11,28 @@
 //    · ต้อง "หายไปเอง" เมื่อเลื่อนถึงกล่องจองจริง ไม่งั้นจะบังปุ่มจริงที่อยู่ข้างใต้
 //    · เผื่อขอบล่างจอ iPhone (env safe-area) ไม่งั้นปุ่มไปทับแถบของ Safari
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function StickyBuyBar({ targetId, price, note, label, disabled }) {
   const [show, setShow] = useState(false);
-  const seen = useRef(false);
 
   useEffect(() => {
     const el = document.getElementById(targetId);
     if (!el) return;
-    // เห็นกล่องจองจริงเมื่อไหร่ → ซ่อนแถบ (กันบังปุ่ม)
-    const io = new IntersectionObserver(([e]) => { seen.current = e.isIntersecting; setShow(!e.isIntersecting); },
-      { rootMargin: "0px 0px -35% 0px" });
+    // ซ่อนแถบเมื่อกล่องจองจริงโผล่เข้ามาในจอ — ไม่งั้นแถบจะไปบังปุ่มจริงที่อยู่ข้างใต้
+    // 🔁 ทำ 2 ทางซ้อนกันโดยตั้งใจ: เคยทดสอบแล้วเจอว่าบางสภาพแวดล้อม IntersectionObserver ไม่ยิง
+    //    ถ้าเหลือทางเดียวแล้วทางนั้นเงียบ แถบจะค้างบังปุ่มจ่ายเงิน — ยอมให้เกิดไม่ได้
+    const near = () => {
+      const r = el.getBoundingClientRect();
+      return r.top < window.innerHeight * 0.9;      // กล่องจองเริ่มโผล่เข้ามาในจอแล้ว
+    };
+    const sync = () => setShow(!near());
+    const io = new IntersectionObserver(() => sync(), { rootMargin: "0px 0px -10% 0px" });
     io.observe(el);
-    setShow(true);
-    return () => io.disconnect();
+    window.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    sync();
+    return () => { io.disconnect(); window.removeEventListener("scroll", sync); window.removeEventListener("resize", sync); };
   }, [targetId]);
 
   if (disabled) return null;

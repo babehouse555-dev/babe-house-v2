@@ -6,6 +6,7 @@ import MyLearning, { SectionHead } from "./MyLearning.jsx";
 import { TAX_INVOICE_LIVE, PREVIEW } from "../config.js";
 import { PlanCards } from "../PlanCards.jsx";
 import { askConfirm } from "../confirm.jsx";
+import EmptyAccountHelp from "../EmptyAccountHelp.jsx";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
@@ -215,6 +216,11 @@ export default function Account() {
   //    แล้วบัตรสมาชิกใบใหญ่จะเด้งขึ้นกลางหน้าแทนที่จะอยู่ในโฟลเดอร์ของมัน (คิมสั่ง 6 ส.ค. ว่าห้ามมารบกวนหน้าอื่น)
   const showFolders = [(data?.channels || []).length, counts.courses, counts.certs, counts.ws, counts.edits,
                        TAX_INVOICE_LIVE ? taxInv.length : 0, memberN].filter(n => n > 0).length > 1;
+  // 👋 ล็อกอินสำเร็จแล้วแต่ไม่มีของสักอย่าง = น่าจะเป็นลูกค้าเก่าที่บัญชีเดิมไม่มีอีเมล (มี 238 รายตอนย้ายระบบ)
+  //    ⚠️ ต้องรอ data โหลดเสร็จก่อน ไม่งั้นกล่องจะแวบขึ้นมาตอนกำลังโหลดแล้วหายไป — ลูกค้าที่มีของอยู่จะงง
+  //    ⛔ นับให้ครบทุกประเภท ถ้าตกอย่างใดอย่างหนึ่ง คนที่มีของจะโดนกล่องนี้ขึ้นผิด
+  const hasNothing = !!data && !(data.channels || []).length && !(data.pending || []).length
+    && !counts.courses && !counts.certs && !counts.ws && !counts.edits && !taxInv.length;
   const lineShare = ref ? `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(refLink)}` : "";
 
   return (
@@ -240,6 +246,11 @@ export default function Account() {
 
       {step === "list" && data && <>
         <div className="between" style={{ marginBottom: 14 }}><span className="muted">{t("ac_books_of_pre")} <b>{data.email}</b></span><button className="link" onClick={logout} style={{ background: "none", border: 0 }}>{t("ac_logout")}</button></div>
+
+        {/* 👋 ลูกค้าเก่าที่ล็อกอินมาแล้วเจอหน้าว่าง — ให้ทางแจ้งย้ายคอร์สแบบเห็นชัดตั้งแต่บรรทัดแรก
+            เดิมปุ่มแจ้งซ่อนอยู่ในโฟลเดอร์ "ข้อมูลของฉัน" ต้องกดลึก 2 ชั้นถึงจะเจอ
+            คนเจอหน้าว่างส่วนใหญ่ปิดหน้าไปเลย ไม่ได้เลื่อนหา (คิมเคาะ 21 ส.ค. 69) */}
+        {hasNothing && <EmptyAccountHelp />}
 
         {/* 🎁 บัตรสมาชิก — คิมเลือกดีไซน์ 6 ส.ค. (แบบ A · สีน้ำเงินแบรนด์ · ขนาดตัวหนังสือเท่าเว็บ 16px)
             โผล่เฉพาะคนที่ซื้อแพ็กยาว · ลูกค้ารายเดือนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน

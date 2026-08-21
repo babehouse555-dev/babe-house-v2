@@ -88,18 +88,22 @@ function MyCourses({ courses }) {
 // ไม่มีปกเก่า = แสดงปกเดียวเฉยๆ ไม่มีอะไรให้กด
 function CoverSwap({ image, prev, name }) {
   const [show, setShow] = useState(false);
+  const [touched, setTouched] = useState(false);   // โหลดปกเดิมครั้งแรกที่มีคนสนใจจริงๆ
   const has = !!(image && prev);
   return (
     <div
-      onMouseEnter={() => has && setShow(true)}
+      onMouseEnter={() => { if (has) { setTouched(true); setShow(true); } }}
       onMouseLeave={() => has && setShow(false)}
-      onClick={e => { if (has) { e.preventDefault(); setShow(v => !v); } }}
+      onClick={e => { if (has) { e.preventDefault(); setTouched(true); setShow(v => !v); } }}
       title={has ? "ชี้เพื่อดูปกเดิมของคอร์สนี้" : ""}
       style={{ position: "relative", aspectRatio: "4/3", background: "var(--soft)", overflow: "hidden", cursor: has ? "pointer" : "default" }}>
-      {image && <img src={image} alt={name || ""} loading="lazy"
+      {image && <img src={image} alt={name || ""} decoding="async"
         style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
         onError={e => { e.target.style.display = "none"; }} />}
-      {has && <img src={prev} alt="" loading="lazy" aria-hidden
+      {/* 🐢 ปกเดิมเป็นไฟล์เก่าไซซ์ใหญ่ (~250KB/รูป) × 15 คอร์ส = เกือบ 4MB ต่อการเปิดหน้า 1 ครั้ง
+          ทั้งที่เป็นแค่ของโชว์ตอนชี้/แตะ คนส่วนใหญ่ไม่ได้กดดูเลย
+          → โหลดต่อเมื่อมีคนกดดูจริงเท่านั้น (คิมบอก 21 ส.ค. 69 ว่าหน้านี้ "โหลดนานมาก") */}
+      {has && touched && <img src={prev} alt="" aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain",
                  opacity: show ? 1 : 0, transition: "opacity .28s ease", background: "var(--soft)" }} />}
       {has && !show && <span style={{ position: "absolute", right: 8, bottom: 8, background: "rgba(255,255,255,.9)",

@@ -38,10 +38,14 @@ export default function Workshops() {
             const soon = (w.sessions || []).slice(0, 3);
             return (
               <div key={w.workshop_id} className="card" style={{ margin: 0, borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden", padding: 0, borderTop: next ? `4px solid ${BLUE}` : "1px solid var(--border)" }}>
-                {/* รูปคลาส — คิมบอก 2 ส.ค. "เวิร์กช็อปเปิดมามีแต่ตัวหนังสือ" ต้องเห็นภาพถึงจะตัดสินใจง่าย */}
+                {/* รูปคลาส — คิมบอก 2 ส.ค. "เวิร์กช็อปเปิดมามีแต่ตัวหนังสือ" ต้องเห็นภาพถึงจะตัดสินใจง่าย
+                    ⛔ ห้ามใส่ loading="lazy" กลับมา (คิมเจอเอง 21 ส.ค. 69: "รูปมันไม่เคยขึ้นเลย")
+                       หน้านี้ body มี overflow-x:clip ทำให้ Safari คำนวณ "ใกล้จอหรือยัง" ไม่ได้
+                       รูปเลยค้างรอตลอดกาล ไม่โหลดสักรูป — เหลือแต่กล่องเทาๆ
+                       ตอนนี้รูปเป็น .webp เบาลงเหลือ 29% แล้ว โหลดตรงๆ ไปเลยเร็วกว่า */}
                 <div style={{ position: "relative", aspectRatio: "16/10", background: "var(--soft)", overflow: "hidden" }}>
                   {w.image_url
-                    ? <img src={w.image_url} alt={w.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    ? <img src={w.image_url} alt={w.name} decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                     : <div className="center muted" style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>🎟️</div>}
                   {next && <span style={{ position: "absolute", left: 10, top: 10, background: "rgba(255,255,255,.94)", color: BLUE, fontWeight: 800, fontSize: 11.5, borderRadius: 20, padding: "4px 10px" }}>เปิดรับสมัคร</span>}
                   {w.reviews?.length > 0 && <span style={{ position: "absolute", right: 10, top: 10, background: "rgba(20,16,30,.72)", color: "#fff", fontWeight: 700, fontSize: 11.5, borderRadius: 20, padding: "4px 10px" }}>▶ รีวิว {w.reviews.length}</span>}

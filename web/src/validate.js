@@ -78,3 +78,27 @@ export function emailTypoHint(raw) {
 
   return null;
 }
+
+// ⛔ นามสกุลอีเมลที่ "ไม่มีอยู่จริงบนโลก" — พิมพ์แบบนี้คืออีเมลผิดแน่นอน 100%
+//
+// คิมถาม 21 ส.ค. 2569: "ทำไมลูกค้ามีปัญหานี้เยอะจัง บล็อกตอนล็อกอินเลยได้ไหม"
+// ตอบ: ได้และควรทำ เพราะ .con .cim .xom ฯลฯ ไม่ใช่นามสกุลโดเมนที่มีอยู่จริง
+//      ต่างจาก gmial.com ที่ "อาจ" เป็นโดเมนจริงของใครสักคน → อันนั้นได้แค่เตือน ห้ามบล็อก
+//
+// 📌 ทำไมลูกค้าพิมพ์ผิดเยอะ: บนคีย์บอร์ดมือถือ ปุ่ม n อยู่ติดกับ m
+//    คนไทยส่วนใหญ่สมัครผ่านมือถือ + สลับแป้นไทย-อังกฤษบ่อย → .com กลายเป็น .con ง่ายมาก
+//
+// ⚠️ ก่อนเพิ่มนามสกุลใหม่เข้าลิสต์นี้ ต้องเช็คก่อนว่าไม่มีลูกค้าที่ของอยู่ใต้อีเมลนั้น
+//    ไม่งั้นเขาจะเข้าบัญชีตัวเองไม่ได้ (เช็คแล้ว 21 ส.ค. 69: ลูกค้า 410 คน ไม่มีใครติดเลย)
+const IMPOSSIBLE_TLD = /\.(con|cim|xom|vom|cpm|ocm|cmo|comm|coom|cmm)$/;
+
+// คืนข้อความ error ถ้าอีเมลนี้เป็นไปไม่ได้ · คืน null ถ้าผ่าน
+export function blockImpossibleEmail(raw) {
+  const email = String(raw || "").trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at < 1) return null;                       // ไม่ใช่รูปอีเมล ปล่อยให้ตัวตรวจอื่นจัดการ
+  const domain = email.slice(at + 1);
+  if (!IMPOSSIBLE_TLD.test(domain)) return null;
+  const fixed = email.replace(IMPOSSIBLE_TLD, ".com");
+  return { message: `อีเมลนี้ไม่มีอยู่จริงค่ะ — น่าจะเป็น ${fixed} ใช่ไหมคะ`, suggest: fixed };
+}

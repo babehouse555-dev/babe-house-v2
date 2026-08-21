@@ -7,6 +7,7 @@ import { TAX_INVOICE_LIVE, PREVIEW } from "../config.js";
 import { PlanCards } from "../PlanCards.jsx";
 import { askConfirm } from "../confirm.jsx";
 import EmptyAccountHelp from "../EmptyAccountHelp.jsx";
+import { blockImpossibleEmail } from "../validate.js";
 
 // จำว่าลูกค้าเปิดเล่มไหนแล้ว (localStorage) — เล่มใหม่ที่ยังไม่เปิด = เด่น, เปิดแล้ว = ปกติ
 const isOpened = (id) => { try { return JSON.parse(localStorage.getItem("babe_opened") || "[]").includes(id); } catch { return false; } };
@@ -165,6 +166,10 @@ export default function Account() {
   }
   async function sendCode() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setMsg({ k: "err", t: t("ac_email_invalid") }); return; }
+    // ⛔ นามสกุลที่ไม่มีอยู่จริง (.con .cim ฯลฯ) — กันตรงนี้ด้วย ไม่ใช่แค่ใน LoginBox
+    //    หน้านี้เป็นทางเข้าหลักที่ลูกค้าใช้จริงมากที่สุด ถ้ากวาดไม่ครบก็ยังหลุดเหมือนเดิม
+    const bad = blockImpossibleEmail(email);
+    if (bad) { setMsg({ k: "err", t: bad.message }); return; }
     setBusy(true); setMsg(null);
     try { const d = await api("/api/auth/request-otp", { method: "POST", body: { email: email.trim().toLowerCase(), lang } }); setDevCode(d.dev_code || ""); setStep("otp"); }
     catch (e) { setMsg({ k: "err", t: e.message }); } finally { setBusy(false); }

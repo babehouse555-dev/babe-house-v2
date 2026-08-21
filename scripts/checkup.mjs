@@ -108,6 +108,17 @@ await check("อีเมลพิมพ์ผิดแบบอื่น (gmial
 await check("โดเมนบริษัทลงท้าย .con → ต้องเตือนด้วย", () =>
   must(emailTypoHint("hr@company.con")?.suggest === "hr@company.com", "จับ .con ของโดเมนอื่นไม่ได้"));
 // ⚠️ ข้อนี้สำคัญกว่าข้อบน — เตือนผิดบ่อยๆ ลูกค้าจะเลิกเชื่อแล้วกดข้ามหมด
+// ⛔ บล็อกอีเมลที่เป็นไปไม่ได้ตอนล็อกอิน (คิมสั่ง 21 ส.ค. 69 หลังเจอลูกค้าติดปัญหานี้ 4 รายในสัปดาห์เดียว)
+const { blockImpossibleEmail } = await import("../web/src/validate.js");
+await check("ล็อกอินด้วย .con → ต้องบล็อก ไม่ให้เข้า", () =>
+  must(blockImpossibleEmail("saranya.kanr@gmail.con")?.suggest === "saranya.kanr@gmail.com",
+    "ปล่อย .con ผ่าน — ลูกค้าจะได้บัญชีว่างเปล่าแล้วงงว่าของหาย"));
+await check("นามสกุลปลอมอื่นๆ (.cim .xom .cpm) → ต้องบล็อก", () =>
+  must(["a@x.cim","b@y.xom","c@z.cpm"].every(e => blockImpossibleEmail(e)), "หลุดนามสกุลปลอม"));
+// ⚠️ ข้อนี้สำคัญที่สุด — บล็อกเกินแม้แต่รายเดียว = ลูกค้าเข้าบัญชีตัวเองไม่ได้
+await check("อีเมลที่ใช้ได้จริง → ห้ามบล็อกเด็ดขาด", () =>
+  must(["ok@gmail.com","a@babehouse.net","b@chula.ac.th","c@hotmail.co.th","d@gmial.com","e@company.co.jp"]
+    .every(e => blockImpossibleEmail(e) === null), "บล็อกอีเมลที่ใช้ได้จริง — ลูกค้าจะเข้าระบบไม่ได้"));
 await check("อีเมลที่ถูกต้อง → ห้ามเตือน (กันเตือนมั่ว)", () =>
   must(["ok@gmail.com", "a@babehouse.net", "b@chula.ac.th", "c@hotmail.com", "ไม่มีแอท"]
     .every(e => emailTypoHint(e) === null), "เตือนทั้งที่อีเมลถูกต้อง"));

@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { api, session } from "./api.js";
 import EmailTypoWarn from "./EmailTypoWarn.jsx";
+import { blockImpossibleEmail } from "./validate.js";
 
 export default function LoginBox({ title = "เข้าสู่ระบบก่อนส่งงานนะคะ", hint, onDone }) {
   const [step, setStep] = useState("email");
@@ -20,6 +21,10 @@ export default function LoginBox({ title = "เข้าสู่ระบบก
 
   async function sendCode() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setErr("ใส่อีเมลให้ถูกต้องนะคะ"); return; }
+    // ⛔ นามสกุลที่ไม่มีอยู่จริง (.con .cim ฯลฯ) = พิมพ์ผิดแน่นอน หยุดตั้งแต่ตรงนี้
+    //    บอกทันทีไม่ต้องรอเซิร์ฟเวอร์ และเซิร์ฟเวอร์ก็กันซ้ำอีกชั้น (กันคนยิงตรง)
+    const bad = blockImpossibleEmail(email);
+    if (bad) { setErr(bad.message); return; }
     setBusy(true); setErr("");
     try {
       const d = await api("/api/auth/request-otp", { method: "POST", body: { email: email.trim().toLowerCase() } });

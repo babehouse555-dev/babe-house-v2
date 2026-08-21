@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { pool, q, one, run, initDb } from "./db.js";
 import { issueTaxInvoice, retryPendingInvoices, invoicesCsv, flowAccountReady, splitVat, flowAccountPing, fetchFlowDoc, flowAccountTestWht, tryAttachShapes, fixDocNames, redoInvoice , issueQuotation } from "./tax.js";
+// 📧 ตัวตรวจอีเมลตัวเดียวกับที่หน้าเว็บใช้ — ใช้ไฟล์ร่วมกันเพื่อไม่ให้กติกาสองฝั่งเพี้ยนจากกัน
+import { blockImpossibleEmail } from "../web/src/validate.js";
 import { seedProjects } from "./seed-projects.js";
 import { seedPlayground } from "./seed-playground.js";
 import { seedWorkshops } from "./seed-workshops.js";
@@ -1676,6 +1678,12 @@ app.post("/api/auth/request-otp", async (req, res) => {
   try {
     const email = normEmail(req.body?.email);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ ok: false, error: "INVALID_EMAIL", message: "อีเมลไม่ถูกต้อง" });
+    // ⛔ กันตั้งแต่ต้นทาง — นามสกุลที่ไม่มีอยู่จริง (.con .cim ฯลฯ) คือพิมพ์ผิดแน่นอน 100%
+    //    คิมสั่ง 21 ส.ค. 69: "บล็อกตอนล็อกอินเลยได้ไหม จะได้ไม่ต้องมีปัญหานี้อีก"
+    //    ปล่อยผ่านไป = สร้างบัญชีใหม่ที่ว่างเปล่า แล้วลูกค้างงว่าของหาย ทีมต้องมานั่งย้ายทีหลัง
+    //    (เกิดมาแล้ว 4 รายในสัปดาห์เดียว) · ตรวจแล้วว่าไม่มีลูกค้าเก่าติดอยู่ใต้อีเมลแบบนี้
+    const blocked = blockImpossibleEmail(email);
+    if (blocked) return res.status(400).json({ ok: false, error: "IMPOSSIBLE_EMAIL", message: blocked.message, suggest: blocked.suggest });
     const code = String(Math.floor(100000 + Math.random() * 900000));
     await run(`INSERT INTO auth_otps (email,code,expires_at,attempts) VALUES ($1,$2,$3,0) ON CONFLICT (email) DO UPDATE SET code=EXCLUDED.code,expires_at=EXCLUDED.expires_at,attempts=0`, [email, code, Date.now() + 600000]);
     let sent = false; try { sent = await sendOtp(email, code, req.body?.lang === "en" ? "en" : "th"); } catch {}

@@ -250,7 +250,7 @@ export default function Account() {
         {/* 👋 ลูกค้าเก่าที่ล็อกอินมาแล้วเจอหน้าว่าง — ให้ทางแจ้งย้ายคอร์สแบบเห็นชัดตั้งแต่บรรทัดแรก
             เดิมปุ่มแจ้งซ่อนอยู่ในโฟลเดอร์ "ข้อมูลของฉัน" ต้องกดลึก 2 ชั้นถึงจะเจอ
             คนเจอหน้าว่างส่วนใหญ่ปิดหน้าไปเลย ไม่ได้เลื่อนหา (คิมเคาะ 21 ส.ค. 69) */}
-        {hasNothing && <EmptyAccountHelp />}
+        {hasNothing && <EmptyAccountHelp email={data.email} onLogout={logout} />}
 
         {/* 🎁 บัตรสมาชิก — คิมเลือกดีไซน์ 6 ส.ค. (แบบ A · สีน้ำเงินแบรนด์ · ขนาดตัวหนังสือเท่าเว็บ 16px)
             โผล่เฉพาะคนที่ซื้อแพ็กยาว · ลูกค้ารายเดือนเห็นหน้าเดิมเป๊ะ ไม่มีอะไรมากวน
@@ -497,7 +497,9 @@ export default function Account() {
           const chOpen = (ch, idx) => (ch.channel in expanded) ? expanded[ch.channel] : (q ? true : (singleCh || idx === 0));
           return <>
           {chs.length > 3 && <input value={chQ} onChange={e => setChQ(e.target.value)} placeholder={t("ac_search_channel")} style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "11px 14px", border: "1px solid var(--border)", borderRadius: 12, marginBottom: 12 }} />}
-          {filtered.length === 0 && <div className="card center muted" style={{ fontSize: 14 }}>{t("ac_no_channel_found")} “{chQ}”</div>}
+          {/* ⚠️ ต้องเช็ค q ด้วย — ของเดิมโชว์ 'ไม่พบช่อง ""' ทั้งที่ลูกค้าไม่ได้ค้นหาอะไรเลย
+              (คิมเจอ 21 ส.ค. 69 บนมือถือลูกค้า: บัญชีไม่มีเล่ม แต่ขึ้นข้อความค้นหาไม่เจอพร้อมเครื่องหมายคำพูดว่างๆ) */}
+          {q && filtered.length === 0 && <div className="card center muted" style={{ fontSize: 14 }}>{t("ac_no_channel_found")} “{chQ}”</div>}
           {filtered.map((ch, ci) => {
           const months = ch.months.slice().reverse(); // ใหม่ → เก่า
           // ซื้อหลายเล่มในเดือนเดียวกันได้ (เช่น ช่อง TikTok กับ IG ใช้ชื่อเดียวกัน) → เติมวันที่กันสับสนว่าอันไหนเป็นอันไหน

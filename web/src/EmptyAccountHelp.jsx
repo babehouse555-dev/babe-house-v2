@@ -13,12 +13,17 @@
 
 import { useState } from "react";
 import { api, session } from "./api.js";
+import { emailTypoHint } from "./validate.js";
 
-export default function EmptyAccountHelp() {
+export default function EmptyAccountHelp({ email, onLogout }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState("");
+  // 🎯 เคสจริง 21 ส.ค. 69 — ลูกค้าล็อกอินด้วย saranya.kanr@gmail.con (ลงท้าย .con)
+  //    เล่มอยู่ที่ .com พอเข้ามาก็เจอหน้าว่าง โดยไม่มีอะไรบอกว่าพิมพ์อีเมลผิด
+  //    ตรวจจากอีเมลที่เขาเพิ่งใช้เข้าระบบเอง ไม่ได้ไปเปิดข้อมูลบัญชีคนอื่น
+  const typo = emailTypoHint(email);
 
   async function send() {
     setBusy(true);
@@ -34,6 +39,23 @@ export default function EmptyAccountHelp() {
   return (
     <div style={{ background: "#FFF8E6", border: "1px solid #F2D98C", borderRadius: 16,
                   padding: "20px 18px", marginBottom: 18 }}>
+
+      {/* 🚨 อีเมลที่ใช้เข้าระบบดูเหมือนพิมพ์ผิด — บอกก่อนเรื่องอื่นเลย เพราะแก้ได้เองใน 10 วินาที */}
+      {typo && <div style={{ background: "#fff", border: "1.5px solid #E28A3D", borderRadius: 12,
+                             padding: "14px 15px", marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: "#B4611F", marginBottom: 6 }}>
+          🚨 อีเมลที่ใช้เข้าระบบอาจพิมพ์ผิดค่ะ
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.85 }}>
+          ตอนนี้คุณเข้าระบบด้วย <b style={{ color: "#b42318" }}>{email}</b>
+          <br />น่าจะหมายถึง <b style={{ color: "#1a7f43" }}>{typo.suggest}</b> หรือเปล่าคะ?
+          <br /><span className="muted" style={{ fontSize: 12.5 }}>ของที่ซื้อไว้น่าจะอยู่ในอีเมลนั้นค่ะ</span>
+        </div>
+        {onLogout && <button className="btn" onClick={onLogout} style={{ marginTop: 11, padding: "10px 20px" }}>
+          ออกจากระบบ แล้วเข้าใหม่ด้วย {typo.suggest}
+        </button>}
+      </div>}
+
       <div style={{ fontSize: 30, lineHeight: 1, marginBottom: 8 }}>👋</div>
       <h3 style={{ margin: "0 0 6px", fontSize: 17.5 }}>เคยซื้อคอร์สกับเราแต่ไม่เห็นในบัญชีนี้?</h3>
 

@@ -288,14 +288,35 @@ export default function Dashboard() {
             <h3 style={{ margin: "0 0 4px" }}>{t("db_snap_title")}</h3>
             {!contentReady && <p className="muted" style={{ fontSize: 13, margin: "0 0 12px" }}>{t("db_snap_sub")}</p>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+              {/* 💡 คำอธิบายว่าแต่ละช่องต้องการอะไร (เพิ่ม 21 ส.ค. 69)
+                  ลูกค้า @letsgooovisa แก้ช่องแล้วพิมพ์ลงไปว่า "ยังไม่เข้าใจว่าช่องนี้ต้องการให้เขียนอะไร" ถึง 2 ช่อง
+                  = ป้ายชื่อช่องอย่างเดียวไม่พอ ต้องบอกให้ชัดว่าเขียนอะไรและยาวแค่ไหน
+                  ⚠️ ค่าที่แก้ถูกตัดที่ 60 ตัวอักษร (การ์ดเล็ก) จึงต้องบอกลูกค้าไว้ด้วย ไม่งั้นพิมพ์ยาวแล้วหาย */}
               {bp.snapshot.map((s, i) => {
+                const HINT = {
+                  "เป้าหมายเดือนนี้": "เดือนนี้อยากได้อะไรมากที่สุด เช่น คนรู้จักเพิ่ม · ลูกค้าทัก · ปิดการขาย",
+                  "ระดับตลาด": "ของคุณอยู่ระดับไหนในสายตาลูกค้า เช่น ราคาเข้าถึงง่าย · ระดับกลาง · พรีเมียมเฉพาะทาง",
+                  "ลูกค้าหลัก": "คนที่ซื้อจริงเป็นใคร เช่น ผู้หญิงวัยทำงาน 28-45 มีกำลังซื้อ",
+                  "ปมที่ต้องแก้": "อะไรที่ติดอยู่ตอนนี้ เช่น คนดูเยอะแต่ไม่ทัก · คนทักแต่ไม่ซื้อ",
+                  "ของดีที่มี": "จุดแข็งที่คนอื่นลอกไม่ได้ เช่น ประสบการณ์ 20 ปี · เคสจริงเยอะ",
+                  "โอกาสโต": "ทางที่จะโตเดือนนี้ เช่น เล่าเคสจริงให้คนเห็นว่าเราทำงานยังไง",
+                };
+                const hint = HINT[s.label];
                 const c = [["#ECEAF6", "#6E63A6"], ["#E7EDF8", "#3F6BAE"], ["#E4F4F3", "#2C8E8C"], ["#F3F0F5", "#7E7392"], ["#F7F4EA", "#9A8458"], ["#E9EEF6", "#5573A0"]][i % 6];
                 const val = snapEdits[i] ?? s.value;
                 return <div key={i} style={{ background: c[0], borderRadius: 16, padding: "14px 12px", textAlign: "center", position: "relative" }}>
                   <div style={{ fontSize: 30, lineHeight: 1 }}>{s.emoji}</div>
                   <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, margin: "6px 0 4px", letterSpacing: .2 }}>{s.label}</div>
                   {editTile === i
-                    ? <textarea autoFocus value={val} onChange={e => setSnapEdits(p => ({ ...p, [i]: e.target.value }))} onBlur={() => setEditTile(null)} rows={2} style={{ width: "100%", fontSize: 13, fontWeight: 700, color: c[1], textAlign: "center", border: `1.5px solid ${c[1]}`, borderRadius: 8, padding: "4px", background: "#fff", resize: "none" }} />
+                    ? <>
+                        {hint && <div style={{ fontSize: 11, color: c[1], opacity: .85, lineHeight: 1.5, margin: "0 0 6px", textAlign: "left" }}>{hint}</div>}
+                        <textarea autoFocus value={val} maxLength={60}
+                          onChange={e => setSnapEdits(p => ({ ...p, [i]: e.target.value }))} onBlur={() => setEditTile(null)} rows={2}
+                          style={{ width: "100%", fontSize: 13, fontWeight: 700, color: c[1], textAlign: "center", border: `1.5px solid ${c[1]}`, borderRadius: 8, padding: "4px", background: "#fff", resize: "none" }} />
+                        <div style={{ fontSize: 10.5, color: c[1], opacity: .7, marginTop: 3 }}>
+                          เหลือ {60 - String(val || "").length} ตัวอักษร · เขียนสั้นๆ พอ
+                        </div>
+                      </>
                     : <div style={{ fontSize: 14.5, fontWeight: 800, color: c[1], lineHeight: 1.3 }}>{val}</div>}
                   {!contentReady && editTile !== i && <button onClick={() => setEditTile(i)} style={{ marginTop: 9, background: "#fff", border: `1.5px solid ${c[1]}`, borderRadius: 20, color: c[1], fontSize: 12, fontWeight: 800, cursor: "pointer", padding: "4px 14px", boxShadow: "0 2px 6px rgba(0,0,0,.06)" }}>{snapEdits[i] != null ? t("db_edited") : t("db_edit")}</button>}
                 </div>;

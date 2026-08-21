@@ -1461,10 +1461,17 @@ app.post("/api/generate-content", async (req, res) => {
     const current = safeJson(bp.blueprint_json) || {};
     // ลูกค้าแก้ค่า 6 ช่องเอง → อัปเดตบทวิเคราะห์ก่อนเจนคอนเทนต์ (คอนเทนต์อิงค่าที่แก้ + ช่องในเล่มอัปเดตด้วย) ไม่ต้องเจนวิเคราะห์ใหม่
     const edits = Array.isArray(req.body?.snapshot_edits) ? req.body.snapshot_edits : [];
+    let snapChanged = false;
     if (edits.length && Array.isArray(current.snapshot)) {
-      for (const e of edits) { const idx = Number(e?.i); if (current.snapshot[idx] && typeof e?.value === "string" && e.value.trim()) current.snapshot[idx].value = e.value.trim().slice(0, 60); }
+      for (const e of edits) { const idx = Number(e?.i); if (current.snapshot[idx] && typeof e?.value === "string" && e.value.trim()) { current.snapshot[idx].value = e.value.trim().slice(0, 60); snapChanged = true; } }
     }
-    if (bp.content_status === "ready" || (Array.isArray(current.scripts) && current.scripts.length)) return res.json({ ok: true, status: "ready" });
+    // 🐛 บั๊กจริง 21 ส.ค. 69 (ลูกค้า @letsgooovisa แจ้งผ่านพลอย)
+    //    ของเดิมแก้ค่า 6 ช่องใส่ตัวแปรในหน่วยความจำ แล้ว "return ออกทันที" ถ้าแผนสร้างเสร็จแล้ว
+    //    → ที่ลูกค้าแก้หายเงียบๆ ไม่มีใครรู้ เพราะไม่เคยถูกเขียนลงฐานข้อมูลเลย
+    //    ตอนนี้เซฟก่อนออกเสมอ ลูกค้าแก้ตอนไหนก็อยู่
+    if (snapChanged) await run(`UPDATE blueprints SET blueprint_json=$1 WHERE blueprint_id=$2`, [JSON.stringify(current), bpId]);
+    if (bp.content_status === "ready" || (Array.isArray(current.scripts) && current.scripts.length))
+      return res.json({ ok: true, status: "ready", snapshot_saved: snapChanged });
     if (bp.content_status === "generating" && inFlightBp.has(bpId)) return res.json({ ok: true, status: "generating" }); // กำลังทำอยู่จริงใน process นี้
     // ไม่งั้นเริ่มใหม่ (รวมถึงกรณี 'generating' ที่ค้างจาก deploy เก่า = orphaned)
     inFlightBp.add(bpId);

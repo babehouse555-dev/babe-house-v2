@@ -1775,8 +1775,22 @@ app.get("/api/admin/as-customer", async (req, res) => {
   const email = normEmail(req.query.email || "");
   if (!email) return res.status(400).json({ ok: false, error: "NO_EMAIL", message: "ใส่ ?email= ด้วยนะคะ" });
   const channels = await getCustomerChannels(email);
+  // 🧾 ใบกำกับภาษีที่ลูกค้าเห็นในกล่อง "ใบกำกับภาษี"
+  // ⚠️ ต้องใช้คำสั่งเดียวกับ /api/me/tax-invoices เป๊ะๆ ห้ามเขียนใหม่
+  //    ไม่งั้นตรวจแล้วบอกคิมว่า "ลูกค้าเห็น" ทั้งที่ของจริงไม่ขึ้น (เคยพลาดแบบนี้มาแล้วกับชื่อช่อง 19 ส.ค.)
+  // เหตุที่ต้องมี: 22 ส.ค. 69 ลูกค้าบริษัทแจ้งว่า "ไม่มีใบเสร็จ" คิมถามว่า
+  //    "มันอยู่ในบัญชีของฉันไหม หรือมันไม่ขึ้นในหน้าใบกำกับของลูกค้า" — ตอบไม่ได้เพราะเครื่องมือดูไม่ครบ
+  const inv = await q(`SELECT invoice_id, doc_number, status, amount_satang, customer_name, is_company,
+      COALESCE(doc_date, issued_at, created_at) AS on_date
+    FROM tax_invoices WHERE lower(email)=lower($1) ORDER BY COALESCE(doc_date, issued_at, created_at) DESC`, [email]);
   res.json({ ok: true, email,
     note: "นี่คือสิ่งที่ลูกค้าเห็นจริงในหน้าบัญชีของฉัน (เล่มที่ถูกลบจะไม่ขึ้นตรงนี้)",
+    ใบกำกับภาษีที่ลูกค้าเห็น: {
+      จำนวน: inv.length,
+      รายการ: inv.map(r => ({ เลขที่: r.doc_number || "(ยังไม่มีเลข)", สถานะ: r.status,
+        ยอด: Number(r.amount_satang || 0) / 100, ในนาม: r.customer_name, เป็นบริษัท: !!r.is_company,
+        ลิงก์ที่ลูกค้ากดโหลด: `/invoice/${r.invoice_id}` })),
+    },
     channel_count: channels.length,
     channels: channels.map(c => ({
       ป้ายชื่อช่อง: c.channel,

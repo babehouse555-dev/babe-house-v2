@@ -2216,6 +2216,84 @@ app.post("/api/admin/bank-transfers/reject", async (req, res) => {
   res.json({ ok: true, message: "ปฏิเสธแล้ว และส่งอีเมลแจ้งลูกค้าเรียบร้อยค่ะ" });
 });
 
+// ═══════ 🧾📧 ส่ง "ใบเสร็จ" เข้าเมลลูกค้า — คิมเคาะข้อความ 22 ส.ค. 2569 ═══════
+//
+// ⚠️ ทำไมต้องมี: เดิมออกใบเสร็จให้ทุกคนอัตโนมัติ แต่ "ไม่เคยบอกลูกค้าเลยสักครั้ง"
+//    ลูกค้าได้เมลฉบับเดียวคือ "บทวิเคราะห์ช่องพร้อมแล้ว" ซึ่งไม่มีคำว่าใบเสร็จอยู่เลย
+//    จะรู้ได้ทางเดียวคือบังเอิญกดเข้าไปเจอกล่อง 🧾 ในบัญชีเอง
+//    → ลูกค้าบริษัทที่ต้องส่งบัญชี เข้าใจว่าเราไม่ได้ออกให้ (พลอยแจ้ง 22 ส.ค.)
+//
+// 📌 ส่งจาก "ยามใบกำกับ" ที่เดินทุก 30 นาที ไม่ได้แปะไว้ที่ท่อจ่ายเงินทีละท่อ
+//    เพราะมี 5 ท่อ (เล่ม · คอร์ส · คลาสสด · ตัดต่อ · องค์กร) วันหลังเพิ่มท่อใหม่แล้วลืมแปะ = เงียบอีก
+//    วิธีนี้ "ออกใบสำเร็จแล้วยังไม่ได้ส่ง" เมื่อไหร่ก็ส่งเอง ครอบคลุมทุกท่อทั้งตอนนี้และอนาคต
+const invoiceEmailHtml = (r) => {
+  const money = (sat) => "฿" + (Number(sat || 0) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const d = r.doc_date || r.issued_at || r.created_at;
+  const thDate = d ? new Date(d).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" }) : "-";
+  const row = (k, v) => `<tr><td style="padding:5px 14px 5px 0;color:#6b6b76;white-space:nowrap">${k}</td><td style="padding:5px 0;font-weight:600">${v}</td></tr>`;
+  const isCo = !!r.is_company;
+  return wrap(
+    `สวัสดีค่ะ 🩵<br><br>ได้รับชำระเงินเรียบร้อยแล้ว และออกใบเสร็จรับเงิน/ใบกำกับภาษีให้เรียบร้อยแล้วนะคะ<br><br>` +
+    `<table style="font-size:15px;border-collapse:collapse">` +
+      row("เลขที่", r.doc_number || "-") +
+      row("วันที่", thDate) +
+      row("รายการ", r.description || "-") +
+      row("ยอดรวม", `${money(r.amount_satang)} <span style="font-weight:400;color:#6b6b76;font-size:13px">(มูลค่าก่อนภาษี ${money(r.net_satang)} + VAT 7% ${money(r.vat_satang)})</span>`) +
+      row("ในนาม", r.customer_name || "-") +
+      (isCo && r.tax_id ? row("เลขประจำตัวผู้เสียภาษี", `${r.tax_id}${r.branch ? " (" + r.branch + ")" : ""}`) : "") +
+    `</table><br>` +
+    btn(`${appBaseUrl()}/invoice/${r.invoice_id}`, "เปิด / ดาวน์โหลดใบเสร็จ") + `<br><br>` +
+    `ใบนี้เก็บอยู่ในบัญชีของคุณตลอดค่ะ กลับมาโหลดซ้ำได้ทุกเมื่อที่<br>` +
+    `<b>babehouse.net → บัญชีของฉัน → 🧾 ใบกำกับภาษี</b><br><br>` +
+    (isCo
+      ? `ส่งต่อให้ฝ่ายบัญชีได้เลยค่ะ — ถ้าต้องแก้ชื่อบริษัท/ที่อยู่ ทักมาก่อนสิ้นเดือนจะแก้ให้ง่ายที่สุดนะคะ<br><br>`
+      : `ถ้าอยากได้ใบในนามบริษัท หรือต้องแก้ชื่อ/ที่อยู่ ทักมาได้เลยนะคะ ออกให้ใหม่ได้ค่ะ<br><br>`) +
+    `ขอบคุณที่ไว้ใจ Babe House ค่ะ 🩵`);
+};
+
+// ส่งใบที่ออกสำเร็จแล้วแต่ยังไม่เคยส่งเมล · companyOnly = เฉพาะใบในนามบริษัท
+// 🚧 เส้นตัด: ระบบส่งอัตโนมัติ "เฉพาะใบที่ออกตั้งแต่วันเปิดใช้ฟีเจอร์นี้" เท่านั้น
+//    คิมเคาะ 22 ส.ค. 69 ว่า "ส่งเฉพาะ 13 รายที่ออกในนามบริษัท" สำหรับของเก่า
+//    ⛔ ถ้าไม่มีเส้นตัดนี้ รอบแรกที่ยามเดิน ลูกค้าเก่า 400+ รายจะได้เมลใบเดิมพร้อมกันหมด
+//       = สแปมลูกค้าที่ไม่ได้ขอ และผิดจากที่คิมสั่งไว้ตรงๆ
+//    ของเก่าที่ต้องส่ง ใช้ /api/admin/tax-invoices/mail แบบระบุ all_time=true เท่านั้น
+const INVOICE_EMAIL_SINCE = "2026-08-22";
+async function mailIssuedInvoices({ limit = 30, companyOnly = false, dryRun = false, allTime = false } = {}) {
+  const rows = await q(`SELECT * FROM tax_invoices
+    WHERE status='issued' AND emailed_at IS NULL AND email IS NOT NULL AND email <> ''
+      ${companyOnly ? "AND is_company = true" : ""}
+      ${allTime ? "" : `AND COALESCE(doc_date, issued_at, created_at) >= '${INVOICE_EMAIL_SINCE}'`}
+    ORDER BY COALESCE(doc_date, issued_at, created_at) DESC LIMIT $1`, [limit]).catch(() => []);
+  const done = [];
+  for (const r of rows) {
+    if (dryRun) { done.push({ email: r.email, doc: r.doc_number, sent: null }); continue; }
+    const ok = await sendEmail(r.email, `ใบเสร็จ/ใบกำกับภาษีของคุณค่ะ 🧾 · ${String(r.doc_number || "").replace(/^.*?(CA\S+).*$/, "$1") || r.invoice_id}`,
+      invoiceEmailHtml(r)).catch(() => false);
+    // ⚠️ ปั๊มเวลาเฉพาะตอนส่งผ่านจริง — ส่งไม่ผ่านต้องปล่อยให้รอบหน้าลองใหม่ ห้ามปั๊มทิ้ง
+    if (ok) await run(`UPDATE tax_invoices SET emailed_at=now() WHERE invoice_id=$1`, [r.invoice_id]);
+    done.push({ email: r.email, doc: r.doc_number, sent: !!ok });
+  }
+  return done;
+}
+
+// 📮 สั่งส่งใบเสร็จเข้าเมลลูกค้าเอง — ใช้กับ "ของเก่าก่อนเปิดใช้ฟีเจอร์"
+//    dry_run=true  → แค่บอกว่าจะส่งให้ใครบ้าง ยังไม่ส่งจริง (ดูก่อนเสมอ)
+//    company_only  → เฉพาะใบในนามบริษัท (ที่คิมเคาะให้ส่งย้อนหลัง)
+//    all_time      → ข้ามเส้นตัดวันที่ ถึงจะย้อนไปหาของเก่าได้
+app.post("/api/admin/tax-invoices/mail", async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
+  try {
+    const out = await mailIssuedInvoices({
+      limit: Math.min(200, Number(req.body?.limit) || 30),
+      companyOnly: req.body?.company_only !== false,
+      allTime: req.body?.all_time === true,
+      dryRun: req.body?.dry_run === true,
+    });
+    res.json({ ok: true, dry_run: req.body?.dry_run === true, count: out.length,
+      sent: out.filter(x => x.sent).length, รายการ: out });
+  } catch (e) { res.status(500).json({ ok: false, error: "FAILED", message: e.message }); }
+});
+
 // 🧾🛡️ ยามใบกำกับภาษี — ลองออกใบที่ยังไม่สำเร็จซ้ำเอง แล้วเตือนคิมถ้ายังไม่ขึ้นสักที
 //
 // ⚠️ เดิมไม่มีตัวนี้เลย: ถ้าออกใบไม่สำเร็จ (FlowAccount ล่ม · โทเคนหมดอายุ · โควตาเต็ม · เน็ตหลุด)
@@ -2225,6 +2303,11 @@ app.post("/api/admin/bank-transfers/reject", async (req, res) => {
 const invAlerted = new Set();
 async function watchTaxInvoices() {
   if (!flowAccountReady()) return;
+  // 📧 ส่งใบเสร็จให้ลูกค้าที่ยังไม่ได้ส่ง (เฉพาะใบที่ออกหลังวันเปิดใช้ — ดู INVOICE_EMAIL_SINCE)
+  try {
+    const sent = await mailIssuedInvoices({ limit: 40 });
+    if (sent.length) console.log(`[tax-watch] ส่งใบเสร็จเข้าเมลลูกค้า ${sent.filter(x => x.sent).length}/${sent.length} ใบ`);
+  } catch (e) { console.error("[tax-watch] mail", e.message); }
   try {
     const stuck = await q(`SELECT invoice_id, email, description, amount_satang, created_at, status, error
       FROM tax_invoices WHERE status IN ('pending','failed') AND issued_manually = false

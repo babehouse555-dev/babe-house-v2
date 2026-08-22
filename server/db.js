@@ -355,6 +355,10 @@ export async function initDb() {
     -- 💸 ภาษีหัก ณ ที่จ่าย 3% (คิมสั่ง 8 ส.ค. — ลูกค้านิติบุคคลบางเจ้าหัก)
     -- หักจากยอดก่อน VAT · ลูกค้าจ่ายน้อยลงเท่ายอดที่หัก แล้วส่งหนังสือรับรองมาให้เรายื่นภาษี
     ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS wht_satang INTEGER DEFAULT 0;
+    -- 📧 เวลาที่ส่ง "ใบเสร็จ" เข้าเมลลูกค้า (NULL = ยังไม่เคยส่ง)
+    -- คิมเคาะ 22 ส.ค. 69 หลังลูกค้าบริษัทแจ้งว่า "ไม่มีใบเสร็จ" ทั้งที่ใบออกแล้วตั้งแต่วันซื้อ
+    -- ⚠️ คอลัมน์นี้คือตัวกันส่งซ้ำ — ห้ามลบ ไม่งั้นลูกค้าจะโดนสแปมใบเดิมทุกครั้งที่ระบบเดินรอบ
+    ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS emailed_at TIMESTAMPTZ;
     ALTER TABLE tax_invoices ADD COLUMN IF NOT EXISTS full_name TEXT;  -- ชื่อ-นามสกุลจริงสำหรับใบกำกับภาษี (นักบัญชีขอ 11 ส.ค.)
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_inv_order ON tax_invoices(order_id);
     -- ⚠️ ธงกันออกใบซ้ำ: ออเดอร์เก่าที่คิมออกใบมือไว้ใน FlowAccount แล้ว ห้ามระบบส่งขึ้นไปอีก
